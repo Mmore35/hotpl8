@@ -13,11 +13,11 @@ param(
 )
 
 $ErrorActionPreference='Stop'
-. (Join-Path $PSScriptRoot 'common.ps1')
-. (Join-Path $PSScriptRoot 'config.ps1')
+. (Join-Path $PSScriptRoot 'src/common.ps1')
+. (Join-Path $PSScriptRoot 'src/config.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
-. (Join-Path $PSScriptRoot 'providers/claude.ps1')
-. (Join-Path $PSScriptRoot 'providers/codex.ps1')
+. (Join-Path $PSScriptRoot 'src/providers/claude.ps1')
+. (Join-Path $PSScriptRoot 'src/providers/codex.ps1')
 $policyPath=Join-Path $StateDirectory 'policy.json'
 $policy=Read-Hotpl8Json $policyPath
 if (-not $policy) { throw 'Create policy.json from policy.example.json first, or use {"codex":{"slots":[]}} for Codex-only operation.' }

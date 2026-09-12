@@ -1,9 +1,9 @@
 # Offline checks for parse errors, data validity, private paths, and broken local Markdown links.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-. (Join-Path $root 'common.ps1')
-. (Join-Path $root 'config.ps1')
-. (Join-Path $root 'providers/codex.ps1')
+. (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/config.ps1')
+. (Join-Path $root 'src/providers/codex.ps1')
 $files=@(Get-ChildItem -LiteralPath $root -Recurse -File|Where-Object{$_.FullName -notmatch '[\\/](dist|artifacts|\.git)[\\/]'})
 $failures=@()
 foreach($file in $files){

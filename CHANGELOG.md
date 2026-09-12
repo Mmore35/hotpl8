@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.1.0-rc.1 — unreleased
+## Unreleased
+
+- Lead the README with account selection, optional Claude warming, and a real dashboard rendering with fictional data.
+- Add a repeatable screenshot harness and selection/warming diagrams linked to implementation and tests.
+- Add `hotpl8 enroll`, actionable offline doctor guidance, and setup/refresh hints in the cached dashboard.
+- Group internal runtime code under src/ and all regression suites under tests/ while preserving public entrypoint paths.
+
+## 0.1.0-rc.1 — 2026-09-12
 
 - Remove the dashboard tagline.
 - Add monitoring-only defaults, independently controlled Claude actions, and observation-only refresh.

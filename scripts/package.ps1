@@ -2,8 +2,8 @@
 param([string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-. (Join-Path $root 'common.ps1')
-. (Join-Path $root 'lifecycle.ps1')
+. (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/lifecycle.ps1')
 if(-not $OutputDirectory){$OutputDirectory=Join-Path $root 'dist'}
 $output=Assert-Hotpl8Path $OutputDirectory
 [void][IO.Directory]::CreateDirectory($output)

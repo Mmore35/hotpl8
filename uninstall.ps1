@@ -1,8 +1,8 @@
 ﻿# Preserve state and native account homes. Remove only this installation's owned integration.
 param([Parameter(Mandatory=$true)][string]$InstallDirectory)
 $ErrorActionPreference='Stop'
-. (Join-Path $PSScriptRoot 'common.ps1')
-. (Join-Path $PSScriptRoot 'lifecycle.ps1')
+. (Join-Path $PSScriptRoot 'src/common.ps1')
+. (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
 $root=Assert-Hotpl8Path $InstallDirectory
 $installation=Read-Hotpl8Json (Join-Path $root 'installation.json')
 if(-not $installation -or $installation.product -ne 'hotpl8' -or $installation.id -notmatch '^[a-f0-9]{12}$'){throw 'Not an owned installation.'}

@@ -2,9 +2,9 @@
 [CmdletBinding()]
 param([string]$InstallDirectory,[string]$StateDirectory,[switch]$Schedule,[switch]$NoPath)
 $ErrorActionPreference='Stop'
-. (Join-Path $PSScriptRoot 'common.ps1')
-. (Join-Path $PSScriptRoot 'config.ps1')
-. (Join-Path $PSScriptRoot 'lifecycle.ps1')
+. (Join-Path $PSScriptRoot 'src/common.ps1')
+. (Join-Path $PSScriptRoot 'src/config.ps1')
+. (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
 if($env:OS -ne 'Windows_NT'){throw 'This installer supports Windows. Other systems can use a source checkout experimentally.'}
 if(-not $InstallDirectory){$InstallDirectory=Join-Path $env:LOCALAPPDATA 'HotPl8'}
 $destination=Assert-Hotpl8Path $InstallDirectory
@@ -73,7 +73,8 @@ try{
     if($installation.scheduled){Register-Hotpl8Task $installation $destination}
     Write-Hotpl8Text (Join-Path $destination 'installation.json') ($installation|ConvertTo-Json) -NoBom
     'Installed HotPl8 '+$installation.version+'. Open a new terminal and run hotpl8 doctor.'
-    'Accounts remain in their native tools. Follow docs/install.md to enroll them.'
+    'Next: hotpl8 enroll -Slot main -AccountHome PATH (use your signed-in native Codex home).'
+    'Claude setup: https://github.com/Mmore35/hotpl8/blob/main/docs/install.md'
 }catch{
     if(-not $NoPath){[Environment]::SetEnvironmentVariable('Path',$oldPath,'User')}
     if($promoted){Remove-Hotpl8App $app}
