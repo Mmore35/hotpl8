@@ -1,0 +1,19 @@
+# Contributing
+
+Use Windows PowerShell 5.1, Git Bash, and Python 3 for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
+```
+
+Tests use temporary fixture accounts and a compiled fake Codex executable. They must not log into accounts, send prompts, mutate native credential homes, or change your installed scheduler/PATH. The complete Windows suite needs permission to execute temporary test binaries. A restricted sandbox can report transport failures before product code reaches the fake provider.
+
+Run [static checks](scripts/check.ps1), then relevant focused suites during development. CI runs the complete suite. Keep fixes small, describe observable behavior, and include regression coverage for meaningful bugs. Preserve the existing eligibility, quota-freshness, isolation, and failure tests. Do not weaken checks simply to obtain a green count.
+
+PowerShell files use UTF-8 BOM when non-ASCII text is present, for Windows PowerShell 5.1 compatibility. Shell scripts use LF. Runtime has no dependency on Python or Bash except the separately installed Claude adapter dependency.
+
+Never commit real emails, user paths, credentials, native account homes, quota logs, screenshots of real accounts, or diagnostic dumps. Use fictional fixtures. Security reports belong in the private route in [SECURITY.md](SECURITY.md).
+
+Release maintainers follow [release-checklist.md](docs/release-checklist.md). Do not publish from a working-directory ZIP or tag an untested revision. Provider contract changes need recorded native-client evidence; offline fakes alone cannot prove token-refresh or billing behavior.
+
+Contribute code you have the right to submit, under the project's MIT license. Be respectful, describe problems concretely, and avoid harassment or sharing personal information. Maintainers may remove abusive content and restrict participation.

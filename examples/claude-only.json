@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "mode": "monitor",
+  "prefer": [
+    1
+  ],
+  "labels": {
+    "1": "Work"
+  },
+  "reserve": [],
+  "margin5h": 25,
+  "margin7d": 20,
+  "hysteresis": 10,
+  "switchEnabled": false,
+  "warm": false,
+  "probeEnabled": false
+}

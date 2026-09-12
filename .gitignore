@@ -1,0 +1,52 @@
+# Per-machine state and config — never committed.
+# Written before `git init` deliberately: the moment a folder becomes its own
+# repo it loses whatever ignores its parent was providing, and these four are
+# the files that carry this machine's slot labels and live usage figures.
+policy.json
+warm-state.json
+status.txt
+status.json
+status.js
+# cred-audit.log records THIS machine's credential generations (sha256 prefixes and
+# expiries -- identities, never token material). Per-machine like status.*: each box
+# runs its own logins, so another machine's generations describe nothing here.
+cred-audit.log
+# hold.json is a LEASE held by a running job, not config: committing it would ship
+# one machine's in-flight hold to every other machine, where it would suppress
+# rotation until an expiry that means nothing there.
+hold.json
+
+# Secrets — anywhere in the tree
+.env
+.env.*
+*.secret
+*.secret.*
+**/secrets/
+**/credentials/
+*.pem
+*.key
+
+# OS noise
+.DS_Store
+
+# Local Codex observations and scheduler ownership
+codex-state.json
+codex-observations.jsonl
+tick.lock
+# Local installation, native account files, and review/build artifacts
+install-state.json
+installation.json
+auth.json
+.credentials.json
+hooks-owned.json
+*.tmp
+*.log
+*.log.*
+*.jsonl
+*.jsonl.1
+dist/
+artifacts/
+.venv/
+__pycache__/
+.claude/
+.codex/

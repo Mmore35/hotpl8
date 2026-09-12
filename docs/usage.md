@@ -1,0 +1,21 @@
+# Commands
+
+| Command | Behavior |
+|---|---|
+| `hotpl8` / `watch` | Show cached dashboard; no quota calls or prompts. |
+| `status` | Print cached readings; warn when the snapshot is stale. |
+| `status -AsJson` | Local structured snapshot; may contain private labels. |
+| `refresh` | Collect quotas without switching, warming, or recovery prompts. Fail if collection is incomplete. |
+| `tick` | Collect and apply actions explicitly allowed by policy; monitoring mode still prevents actions. |
+| `doctor -AsJson` | Redacted offline diagnostics. Missing/invalid policy returns nonzero. |
+| `version` / `help` | Print installed version / command summary. |
+| `init` | Create a safe initial policy without overwriting existing configuration. |
+| `codex -Slot main` | Validate native login and launch in that home. Does not guarantee quota. |
+| `codex -Model VERIFIED_MODEL` | Use a current eligible recommendation with a verified model/meter mapping. |
+| `codex -Slot main resume` | Resume within the home that owns the conversation. |
+
+All commands accept `-StateDirectory PATH`. Codex native arguments follow its command; use native Codex directly for authentication/configuration/remote/admin commands HotPl8 cannot validate. HotPl8's JSON-output option is `-AsJson`, intentionally distinct from native Codex `--json`.
+
+Q, Escape, and Ctrl+C exit the dashboard. Space **freezes the view**, not the collector or automation. Arrow/Page/Home/End keys scroll. Set `NO_COLOR=1` for uncolored output. Piped dashboard output prints once and exits.
+
+To suspend all automatic actions, set policy mode to monitor. The legacy hold.json lease suppresses switching only, expires automatically, and does not stop warming or probing. Never interpret a hold as a general automation pause.

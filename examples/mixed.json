@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "mode": "monitor",
+  "prefer": [
+    1,
+    2
+  ],
+  "reserve": [
+    2
+  ],
+  "labels": {
+    "1": "Work",
+    "2": "Reserve"
+  },
+  "margin5h": 25,
+  "margin7d": 20,
+  "margin7dWork": 5,
+  "hysteresis": 10,
+  "switchEnabled": false,
+  "warm": false,
+  "probeEnabled": false,
+  "codex": {
+    "slots": [],
+    "prefer": [],
+    "reserve": [],
+    "defaultMeter": "codex",
+    "modelMeters": {}
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "mode": "monitor",
+  "codex": {
+    "slots": [],
+    "prefer": [],
+    "reserve": [],
+    "defaultMeter": "codex",
+    "modelMeters": {}
+  }
+}

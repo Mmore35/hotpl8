@@ -1,0 +1,45 @@
+{
+  "prefer": [
+    3,
+    2,
+    1
+  ],
+  "reserve": [
+    1
+  ],
+  "order": "soonest-reset",
+  "resetLeadMin": 10,
+  "margin5h": 25,
+  "margin7d": 20,
+  "margin7dWork": 5,
+  "hysteresis": 10,
+  "labels": {
+    "3": "slot-three",
+    "2": "slot-two",
+    "1": "slot-one"
+  },
+  "maxUsageAgeS": 900,
+  "staleQuarantineS": 21600,
+  "warm": true,
+  "warmMin7d": 20,
+  "warmMin7dWork": 5,
+  "warmFloorMin": 20,
+  "warmPhaseWindowMin": 15,
+  "pattern": "even",
+  "weights": {
+    "3": 1,
+    "2": 1,
+    "1": 1
+  },
+  "codex": {
+    "slots": [],
+    "prefer": [],
+    "reserve": [],
+    "order": "soonest-reset",
+    "defaultMeter": "codex",
+    "margin5h": 25,
+    "margin7d": 20,
+    "margin7dWork": 5,
+    "modelMeters": {}
+  }
+}

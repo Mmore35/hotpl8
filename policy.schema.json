@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HotPl8 policy version 1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "mode"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": [
+        "monitor",
+        "automate"
+      ]
+    },
+    "prefer": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      }
+    },
+    "reserve": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 80,
+        "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+      }
+    },
+    "switchEnabled": {
+      "type": "boolean"
+    },
+    "warm": {
+      "type": "boolean"
+    },
+    "probeEnabled": {
+      "type": "boolean"
+    },
+    "order": {
+      "enum": [
+        "prefer",
+        "soonest-reset"
+      ]
+    },
+    "pattern": {
+      "enum": [
+        "maintain",
+        "even",
+        "clustered",
+        "synced"
+      ]
+    },
+    "weights": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 10000
+      }
+    },
+    "margin5h": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "margin7d": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "margin7dWork": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "hysteresis": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "warmMin7d": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "warmMin7dWork": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "maxUsageAgeS": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 604800
+    },
+    "staleQuarantineS": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 604800
+    },
+    "warmFloorMin": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 604800
+    },
+    "warmPhaseWindowMin": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 604800
+    },
+    "warmGroup": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 604800
+    },
+    "resetLeadMin": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 604800
+    },
+    "codex": {
+      "type": "object",
+      "properties": {
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "home"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,40}$"
+              },
+              "home": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "prefer": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "reserve": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "order": {
+          "enum": [
+            "prefer",
+            "soonest-reset"
+          ]
+        },
+        "defaultMeter": {
+          "enum": [
+            "codex",
+            "codex_bengalfox"
+          ]
+        },
+        "modelMeters": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "codex",
+              "codex_bengalfox"
+            ]
+          }
+        },
+        "margin5h": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "margin7d": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "margin7dWork": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "hysteresis": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

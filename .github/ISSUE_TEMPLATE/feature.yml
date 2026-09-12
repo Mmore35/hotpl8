@@ -1,0 +1,9 @@
+name: Feature request
+description: Describe a use case.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to accomplish?
+    validations:
+      required: true
