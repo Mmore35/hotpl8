@@ -11,13 +11,13 @@
 #
 # Silent + exit 0 when the feature is off or has never run.
 param([ValidateSet('claude','codex')][string]$Provider = 'claude', [string]$StateDirectory)
-. (Join-Path $PSScriptRoot 'common.ps1')
-. (Join-Path $PSScriptRoot 'config.ps1')
+. (Join-Path $PSScriptRoot 'src/common.ps1')
+. (Join-Path $PSScriptRoot 'src/config.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
 if ($Provider -eq 'codex') {
     $ErrorActionPreference = 'SilentlyContinue'
     try {
-        . (Join-Path $PSScriptRoot 'common.ps1')
+        . (Join-Path $PSScriptRoot 'src/common.ps1')
 
         $policy = Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
         if (-not $policy.codex) { exit 0 }

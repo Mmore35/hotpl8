@@ -1,43 +1,40 @@
 # HotPl8
 
-See Claude and Codex subscription quotas together in a local terminal dashboard. Track remaining usage and reset times, and launch Codex in the account home you choose.
+[![Windows checks](https://github.com/Mmore35/hotpl8/actions/workflows/ci.yml/badge.svg)](https://github.com/Mmore35/hotpl8/actions/workflows/ci.yml)
 
-**Windows preview — v0.1.0-rc.1.** Uses Windows PowerShell 5.1. One account is enough to use monitoring; native provider tools and subscriptions are required. This is an early release for feedback, with [known compatibility limits](docs/compatibility.md).
+**Spend less time juggling AI subscriptions.**
 
-## Install
+- **Pick the best available account.** Automatically switch Claude accounts using quota, reset times, and your reserve rules. Codex selects an account for your next launch.
+- **Warm idle Claude accounts.** Optional small requests aim to start usage windows earlier, so accounts are ready when you need them.
+- **See every account at a glance.** Remaining quota, reset times, active accounts, and stale readings in one terminal dashboard.
 
-Download the Windows ZIP and SHA256SUMS from [v0.1.0-rc.1](https://github.com/Mmore35/hotpl8/releases/tag/v0.1.0-rc.1), verify the ZIP checksum, and extract it. From the extracted directory run:
+![HotPl8 showing two fictional Claude accounts and two Codex accounts, with quota bars, reset times, and separate ACTIVE and NEXT LAUNCH indicators](docs/assets/dashboard.png)
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+Windows preview. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming is not implemented. [Compatibility and provider boundaries](docs/compatibility.md).
+
+## How it chooses
+
+```mermaid
+flowchart TD
+    A[Read quotas] --> B[Exclude stale and insufficient readings]
+    B --> C[Rank by policy: work first, reserves last]
+    C --> D{Provider?}
+    D -- Claude --> E[cswap switches account when allowed]
+    D -- Codex --> F[Next launch uses the selected native home]
 ```
 
-The installer copies HotPl8 into your user profile and adds its command to your user PATH. It does not install provider CLIs, copy credentials, or change your global execution policy. See [installation](docs/install.md) for prerequisites and native account enrollment. Open a new terminal afterward:
+HotPl8 decides; **cswap carries out Claude switches**, and **native Codex launches in the selected home**. Warming is a separate, guarded action. [Ranking, warming, and credential flow](docs/architecture.md).
 
-```powershell
-hotpl8 doctor
-hotpl8 refresh
-hotpl8
-```
+## Get started
 
-New policies start in **monitoring mode**. Refresh reads quotas; it never switches accounts or sends warming/recovery prompts. Background collection is optional: pass `-Schedule` to the installer. Existing unversioned policies retain their previous automation settings; review [migration](docs/upgrading.md).
+**[Download the Windows preview](https://github.com/Mmore35/hotpl8/releases/tag/v0.1.0-rc.1)** and follow its [installation guide](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md). One account is enough. Native tools and subscriptions are installed separately; HotPl8 needs no admin rights or hosted service.
 
-## What it does
+Working from this source? See the [current setup guide](docs/install.md), including the new `hotpl8 enroll` command. [All commands](docs/usage.md) · [Automation settings](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md).
 
-- Cached terminal dashboard with per-account quotas, freshness, and reset uncertainty.
-- Separate Claude ACTIVE and Codex NEXT LAUNCH indicators.
-- Codex launches bound to a native account home; explicit ownership for resume.
-- Optional Claude rotation, reserves, warming, and stale-account probes. These remain experimental pending provider-boundary and live concurrency validation; they consume quota when enabled.
-- Offline diagnostics and local JSON status. No HotPl8 telemetry or hosted backend.
+## Under the hood
 
-The Claude adapter depends on claude-swap and includes legacy credential handling whose provider-policy compatibility has not been established. It is experimental; HotPl8 does not provide a Claude sign-in flow or claim provider approval. See [provider boundaries](docs/compatibility.md#provider-boundaries).
+PowerShell, local snapshots, and offline regression tests. [Architecture and source map](docs/architecture.md) · [Contributing](CONTRIBUTING.md) · [Regenerate the screenshots](docs/screenshots.md).
 
-Codex automatic warming is unavailable. Unknown constraints never imply free capacity. Mac/Linux and desktop/IDE integrations are not release-qualified. [Compatibility](docs/compatibility.md) records the exact limits.
+[Report a bug](https://github.com/Mmore35/hotpl8/issues) · [Privacy](PRIVACY.md) · [Report a vulnerability](SECURITY.md) · [MIT license](LICENSE)
 
-## Learn more
-
-[Usage](docs/usage.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md) · [Upgrades and uninstall](docs/upgrading.md) · [Architecture](docs/architecture.md)
-
-Questions and bugs: [GitHub Issues](https://github.com/Mmore35/hotpl8/issues). Support is best effort; include redacted doctor output and never credentials. Contributors: [CONTRIBUTING.md](CONTRIBUTING.md). Security concerns: [SECURITY.md](SECURITY.md). Data handling: [PRIVACY.md](PRIVACY.md).
-
-HotPl8 is independently maintained and is not affiliated with or endorsed by Anthropic or OpenAI. Code is licensed under [MIT](LICENSE); native provider software and subscriptions retain their own terms. See [third-party notices](THIRD_PARTY_NOTICES.md).
+Independent project; not affiliated with Anthropic or OpenAI. [Third-party notices](THIRD_PARTY_NOTICES.md).

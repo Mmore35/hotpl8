@@ -1,10 +1,10 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-. (Join-Path $root 'common.ps1')
-. (Join-Path $root 'config.ps1')
-. (Join-Path $root 'diagnostics.ps1')
-. (Join-Path $root 'providers/claude.ps1')
-. (Join-Path $root 'providers/codex.ps1')
+. (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/config.ps1')
+. (Join-Path $root 'src/diagnostics.ps1')
+. (Join-Path $root 'src/providers/claude.ps1')
+. (Join-Path $root 'src/providers/codex.ps1')
 $script:passed=0;$script:failed=0
 function Assert($Value){if(-not $Value){throw 'assertion failed'}}
 function Check([string]$Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}

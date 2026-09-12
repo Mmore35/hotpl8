@@ -64,10 +64,21 @@ function New-DashboardQuotaRow([string]$Label,$Used,$Reset,[datetimeoffset]$Now,
     New-DashboardRow ('    '+$Label.PadRight(3)+'  '+$bar+'  '+$percent+' left   '+$resetText) $tone
 }
 function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact) {
+    if (-not $Policy.prefer -and -not $Policy.codex.slots -and -not $Status) {
+        New-DashboardRow '  Connect an account to see its quota here.' text
+        New-DashboardRow '  Codex: sign in with the native CLI, then:' lavender
+        New-DashboardRow '    hotpl8 enroll -Slot main -AccountHome PATH' text
+        New-DashboardRow '  Claude: follow docs/install.md.' peach
+        New-DashboardRow '  Next: hotpl8 refresh' mint
+        return
+    }
     $age=Get-DashboardAge $Status.generatedAt $Now
     $stale=($null -eq $age -or $age -gt 900 -or $age -lt -5)
-    if(-not $Status){New-DashboardRow '  Waiting for a readable HotPl8 snapshot...' amber}
-    elseif($stale){New-DashboardRow '  ! Usage is stale. Waiting for the collector.' amber}
+    if(-not $Status){New-DashboardRow '  No reading yet. Run hotpl8 refresh.' amber}
+    elseif($stale){New-DashboardRow '  ! Usage is stale. Run hotpl8 refresh.' amber}
+    $needsHelp = (@($Status.slots | Where-Object { $_.status -ne 'ok' }).Count -gt 0 -or
+        @($Status.providers.codex.slots | Where-Object { $_.status -ne 'ok' }).Count -gt 0)
+    if ($needsHelp) { New-DashboardRow '  Account unavailable? Run hotpl8 doctor; see docs/troubleshooting.md.' amber }
     $claude=@($Status.slots|Where-Object {$null -ne $_})
     if(-not $claude.Count -and $Policy.labels){
         $claude=@($Policy.labels.PSObject.Properties|ForEach-Object{[pscustomobject]@{slot=$_.Name;label=$_.Value;status='no observation'}})
@@ -128,7 +139,7 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     $freshness=if($null -eq $age){'no reading yet'}elseif($age -lt -5){'clock mismatch'}else{'usage read '+(Format-DashboardDuration $age)+' ago'}
     New-DashboardRow ('╭'+('─'*$inside)+'╮') border
     New-DashboardRow ('│'+(Format-DashboardText '  (=^.^=)  hotpl8' $inside)+'│') rose
-    New-DashboardRow ('│'+(Format-DashboardText ('  '+$(if($Paused){'VIEW FROZEN'}else{'LIVE'})+'  ·  '+$freshness+'  ·  quotas every 5m') $inside)+'│') muted
+    New-DashboardRow ('│'+(Format-DashboardText ('  '+$(if($Paused){'VIEW FROZEN'}else{'CACHED VIEW'})+'  ·  '+$freshness) $inside)+'│') muted
     New-DashboardRow ('├'+('─'*$inside)+'┤') border
     foreach($row in @($rows|Select-Object -Skip $offset -First $available)){New-DashboardRow ('│'+(Format-DashboardText $row.text $inside)+'│') $row.tone}
     New-DashboardRow ('├'+('─'*$inside)+'┤') border
@@ -157,6 +168,10 @@ public static class HotPl8Console {
         return @{enabled=$enabled;handle=$handle;mode=$mode}
     }catch{return @{enabled=$false;handle=$null;mode=$null}}
 }
+function Get-Hotpl8DashboardPalette {
+    # Shared by terminal output and the documentation screenshot harness.
+    return @{text='220;225;238';muted='143;156;181';border='65;79;105';rose='246;169;193';peach='255;194;158';lavender='194;180;255';mint='151;222;191';amber='244;207;137'}
+}
 function Show-Hotpl8Dashboard([string]$StateDirectory) {
     $policyPath=Join-Path $StateDirectory 'policy.json'; $statusPath=Join-Path $StateDirectory 'status.json'
     # Pipes and non-console hosts get one plain frame; they must never hang.
@@ -164,7 +179,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory) {
     try{$interactive=(-not [Console]::IsOutputRedirected -and -not [Console]::IsInputRedirected -and [Console]::WindowHeight -gt 0)}catch{}
     if(-not $interactive){Get-Hotpl8DashboardFrame (Read-Hotpl8Json $statusPath) (Read-Hotpl8Json $policyPath) ([datetimeoffset]::UtcNow) 100 10000|ForEach-Object{$_.text};return}
     $esc=[string][char]27; $terminal=Enable-Hotpl8Terminal; $ansi=$terminal.enabled
-    $colors=@{text='220;225;238';muted='143;156;181';border='65;79;105';rose='246;169;193';peach='255;194;158';lavender='194;180;255';mint='151;222;191';amber='244;207;137'}
+    $colors=Get-Hotpl8DashboardPalette
     $oldEncoding=[Console]::OutputEncoding; $oldCtrl=[Console]::TreatControlCAsInput; $oldCursor=[Console]::CursorVisible
     $offset=0; $paused=$false; $quit=$false; $last=''; $next=0; $clock=[Diagnostics.Stopwatch]::StartNew()
     try {

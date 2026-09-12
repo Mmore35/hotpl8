@@ -1,9 +1,9 @@
 ﻿# Scheduled collection is quiet; interactive callers can request nonzero failure exits.
 param([string]$StateDirectory,[string]$CswapExecutable,[string]$CodexExecutable,[scriptblock]$CodexReader,[switch]$ObserveOnly,[switch]$Strict)
 $ErrorActionPreference='Stop'
-. (Join-Path $PSScriptRoot 'common.ps1')
-. (Join-Path $PSScriptRoot 'config.ps1')
-. (Join-Path $PSScriptRoot 'diagnostics.ps1')
+. (Join-Path $PSScriptRoot 'src/common.ps1')
+. (Join-Path $PSScriptRoot 'src/config.ps1')
+. (Join-Path $PSScriptRoot 'src/diagnostics.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
 $lock=$null; $failed=$false
 try {
@@ -15,7 +15,7 @@ try {
     $previous=Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')
     $claude=$null; $claudeError=$null; $codex=$null
     try {
-        . (Join-Path $PSScriptRoot 'providers/claude.ps1')
+        . (Join-Path $PSScriptRoot 'src/providers/claude.ps1')
         $claude=Invoke-ClaudeTick $policy $StateDirectory $CswapExecutable -ObserveOnly:$ObserveOnly
     } catch {
         $claudeError='collection_failed'; $failed=$true
@@ -24,7 +24,7 @@ try {
     }
     if($policy.codex -and $policy.codex.slots){
         try {
-            . (Join-Path $PSScriptRoot 'providers/codex.ps1')
+            . (Join-Path $PSScriptRoot 'src/providers/codex.ps1')
             $codex=Invoke-CodexCollection $policy.codex $StateDirectory $CodexExecutable $previous.providers.codex $CodexReader
             if(@($codex.slots|Where-Object status -NE ok).Count){$failed=$true;Write-Hotpl8Event $StateDirectory 'codex_observation_unavailable'}
         } catch {

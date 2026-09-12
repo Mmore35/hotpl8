@@ -1,7 +1,8 @@
-﻿$ErrorActionPreference='Stop'
-. (Join-Path $PSScriptRoot 'common.ps1')
-. (Join-Path $PSScriptRoot 'providers/codex.ps1')
-. (Join-Path $PSScriptRoot 'dashboard.ps1')
+﻿$root = Split-Path $PSScriptRoot -Parent
+$ErrorActionPreference='Stop'
+. (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/providers/codex.ps1')
+. (Join-Path $root 'src/dashboard.ps1')
 $now=[datetimeoffset]::Parse('2026-09-10T12:00:00Z')
 $p=@{prefer=@(1,2,3);reserve=@(1);labels=@{'1'='reserve';'2'='work';'3'='work2'};codex=@{slots=@(@{id='main';label='Main'});defaultMeter='codex'}}|ConvertTo-Json -Depth 5|ConvertFrom-Json
 $s=@{generatedAt=$now.ToString('o');active=3;slots=@(1..3|ForEach-Object{@{slot=$_;label='Claude '+$_;status='ok';active=($_ -eq 3);fresh=$true;used5h=25;used7d=50;reset5h=$now.AddHours(2).ToString('o');reset7d=$now.AddDays(2).ToString('o')}});providers=@{codex=@{defaultMeter='codex';recommendedSlot='main';slots=@(@{id='main';label='Main';status='ok';observedAt=$now.ToString('o');buckets=@{codex=@{status='observed';windows=@{'10080'=@{usedPercent=35;remainingPercent=65;resetsAt=$now.AddDays(3).ToUnixTimeSeconds();anchorState='observed-active'}}};codex_bengalfox=@{status='constraint_unknown';windows=@{'300'=@{usedPercent=0;remainingPercent=100;resetsAt=$now.AddHours(5).ToUnixTimeSeconds();anchorState='unconfirmed'}}}}})}}}|ConvertTo-Json -Depth 15|ConvertFrom-Json
@@ -10,6 +11,17 @@ function Assert($Value){if(-not $Value){throw 'assertion failed'}}
 function Check([string]$Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
 function Copy-Value($Value){$Value|ConvertTo-Json -Depth 20|ConvertFrom-Json}
 function Render($Value=$s,[int]$Width=100,[int]$Height=100,[int]$Offset=0){@(Get-Hotpl8DashboardFrame $Value $p $now $Width $Height $Offset)}
+Check 'empty policy has enrollment and refresh guidance without implying a running collector' {
+    $empty=@{mode='monitor';prefer=@();codex=@{slots=@()}}|ConvertTo-Json -Depth 4|ConvertFrom-Json
+    $text=((Get-Hotpl8DashboardFrame $null $empty $now 80 24).text)-join "`n"
+    Assert ($text.Contains('hotpl8 enroll') -and $text.Contains('hotpl8 refresh'))
+    Assert ($text.Contains('CACHED VIEW') -and -not $text.Contains('LIVE') -and -not $text.Contains('every 5m'))
+}
+Check 'stale and failed readings offer a recovery action' {
+    $c=Copy-Value $s;$c.generatedAt=$now.AddHours(-1).ToString('o');$c.slots[0].status='authentication_required'
+    $text=((Render $c).text)-join "`n"
+    Assert ($text.Contains('hotpl8 refresh') -and $text.Contains('hotpl8 doctor') -and $text.Contains('SIGN-IN NEEDED'))
+}
 Check 'all accounts and separate main/Spark meters are displayed' {
     $t=((Render).text)-join "`n"
     Assert ($t.Contains('3 subscriptions') -and $t.Contains('1 subscription'))
@@ -66,7 +78,7 @@ Check 'opening through a pipe returns one plain frame without changing cache' {
         Write-Hotpl8Text (Join-Path $dir 'status.json') ($s|ConvertTo-Json -Depth 20)
         Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 10)
         $before=(Get-FileHash (Join-Path $dir 'status.json')).Hash
-        $out=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'hotpl8.ps1') -StateDirectory $dir
+        $out=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hotpl8.ps1') -StateDirectory $dir
         Assert ($LASTEXITCODE -eq 0 -and ($out -join "`n").Contains('hotpl8'))
         Assert ((Get-FileHash (Join-Path $dir 'status.json')).Hash -eq $before)
         Assert (@(Get-ChildItem $dir -File).Count -eq 2)

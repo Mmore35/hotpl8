@@ -1,8 +1,9 @@
-﻿# Offline acceptance tests. No live accounts or OpenAI requests.
+﻿$root = Split-Path $PSScriptRoot -Parent
+# Offline acceptance tests. No live accounts or OpenAI requests.
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'common.ps1')
-. (Join-Path $PSScriptRoot 'providers/claude.ps1')
-. (Join-Path $PSScriptRoot 'providers/codex.ps1')
+. (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/providers/claude.ps1')
+. (Join-Path $root 'src/providers/codex.ps1')
 $script:passed = 0; $script:failed = 0
 function Check([string]$Name, [scriptblock]$Body) {
     try { & $Body; $script:passed++; 'PASS ' + $Name }
@@ -87,7 +88,7 @@ try {
     Check 'atomic replacement works repeatedly' { $path=Join-Path $dir 'atomic.txt'; Write-Hotpl8Text $path 'one'; Write-Hotpl8Text $path 'two'; Assert ([IO.File]::ReadAllText($path) -eq 'two') }
     Check 'locked file retains complete snapshot' { $path=Join-Path $dir 'locked.txt'; Write-Hotpl8Text $path 'old'; $lock=[IO.File]::Open($path,'Open','Read','None'); try { try { Write-Hotpl8Text $path 'new' } catch { } } finally { $lock.Dispose() }; Assert ([IO.File]::ReadAllText($path) -eq 'old') }
     $fake = Join-Path $dir 'fake codex.exe'
-    Add-Type -Path (Join-Path $PSScriptRoot 'tests/fake-codex.cs') -ReferencedAssemblies System.Web.Extensions -OutputAssembly $fake -OutputType ConsoleApplication
+    Add-Type -Path (Join-Path $root 'tests/fake-codex.cs') -ReferencedAssemblies System.Web.Extensions -OutputAssembly $fake -OutputType ConsoleApplication
     # Diagnose the offline executable before interpreting transport failures as
     # product regressions. Only synthetic fixture stderr is safe to expose here.
     $smokeInfo=New-CodexProcessInfo $fake $homeA @('app-server') $dir
@@ -182,13 +183,13 @@ try {
         Write-Hotpl8Text (Join-Path $dir 'policy.json') (@{codex=$policy}|ConvertTo-Json -Depth 12)
         Write-Hotpl8Text (Join-Path $dir 'status.json') ($payload|ConvertTo-Json -Depth 24)
         $env:HOTPL8_SLOT='a'; $env:HOTPL8_METER='codex'; $env:HOTPL8_STATE_DIRECTORY=$dir
-        $out=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'status-print.ps1') -Provider codex -StateDirectory $dir
+        $out=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'status-print.ps1') -Provider codex -StateDirectory $dir
         $obj=$out|ConvertFrom-Json
         Assert ($obj.hookSpecificOutput.hookEventName -eq 'SessionStart'); Assert ($out.Length -lt 4000)
         $savedHome=$env:CODEX_HOME
         try {
             $env:HOTPL8_SLOT=$null; $env:HOTPL8_METER=$null; $env:CODEX_HOME=$homeA
-            $direct=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'status-print.ps1') -Provider codex -StateDirectory $dir
+            $direct=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'status-print.ps1') -Provider codex -StateDirectory $dir
             $directObj=$direct|ConvertFrom-Json
             Assert ($directObj.hookSpecificOutput.additionalContext.Contains('"boundSlot":"a"'))
         } finally { $env:CODEX_HOME=$savedHome }
@@ -196,7 +197,7 @@ try {
     }
     Check 'real tick publishes Codex without cswap' {
         $p=@{codex=$policy}; Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 12)
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $dir -CswapExecutable (Join-Path $dir 'absent.exe') -CodexExecutable $fake
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $dir -CswapExecutable (Join-Path $dir 'absent.exe') -CodexExecutable $fake
         $actual=Read-Hotpl8Json (Join-Path $dir 'status.json')
         Assert ($actual.providers.codex.slots.Count -eq 2); Assert ($actual.schemaVersion -eq 2); Assert ($actual.slots.Count -eq 0)
         Assert (([IO.File]::ReadAllText((Join-Path $dir 'status.js'))).StartsWith('window.CSWAP = '))
@@ -214,11 +215,25 @@ try {
         $configDir=Join-Path $dir 'setup';New-Item -ItemType Directory $configDir|Out-Null
         Write-Hotpl8Text (Join-Path $configDir 'policy.json') '{"prefer":[3,2,1],"warm":true}'
         Write-Hotpl8Text (Join-Path $homeA 'hooks.json') '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo existing"}]}]}}'
-        $setupArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'setup-codex.ps1'),'-Slot','a','-AccountHome',$homeA,'-StateDirectory',$configDir,'-CodexExecutable',$fake,'-Model','fixture-model','-InstallHook')
+        $setupArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'setup-codex.ps1'),'-Slot','a','-AccountHome',$homeA,'-StateDirectory',$configDir,'-CodexExecutable',$fake,'-Model','fixture-model','-InstallHook')
         & powershell @setupArgs | Out-Null;Assert ($LASTEXITCODE -eq 0)
         & powershell @setupArgs | Out-Null;Assert ($LASTEXITCODE -eq 0)
         $p=Read-Hotpl8Json (Join-Path $configDir 'policy.json');$h=Read-Hotpl8Json (Join-Path $homeA 'hooks.json')
         Assert ($p.prefer.Count -eq 3);Assert $p.warm;Assert ($p.codex.slots.Count -eq 1);Assert ($h.hooks.Stop[0].hooks[0].command -eq 'echo existing');Assert ($h.hooks.SessionStart.Count -eq 1);Assert ([IO.File]::ReadAllBytes((Join-Path $homeA 'hooks.json'))[0] -eq 123)
+    }
+    Check 'enroll command validates the native home and preserves monitoring on repeat' {
+        $enrollment=Join-Path $dir 'cli enrollment';New-Item -ItemType Directory $enrollment|Out-Null
+        Copy-Item (Join-Path $root 'policy.example.json') (Join-Path $enrollment 'policy.json')
+        $arguments=@('enroll','-Slot','main','-AccountHome',$homeA,'-Label','Everyday','-StateDirectory',$enrollment,'-CodexExecutable',$fake)
+        foreach($attempt in 1..2){
+            $out=& (Join-Path $root 'hotpl8.cmd') @arguments
+            Assert ($LASTEXITCODE -eq 0) ($out -join ' ')
+            Assert (($out -join ' ').Contains('Next: hotpl8 refresh'))
+        }
+        $saved=Read-Hotpl8Json (Join-Path $enrollment 'policy.json')
+        Assert ($saved.codex.slots.Count -eq 1 -and $saved.codex.slots[0].home -eq $homeA)
+        Assert ($saved.codex.slots[0].label -eq 'Everyday' -and $saved.mode -eq 'monitor' -and -not $saved.warm)
+        Assert (-not (Test-Path (Join-Path $enrollment 'auth.json')))
     }
     Check 'automatic native launch rechecks the real binding' {
         $c=Invoke-CodexCollection $policy $dir $fake $null $null
@@ -229,7 +244,7 @@ try {
     }
     Check 'Windows command shim launches the selected home and preserves exit code' {
         $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'cmd-launch.json'
-        & (Join-Path $PSScriptRoot 'hotpl8.cmd') codex -Slot a -StateDirectory $dir -CodexExecutable $fake exec --json 'fixture prompt'
+        & (Join-Path $root 'hotpl8.cmd') codex -Slot a -StateDirectory $dir -CodexExecutable $fake exec --json 'fixture prompt'
         Assert ($LASTEXITCODE -eq 7)
         $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH
         Assert ($record.home -eq $homeA); Assert ($record.cwd -eq (Get-Location).Path)
@@ -255,13 +270,13 @@ try {
     Check 'empty Codex section contributes nothing' {
         $empty=Join-Path $dir 'empty-section';New-Item -ItemType Directory $empty|Out-Null
         Write-Hotpl8Text (Join-Path $empty 'policy.json') '{"codex":{}}'
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $empty -CodexExecutable $fake
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $empty -CodexExecutable $fake
         Assert (-not (Test-Path -LiteralPath (Join-Path $empty 'status.json')))
     }
     Check 'PowerShell -File entrypoints resolve default state directory' {
         $entry=Join-Path $dir 'entry';New-Item -ItemType Directory -Path $entry|Out-Null
-        Copy-Item (Join-Path $PSScriptRoot 'providers') $entry -Recurse
-        foreach($name in @('hotpl8.ps1','setup-codex.ps1','common.ps1','config.ps1','diagnostics.ps1','VERSION')) {Copy-Item (Join-Path $PSScriptRoot $name) $entry}
+        Copy-Item (Join-Path $root 'src') $entry -Recurse
+        foreach($name in @('hotpl8.ps1','setup-codex.ps1','VERSION')) {Copy-Item (Join-Path $root $name) $entry}
         Write-Hotpl8Text (Join-Path $entry 'policy.json') '{"prefer":[3,2,1],"warm":true}'
         $output=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $entry 'hotpl8.ps1') status
         Assert ($LASTEXITCODE -eq 0);Assert ($output -like '*No cached status*')
@@ -294,7 +309,7 @@ try {
         Write-Hotpl8Text $env:HOTPL8_TEST_CLAUDE_FIXTURE ($fixture|ConvertTo-Json -Depth 10)
         $p=[pscustomobject]@{prefer=@(1);margin5h=25;margin7d=20;hysteresis=10;warm=$false;codex=$policy}
         Write-Hotpl8Text (Join-Path $rollback 'policy.json') ($p|ConvertTo-Json -Depth 12)
-        $tickArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'tick.ps1'),'-StateDirectory',$rollback,'-CswapExecutable',$stub,'-CodexExecutable',$fake)
+        $tickArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'tick.ps1'),'-StateDirectory',$rollback,'-CswapExecutable',$stub,'-CodexExecutable',$fake)
         & powershell @tickArgs|Out-Null
         $before=Read-Hotpl8Json (Join-Path $rollback 'status.json');Assert ($before.providers.codex.slots.Count -eq 2)
         $historyHash=(Get-FileHash -LiteralPath (Join-Path $rollback 'codex-observations.jsonl')).Hash
@@ -305,11 +320,11 @@ try {
         Assert ((Get-FileHash -LiteralPath (Join-Path $rollback 'codex-observations.jsonl')).Hash -eq $historyHash)
         $env:HOTPL8_TEST_CLAUDE_FIXTURE=$null
     }
-    Check 'missing policy means no writes or process' { $empty=Join-Path $dir 'empty'; New-Item -ItemType Directory $empty|Out-Null; & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $empty -CodexExecutable $fake; Assert (@(Get-ChildItem -LiteralPath $empty).Count -eq 0) }
+    Check 'missing policy means no writes or process' { $empty=Join-Path $dir 'empty'; New-Item -ItemType Directory $empty|Out-Null; & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $empty -CodexExecutable $fake; Assert (@(Get-ChildItem -LiteralPath $empty).Count -eq 0) }
     Check 'tick lock prevents overlapping collection' {
         $before=(Get-FileHash -LiteralPath (Join-Path $dir 'status.json')).Hash
         $lock=[IO.File]::Open((Join-Path $dir 'tick.lock'),'OpenOrCreate','ReadWrite','None')
-        try { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $dir -CodexExecutable $fake } finally { $lock.Dispose() }
+        try { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $dir -CodexExecutable $fake } finally { $lock.Dispose() }
         Assert ((Get-FileHash -LiteralPath (Join-Path $dir 'status.json')).Hash -eq $before)
     }
 } finally {
