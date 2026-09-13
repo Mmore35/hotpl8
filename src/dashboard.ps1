@@ -1,4 +1,5 @@
 ﻿# Passive terminal dashboard: only reads the collector's cached files.
+. (Join-Path $PSScriptRoot 'insights.ps1')
 function Get-DashboardCells([string]$Text) {
     $cells=0; $elements=[Globalization.StringInfo]::GetTextElementEnumerator($Text)
     while($elements.MoveNext()) {
@@ -79,6 +80,8 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
     $needsHelp = (@($Status.slots | Where-Object { $_.status -ne 'ok' }).Count -gt 0 -or
         @($Status.providers.codex.slots | Where-Object { $_.status -ne 'ok' }).Count -gt 0)
     if ($needsHelp) { New-DashboardRow '  Account unavailable? Run hotpl8 doctor; see docs/troubleshooting.md.' amber }
+    if($Status.collector -and -not $Compact){New-DashboardRow ('  '+(Get-Hotpl8Health $Status.collector $Now)) muted}
+    if($Status.automationPause){New-DashboardRow ('  AUTOMATION PAUSED: '+$Status.automationPause.reason) amber}
     $claude=@($Status.slots|Where-Object {$null -ne $_})
     if(-not $claude.Count -and $Policy.labels){
         $claude=@($Policy.labels.PSObject.Properties|ForEach-Object{[pscustomobject]@{slot=$_.Name;label=$_.Value;status='no observation'}})
@@ -93,6 +96,13 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         New-DashboardRow ('  '+$(if($slot.active){'● '}else{'○ '})+$name+'  ['+$slot.slot+']  ·  '+$badge) $(if($slot.active){'peach'}else{'text'})
         New-DashboardQuotaRow '5h' $slot.used5h $slot.reset5h $Now $Width -Stale:$isStale
         New-DashboardQuotaRow '7d' $slot.used7d $slot.reset7d $Now $Width -Stale:$isStale
+        if(-not $Compact){
+            if($slot.forecast -and -not $isStale){New-DashboardRow ('    '+(Format-Hotpl8Forecast $slot.forecast)) muted}
+            if($slot.warmOutcome){New-DashboardRow ('    Warm: '+$slot.warmOutcome.outcome) $(if($slot.warmOutcome.outcome -eq 'observed-active'){'mint'}else{'amber'})}
+            if($slot.actionBlock){New-DashboardRow ('    Warming: '+$slot.actionBlock.Replace('_',' ')) muted}
+            if($slot.modelBlock){New-DashboardRow ('    Selection: '+$slot.modelBlock.Replace('_',' ')) amber}
+            foreach($scope in @($slot.scoped)){if($scope){New-DashboardRow ('    '+$scope.name+' weekly: '+$scope.pct+'% used') muted}}
+        }
         if(-not $Compact){New-DashboardRow ''}
     }
     $codex=$Status.providers.codex
@@ -121,10 +131,15 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
             }
             if(-not $Compact -and $bucket.Name -eq 'codex' -and $windows.Count -eq 1 -and $windows[0].Name -eq '10080'){New-DashboardRow '    Weekly allowance · no five-hour window' muted}
             if(-not $windows.Count){New-DashboardRow '    Quota not available yet.' muted}
+            if(-not $Compact -and $bucket.Value.forecast -and -not $isStale){New-DashboardRow ('    '+(Format-Hotpl8Forecast $bucket.Value.forecast)) muted}
         }
         if(-not $Compact){New-DashboardRow ''}
     }
     if($Status.hold){New-DashboardRow ('  Rotation held until '+[string]$Status.hold.until) amber}
+    if(-not $Compact -and $Status.recentActions){
+        New-DashboardRow '  RECENT ACTIONS / hotpl8 explain for selection details' muted
+        foreach($event in @($Status.recentActions|Select-Object -Last 3)){New-DashboardRow ('    '+$event.provider+' '+$event.slot+': '+$event.kind+' / '+$event.reason) muted}
+    }
 }
 function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[int]$Height=40,[int]$Offset=0,[switch]$Paused) {
     $width=[Math]::Max(1,[Math]::Min(110,$Width)); $inside=$width-2
@@ -177,7 +192,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory) {
     # Pipes and non-console hosts get one plain frame; they must never hang.
     $interactive=$false
     try{$interactive=(-not [Console]::IsOutputRedirected -and -not [Console]::IsInputRedirected -and [Console]::WindowHeight -gt 0)}catch{}
-    if(-not $interactive){Get-Hotpl8DashboardFrame (Read-Hotpl8Json $statusPath) (Read-Hotpl8Json $policyPath) ([datetimeoffset]::UtcNow) 100 10000|ForEach-Object{$_.text};return}
+    if(-not $interactive){Get-Hotpl8DashboardFrame (Read-Hotpl8Snapshot $StateDirectory) (Read-Hotpl8Json $policyPath) ([datetimeoffset]::UtcNow) 100 10000|ForEach-Object{$_.text};return}
     $esc=[string][char]27; $terminal=Enable-Hotpl8Terminal; $ansi=$terminal.enabled
     $colors=Get-Hotpl8DashboardPalette
     $oldEncoding=[Console]::OutputEncoding; $oldCtrl=[Console]::TreatControlCAsInput; $oldCursor=[Console]::CursorVisible
@@ -189,7 +204,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory) {
         $status=$null; $policy=$null
         while(-not $quit){
             if($clock.ElapsedMilliseconds -ge $next){
-                if(-not $paused -or -not $policy){$status=Read-Hotpl8Json $statusPath;$policy=Read-Hotpl8Json $policyPath}
+                if(-not $paused -or -not $policy){$status=Read-Hotpl8Snapshot $StateDirectory;$policy=Read-Hotpl8Json $policyPath}
                 $w=[Math]::Max(1,[Console]::WindowWidth-1);$h=[Math]::Max(1,[Console]::WindowHeight-1)
                 $rows=@(Get-Hotpl8DashboardRows $status $policy ([datetimeoffset]::UtcNow) $w -Compact:($h -lt 32))
                 $offset=[Math]::Max(0,[Math]::Min($offset,[Math]::Max(0,$rows.Count-($h-7))))

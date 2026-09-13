@@ -1,4 +1,5 @@
 ﻿# Configuration is validated before provider actions. Legacy policy remains explicit.
+. (Join-Path $PSScriptRoot 'automation.ps1')
 function Resolve-Hotpl8StateDirectory([string]$Explicit, [string]$CodeDirectory) {
     if ($Explicit) { return [IO.Path]::GetFullPath($Explicit) }
     if ($env:HOTPL8_STATE_DIRECTORY) { return [IO.Path]::GetFullPath($env:HOTPL8_STATE_DIRECTORY) }
@@ -9,16 +10,17 @@ function Resolve-Hotpl8StateDirectory([string]$Explicit, [string]$CodeDirectory)
 }
 function Assert-Hotpl8Policy($Policy) {
     if (-not $Policy -or $Policy -is [array] -or $Policy -isnot [pscustomobject]) { throw 'Invalid policy: expected an object.' }
-    if ($null -ne $Policy.schemaVersion -and (-not (Test-Hotpl8Number $Policy.schemaVersion) -or $Policy.schemaVersion -ne 1)) { throw 'Invalid policy: unsupported schemaVersion.' }
-    if($Policy.schemaVersion -eq 1){
+    if ($null -ne $Policy.schemaVersion -and (-not (Test-Hotpl8Number $Policy.schemaVersion) -or $Policy.schemaVersion -notin @(1,2))) { throw 'Invalid policy: unsupported schemaVersion.' }
+    if($Policy.schemaVersion -in @(1,2)){
         $allowed=@('schemaVersion','mode','prefer','reserve','labels','weights','switchEnabled','warm','probeEnabled','order','pattern','margin5h','margin7d','margin7dWork','hysteresis','warmMin7d','warmMin7dWork','maxUsageAgeS','staleQuarantineS','warmFloorMin','warmPhaseWindowMin','warmGroup','resetLeadMin','codex')
-        foreach($field in $Policy.PSObject.Properties){if($field.Name -notin $allowed){throw 'Invalid policy: unknown version-1 field.'}}
+        if($Policy.schemaVersion -eq 2){$allowed+=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled');Assert-Hotpl8AutomationPolicy $Policy}
+        foreach($field in $Policy.PSObject.Properties){if($field.Name -notin $allowed){throw 'Invalid policy: unknown versioned field.'}}
     }
     if ($Policy.mode -and $Policy.mode -notin @('monitor','automate')) { throw 'Invalid policy: mode must be monitor or automate.' }
     foreach ($key in @('warm','switchEnabled','probeEnabled')) {
         if ($null -ne $Policy.$key -and $Policy.$key -isnot [bool]) { throw ('Invalid policy field: '+$key) }
     }
-    if ($Policy.schemaVersion -eq 1 -and (-not $Policy.mode)) { throw 'Invalid policy: schemaVersion 1 requires mode.' }
+    if ($Policy.schemaVersion -in @(1,2) -and (-not $Policy.mode)) { throw 'Invalid policy: versioned policy requires mode.' }
     foreach ($key in @('margin5h','margin7d','margin7dWork','hysteresis','warmMin7d','warmMin7dWork')) {
         if ($null -ne $Policy.$key -and (-not (Test-Hotpl8Number $Policy.$key) -or $Policy.$key -lt 0 -or $Policy.$key -gt 100)) { throw ('Invalid policy field: '+$key) }
     }
@@ -28,7 +30,8 @@ function Assert-Hotpl8Policy($Policy) {
     foreach($key in @('maxUsageAgeS','staleQuarantineS','warmFloorMin','warmPhaseWindowMin','warmGroup')){
         if($null -ne $Policy.$key -and $Policy.$key -le 0){throw ('Invalid policy field: '+$key)}
     }
-    if ($Policy.order -and $Policy.order -notin @('prefer','soonest-reset')) { throw 'Invalid policy field: order' }
+    if ($Policy.order -and $Policy.order -notin @('prefer','soonest-reset','weekly-expiry','balanced')) { throw 'Invalid policy field: order' }
+    if($Policy.schemaVersion -eq 1 -and ($Policy.order -in @('weekly-expiry','balanced') -or $Policy.codex.order -in @('weekly-expiry','balanced') -or ($null -ne $Policy.codex -and $Policy.codex.PSObject.Properties['disabled']))){throw 'New selection options require policy version 2.'}
     if ($Policy.pattern -and $Policy.pattern -notin @('maintain','even','clustered','synced')) { throw 'Invalid policy field: pattern' }
     $seen = @{}
     foreach ($n in @($Policy.prefer)) {

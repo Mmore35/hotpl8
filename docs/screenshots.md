@@ -1,5 +1,7 @@
 # Updating the screenshots
 
+`operations.png` uses the optional operations fixture: collector health, weekly pace, an unconfirmed warm receipt and work-hour blocking. Like the primary dashboard image, it is rendered from fictional data through the production frame renderer.
+
 From the repository root, on Windows with Windows PowerShell 5.1 and Consolas:
 
 ```powershell

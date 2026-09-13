@@ -109,6 +109,8 @@ tick() {  # invoke the real tick against the current fixture; leaves calls/runs/
     # warm-state.json MUST be cleared: it lives in $PSScriptRoot (= $S) and its
     # 20-minute floor would make every warm case after the first silently no-op.
     rm -f "$S/calls" "$S/runs" "$S/status.txt" "$S/warm-state.json"
+    # Each scenario is an independent fleet. Persistence is tested separately.
+    rm -f "$S/collector.json" "$S/warm-outcomes.json" "$S/attempt-budget.json"
     CSWAP_BIN="$(winpath "$STUB")" \
     FIXTURE="$(winpath "$S/fixture.json")" \
     CALLS="$(winpath "$S/calls")" \

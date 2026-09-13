@@ -11,6 +11,15 @@ $null=@(Get-Hotpl8ReleaseFiles $previous)
 $state=Assert-Hotpl8Path $installation.stateDirectory
 $lock=[IO.File]::Open((Join-Path $state 'tick.lock'),'OpenOrCreate','ReadWrite','None')
 try{
+    # The previous reader must understand today's policy before replacing working code.
+    try{
+        & {
+            . (Join-Path $previous 'src/config.ps1')
+            $policy=Read-Hotpl8Json (Join-Path $state 'policy.json')
+            Assert-Hotpl8Policy $policy
+            if($policy.codex){. (Join-Path $previous 'src/providers/codex.ps1');Assert-CodexPolicy $policy.codex}
+        }
+    }catch{throw 'Previous version cannot read the current policy. Restore a compatible policy backup before rollback. Installation was preserved.'}
     Remove-Hotpl8App $app
     Move-Item -LiteralPath $previous -Destination $app
     $installation.version=(Get-Content (Join-Path $app 'VERSION') -Raw).Trim()

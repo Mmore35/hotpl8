@@ -9,3 +9,7 @@ Native Codex owns sign-in and token refresh. HotPl8 reads native identity inform
 `status -AsJson` is local operational output and can contain private labels. `doctor -AsJson` excludes labels, account IDs, paths, tokens, environment values, and native output. Error events contain fixed codes rather than raw exception/server messages.
 
 Uninstall preserves state and native credentials/conversations. Delete only HotPl8's retained state after deciding you no longer need it. Native tools have their own separate uninstall and data-retention procedures.
+
+Version 0.2 adds private local `collector.json`, `activity.json` (last 100 events), `warm-outcomes.json`, `attempt-budget.json` (current UTC day), `automation-pause.json`, `notification-state.json`, `update-state.json` and `policy.previous.json`. Optional `usage-history.json` retains at most 4,096 samples for 14 days; `hotpl8 history -Operation clear` clears it. Disable `historyEnabled` to stop recording. Status/history stream pseudonyms are derived separately from native login-binding hashes, but remain private identifying data. No prompts or raw native output are recorded by these modules.
+
+The optional tray reads local snapshots and delivers system notifications. Explicit update commands contact GitHub for release metadata and artifact provenance; opening a dashboard or tray does not check for updates.

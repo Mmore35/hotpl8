@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-rc.1 ? source candidate
+
+- Add observed warming receipts, explanations/activity, collector health/backoff, weekly estimates and optional local history.
+- Add scoped Claude eligibility, persistent pause/work hours/budgets, guided native enrollment and account controls.
+- Add experimental weekly-expiry/balanced ordering with production-selector shadow/replay comparison.
+- Add channel-aware verified update tooling, compatible rollback checks and an attested release build workflow.
+- Add an optional Windows tray with opt-in transition notifications.
+- Save complete Mac implementation and conditional Codex warming handoffs; neither gains an unsupported compatibility claim.
+
+
 ## Unreleased
 
 - Lead the README with account selection, optional Claude warming, and a real dashboard rendering with fictional data.

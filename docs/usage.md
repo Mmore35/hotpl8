@@ -22,3 +22,7 @@ Q, Escape, and Ctrl+C exit the dashboard. Space **freezes the view**, not the co
 To suspend all automatic actions, set policy mode to monitor. The legacy hold.json lease suppresses switching only, expires automatically, and does not stop warming or probing. Never interpret a hold as a general automation pause.
 
 Doctor prints setup and dependency guidance in human mode. Its `-AsJson` fields and exit status retain the existing contract: exit zero means the policy is valid, not that native login or every quota reading is healthy. The dashboard is a cached view; its timestamp describes the last collection. Use refresh for a new reading or opt into scheduled collection.
+
+## Account operations
+
+The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `explain`, `capabilities`, `pause`/`resume`, `history`, `tray`, `update-check` and `update`. See [commands and operational semantics](operations.md) and [verified updates](upgrading.md). These are not present in the older downloadable preview.

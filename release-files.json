@@ -57,6 +57,25 @@
     "tests/test-onboarding.ps1",
     "docs/screenshots.md",
     "docs/assets/dashboard.png",
-    "docs/assets/first-run.png"
+    "docs/assets/first-run.png",
+    "src/automation.ps1",
+    "src/collection.ps1",
+    "src/forecast.ps1",
+    "src/insights.ps1",
+    "src/management.ps1",
+    "src/notifications.ps1",
+    "src/selection.ps1",
+    "src/tray.ps1",
+    "src/updates.ps1",
+    "src/warming.ps1",
+    "src/replay.ps1",
+    "tests/test-operations.ps1",
+    "scripts/replay.ps1",
+    "docs/plans/codex-warming.md",
+    "docs/plans/macos-handoff.md",
+    "docs/plans/subscription-roadmap.md",
+    "docs/operations.md",
+    "docs/assets/operations.png",
+    "tests/test-tray.ps1"
   ]
 }

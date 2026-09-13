@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "mode": "monitor",
   "prefer": [],
   "reserve": [],
@@ -31,5 +31,11 @@
     "margin7d": 20,
     "margin7dWork": 5,
     "modelMeters": {}
+  },
+  "historyEnabled": false,
+  "notificationsEnabled": false,
+  "automation": {
+    "dailyAttemptLimit": 12,
+    "warmExcluded": []
   }
 }

@@ -56,3 +56,5 @@ function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [i
 Write-DashboardImage 'dashboard.png' $fixture.status $fixture.policy 94 42
 $emptyPolicy = @{ mode = 'monitor'; prefer = @(); codex = @{ slots = @() } } | ConvertTo-Json -Depth 4 | ConvertFrom-Json
 Write-DashboardImage 'first-run.png' $null $emptyPolicy 80 24
+$operations=Get-Hotpl8ScreenshotFixture -Operations
+Write-DashboardImage 'operations.png' $operations.status $operations.policy 110 50
