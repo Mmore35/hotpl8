@@ -63,15 +63,18 @@ function Add-Hotpl8Insights($Snapshot, $Policy, [string]$Directory, $Previous, [
 }
 function Read-Hotpl8Snapshot([string]$Directory) {
     $s=Read-Hotpl8Json (Join-Path $Directory 'status.json')
+    $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
+    $pause=Get-Hotpl8Pause $Directory
+    # First collection can stall before there is a snapshot. Show that evidence too.
+    if(-not $s -and ($c -or $pause)){$s=[pscustomobject]@{schemaVersion=2;generatedAt=$null;slots=@()}}
     if($s){
-        $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
         if($c){$s|Add-Member NoteProperty collector $c -Force}
-        $s|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $Directory) -Force
+        $s|Add-Member NoteProperty automationPause $pause -Force
     }
     return $s
 }
 function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    if(-not $Snapshot){'No observation. Run hotpl8 refresh.';return}
+    if(-not $Snapshot -or -not $Snapshot.generatedAt){'No observation. Run hotpl8 refresh.';return}
     try{$age=($Now-[datetimeoffset]::Parse($Snapshot.generatedAt)).TotalSeconds}catch{$age=99999}
     if($age -gt 900 -or $age -lt -5){'STALE: these are the decisions at the last observation, not a current recommendation.'}
     'Observed: '+$Snapshot.generatedAt

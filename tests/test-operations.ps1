@@ -163,6 +163,13 @@ try{
         Assert ((Get-Hotpl8Health $s $now.AddMinutes(1)) -eq 'provider checks incomplete')
         Assert ((Get-Hotpl8Health $s $now.AddMinutes(16)) -eq 'collector overdue')
     }
+    Check 'a stalled first collection is visible before any status snapshot exists' {
+        $first=Join-Path $dir 'first-collection';[void][IO.Directory]::CreateDirectory($first)
+        Write-Hotpl8Text (Join-Path $first 'collector.json') (@{schemaVersion=1;startedAt=$now.AddMinutes(-10).ToString('o')}|ConvertTo-Json)
+        $s=Read-Hotpl8Snapshot $first
+        Assert ($null -eq $s.generatedAt -and (Get-Hotpl8Health $s.collector $now) -eq 'collector stalled')
+        Assert (-not (Test-Path -LiteralPath (Join-Path $first 'status.json')))
+    }
     Check 'weekly-expiry and balanced ranking have distinct defined objectives' {
         $early=$now.AddDays(1).ToString('o');$late=$now.AddDays(5).ToString('o')
         Assert ((Get-Hotpl8SelectionKey weekly-expiry 50 20 $early $now) -lt (Get-Hotpl8SelectionKey weekly-expiry 90 90 $late $now))

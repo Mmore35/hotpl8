@@ -75,12 +75,15 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
     }
     $age=Get-DashboardAge $Status.generatedAt $Now
     $stale=($null -eq $age -or $age -gt 900 -or $age -lt -5)
-    if(-not $Status){New-DashboardRow '  No reading yet. Run hotpl8 refresh.' amber}
+    if(-not $Status -or -not $Status.generatedAt){New-DashboardRow '  No reading yet. Run hotpl8 refresh.' amber}
     elseif($stale){New-DashboardRow '  ! Usage is stale. Run hotpl8 refresh.' amber}
     $needsHelp = (@($Status.slots | Where-Object { $_.status -ne 'ok' }).Count -gt 0 -or
         @($Status.providers.codex.slots | Where-Object { $_.status -ne 'ok' }).Count -gt 0)
     if ($needsHelp) { New-DashboardRow '  Account unavailable? Run hotpl8 doctor; see docs/troubleshooting.md.' amber }
-    if($Status.collector -and -not $Compact){New-DashboardRow ('  '+(Get-Hotpl8Health $Status.collector $Now)) muted}
+    if($Status.collector){
+        $health=Get-Hotpl8Health $Status.collector $Now
+        if(-not $Compact -or $health -notin @('recent collection completed','collecting')){New-DashboardRow ('  '+$health) $(if($health -in @('recent collection completed','collecting')){'muted'}else{'amber'})}
+    }
     if($Status.automationPause){New-DashboardRow ('  AUTOMATION PAUSED: '+$Status.automationPause.reason) amber}
     $claude=@($Status.slots|Where-Object {$null -ne $_})
     if(-not $claude.Count -and $Policy.labels){
