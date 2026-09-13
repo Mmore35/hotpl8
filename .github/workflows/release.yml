@@ -1,0 +1,60 @@
+name: Build attested release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned static analyzer
+        shell: powershell
+        run: |
+          Install-PackageProvider NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
+      - name: Static and policy checks
+        shell: powershell
+        run: .\scripts\check.ps1
+      - name: Offline regression and installation suites
+        shell: powershell
+        run: .\scripts\test.ps1
+      - name: Scan Git history for secrets
+        shell: powershell
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'gitleaks.zip'
+          Invoke-WebRequest 'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip' -OutFile $archive
+          $expected = 'd29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e'
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) { throw 'Scanner checksum mismatch' }
+          $tool = Join-Path $env:RUNNER_TEMP 'gitleaks'
+          Expand-Archive -LiteralPath $archive -DestinationPath $tool
+          & (Join-Path $tool 'gitleaks.exe') git . --redact --no-banner
+          if ($LASTEXITCODE -ne 0) { throw 'Secret scan failed' }
+      - name: Build candidate archive
+        shell: powershell
+        run: .\scripts\package.ps1
+      - name: Attest the tested archive
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: dist/*.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hotpl8-windows-attested-release
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

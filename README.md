@@ -10,7 +10,7 @@
 
 ![HotPl8 showing two fictional Claude accounts and two Codex accounts, with quota bars, reset times, and separate ACTIVE and NEXT LAUNCH indicators](docs/assets/dashboard.png)
 
-Windows preview. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming is not implemented. [Compatibility and provider boundaries](docs/compatibility.md).
+Windows preview. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming remains unavailable pending native qualification. [Compatibility and provider boundaries](docs/compatibility.md).
 
 ## How it chooses
 
@@ -29,7 +29,9 @@ HotPl8 decides; **cswap carries out Claude switches**, and **native Codex launch
 
 **[Download the Windows preview](https://github.com/Mmore35/hotpl8/releases/tag/v0.1.0-rc.1)** and follow its [installation guide](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md). One account is enough. Native tools and subscriptions are installed separately; HotPl8 needs no admin rights or hosted service.
 
-Working from this source? See the [current setup guide](docs/install.md), including the new `hotpl8 enroll` command. [All commands](docs/usage.md) · [Automation settings](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md).
+Working from this source? See the [current setup guide](docs/install.md), including guided `hotpl8 setup -Interactive`. [All commands](docs/usage.md) · [Automation settings](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md).
+
+Current source also includes [decision explanations, pause/work hours, weekly pace and an optional Windows tray](docs/operations.md). Mac implementation has a [ready-to-run handoff](docs/plans/macos-handoff.md).
 
 ## Under the hood
 

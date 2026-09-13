@@ -22,7 +22,9 @@ function Invoke-TestCli([string[]]$Arguments) {
     try {
         $stdout = $proc.StandardOutput.ReadToEndAsync()
         $stderr = $proc.StandardError.ReadToEndAsync()
-        if (-not $proc.WaitForExit(15000)) { $proc.Kill(); throw 'CLI test timed out' }
+        # Fresh isolated homes on hosted Windows incur first-use PowerShell/module
+        # initialization (~23s in CI). This is a harness budget, not a provider timeout.
+        if (-not $proc.WaitForExit(45000)) { $proc.Kill(); throw 'CLI test timed out' }
         return @{ code = $proc.ExitCode; text = $stdout.Result + $stderr.Result }
     } finally { $proc.Dispose() }
 }
@@ -77,6 +79,27 @@ try {
         $report.collectorBusy = $false; $report.snapshotFresh = $true; $report.snapshotAgeSeconds = 5
         $text = (Format-Hotpl8Doctor $report) -join "`n"
         Assert ($text.Contains('per-account status') -and $text.Contains('native login and quota availability are checked by hotpl8 refresh'))
+    }
+    Check 'guided setup CLI preserves policy and exposes offline capabilities' {
+        $before=(Get-FileHash (Join-Path $dir 'policy.json')).Hash
+        $r=Invoke-TestCli @('setup');Assert ($r.code -eq 0 -and $r.text.Contains('guided enrollment'))
+        Assert ((Get-FileHash (Join-Path $dir 'policy.json')).Hash -eq $before)
+        $r=Invoke-TestCli @('capabilities','-AsJson');$data=$r.text|ConvertFrom-Json
+        Assert ($r.code -eq 0 -and $data.schemaVersion -eq 1 -and $data.providers.codex.freshAccounts -eq 0)
+    }
+    Check 'pause resume history and empty account list work through the public CLI' {
+        Assert ((Invoke-TestCli @('pause','-Minutes','10')).code -eq 0)
+        Assert ((Read-Hotpl8Json (Join-Path $dir 'automation-pause.json')).reason -eq 'pause')
+        Assert ((Invoke-TestCli @('resume')).code -eq 0)
+        $r=Invoke-TestCli @('history','-Operation','clear');Assert ($r.code -eq 0)
+        $r=Invoke-TestCli @('accounts','-AsJson');Assert ($r.code -eq 0 -and ($r.text -replace '\s','') -eq '[]')
+    }
+    Check 'read-only explanation and tray view need no native process or observation' {
+        $before=@(Get-ChildItem $dir -File).Count
+        $r=Invoke-TestCli @('explain');Assert ($r.code -eq 0 -and $r.text.Contains('No observation'))
+        $r=Invoke-TestCli @('tray','-Once');$m=$r.text|ConvertFrom-Json
+        Assert ($r.code -eq 0 -and $m.title.Contains('HotPl8'))
+        Assert (@(Get-ChildItem $dir -File).Count -eq $before)
     }
 } finally {
     $full = [IO.Path]::GetFullPath($dir)

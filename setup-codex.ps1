@@ -33,6 +33,15 @@ if (-not $policy.codex) {
 $existing=@($policy.codex.slots|Where-Object id -EQ $Slot)
 if ($existing.Count -and [IO.Path]::GetFullPath([string]$existing[0].home) -ne $homePath) { throw 'That slot already names a different home. Edit the mapping deliberately; setup will not replace it.' }
 if (-not $existing.Count) {
+    # Enrollment is deliberate and bounded. Do not turn one subscription into two slots.
+    $identityClock=[Diagnostics.Stopwatch]::StartNew()
+    foreach($other in @($policy.codex.slots)){
+        if(-not $other){continue}
+        if($identityClock.ElapsedMilliseconds -ge 20000){throw 'Account verification budget reached. Existing policy is unchanged.'}
+        $peer=Read-CodexQuota $other.home $CodexExecutable ([math]::Min(5000,20000-$identityClock.ElapsedMilliseconds))
+        if($peer.status -ne 'ok'){throw 'Could not verify an existing account. Refresh native sign-in before enrolling another account.'}
+        if($peer.identityKey -eq $read.identityKey){throw 'This subscription is already enrolled under another slot.'}
+    }
     $entry=[pscustomobject]@{id=$Slot;home=$homePath;label=$(if($Label){$Label}else{$Slot})}
     $policy.codex.slots=@($policy.codex.slots)+@($entry)
     $policy.codex.prefer=@($policy.codex.prefer)+@($Slot)
@@ -64,6 +73,7 @@ $lock=$null
 try {
     $lock=[IO.File]::Open((Join-Path $StateDirectory 'tick.lock'),'OpenOrCreate','ReadWrite','None')
     if((Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash -ne $policyHash){throw 'Policy changed during enrollment; rerun setup rather than overwriting another edit.'}
+    Write-Hotpl8Text (Join-Path $StateDirectory 'policy.previous.json') ([IO.File]::ReadAllText($policyPath))
     Write-Hotpl8Text $policyPath ($policy|ConvertTo-Json -Depth 24)
     if ($hooks) { Write-Hotpl8Text $hookPath ($hooks|ConvertTo-Json -Depth 32) -NoBom }
 } finally { if($lock){$lock.Dispose()} }

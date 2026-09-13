@@ -40,3 +40,7 @@ A source checkout is also portable: run `powershell -NoProfile -ExecutionPolicy 
 ![A fresh HotPl8 installation explains how to enroll an account and refresh](assets/first-run.png)
 
 After enrollment, `hotpl8 refresh` collects readings. Opening `hotpl8` only displays the cache. If an account needs sign-in, use its native login flow and refresh again. `hotpl8 doctor` gives offline next steps.
+
+## Guided setup in the 0.2 source candidate
+
+Run `hotpl8 setup -Interactive` after installation for native account enrollment without editing JSON. `hotpl8 setup` prints equivalent noninteractive commands. Existing native sign-in is required; setup does not enable automatic actions. [Account controls and readiness](operations.md). macOS implementation continues from the [Mac handoff](plans/macos-handoff.md).

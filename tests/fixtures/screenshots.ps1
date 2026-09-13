@@ -1,5 +1,5 @@
 # Fictional, fixed-time documentation data. Never read account homes or cached state here.
-function Get-Hotpl8ScreenshotFixture {
+function Get-Hotpl8ScreenshotFixture([switch]$Operations) {
     $now = [datetimeoffset]::Parse('2026-09-12T12:00:00Z')
     $policy = @{
         mode = 'monitor'; prefer = @(1, 2); reserve = @(2)
@@ -33,6 +33,16 @@ function Get-Hotpl8ScreenshotFixture {
                 )
             }
         }
+    }
+    if($Operations){
+        $status.collector=@{startedAt=$now.AddSeconds(-45).ToString('o');completedAt=$now.AddSeconds(-42).ToString('o');status='ok'}
+        $status.slots[0].observedAt=$now.AddSeconds(-42).ToString('o')
+        $status.slots[0].forecast=Get-Hotpl8Forecast 54 $status.slots[0].reset7d $status.slots[0].observedAt 10080 $now
+        $status.slots[1].cold=$true;$status.slots[1].used5h=0;$status.slots[1].reset5h=''
+        $status.slots[1].warmOutcome=@{outcome='unconfirmed'}
+        $status.slots[1].actionBlock='outside_work_hours'
+        $status.providers.codex.slots[0].buckets.codex.forecast=Get-Hotpl8Forecast 41 $now.AddDays(3).ToString('o') $now.AddSeconds(-42).ToString('o') 10080 $now
+        $status.recentActions=@(@{provider='claude';slot=2;kind='warm_outcome';reason='unconfirmed'})
     }
     return @{
         now = $now

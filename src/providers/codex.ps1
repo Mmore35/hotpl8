@@ -1,4 +1,5 @@
 ﻿# Native Codex quota observations. No token copying, token refresh, or inference.
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
 function Invoke-CodexRpc($Process, $Clock, [int]$TimeoutMs, [int]$Id, [string]$Method, $Params) {
     $request = @{ id = $Id; method = $Method }
     if ($null -ne $Params) { $request.params = $Params }
@@ -128,6 +129,7 @@ function Get-CodexMargin($Policy, [string]$SlotId, [string]$Duration) {
     return 20.0
 }
 function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$Now) {
+    if($Slot.id -in @($Policy.disabled)){return 'disabled'}
     if ($Slot.status -ne 'ok') { return [string]$Slot.status }
     try { $age = ($Now - [datetimeoffset]::Parse($Slot.observedAt)).TotalSeconds } catch { return 'unknown' }
     if ($age -lt -5 -or $age -gt 900) { return 'stale' }
@@ -157,6 +159,10 @@ function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, 
         if (-not $window) { $window = $week }
         if ($window -and $window.anchorState -eq 'observed-active') { $reset = $window.resetsAt }
         if ($Policy.order -eq 'soonest-reset') { $key = [double]::MaxValue; if ($null -ne $reset) { $key = [double]$reset } }
+        if($Policy.order -in @('weekly-expiry','balanced')){
+            $weekReset=if($week -and $week.anchorState -eq 'observed-active' -and $week.resetsAt){[datetimeoffset]::FromUnixTimeSeconds($week.resetsAt).ToString('o')}else{$null}
+            $key=Get-Hotpl8SelectionKey $Policy.order $slot.buckets.$Meter.windows.'300'.remainingPercent $week.remainingPercent $weekReset $Now
+        }
         $preferredWeek = if ($null -ne $Policy.margin7d) { [double]$Policy.margin7d } else { 20 }
         if ($week -and $week.remainingPercent -lt $preferredWeek) { $degraded = 1; $key = -$week.remainingPercent }
         $rows += [pscustomobject]@{ id = $slot.id; tier = $tier; degraded = $degraded; key = $key; idx = $idx; reset = $reset; slot = $slot }
@@ -180,6 +186,7 @@ function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, 
     return $best.id
 }
 function Assert-CodexPolicy($Policy) {
+    foreach($field in $Policy.PSObject.Properties){if($field.Name -notin @('slots','prefer','reserve','disabled','order','defaultMeter','modelMeters','margin5h','margin7d','margin7dWork','hysteresis','resetLeadMin')){throw 'invalid_codex_field'}}
     $ids = @{}; $homes = @{}
     foreach ($slot in @($Policy.slots)) {
         if (-not $slot -or [string]$slot.id -notmatch '^[a-zA-Z0-9_-]{1,40}$') { throw 'invalid_slot' }
@@ -190,7 +197,7 @@ function Assert-CodexPolicy($Policy) {
         $ids[[string]$slot.id] = $true; $homes[$path] = $true
         if ([string]$slot.label -match '[\x00-\x1f\x7f]' -or ([string]$slot.label).Length -gt 80) { throw 'invalid_label' }
     }
-    foreach ($name in @('prefer','reserve')) {
+    foreach ($name in @('prefer','reserve','disabled')) {
         $seen = @{}
         foreach ($id in @($Policy.$name)) { if (-not $id) { continue }; if (-not $ids.ContainsKey([string]$id) -or $seen.ContainsKey([string]$id)) { throw 'invalid_preference' }; $seen[[string]$id] = $true }
     }
@@ -198,7 +205,10 @@ function Assert-CodexPolicy($Policy) {
         if ($null -ne $Policy.$key -and (-not (Test-Hotpl8Number $Policy.$key) -or $Policy.$key -lt 0 -or $Policy.$key -gt 100)) { throw 'invalid_margin' }
     }
     if ($Policy.defaultMeter -and $Policy.defaultMeter -notin @('codex','codex_bengalfox')) { throw 'invalid_meter' }
-    if ($Policy.order -and $Policy.order -notin @('prefer','soonest-reset')) { throw 'invalid_order' }
+    if ($Policy.order -and $Policy.order -notin @('prefer','soonest-reset','weekly-expiry','balanced')) { throw 'invalid_order' }
+    foreach($entry in $Policy.modelMeters.PSObject.Properties){if($entry.Name -notmatch '^[a-zA-Z0-9_.-]{1,100}$' -or $entry.Value -notin @('codex','codex_bengalfox')){throw 'invalid_model_meter'}}
+    if($null -ne $Policy.resetLeadMin -and (-not (Test-Hotpl8Number $Policy.resetLeadMin) -or $Policy.resetLeadMin -lt 0 -or $Policy.resetLeadMin -gt 604800)){throw 'invalid_reset_lead'}
+    foreach($id in @($Policy.disabled)){if($id -and -not $ids.ContainsKey([string]$id)){throw 'invalid_disabled_slot'}}
 }
 function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Executable, $Previous, [scriptblock]$Reader) {
     Assert-CodexPolicy $Policy
@@ -214,7 +224,8 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
         $binding = Get-Hotpl8Hash ([IO.Path]::GetFullPath([string]$slot.home))
         if ($old -and $old.binding -ne $binding) { $old = $null }
         $read = $null
-        if ($clock.ElapsedMilliseconds -ge 20000) { $read = [pscustomobject]@{ status = 'collection_budget'; elapsedMs = 0 } }
+        if ($id -in @($Policy.disabled)) { $read = [pscustomobject]@{ status = 'disabled'; elapsedMs = 0 } }
+        elseif ($clock.ElapsedMilliseconds -ge 20000) { $read = [pscustomobject]@{ status = 'collection_budget'; elapsedMs = 0 } }
         elseif ($old.retryAfter -and [datetimeoffset]::Parse($old.retryAfter) -gt $now) { $read = [pscustomobject]@{ status = 'backoff'; elapsedMs = 0 } }
         else {
             $budget = [Math]::Min(5000, 20000 - [int]$clock.ElapsedMilliseconds)
@@ -236,6 +247,8 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
         $retry = if ($read.status -eq 'rate_limited') { $observed.AddMinutes(5).ToString('o') } elseif ($read.status -eq 'backoff') { $old.retryAfter } else { $null }
         $nextState[$id] = [pscustomobject]@{ binding = $binding; identityKey = $identity; lastAttemptAt = $attempt; lastSuccessAt = $lastSuccess; buckets = $buckets; retryAfter = $retry }
         $slots += [pscustomobject]@{ id = $id; label = $(if ($slot.label) { [string]$slot.label } else { $id }); status = [string]$read.status; observedAt = $lastSuccess; lastAttemptAt = $attempt; elapsedMs = $read.elapsedMs; buckets = $buckets; defaultModel = [string]$read.model; modelProvider = [string]$read.modelProvider }
+        # Status uses a separate local stream pseudonym, never the login-binding key.
+        $slots[-1]|Add-Member NoteProperty streamKey (Get-Hotpl8Hash ($StateDirectory+'|usage|'+$identity)) -Force
     }
     # Two homes signed into the same subscription are not two capacity slots.
     $identities = @{}
@@ -254,6 +267,8 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
     }
     $default = if ($Policy.defaultMeter) { [string]$Policy.defaultMeter } else { 'codex' }
     $result = [pscustomobject]@{ status = 'observed'; observedAt = [datetimeoffset]::UtcNow.ToString('o'); defaultMeter = $default; recommendations = [pscustomobject]$recommendations; recommendedSlot = $recommendations[$default]; slots = @($slots); warm = 'unmeasured: automatic Codex warming unavailable'; hold = $(if ($hold) { @{ until = $hold.until.ToString('o'); reason = $hold.reason } } else { $null }); elapsedMs = $clock.ElapsedMilliseconds }
+    $decisions=@(foreach($meter in @('codex','codex_bengalfox')){[pscustomobject]@{meter=$meter;selected=$recommendations[$meter];policy=$Policy.order;accounts=@(foreach($slot in $slots){[pscustomobject]@{slot=$slot.id;reason=(Get-CodexEligibility $slot $Policy $meter $now);reserve=($slot.id -in @($Policy.reserve))}})}})
+    $result|Add-Member NoteProperty decisions $decisions -Force
     Write-Hotpl8Text $statePath (([pscustomobject]@{ schemaVersion = 1; slots = [pscustomobject]$nextState }) | ConvertTo-Json -Depth 24)
     # Quota-only history supports reset experiments and scheduled-soak auditing.
     # This runs under tick.lock; it never issues inference or stores native auth.
@@ -329,6 +344,7 @@ function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, 
     $matches = @($Policy.slots | Where-Object id -EQ $SlotId)
     if ($matches.Count -ne 1) { throw 'Unknown or duplicate Codex slot.' }
     $slot = $matches[0]
+    if($slot.id -in @($Policy.disabled)){throw 'This Codex slot is disabled. Enable it before launch.'}
     $observed = @($Status.slots | Where-Object id -EQ $SlotId | Select-Object -First 1)
     if (-not $explicit -and ($observed.Count -ne 1 -or (Get-CodexEligibility $observed[0] $Policy $meter $Now) -ne 'eligible')) { throw 'Recommended slot is no longer eligible.' }
     if (-not $Model -and $observed.Count) { $Model = [string]$observed[0].defaultModel }

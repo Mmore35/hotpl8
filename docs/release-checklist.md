@@ -1,5 +1,9 @@
 # Release checklist
 
+For the 0.2 candidate, consult [delivery status](plans/subscription-roadmap.md) and retain experimental labels for unqualified native capabilities. Run the full suite including operational state and replay tests. Verify both schema versions, new release-manifest entries, pause after restart, delayed warm reconciliation, and incompatible-policy rollback refusal.
+
+To publish an updater-compatible artifact, merge reviewed code into main, run **Build attested release** (`.github/workflows/release.yml`) on that exact main revision, and download its tested archive plus SHA256SUMS. Verify the archive with `gh attestation verify --repo Mmore35/hotpl8 --signer-workflow Mmore35/hotpl8/.github/workflows/release.yml --source-ref refs/heads/main --source-digest COMMIT --deny-self-hosted-runners`. Create the matching version tag at that exact commit and upload the unchanged archive as a release asset. Keep prereleases in the preview channel. Do not rebuild or rezip the attested file. Creating/publishing the release is a separate explicit maintainer action; the workflow only builds and attests.
+
 The first release is a Windows source-and-download preview. A stable-support claim requires additional evidence; publishing a preview does not establish provider permission or live reliability.
 
 ## Required for the public preview

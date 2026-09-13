@@ -41,7 +41,9 @@ flowchart TD
     C -- Yes --> D{Scheduled phase due, or no account can serve?}
     D -- No --> S
     D -- Yes --> E[cswap run SLOT: small Claude request]
-    E --> F[Record success or failure; back off either way]
+    E --> F[Record sent or failed; back off]
+    F --> G[Later fresh quota observation]
+    G --> H[Observed active, or still unconfirmed]
 ```
 
 At most one cold account is attempted per tick. The `maintain` pattern has no phase delay. A switch hold does not disable warming or recovery probes; monitor mode disables all automatic actions. Explicit `refresh` also disables actions regardless of policy. See [Get-Hotpl8Actions](../src/config.ps1), [Invoke-SlotPing and Invoke-ClaudeTick](../src/providers/claude.ps1), and [configuration](configuration.md).
@@ -72,6 +74,16 @@ src/
   diagnostics.ps1           Offline doctor and bounded event logs
   dashboard.ps1             Read-only terminal renderer and palette
   lifecycle.ps1             Install ownership, manifests, scheduler
+  automation.ps1            Shared pause, schedule and attempt gates
+  warming.ps1               Receipt persistence and observation reconciliation
+  collection.ps1            Persisted collection due times and backoff
+  forecast.ps1 / insights.ps1
+                            Shared estimates, bounded history and activity
+  selection.ps1 / replay.ps1 Optional ranking keys and production-selector replay
+  management.ps1            Validated account operations and setup
+  updates.ps1               Release identity and provenance verification
+  notifications.ps1 / tray.ps1
+                            Optional cache consumer and transition alerts
   providers/                Claude and Codex adapters
 tests/                      Offline regression suites
   fixtures/                 Fictional documentation data
@@ -85,3 +97,5 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 ## Tradeoffs and limits
 
 PowerShell keeps the Windows installation small, but other platforms are not release-qualified. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. Monitor mode is the starting point; optional automation needs explicit configuration. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
+
+The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).

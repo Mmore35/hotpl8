@@ -63,15 +63,59 @@ try{
         Assert (-not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
     }
     Check 'disabled account and invalid age cannot be selected' {
-        foreach($mutation in @('disabled','age','percentage')){
+        foreach($mutation in @('disabled','age','percentage','malformed-age','age-overflow')){
             $f=Copy-Value $fixture
             if($mutation -eq 'disabled'){$f.accounts[1]|Add-Member NoteProperty disabled $true}
             if($mutation -eq 'age'){$f.accounts[1].usageAgeSeconds=-1}
+            if($mutation -eq 'malformed-age'){$f.accounts[1].usageAgeSeconds='not-a-number'}
+            if($mutation -eq 'age-overflow'){$f.accounts[1].usageAgeSeconds=1e100}
             if($mutation -eq 'percentage'){$f.accounts[1].usage.fiveHour.pct=-10}
             Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
             $r=Invoke-ClaudeTick $p $dir $stub -ObserveOnly
             Assert ($null -eq $r.payload.proposedSlot)
+            if($mutation -eq 'disabled'){Assert ($r.payload.slots[0].status -eq 'disabled')}
+            else{Assert ($r.payload.slots[0].status -eq 'unsupported')}
         }
+    }
+    Check 'explicit Claude model constraints reject missing exhausted and expired scoped quota' {
+        $modelPolicy=Copy-Value $p;$modelPolicy|Add-Member NoteProperty schemaVersion 2
+        $modelPolicy|Add-Member NoteProperty claudeModels @('seven_day_opus')
+        foreach($kind in @('missing','exhausted','expired','available')){
+            $f=Copy-Value $fixture
+            if($kind -ne 'missing'){
+                $f.accounts[1].usage|Add-Member NoteProperty scoped @([pscustomobject]@{name='seven_day_opus';pct=$(if($kind -eq 'exhausted'){99}else{10});resetsAt=$(if($kind -eq 'expired'){$now.AddDays(-1).ToString('o')}else{$now.AddDays(1).ToString('o')})})
+            }
+            Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
+            $r=Invoke-ClaudeTick $modelPolicy $dir $stub -ObserveOnly
+            if($kind -eq 'available'){Assert ($r.payload.proposedSlot -eq 2)}else{Assert ($null -eq $r.payload.proposedSlot -and $r.payload.slots[0].modelBlock)}
+        }
+    }
+    Check 'persistent pause reaches the provider and suppresses switch and warm dispatch' {
+        . (Join-Path $root 'src/management.ps1')
+        $f=Copy-Value $fixture;$f.accounts[1].usage.fiveHour.resetsAt=''
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
+        Set-Hotpl8Pause $dir 60 'fixture'
+        try{
+            $r=Invoke-ClaudeTick $p $dir $stub
+            Assert ($r.payload.active -eq 1 -and -not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
+        }finally{Set-Hotpl8Pause $dir 0 'resumed'}
+    }
+    Check 'warm receipt prevents duplicate dispatch and reconciles a later native observation' {
+        # Native dispatch is a test seam here; the real collector state machine runs.
+        function Invoke-SlotPing { $script:warmDispatches++;return $true }
+        $script:warmDispatches=0
+        $wp=Copy-Value $p;$wp.mode='automate';$wp.switchEnabled=$false;$wp.probeEnabled=$false
+        $f=Copy-Value $fixture;$f.accounts[1].usage.fiveHour.resetsAt=''
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
+        $r=Invoke-ClaudeTick $wp $dir $stub
+        Assert ($script:warmDispatches -eq 1 -and $r.payload.slots[0].warmOutcome.outcome -eq 'sent')
+        Write-Hotpl8Text (Join-Path $dir 'warm-state.json') '{"lastWarm":{},"lastProbe":{}}'
+        $r=Invoke-ClaudeTick $wp $dir $stub
+        Assert ($script:warmDispatches -eq 1 -and $r.payload.slots[0].warmOutcome.outcome -eq 'sent')
+        $f.accounts[1].usage.fiveHour.resetsAt=[datetimeoffset]::UtcNow.AddHours(5).ToString('o')
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
+        $r=Invoke-ClaudeTick $wp $dir $stub -ObserveOnly
+        Assert ($script:warmDispatches -eq 1 -and $r.payload.slots[0].warmOutcome.outcome -eq 'observed-active')
     }
     Check 'monitor does not warm cold accounts or probe dead accounts' {
         $f=Copy-Value $fixture;$f.accounts[0].usage.fiveHour.resetsAt=''

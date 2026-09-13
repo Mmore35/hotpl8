@@ -4,6 +4,7 @@ param([string]$InstallDirectory,[string]$StateDirectory,[switch]$Schedule,[switc
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/common.ps1')
 . (Join-Path $PSScriptRoot 'src/config.ps1')
+. (Join-Path $PSScriptRoot 'src/providers/codex.ps1')
 . (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
 if($env:OS -ne 'Windows_NT'){throw 'This installer supports Windows. Other systems can use a source checkout experimentally.'}
 if(-not $InstallDirectory){$InstallDirectory=Join-Path $env:LOCALAPPDATA 'HotPl8'}
@@ -47,7 +48,11 @@ try{
     }
     Write-Hotpl8Text (Join-Path $stage 'install-state.json') (@{stateDirectory=$state}|ConvertTo-Json) -NoBom
     $policyPath=Join-Path $state 'policy.json'
-    if(Test-Path -LiteralPath $policyPath){Assert-Hotpl8Policy (Read-Hotpl8Json $policyPath)}
+    if(Test-Path -LiteralPath $policyPath){
+        $policy=Read-Hotpl8Json $policyPath
+        Assert-Hotpl8Policy $policy
+        if($policy.codex){Assert-CodexPolicy $policy.codex}
+    }
     else{[IO.File]::Copy((Join-Path $source 'policy.example.json'),$policyPath,$false)}
     if(Test-Path -LiteralPath $previous){Remove-Hotpl8App $previous}
     if(Test-Path -LiteralPath $app){
