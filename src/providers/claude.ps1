@@ -586,9 +586,10 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         foreach($w in @($a.usage.fiveHour,$a.usage.sevenDay)) {
             if($w -and (-not (Test-Hotpl8Number $w.pct) -or $w.pct -lt 0 -or $w.pct -gt 100)) { $valid=$false }
         }
-        if($a.disabled -eq $true -or $a.enabled -eq $false -or [int]$a.number -in @($policy.disabled)) { $valid=$false }
-        if($null -ne $a.usageAgeSeconds -and (-not (Test-Hotpl8Number $a.usageAgeSeconds) -or $a.usageAgeSeconds -lt 0)) { $valid=$false }
-        if(-not $valid) { $a.usage=$null; $a.usageStatus='unsupported_or_disabled' }
+        $disabled=($a.disabled -eq $true -or $a.enabled -eq $false -or [int]$a.number -in @($policy.disabled))
+        if($null -ne $a.usageAgeSeconds -and (-not (Test-Hotpl8Number $a.usageAgeSeconds) -or $a.usageAgeSeconds -lt 0 -or $a.usageAgeSeconds -gt 604800)) { $valid=$false }
+        if($disabled){$a.usage=$null;$a.usageStatus='disabled'}
+        elseif(-not $valid) { $a.usage=$null; $a.usageStatus='unsupported' }
         $h5 = $null; $h7 = $null
         if ($a.usage.fiveHour) { $h5 = 100.0 - [double]$a.usage.fiveHour.pct }
         if ($a.usage.sevenDay) { $h7 = 100.0 - [double]$a.usage.sevenDay.pct }
@@ -617,7 +618,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $acc[[int]$a.number] = @{ n = [int]$a.number; h5 = $h5; h7 = $h7; fresh = $fresh; cold = $cold; obj = $a }
         $entry=$acc[[int]$a.number]
         $entry.identity=Get-Hotpl8Hash ([string]$a.email)
-        $entry.observedAt=[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.usageAgeSeconds).ToString('o')
+        $entry.observedAt=if($valid -and (Test-Hotpl8Number $a.usageAgeSeconds) -and $a.usageAgeSeconds -ge 0){[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.usageAgeSeconds).ToString('o')}else{$null}
         $entry.modelBlocked=$false; $entry.modelReason=$null
         foreach($model in @($policy.claudeModels|Where-Object {$_})){
             $scope=@($a.usage.scoped|Where-Object name -EQ $model)

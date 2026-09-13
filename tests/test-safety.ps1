@@ -63,14 +63,18 @@ try{
         Assert (-not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
     }
     Check 'disabled account and invalid age cannot be selected' {
-        foreach($mutation in @('disabled','age','percentage')){
+        foreach($mutation in @('disabled','age','percentage','malformed-age','age-overflow')){
             $f=Copy-Value $fixture
             if($mutation -eq 'disabled'){$f.accounts[1]|Add-Member NoteProperty disabled $true}
             if($mutation -eq 'age'){$f.accounts[1].usageAgeSeconds=-1}
+            if($mutation -eq 'malformed-age'){$f.accounts[1].usageAgeSeconds='not-a-number'}
+            if($mutation -eq 'age-overflow'){$f.accounts[1].usageAgeSeconds=1e100}
             if($mutation -eq 'percentage'){$f.accounts[1].usage.fiveHour.pct=-10}
             Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
             $r=Invoke-ClaudeTick $p $dir $stub -ObserveOnly
             Assert ($null -eq $r.payload.proposedSlot)
+            if($mutation -eq 'disabled'){Assert ($r.payload.slots[0].status -eq 'disabled')}
+            else{Assert ($r.payload.slots[0].status -eq 'unsupported')}
         }
     }
     Check 'explicit Claude model constraints reject missing exhausted and expired scoped quota' {

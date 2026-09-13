@@ -26,8 +26,8 @@ try {
         if(Test-Hotpl8CollectionDue $collector 'claude' ([bool]$Scheduled)){
             $claude=Invoke-ClaudeTick $policy $StateDirectory $CswapExecutable -ObserveOnly:$ObserveOnly
             if($policy.prefer){
-                $healthy=@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'unsupported_or_disabled'}).Count -eq @($claude.payload.slots).Count
-                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'unsupported_or_disabled'}).Count -gt 0)
+                $healthy=@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -eq @($claude.payload.slots).Count
+                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -gt 0)
                 if(-not $healthy){$failed=$true}
             }
         }elseif($policy.prefer){
