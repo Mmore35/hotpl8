@@ -1,4 +1,4 @@
-# Render documentation PNGs from the real dashboard frame and palette, with fictional data.
+﻿# Render documentation PNGs from the real dashboard frame and palette, with fictional data.
 # Windows PowerShell 5.1 / Consolas. No native CLI, accounts, state, or network access.
 param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
@@ -15,8 +15,8 @@ Add-Type -AssemblyName System.Drawing
 $fixture = Get-Hotpl8ScreenshotFixture
 $palette = Get-Hotpl8DashboardPalette
 
-function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [int]$Rows) {
-    $frame = @(Get-Hotpl8DashboardFrame $Status $Policy $fixture.now $Columns $Rows)
+function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [int]$Rows, [int]$Offset=0) {
+    $frame = @(Get-Hotpl8DashboardFrame $Status $Policy $fixture.now $Columns $Rows $Offset)
     $font = New-Object Drawing.Font('Consolas', 18, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
     if ($font.Name -ne 'Consolas') { $font.Dispose(); throw 'Install Consolas to reproduce documentation images.' }
     $cellWidth = 11; $lineHeight = 24; $padding = 28; $titleHeight = 44
@@ -53,7 +53,8 @@ function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [i
     }
 }
 
-Write-DashboardImage 'dashboard.png' $fixture.status $fixture.policy 94 42
+Write-DashboardImage 'dashboard.png' $fixture.status $fixture.policy 94 25
+Write-DashboardImage 'details.png' $fixture.status $fixture.policy 94 34 999
 $emptyPolicy = @{ mode = 'monitor'; prefer = @(); codex = @{ slots = @() } } | ConvertTo-Json -Depth 4 | ConvertFrom-Json
 Write-DashboardImage 'first-run.png' $null $emptyPolicy 80 24
 $operations=Get-Hotpl8ScreenshotFixture -Operations

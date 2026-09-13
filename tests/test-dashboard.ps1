@@ -55,10 +55,10 @@ Check 'narrow frames and a scrolled last page fit their viewport' {
     }
     Assert ((((Render $s 79 18 999).text)-join "`n").Contains('Spark'))
 }
-Check 'standard 80-column terminal shows both providers and Spark without scrolling' {
+Check 'standard terminal prioritizes both provider summaries above account details' {
     $rows=Render $s 79 23
     $text=$rows.text -join "`n"
-    Assert ($rows.Count -le 23 -and $text.Contains('65% left') -and $text.Contains('Spark'))
+    Assert ($rows.Count -le 23 -and $text.Contains('CLAUDE / Weekly') -and $text.Contains('CODEX / Weekly') -and $text.Contains('ACCOUNT DETAILS'))
 }
 Check 'tiny resized terminals show a bounded recovery hint' {
     $rows=Render $s 15 4

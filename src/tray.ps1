@@ -1,6 +1,7 @@
-. (Join-Path $PSScriptRoot 'notifications.ps1')
+﻿. (Join-Path $PSScriptRoot 'notifications.ps1')
 function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    $details=@(Format-Hotpl8Explanation $Snapshot $Now)
+    $overview=Get-Hotpl8ProviderOverview $Snapshot $Policy $Now
+    $details=@(Format-Hotpl8Overview $overview)+@(Format-Hotpl8Explanation $Snapshot $Now | Where-Object {$_ -notmatch '^(CLAUDE:|CODEX:|  Includes reserve|Weekly headroom)'})
     foreach($s in @($Snapshot.slots)){if($s){
         $fresh=$s.fresh -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
         $details+=('Claude '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))
@@ -18,7 +19,7 @@ function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoff
         }
     }
     $details=@($details|ForEach-Object {ConvertTo-Hotpl8SafeText $_})
-    return [pscustomobject]@{title='HotPl8 - '+(Get-Hotpl8Health $Snapshot.collector $Now);details=($details -join [Environment]::NewLine);alerts=@(Get-Hotpl8Alerts $Snapshot $Policy $Now)}
+    return [pscustomobject]@{providerOverview=$overview;title='HotPl8 - '+(Get-Hotpl8Health $Snapshot.collector $Now);details=($details -join [Environment]::NewLine);alerts=@(Get-Hotpl8Alerts $Snapshot $Policy $Now)}
 }
 function Show-Hotpl8Tray([string]$Directory,[string]$CodeDirectory,[switch]$Once,[switch]$SmokeTest) {
     $snapshot=Read-Hotpl8Snapshot $Directory;$policy=Read-Hotpl8Json (Join-Path $Directory 'policy.json')

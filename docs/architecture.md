@@ -77,6 +77,7 @@ src/
   automation.ps1            Shared pause, schedule and attempt gates
   warming.ps1               Receipt persistence and observation reconciliation
   collection.ps1            Persisted collection due times and backoff
+  overview.ps1              Pure provider summaries shared by all cached views
   forecast.ps1 / insights.ps1
                             Shared estimates, bounded history and activity
   selection.ps1 / replay.ps1 Optional ranking keys and production-selector replay
@@ -99,3 +100,5 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 PowerShell keeps the Windows installation small, but other platforms are not release-qualified. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. Monitor mode is the starting point; optional automation needs explicit configuration. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
+
+Provider summaries are additive `providerOverview` fields on snapshots and status output. Readers recompute them from current policy, cached observations and the current clock; an old saved summary never makes old data fresh. The pinned dashboard overview, tray and CLI use the same pure calculation. [Metric contract](provider-overview.md).

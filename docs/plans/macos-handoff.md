@@ -50,3 +50,7 @@ Record pass/fail, exact versions and sanitized evidence for each row; do not mar
 | Engineering | Windows suite still passes; Mac suite and CI pass; reproducible package includes every dependency; secret scan passes. |
 
 Commit the Mac implementation, tests and qualification record together in reviewable increments, push the public branch, and open a PR. Update compatibility, install/usage/upgrading docs, policy schema, release manifest and feature-status plan as applicable. Keep unsupported cells explicit. Leave the owner a short report of what works, any real account/provider boundary requiring a decision, and links to the PR and tested artifact. Do not publish a stable support claim until its rows pass.
+
+## Provider overview parity
+
+Preserve the platform-neutral `src/overview.ps1` metric and additive `providerOverview` contract when implementing Mac UI. Present the two provider summaries above individual details, preserve unknown shares and reserve disclosure, and distinguish next-launch readiness from current-session binding. Run `tests/test-overview.ps1` through the native test-port work; verify narrow/short terminal scrolling with the overview fixed. See [provider overview](../provider-overview.md).

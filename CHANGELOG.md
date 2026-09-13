@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Unified Claude and Codex weekly-headroom overview with pinned summaries and scrollable account details. Shared CLI/tray summaries show partial coverage, reserves, readiness and automation state without treating percentages as absolute capacity.
+
 ## 0.2.0-rc.1 ? source candidate
 
 - Add observed warming receipts, explanations/activity, collector health/backoff, weekly estimates and optional local history.

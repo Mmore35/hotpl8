@@ -2,6 +2,15 @@
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'warming.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'forecast.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
+function Get-ClaudeModelBlock($Scopes,$Policy,[int]$Slot,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    foreach($model in @($Policy.claudeModels|Where-Object {$_})){
+        $scope=@($Scopes|Where-Object name -EQ $model)
+        if($scope.Count -ne 1 -or -not (Test-Hotpl8Number $scope[0].pct) -or $scope[0].pct -lt 0 -or $scope[0].pct -gt 100){return 'model_quota_unknown'}
+        try{if([datetimeoffset]::Parse($scope[0].resetsAt) -le $Now){throw 'expired'}}catch{return 'model_reset_unconfirmed'}
+        if(100-[double]$scope[0].pct -lt (Get-Margin7dFor $Policy $Slot) -or $scope[0].pct -ge 100){return 'model_below_margin'}
+    }
+    return $null
+}
 function Test-Ok($e, $m, $margin7d) {
     if ($null -eq $e) { return $false }
     if ($e.modelBlocked) { return $false }
@@ -619,13 +628,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $entry=$acc[[int]$a.number]
         $entry.identity=Get-Hotpl8Hash ([string]$a.email)
         $entry.observedAt=if($valid -and (Test-Hotpl8Number $a.usageAgeSeconds) -and $a.usageAgeSeconds -ge 0){[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.usageAgeSeconds).ToString('o')}else{$null}
-        $entry.modelBlocked=$false; $entry.modelReason=$null
-        foreach($model in @($policy.claudeModels|Where-Object {$_})){
-            $scope=@($a.usage.scoped|Where-Object name -EQ $model)
-            if($scope.Count -ne 1 -or -not (Test-Hotpl8Number $scope[0].pct) -or $scope[0].pct -lt 0 -or $scope[0].pct -gt 100){$entry.modelBlocked=$true;$entry.modelReason='model_quota_unknown';break}
-            try{$scopeReset=[datetimeoffset]::Parse($scope[0].resetsAt);if($scopeReset -le [datetimeoffset]::UtcNow){throw 'expired'}}catch{$entry.modelBlocked=$true;$entry.modelReason='model_reset_unconfirmed';break}
-            if(100-[double]$scope[0].pct -lt (Get-Margin7dFor $policy ([int]$a.number)) -or $scope[0].pct -ge 100){$entry.modelBlocked=$true;$entry.modelReason='model_below_margin';break}
-        }
+        $entry.modelReason=Get-ClaudeModelBlock $a.usage.scoped $policy ([int]$a.number)
+        $entry.modelBlocked=[bool]$entry.modelReason
     }
 
     $outcomes=Read-Hotpl8WarmOutcomes $StateDirectory

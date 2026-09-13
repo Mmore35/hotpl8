@@ -1,3 +1,4 @@
+﻿. (Join-Path $PSScriptRoot 'overview.ps1')
 . (Join-Path $PSScriptRoot 'forecast.ps1')
 . (Join-Path $PSScriptRoot 'replay.ps1')
 function Add-Hotpl8ActionEvent([string]$Directory, [string]$Provider, [string]$Slot, [string]$Kind, [string]$Reason, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
@@ -58,6 +59,7 @@ function Add-Hotpl8Insights($Snapshot, $Policy, [string]$Directory, $Previous, [
     if($next -and $next -ne $Previous.providers.codex.recommendedSlot){Add-Hotpl8ActionEvent $Directory 'codex' $next 'recommendation' 'next_launch_only' $Now}
     $activity=Read-Hotpl8Json (Join-Path $Directory 'activity.json')
     $Snapshot|Add-Member NoteProperty recentActions @($activity.events|Select-Object -Last 5) -Force
+    $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
     $shadow=Invoke-Hotpl8Replay @($Snapshot) $Policy
     $Snapshot|Add-Member NoteProperty shadow @($shadow.decisions) -Force
 }
@@ -71,12 +73,14 @@ function Read-Hotpl8Snapshot([string]$Directory) {
         if($c){$s|Add-Member NoteProperty collector $c -Force}
         $s|Add-Member NoteProperty automationPause $pause -Force
     }
+    if($s){$s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s (Read-Hotpl8Json (Join-Path $Directory 'policy.json'))) -Force}
     return $s
 }
 function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     if(-not $Snapshot -or -not $Snapshot.generatedAt){'No observation. Run hotpl8 refresh.';return}
     try{$age=($Now-[datetimeoffset]::Parse($Snapshot.generatedAt)).TotalSeconds}catch{$age=99999}
     if($age -gt 900 -or $age -lt -5){'STALE: these are the decisions at the last observation, not a current recommendation.'}
+    if($Snapshot.providerOverview){Format-Hotpl8Overview $Snapshot.providerOverview}
     'Observed: '+$Snapshot.generatedAt
     if($Snapshot.automationPause){'Automation paused: '+$Snapshot.automationPause.reason}
     if($Snapshot.decision){

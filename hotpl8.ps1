@@ -1,4 +1,4 @@
-# refresh observes; tick applies policy. Authentication belongs to native provider tools.
+﻿# refresh observes; tick applies policy. Authentication belongs to native provider tools.
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
@@ -183,13 +183,14 @@ try {
     $status = Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')
     if($Command -eq 'explain'){
         if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory) -Force}
-        if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause}|ConvertTo-Json -Depth 16}
+        if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}
         else{Format-Hotpl8Explanation $status|ForEach-Object {ConvertTo-Hotpl8SafeText $_}}
         exit 0
     }
     if ($Command -eq 'status') {
         if (-not $status) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
         if ($AsJson) { $status | ConvertTo-Json -Depth 24; exit 0 }
+        Format-Hotpl8Overview $status.providerOverview | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
         'HotPl8 | generated ' + (ConvertTo-Hotpl8SafeText $status.generatedAt)
         if($status.collector){Get-Hotpl8Health $status.collector}
         $pause=Get-Hotpl8Pause $StateDirectory

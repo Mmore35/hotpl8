@@ -6,9 +6,11 @@
 
 - **Pick the best available account.** Automatically switch Claude accounts using quota, reset times, and your reserve rules. Codex selects an account for your next launch.
 - **Warm idle Claude accounts.** Optional small requests aim to start usage windows earlier, so accounts are ready when you need them.
-- **See every account at a glance.** Remaining quota, reset times, active accounts, and stale readings in one terminal dashboard.
+- **See your subscriptions at a glance.** One weekly-headroom bar for Claude and one for Codex, with readiness beside each and individual accounts below.
 
-![HotPl8 showing two fictional Claude accounts and two Codex accounts, with quota bars, reset times, and separate ACTIVE and NEXT LAUNCH indicators](docs/assets/dashboard.png)
+![HotPl8 showing unified Claude and Codex weekly-headroom bars with account details below](docs/assets/dashboard.png)
+
+[How the provider bars work](docs/provider-overview.md) · Scroll down for individual quotas, resets and selection details.
 
 Windows preview. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming remains unavailable pending native qualification. [Compatibility and provider boundaries](docs/compatibility.md).
 

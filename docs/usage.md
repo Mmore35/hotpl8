@@ -26,3 +26,7 @@ Doctor prints setup and dependency guidance in human mode. Its `-AsJson` fields 
 ## Account operations
 
 The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `explain`, `capabilities`, `pause`/`resume`, `history`, `tray`, `update-check` and `update`. See [commands and operational semantics](operations.md) and [verified updates](upgrading.md). These are not present in the older downloadable preview.
+
+## Provider overview
+
+The dashboard opens with one weekly-headroom bar per provider. These estimates summarize the subscription set; the readiness line accounts for short-window and model constraints. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, unknown readings and reserves](provider-overview.md).

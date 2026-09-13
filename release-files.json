@@ -76,6 +76,10 @@
     "docs/plans/subscription-roadmap.md",
     "docs/operations.md",
     "docs/assets/operations.png",
-    "tests/test-tray.ps1"
+    "tests/test-tray.ps1",
+    "src/overview.ps1",
+    "tests/test-overview.ps1",
+    "docs/provider-overview.md",
+    "docs/assets/details.png"
   ]
 }
