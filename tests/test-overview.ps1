@@ -101,5 +101,29 @@ Check 'summary and view are pure, shared with tray, and pinned when scrolling' {
     Assert (($s|ConvertTo-Json -Depth 24 -Compress) -eq $before)
     Assert (($first.text -join '') -match 'CLAUDE / Weekly' -and ($first.text -join '') -match 'CODEX / Weekly')
 }
+Check 'CLI status and explain re-evaluate policy and clock without collecting' {
+    $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-overview-'+[guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($dir)
+    try {
+        $policy=Copy-Value $p;$policy|Add-Member NoteProperty schemaVersion 2;$policy|Add-Member NoteProperty disabled @(1)
+        $c=Copy-Value $s;$c|Add-Member NoteProperty providerOverview @{claude=@{accounts=99;remainingPercent=100}}
+        foreach($a in $c.slots){$a.observedAt=[datetimeoffset]::UtcNow.AddHours(-1).ToString('o')}
+        Write-Hotpl8Text (Join-Path $dir 'policy.json') ($policy|ConvertTo-Json -Depth 24)
+        Write-Hotpl8Text (Join-Path $dir 'status.json') ($c|ConvertTo-Json -Depth 24)
+        Write-Hotpl8Text (Join-Path $dir 'automation-pause.json') (@{until=[datetimeoffset]::UtcNow.AddHours(1).ToString('o');reason='test'}|ConvertTo-Json)
+        $before=(Get-FileHash (Join-Path $dir 'status.json')).Hash
+        foreach($command in @('status','explain')){
+            $output=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hotpl8.ps1') $command -StateDirectory $dir -AsJson
+            Assert ($LASTEXITCODE -eq 0)
+            $o=($output|ConvertFrom-Json).providerOverview.claude
+            Assert ($o.accounts -eq 2 -and $o.measured -eq 0 -and $null -eq $o.remainingPercent -and $o.automation -eq 'automation paused')
+        }
+        Assert ((Get-FileHash (Join-Path $dir 'status.json')).Hash -eq $before)
+        Assert (@(Get-ChildItem $dir -File).Count -eq 3)
+    }finally{
+        $full=[IO.Path]::GetFullPath($dir)
+        if((Split-Path $full -Parent) -eq [IO.Path]::GetTempPath().TrimEnd('\','/') -and (Split-Path $full -Leaf) -match '^hotpl8-overview-[a-f0-9]{32}$'){Remove-Item -LiteralPath $full -Recurse -Force}
+    }
+}
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

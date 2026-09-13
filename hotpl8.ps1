@@ -180,7 +180,7 @@ try {
         $Command = 'status'
     }
 
-    $status = Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')
+    $status = Read-Hotpl8Snapshot $StateDirectory
     if($Command -eq 'explain'){
         if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory) -Force}
         if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}
@@ -188,7 +188,7 @@ try {
         exit 0
     }
     if ($Command -eq 'status') {
-        if (-not $status) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
+        if (-not $status -or -not $status.generatedAt) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
         if ($AsJson) { $status | ConvertTo-Json -Depth 24; exit 0 }
         Format-Hotpl8Overview $status.providerOverview | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
         'HotPl8 | generated ' + (ConvertTo-Hotpl8SafeText $status.generatedAt)
