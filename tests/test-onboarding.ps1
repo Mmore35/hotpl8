@@ -22,7 +22,9 @@ function Invoke-TestCli([string[]]$Arguments) {
     try {
         $stdout = $proc.StandardOutput.ReadToEndAsync()
         $stderr = $proc.StandardError.ReadToEndAsync()
-        if (-not $proc.WaitForExit(15000)) { $proc.Kill(); throw 'CLI test timed out' }
+        # Fresh isolated homes on hosted Windows incur first-use PowerShell/module
+        # initialization (~23s in CI). This is a harness budget, not a provider timeout.
+        if (-not $proc.WaitForExit(45000)) { $proc.Kill(); throw 'CLI test timed out' }
         return @{ code = $proc.ExitCode; text = $stdout.Result + $stderr.Result }
     } finally { $proc.Dispose() }
 }
