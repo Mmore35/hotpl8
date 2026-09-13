@@ -126,6 +126,11 @@ try{
         $p=ConvertTo-Hotpl8PolicyV2 (Clone @{prefer=@(1);warm=$true})
         Assert ((Get-Hotpl8Actions $p $false).switching -and (Get-Hotpl8Actions $p $false).probing)
     }
+    Check 'new controls cannot bypass validation through a legacy policy or null model entry' {
+        Reject {Assert-Hotpl8Policy (Clone @{mode='automate';claudeModels=@('opus')})}
+        Reject {Assert-Hotpl8Policy (Clone @{schemaVersion=2;mode='automate';claudeModels=@($null)})}
+        Reject {Assert-Hotpl8Policy (Clone @{order='balanced'})}
+    }
     Check 'account edits preserve unrelated policy and fail on unknown slots' {
         $p=Clone @{schemaVersion=1;mode='monitor';prefer=@(1);labels=@{'1'='old'};warm=$false}
         $p=Set-Hotpl8Account $p claude 1 rename new

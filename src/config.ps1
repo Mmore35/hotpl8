@@ -11,6 +11,8 @@ function Resolve-Hotpl8StateDirectory([string]$Explicit, [string]$CodeDirectory)
 function Assert-Hotpl8Policy($Policy) {
     if (-not $Policy -or $Policy -is [array] -or $Policy -isnot [pscustomobject]) { throw 'Invalid policy: expected an object.' }
     if ($null -ne $Policy.schemaVersion -and (-not (Test-Hotpl8Number $Policy.schemaVersion) -or $Policy.schemaVersion -notin @(1,2))) { throw 'Invalid policy: unsupported schemaVersion.' }
+    $v2Fields=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled')
+    if($Policy.schemaVersion -ne 2 -and @($Policy.PSObject.Properties|Where-Object {$_.Name -in $v2Fields}).Count){throw 'New operational settings require schemaVersion 2.'}
     if($Policy.schemaVersion -in @(1,2)){
         $allowed=@('schemaVersion','mode','prefer','reserve','labels','weights','switchEnabled','warm','probeEnabled','order','pattern','margin5h','margin7d','margin7dWork','hysteresis','warmMin7d','warmMin7dWork','maxUsageAgeS','staleQuarantineS','warmFloorMin','warmPhaseWindowMin','warmGroup','resetLeadMin','codex')
         if($Policy.schemaVersion -eq 2){$allowed+=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled');Assert-Hotpl8AutomationPolicy $Policy}
@@ -31,7 +33,7 @@ function Assert-Hotpl8Policy($Policy) {
         if($null -ne $Policy.$key -and $Policy.$key -le 0){throw ('Invalid policy field: '+$key)}
     }
     if ($Policy.order -and $Policy.order -notin @('prefer','soonest-reset','weekly-expiry','balanced')) { throw 'Invalid policy field: order' }
-    if($Policy.schemaVersion -eq 1 -and ($Policy.order -in @('weekly-expiry','balanced') -or $Policy.codex.order -in @('weekly-expiry','balanced') -or ($null -ne $Policy.codex -and $Policy.codex.PSObject.Properties['disabled']))){throw 'New selection options require policy version 2.'}
+    if($Policy.schemaVersion -ne 2 -and ($Policy.order -in @('weekly-expiry','balanced') -or $Policy.codex.order -in @('weekly-expiry','balanced') -or ($null -ne $Policy.codex -and $Policy.codex.PSObject.Properties['disabled']))){throw 'New selection options require policy version 2.'}
     if ($Policy.pattern -and $Policy.pattern -notin @('maintain','even','clustered','synced')) { throw 'Invalid policy field: pattern' }
     $seen = @{}
     foreach ($n in @($Policy.prefer)) {

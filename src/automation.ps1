@@ -47,18 +47,20 @@ function Assert-Hotpl8AutomationPolicy($Policy) {
     $a = $Policy.automation
     foreach($name in @('disabled','claudeModels')){
         if($null -ne $Policy.$name -and ($Policy.$name -isnot [array] -or @($Policy.$name|Select-Object -Unique).Count -ne @($Policy.$name).Count)){throw ('Invalid array: '+$name)}
+        if($null -ne $Policy.$name -and @($Policy.$name|Where-Object {$null -eq $_}).Count){throw ('Null array entry: '+$name)}
     }
     if ($a) {
         if($a -isnot [pscustomobject]){throw 'automation must be an object.'}
         foreach ($field in $a.PSObject.Properties) { if ($field.Name -notin @('schedule','dailyAttemptLimit','warmExcluded')) { throw 'Invalid automation field.' } }
         if ($null -ne $a.dailyAttemptLimit -and (-not (Test-Hotpl8Number $a.dailyAttemptLimit) -or $a.dailyAttemptLimit -lt 1 -or $a.dailyAttemptLimit -gt 100 -or [math]::Floor($a.dailyAttemptLimit) -ne $a.dailyAttemptLimit)) { throw 'dailyAttemptLimit must be an integer from 1 to 100.' }
         if($null -ne $a.warmExcluded -and ($a.warmExcluded -isnot [array] -or @($a.warmExcluded|Select-Object -Unique).Count -ne @($a.warmExcluded).Count)){throw 'warmExcluded must be a unique array.'}
+        if($null -ne $a.warmExcluded -and @($a.warmExcluded|Where-Object {$null -eq $_}).Count){throw 'Null warming exclusion.'}
         foreach ($id in @($a.warmExcluded|Where-Object {$null -ne $_})) { if ($id -isnot [string] -or $id -notmatch '^(claude:[0-9]+|codex:[a-zA-Z0-9_-]{1,40})$') { throw 'Invalid warming exclusion.' } }
         if ($a.schedule) {
             $s = $a.schedule
             if($s -isnot [pscustomobject]){throw 'schedule must be an object.'}
             foreach ($field in $s.PSObject.Properties) { if ($field.Name -notin @('start','end','days','timeZone')) { throw 'Invalid schedule field.' } }
-            foreach ($t in @($s.start,$s.end)) { if ($t -notmatch '^([01][0-9]|2[0-3]):[0-5][0-9]$') { throw 'Work hours must use HH:mm.' } }
+            foreach ($t in @($s.start,$s.end)) { if ($t -isnot [string] -or $t -notmatch '^([01][0-9]|2[0-3]):[0-5][0-9]$') { throw 'Work hours must use HH:mm.' } }
             if ($s.days -isnot [array] -or @($s.days).Count -eq 0 -or @($s.days | Select-Object -Unique).Count -ne @($s.days).Count) { throw 'Work days must be a nonempty unique array.' }
             foreach ($d in @($s.days)) { if (-not (Test-Hotpl8Number $d) -or $d -lt 0 -or $d -gt 6 -or [math]::Floor($d) -ne $d) { throw 'Work days must be 0 (Sunday) through 6.' } }
             if ($s.timeZone) { $null = [TimeZoneInfo]::FindSystemTimeZoneById($s.timeZone) }
