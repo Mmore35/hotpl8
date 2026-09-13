@@ -31,8 +31,9 @@ function Invoke-Hotpl8Replay($Frames,$Policy) {
 }
 function New-Hotpl8ReplayRow($Key,$Now,$Choice,$Current,$Reserve,$Prior,$Switches,$Reserves,$Unavailable) {
     if($Choice -and $Current -and $Choice -ne $Current){$Switches[$Key]=[int]$Switches[$Key]+1}
-    if($Choice -in $Reserve){$Reserves[$Key]=[int]$Reserves[$Key]+1}
+    $isReserve=([bool]$Choice -and $Choice -in $Reserve)
+    if($isReserve){$Reserves[$Key]=[int]$Reserves[$Key]+1}
     if(-not $Choice){$Unavailable[$Key]=[int]$Unavailable[$Key]+1}
     $Prior[$Key]=$Choice
-    return [pscustomobject]@{stream=$Key;at=$Now.ToString('o');selected=$Choice;reserve=($Choice -in $Reserve)}
+    return [pscustomobject]@{stream=$Key;at=$Now.ToString('o');selected=$Choice;reserve=$isReserve}
 }

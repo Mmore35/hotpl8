@@ -24,7 +24,7 @@ function Show-Hotpl8Tray([string]$Directory,[string]$CodeDirectory,[switch]$Once
     $snapshot=Read-Hotpl8Snapshot $Directory;$policy=Read-Hotpl8Json (Join-Path $Directory 'policy.json')
     if($Once){return Get-Hotpl8TrayModel $snapshot $policy}
     if($env:OS -ne 'Windows_NT'){throw 'Native Mac menu-bar delivery is tracked in docs/plans/macos-handoff.md.'}
-    $mutex=New-Object Threading.Mutex($false,('Local\HotPl8Tray-'+(Get-Hotpl8Hash ([IO.Path]::GetFullPath($Directory)))))
+    $mutex=New-Object Threading.Mutex($false,('Local\HotPl8Tray-'+(Get-Hotpl8Hash ([IO.Path]::GetFullPath($Directory).ToLowerInvariant()))))
     $owned=$false;$icon=$null;$timer=$null;$form=$null
     try{
         try{$owned=$mutex.WaitOne(0)}catch [Threading.AbandonedMutexException]{$owned=$true}

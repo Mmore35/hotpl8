@@ -186,6 +186,7 @@ try{
         $f.policy.codex|Add-Member NoteProperty disabled @('work')
         $r=Invoke-Hotpl8Replay @($f.status) $f.policy
         Assert (@($r.decisions|Where-Object {$_.stream -like 'codex/*' -and $_.selected -eq 'work'}).Count -eq 0)
+        Assert (@($r.decisions|Where-Object {-not $_.selected -and $_.reserve}).Count -eq 0)
         Assert ($r.frames -eq 1 -and $r.limitation.Contains('does not measure quota savings'))
     }
     Check 'disabled Codex homes are not polled and explicit launch cannot bypass disabling' {
