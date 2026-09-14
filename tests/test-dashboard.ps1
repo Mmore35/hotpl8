@@ -22,12 +22,12 @@ Check 'stale and failed readings offer a recovery action' {
     $text=((Render $c).text)-join "`n"
     Assert ($text.Contains('hotpl8 refresh') -and $text.Contains('hotpl8 doctor') -and $text.Contains('SIGN-IN NEEDED'))
 }
-Check 'all accounts and separate main/Spark meters are displayed' {
+Check 'all accounts remain visible while Spark is excluded from the dashboard' {
     $t=((Render).text)-join "`n"
     Assert ($t.Contains('3 subscriptions') -and $t.Contains('1 subscription'))
-    foreach($name in @('Claude 1','Claude 2','Claude 3','NEXT LAUNCH','ACTIVE','Spark','limit status unknown','no five-hour window')){Assert ($t.Contains($name))}
+    foreach($name in @('Claude 1','Claude 2','Claude 3','NEXT LAUNCH','ACTIVE','no five-hour window')){Assert ($t.Contains($name))}
     Assert ($t.Contains('75% left') -and $t.Contains('65% left'))
-    Assert ($t.IndexOf('    Main') -lt $t.IndexOf('    Spark'))
+    Assert ($t.Contains('    Main') -and -not $t.Contains('Spark') -and -not $t.Contains('limit status unknown'))
 }
 Check 'missing readings never become full balances or hide configured accounts' {
     $t=((Render $null).text)-join "`n"
@@ -53,12 +53,12 @@ Check 'narrow frames and a scrolled last page fit their viewport' {
             foreach($row in $rows){Assert ((Get-DashboardCells $row.text) -eq $width)}
         }
     }
-    Assert ((((Render $s 79 18 999).text)-join "`n").Contains('Spark'))
+    Assert ((((Render $s 79 18 999).text)-join "`n").Contains('65% left'))
 }
 Check 'standard terminal prioritizes both provider summaries above account details' {
     $rows=Render $s 79 23
     $text=$rows.text -join "`n"
-    Assert ($rows.Count -le 23 -and $text.Contains('CLAUDE / Weekly remaining') -and $text.Contains('CODEX / Available now') -and $text.Contains('ACCOUNT DETAILS'))
+    Assert ($rows.Count -le 23 -and $text.Contains('CLAUDE / Available now') -and $text.Contains('CODEX / Available now') -and $text.Contains('ACCOUNT DETAILS'))
     Assert ($text.IndexOf('CLAUDE /') -lt $text.IndexOf('CODEX /') -and $text.IndexOf('CODEX /') -lt $text.IndexOf('ACCOUNT DETAILS'))
 }
 Check 'tiny resized terminals show a bounded recovery hint' {

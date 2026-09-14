@@ -144,7 +144,7 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         }
         if($item.planType -and $item.planType -ne 'unknown' -and -not $Compact){New-DashboardRow ('    Native plan: '+$item.planType+' / capacity conversion configured separately') muted}
         if(-not $item -or -not $item.buckets){New-DashboardRow '    Waiting for quota readings.' muted}
-        foreach($bucket in @($item.buckets.PSObject.Properties|Sort-Object @{Expression={if($_.Name -eq 'codex'){0}elseif($_.Name -eq 'codex_bengalfox'){1}else{2}}},Name)){
+        foreach($bucket in @($item.buckets.PSObject.Properties|Where-Object Name -NE 'codex_bengalfox'|Sort-Object @{Expression={if($_.Name -eq 'codex'){0}else{1}}},Name)){
             $label=switch($bucket.Name){'codex'{'Main'};'codex_bengalfox'{'Spark'};default{$bucket.Name}}
             $state=switch($bucket.Value.status){'constraint_unknown'{'limit status unknown'};'blocked'{'blocked'};'unsupported'{'unsupported quota'};default{''}}
             if(-not $Compact -or $bucket.Name -ne 'codex' -or $state){New-DashboardRow ('    '+$label+$(if($state){'  /  '+$state})) $(if($state){'amber'}else{'muted'})}
@@ -168,13 +168,14 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
 function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width,[double]$AnimationSeconds=0,[switch]$ReducedMotion,$OverviewOverride=$null) {
     $overview=if($OverviewOverride){$OverviewOverride}else{Get-Hotpl8ProviderOverview $Status $Policy $Now}
     foreach($provider in @('claude','codex')){
-        $p=$overview.$provider;$c=$p.capacity
+        $p=$overview.$provider
         $display=Get-Hotpl8CapacityDisplay $p
+        $c=$display.capacity
         $tone=if($provider -eq 'claude'){'peach'}else{'cyan'}
         New-DashboardRow ('  '+$provider.ToUpper()+' / '+$display.title) $tone
         $suffix=if($display.nextResetAt){
             $(if($null -ne $display.gain){'+{0:0.#}% in ' -f $display.gain}else{'reset in '})+(Format-DashboardDuration ([datetimeoffset]::Parse($display.nextResetAt)-$Now).TotalSeconds)
-        }else{'reset unknown'}
+        }elseif($c.projectionComplete){'no refill in 24h'}else{'refill unconfirmed'}
         $size=[math]::Max(10,[math]::Min(45,$Width-6-$suffix.Length))
         $value=$display.value
         $fill=[int][math]::Floor($value*$size/100)

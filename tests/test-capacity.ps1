@@ -20,10 +20,11 @@ Check 'projection never double counts previously available quota' {
     $c=Get-Hotpl8ProviderCapacity $s $p claude $now
     Near ($c.usableNowPercent+$c.projectedGainPercent) 30
 }
-Check 'weekly constraint can make next short reset add zero' {
+Check 'zero-gain short reset is skipped for a later useful refill' {
     $p=Policy;$s=Snapshot;$s.slots[0].used7d=95
     $c=Get-Hotpl8ProviderCapacity $s $p claude $now
-    Near $c.projectedGainPercent 0
+    Near $c.projectedGainPercent 2
+    Assert ([datetimeoffset]::Parse($c.nextResetAt) -eq [datetimeoffset]::Parse($s.slots[1].reset5h))
 }
 Check 'expired reset awaits evidence and never becomes full' {
     $p=Policy;$s=Snapshot;$s.slots[0].reset5h=$now.AddSeconds(-1).ToString('o')
@@ -221,20 +222,23 @@ Check 'tray capacity and projection lines appear once per provider' {
     Assert ([regex]::Matches($details,'(?m)^  Capacity:').Count -eq 2)
     Assert ([regex]::Matches($details,'(?m)^  Next reset:').Count -eq 2)
 }
-Check 'unconfigured Claude conversions preserve measured weekly inventory without claiming usable compute' {
+Check 'detected plan weights estimate tightest current limit without inventing conversions' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force}
+    $s.slots[1].plan.profile='claude-max-5x'
+    $s.slots[0].used5h=100;$s.slots[0].used7d=10
+    $s.slots[1].used5h=50;$s.slots[1].used7d=10
     $o=Get-Hotpl8ProviderOverview $s $p $now
     $d=Get-Hotpl8CapacityDisplay $o.claude
-    Assert ($d.weekly -and $d.title -eq 'Weekly remaining')
-    Near $d.value $o.claude.remainingPercent
+    Assert (-not $d.weekly -and $d.title -eq 'Available now')
+    Near $d.value (250/6);Near $o.claude.remainingPercent 90
+    Assert ($o.claude.immediate.metric -eq 'plan-weighted-quota-headroom')
     Assert ($null -ne $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('weekly left (account average)') -and $text.Contains('ready') -and -not $text.Contains('???'))
+    Assert ($text.Contains('quota estimate') -and $text.Contains('90% weekly left') -and -not $text.Contains('Weekly remaining'))
     $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Assert ($d.unknown -gt 0 -and $d.state.Contains('2 readings; total unavailable') -and $null -eq $d.gain)
-    foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force}
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Assert ($d.unknown -gt 0 -and $d.state.Contains('total unavailable') -and $null -eq $d.gain)
     Assert ($d.state.Contains('expired; awaiting update') -and -not $d.state.Contains('setup needed'))
 }
 Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exclusions' {
@@ -251,22 +255,25 @@ Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exc
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
     Assert ($text.Contains('95% available now') -and $text.Contains('1 enabled / 1/1 readings / 1 disabled / next launch: work'))
 }
-Check 'weekly fallback projects only the matching weekly reset and never fills expired readings' {
+Check 'weekly allowance cannot fill the main bar while short windows are exhausted' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
-    $s.slots[0].used7d=60;$s.slots[1].used7d=20
-    $s.slots[0].reset7d=$now.AddDays(1).ToString('o');$s.slots[1].reset7d=$now.AddDays(2).ToString('o')
+    foreach($slot in $s.slots){
+        $slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
+        $slot.used5h=100;$slot.used7d=10;$slot.reset5h=$now.AddHours(5).ToString('o')
+    }
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Near $d.value 60;Near $d.gain 30
-    Assert ([datetimeoffset]::Parse($d.nextResetAt) -eq $now.AddDays(1))
-    $s.slots[1].reset7d=$s.slots[0].reset7d
-    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).gain 40
+    Near $d.value 0;Near $d.gain 90
+    Assert ([datetimeoffset]::Parse($d.nextResetAt) -eq $now.AddHours(5))
+    foreach($slot in $s.slots){$slot.used7d=100}
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.value 0;Assert ($null -eq $d.gain -and $null -eq $d.nextResetAt)
     $s.slots[0].reset7d=$now.AddSeconds(-1).ToString('o')
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
     Assert ($null -eq $d.gain -and $d.state.Contains('total unavailable'))
 }
 Check 'hatching means refill only and is contiguous with the measured fill at every viewport' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
-    $s.slots[0].used7d=60;$s.slots[1].used7d=20
+    foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force;$slot.used5h=60;$slot.used7d=20}
     foreach($width in @(46,77,108)){
         $rows=@(Get-Hotpl8OverviewRows $s $p $now $width)
         Assert ((Get-DashboardCells $rows[1].text) -le $width)
@@ -278,6 +285,33 @@ Check 'hatching means refill only and is contiguous with the measured fill at ev
     $p.PSObject.Properties.Remove('capacity')
     $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
     Assert ($rows[1].text -notmatch '[░▒]' -and $rows[2].text.Contains('total unavailable'))
+}
+Check 'refill horizon includes 24h exactly and excludes a second later' {
+    $p=Policy;$s=Snapshot
+    foreach($slot in $s.slots){$slot.reset5h=$now.AddHours(24).ToString('o')}
+    $c=Get-Hotpl8ProviderCapacity $s $p claude $now
+    Assert ($c.projectedGainPercent -gt 0 -and [datetimeoffset]::Parse($c.nextResetAt) -eq $now.AddHours(24))
+    foreach($slot in $s.slots){$slot.reset5h=$now.AddHours(24).AddSeconds(1).ToString('o')}
+    $c=Get-Hotpl8ProviderCapacity $s $p claude $now
+    Assert ($null -eq $c.projectedGainPercent -and $null -eq $c.nextResetAt)
+    Assert (@(Get-Hotpl8OverviewRows $s $p $now 108)[1].text -notmatch '▒')
+}
+Check 'unknown plans remain unknown instead of receiving invented tier weights' {
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Assert ($d.title -eq 'Available now' -and -not $d.capacity.complete -and $null -eq $d.gain)
+    Assert ($d.state.Contains('total unavailable') -and $d.value -eq 0)
+}
+Check 'blocked zero account cannot hide a known refill from another Codex subscription' {
+    $p=Policy;$s=Snapshot
+    $blocked=$s.providers.codex.slots[1];$blocked.buckets.codex.status='blocked'
+    $blocked.buckets.codex.windows.'10080'.usedPercent=100;$blocked.buckets.codex.windows.'10080'.remainingPercent=0
+    $c=Get-Hotpl8ProviderCapacity $s $p.codex codex $now
+    Assert ($c.complete -and -not $c.projectionComplete)
+    Near $c.projectedGainPercent 6.5
+    Assert ([datetimeoffset]::Parse($c.nextResetAt) -eq $now.AddHours(2))
+    $blocked.observedAt=$now.AddHours(-1).ToString('o')
+    Assert ($null -eq (Get-Hotpl8ProviderCapacity $s $p.codex codex $now).projectedGainPercent)
 }
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

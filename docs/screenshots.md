@@ -19,3 +19,5 @@ Change the renderer for a UI change, or the fixture for a different documentatio
 `dashboard.png` fixes the opening view at 94 columns by 25 rows. `details.png` renders the last details page at 94 by 34 with the same pinned provider overview. `operations.png` exercises operational detail at 110 by 50. All use the same fixed clock and renderer.
 
 Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bundled attributed animation with a frozen frame; critical/unknown frames should be added or regenerated alongside main/detail screenshots. Both screenshot and terminal paths consume the same sanitized styled spans and palette.
+
+`available-now.png` shows the important counterexample: 90% weekly remaining, zero usable now, and a projected refill in five hours. It uses fictional detected Pro plans without window conversions, exercising the plan-weighted quota estimate.

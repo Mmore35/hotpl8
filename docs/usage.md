@@ -29,7 +29,7 @@ The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `explain`, `ca
 
 ## Provider overview
 
-The dashboard opens with one layered capacity bar per provider. Solid fill estimates usable allowance; the patterned extension projects the next refill, with a countdown on the right. Missing capacity conversions remain visible. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, unknown readings and reserves](provider-overview.md).
+The dashboard opens with one **Available now** bar per provider. Solid fill estimates usable allowance across current limits; the patterned extension shows the first positive refill within 24 hours, with its countdown on the right. Weekly remaining is supporting text; Spark is excluded. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, estimates, unknown readings and reserves](provider-overview.md).
 
 ## Capacity and mascot commands
 

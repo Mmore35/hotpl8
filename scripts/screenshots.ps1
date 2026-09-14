@@ -93,3 +93,13 @@ $unknown=Get-Hotpl8ScreenshotFixture
 $unknown.policy.PSObject.Properties.Remove('capacity')
 Write-DashboardImage 'unknown.png' $unknown.status $unknown.policy 79 24
 Write-DashboardImage 'narrow.png' $healthy.status $healthy.policy 50 18
+
+# Plenty of weekly inventory, but none is usable before a short-window reset.
+$available=Get-Hotpl8ScreenshotFixture
+$available.policy.mode='automate';$available.policy.reserve=@()
+$available.policy.PSObject.Properties.Remove('capacity')
+foreach($slot in $available.status.slots){
+    $slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';label='Pro';observedAt=$available.now.ToString('o')} -Force
+    $slot.used5h=100;$slot.used7d=10;$slot.reset5h=$available.now.AddHours(5).ToString('o')
+}
+Write-DashboardImage 'available-now.png' $available.status $available.policy 94 25

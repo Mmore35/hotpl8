@@ -47,6 +47,9 @@ try{
     $manual=Get-Hotpl8AccountCapacity $part 1 claude '' $detected $now
     Assert ($manual.weekly -eq 7 -and $manual.fiveHour -eq 2 -and $manual.profile -eq 'claude-max-20x')
     Assert (-not (Test-Hotpl8DetectedPlan $detected $now.AddHours(1)))
+    Assert (Test-Hotpl8DetectedPlan $detected $now.AddSeconds(901))
+    Assert (-not (Test-Hotpl8DetectedPlan $detected $now.AddSeconds(1201)))
+    Assert (-not (Test-Hotpl8DetectedPlan $detected $now.AddMinutes(-1)))
     'PASS automatic profile preserves unknown conversions and explicit overrides'
     $text=Get-Content (Join-Path $dir 'claude-plans.json') -Raw
     Assert ($text -notmatch 'example.invalid|fictional-org|secret')

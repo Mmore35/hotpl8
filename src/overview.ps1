@@ -19,7 +19,8 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
         $configured=if($provider -eq 'claude'){@($Policy.prefer|Where-Object {$null -ne $_})}else{@($part.slots|Where-Object {$_}|ForEach-Object {$_.id})}
         $ids=@($configured|Where-Object {$_ -notin @($part.disabled)}|Select-Object -Unique)
         $observations=if($provider -eq 'claude'){@($Snapshot.slots)}else{@($Snapshot.providers.codex.slots)}
-        $meter=if($provider -eq 'claude'){'overall weekly'}elseif($part.defaultMeter){[string]$part.defaultMeter}else{'codex'}
+        # The unified Codex graph is always the main allowance, never Spark.
+        $meter=if($provider -eq 'claude'){'overall weekly'}else{'codex'}
         $members=@();$identities=@{};$claudeAccounts=@{};$codexAccounts=@();$duplicates=0
         foreach($id in $ids){
             $matches=@($observations|Where-Object {if($provider -eq 'claude'){$_.slot -eq $id}else{$_.id -eq $id}})
@@ -82,53 +83,38 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
         if($signIn){$availability+='; sign-in needed'}
         if($health -notin @('manual / no collector evidence','recent collection completed','collecting')){$availability+='; '+$health}
         $capacity=Get-Hotpl8ProviderCapacity $Snapshot $part $provider $Now $meter
+        $missingConversion=@($capacity.accounts|Where-Object {$null -eq $_.weekly -or @($_.windows|Where-Object {$null -eq $_.full}).Count -gt 0}).Count -gt 0
+        $immediate=if($missingConversion){Get-Hotpl8ProviderCapacity $Snapshot $part $provider $Now $meter -QuotaHeadroom}else{$capacity}
         if($capacity.critical.active){foreach($member in $members){if($member.slot -in $capacity.critical.ranked){$member.eligible=$true;$member.reason='critical_allowance'}}}
         if($capacity.critical.active -and $selected){$availability=if($provider -eq 'codex'){'Ready for next launch / critical'}else{'Ready / critical'}}
-        $result[$provider]=[pscustomobject]@{schemaVersion=2;capacity=$capacity;computedAt=$Now.ToString('o');metric='normalized-weekly-headroom';scope=$meter;accounts=$total;measured=$measured;disabled=($configured.Count-$ids.Count);duplicates=$duplicates;knownRemainingPercent=$known;unknownPercent=$unknown;remainingPercent=$(if($total -and $measured -eq $total){$known}else{$null});includesReserve=(@($members|Where-Object reserve).Count -gt 0);availability=$availability;automation=$automation;collectionHealth=$health;selected=$selected;members=$members}
+        $result[$provider]=[pscustomobject]@{schemaVersion=2;capacity=$capacity;immediate=$immediate;computedAt=$Now.ToString('o');metric='normalized-weekly-headroom';scope=$meter;accounts=$total;measured=$measured;disabled=($configured.Count-$ids.Count);duplicates=$duplicates;knownRemainingPercent=$known;unknownPercent=$unknown;remainingPercent=$(if($total -and $measured -eq $total){$known}else{$null});includesReserve=(@($members|Where-Object reserve).Count -gt 0);availability=$availability;automation=$automation;collectionHealth=$health;selected=$selected;members=$members}
     }
     return [pscustomobject]$result
 }
 function Get-Hotpl8CapacityDisplay($ProviderOverview) {
-    $p=$ProviderOverview;$c=$p.capacity
-    # Missing conversion data must not hide valid native quota readings, or turn
-    # their equal-account average into a claim about immediately usable compute.
-    $weekly=-not $c.complete -and ($null -eq $c.totalUnits -or $c.measured -eq 0) -and $p.accounts -gt 0
-    $ready=@($p.members|Where-Object eligible).Count
-    $next=$c.nextResetAt;$gain=$c.projectedGainPercent
-    if($weekly){
-        # A weekly average has its own denominator and reset horizon. Never
-        # attach a five-hour refill to it, or imply it is immediately usable.
-        $next=$null;$gain=$null
-        $resets=@($p.members|Where-Object weeklyResetAt|Sort-Object {[datetimeoffset]::Parse($_.weeklyResetAt)})
-        if($resets.Count){$next=$resets[0].weeklyResetAt}
-        if($next -and $p.measured -eq $p.accounts -and $resets.Count -eq $p.accounts){
-            $gain=0.0
-            foreach($m in $p.members){if($m.weeklyResetAt -and [datetimeoffset]::Parse($m.weeklyResetAt) -eq [datetimeoffset]::Parse($next)){$gain+=(100-$m.remainingPercent)/$p.accounts}}
-        }
-    }
-    $state=if($weekly -and $null -ne $p.remainingPercent){
-        ('{0:0.#}% weekly left (account average) / ' -f $p.remainingPercent)+$ready+'/'+$p.accounts+' ready'
-    }elseif(-not $weekly -and $c.complete){'{0:0.#}% available now' -f $c.usableNowPercent}else{
-        'Partial: '+$p.measured+'/'+$p.accounts+' readings; total unavailable'
-    }
+    $p=$ProviderOverview;$c=if($p.immediate){$p.immediate}else{$p.capacity}
+    $state=if($c.complete){'{0:0.#}% available now' -f $c.usableNowPercent}elseif($null -eq $c.totalUnits){'Plan allowance unknown; total unavailable'}else{'Partial: '+$c.measured+'/'+$p.accounts+' measured; total unavailable'}
+    if($c.metric -eq 'plan-weighted-quota-headroom' -and $c.complete){$state+=' (quota estimate)'}
+    if($null -ne $p.remainingPercent){$state+=' / '+('{0:0.#}% weekly left' -f $p.remainingPercent)}
     if($p.accounts -eq 0){$state='No accounts enabled'}
     $stale=@($p.members|Where-Object reason -EQ 'stale').Count
     if($stale){$state+=' / '+$stale+' expired; awaiting update'}
     [pscustomobject]@{
-        title=$(if($weekly){'Weekly remaining'}else{'Available now'})
-        value=$(if($weekly){$p.knownRemainingPercent}else{$c.knownUsablePercent})
-        unknown=$(if($weekly){$p.unknownPercent}else{$c.unknownPercent})
-        gain=$gain
-        nextResetAt=$next
+        title='Available now'
+        value=$c.knownUsablePercent
+        unknown=$c.unknownPercent
+        gain=$c.projectedGainPercent
+        nextResetAt=$c.nextResetAt
+        capacity=$c
         state=$state
-        weekly=[bool]$weekly
+        weekly=$false
     }
 }
 function Format-Hotpl8Overview($Overview) {
     foreach($provider in @('claude','codex')){
         $p=$Overview.$provider
-        $amount=if($null -ne $p.remainingPercent){'{0:0}% estimate' -f $p.remainingPercent}else{'partial / unknown'}
-        $provider.ToUpper()+': weekly headroom '+$amount+'; '+$p.measured+'/'+$p.accounts+' measured; '+$p.availability+'; '+$p.automation
+        $display=Get-Hotpl8CapacityDisplay $p
+        $provider.ToUpper()+': '+$display.state+'; '+$p.availability+'; '+$p.automation
         if($p.capacity){
             $c=$p.capacity
             $display=Get-Hotpl8CapacityDisplay $p

@@ -78,10 +78,11 @@ Check 'held unavailable current account does not claim usable automatic selectio
     $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
     Assert ($o.availability -like '*manual selection needed' -and $o.automation -eq 'rotation held')
 }
-Check 'meters never combine and unknown configured scope stays unknown' {
+Check 'main graph ignores Spark even when the launch policy selects Spark' {
     $policy=Copy-Value $p;$policy.codex.defaultMeter='codex_bengalfox'
     $o=(Get-Hotpl8ProviderOverview $s $policy $now).codex
-    Assert ($o.measured -eq 0 -and $o.availability -like 'Unavailable*')
+    $main=(Get-Hotpl8ProviderOverview $s $p $now).codex
+    Assert ($o.scope -eq 'codex' -and $o.measured -eq $main.measured -and $o.remainingPercent -eq $main.remainingPercent)
 }
 Check 'collector and sign-in failures remain visible in the overview' {
     $c=Copy-Value $s;$c|Add-Member NoteProperty collector @{startedAt=$now.AddMinutes(-8).ToString('o')}
@@ -99,7 +100,7 @@ Check 'summary and view are pure, shared with tray, and pinned when scrolling' {
     $last=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 999)
     Assert (($first[4..11].text -join '') -eq ($last[4..11].text -join ''))
     Assert (($s|ConvertTo-Json -Depth 24 -Compress) -eq $before)
-    Assert (($first.text -join '') -match 'CLAUDE / Weekly remaining' -and ($first.text -join '') -match 'CODEX / Available')
+    Assert (($first.text -join '') -match 'CLAUDE / Available now' -and ($first.text -join '') -match 'CODEX / Available now')
 }
 Check 'CLI status and explain re-evaluate policy and clock without collecting' {
     $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-overview-'+[guid]::NewGuid().ToString('N'))
