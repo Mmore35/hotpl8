@@ -143,12 +143,13 @@ function Get-Hotpl8NyanData {
 }
 function Get-Hotpl8NyanScene([int]$Index,[int]$Width) {
     # Runs of identical cells for one sprite frame at one width. The bundled
-    # sprite is 24 columns: a 12-column rainbow with an 8-column wave period,
-    # then the cat. The rainbow tiles leftward so it streams across the frame.
+    # sprite is the rainbow's first wave period followed by the cat; the wave
+    # tiles leftward so the rainbow streams across the whole frame.
     if(-not $script:Hotpl8NyanScenes){$script:Hotpl8NyanScenes=@{}}
     $key=[string]$Index+'|'+$Width
     if($script:Hotpl8NyanScenes.ContainsKey($key)){return $script:Hotpl8NyanScenes[$key]}
     $data=Get-Hotpl8NyanData;$frame=$data.frames[$Index];$sprite=$frame[0].Length
+    $period=if($data.period){[int]$data.period}else{8}
     $catX=[math]::Max(0,$Width-$sprite-[math]::Max(3,[int][math]::Floor($Width*0.2)))
     $rows=@()
     for($row=0;$row -lt $frame.Count;$row+=2){
@@ -157,7 +158,7 @@ function Get-Hotpl8NyanScene([int]$Index,[int]$Width) {
             $col=$x-$catX
             if($col -ge $sprite){$top=',';$bottom=','}
             elseif($col -ge 0){$top=[string]$frame[$row][$col];$bottom=[string]$frame[$row+1][$col]}
-            else{$i=(($col%8)+8)%8;$top=[string]$frame[$row][$i];$bottom=[string]$frame[$row+1][$i]}
+            else{$i=(($col%$period)+$period)%$period;$top=[string]$frame[$row][$i];$bottom=[string]$frame[$row+1][$i]}
             if($top -eq ',' -and $bottom -eq ','){$glyph=' ';$fg='';$bg=''}
             else{$glyph='▀';$fg=[string]$data.palette.$top;$bg=[string]$data.palette.$bottom}
             if($last -and $last.glyph -eq $glyph -and $last.tone -eq $fg -and $last.background -eq $bg){$last.length++}
@@ -170,11 +171,14 @@ function Get-Hotpl8NyanScene([int]$Index,[int]$Width) {
     return $rows
 }
 function Get-Hotpl8NyanStars([double]$Seconds,[int]$Inner) {
-    # Stars drift left over empty sky: row, seed column, cells per second, twinkle phase.
-    $seeds=@(@(0,7,9.0,0),@(0,29,6.5,1),@(0,53,11.0,2),@(1,41,7.5,3),@(1,17,5.5,1),@(2,63,8.5,0),@(3,3,6.0,2),@(4,35,10.0,3),@(5,11,7.0,1),@(5,47,9.5,0),@(2,23,12.0,2),@(4,58,5.0,1))
+    # Pixel stars drifting left through open sky: row, seed column, cells per
+    # second, twinkle phase. Each one is a half block so it matches the sprite.
+    $seeds=@(@(0,7,4.0,0),@(0,53,3.0,2),@(1,29,3.5,1),@(2,71,4.5,3),@(3,17,3.0,2),@(4,47,4.0,0),@(5,3,3.5,1),@(6,61,3.0,3),@(7,35,4.5,2),@(8,23,3.5,0),@(8,79,4.0,1))
+    $i=0
     foreach($seed in $seeds){
-        $twinkle=[int][math]::Floor($Seconds*2.5+$seed[3])%4
-        [pscustomobject]@{row=$seed[0];x=[int](((([math]::Floor($seed[1]-$Seconds*$seed[2]))%$Inner)+$Inner)%$Inner);glyph=@('.','+','*','+')[$twinkle];tone=@('border','muted','text','muted')[$twinkle]}
+        $twinkle=[int][math]::Floor($Seconds*1.25+$seed[3])%4
+        [pscustomobject]@{row=$seed[0];x=[int](((([math]::Floor($seed[1]-$Seconds*$seed[2]))%$Inner)+$Inner)%$Inner);glyph=$(if($i%2){'▄'}else{'▀'});tone=@('muted','text','muted','border')[$twinkle]}
+        $i++
     }
 }
 function Get-Hotpl8NyanAnsiScene([int]$Index,[int]$Width,$Palette) {
@@ -201,7 +205,7 @@ function Get-Hotpl8NyanAnsiRows([double]$AnimationSeconds,[int]$Width,$Palette) 
     # with stars spliced in as string edits. Uses the same frame, scene and star
     # math as Get-Hotpl8NyanRows so layout passes and live ticks agree.
     $data=Get-Hotpl8NyanData
-    $index=[int][math]::Floor($AnimationSeconds*5)%$data.frames.Count
+    $index=[int][math]::Floor($AnimationSeconds*8)%$data.frames.Count
     $inner=[math]::Max(26,$Width-2)
     $scene=Get-Hotpl8NyanAnsiScene $index $inner $Palette
     $stars=@(Get-Hotpl8NyanStars $AnimationSeconds $inner)
@@ -232,7 +236,7 @@ function Get-Hotpl8NyanRows([double]$AnimationSeconds,[switch]$ReducedMotion,[sw
         return
     }
     $data=Get-Hotpl8NyanData;$t=if($ReducedMotion){0}else{$AnimationSeconds}
-    $index=[int][math]::Floor($t*5)%$data.frames.Count
+    $index=[int][math]::Floor($t*8)%$data.frames.Count
     $inner=if($Width -gt 0){[math]::Max(26,$Width-2)}else{$data.frames[0][0].Length+2}
     $scene=Get-Hotpl8NyanScene $index $inner
     $stars=@(Get-Hotpl8NyanStars $t $inner)

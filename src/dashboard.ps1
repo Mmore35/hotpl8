@@ -148,8 +148,8 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
             $forecast=if(-not $isStale){Format-DashboardForecast $slot.forecast}else{$null}
             if($forecast){New-DashboardRow ('    '+$forecast) muted}
             $notes=@();$attention=$false
-            if($slot.warmOutcome){$ok=$slot.warmOutcome.outcome -eq 'observed-active';$notes+='warm '+$(if($ok){'ok'}else{$slot.warmOutcome.outcome});if(-not $ok){$attention=$true}}
-            if($slot.actionBlock){$notes+='warming off · '+([string]$slot.actionBlock).Replace('_',' ')}
+            if($slot.warmOutcome){$outcome=[string]$slot.warmOutcome.outcome;$notes+=Format-DashboardWarmOutcome $outcome;if($outcome -in @('unconfirmed','failed','account_changed')){$attention=$true}}
+            if($slot.actionBlock){$block=[string]$slot.actionBlock;$notes+=$(if($block -eq 'automation_paused'){'warming paused'}else{'warming off · '+$block.Replace('_',' ')})}
             if($slot.modelBlock){$notes+=([string]$slot.modelBlock).Replace('_',' ');$attention=$true}
             if($slot.plan -and -not (Test-Hotpl8DetectedPlan $slot.plan $Now)){$notes+='plan unverified'}
             foreach($scope in @($slot.scoped)){if($scope){$notes+=$scope.name+' '+$scope.pct+'% used'}}
@@ -195,7 +195,10 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
     }
     if(-not $Compact -and $Status.recentActions){
         New-DashboardRow '  RECENT' muted
-        foreach($event in @($Status.recentActions|Select-Object -Last 3)){New-DashboardRow ('    '+$event.provider+' '+$event.slot+'  ·  '+([string]$event.kind).Replace('_',' ')+'  ·  '+([string]$event.reason).Replace('_',' ')) muted}
+        foreach($event in @($Status.recentActions|Select-Object -Last 3)){
+            $note=Get-DashboardActivityNote $event $Policy $Now
+            New-DashboardRow ('    '+$note.text+$(if($note.age){'  ·  '+$note.age+' ago'})) $(if($note.tone -eq 'amber'){'amber'}else{'muted'})
+        }
     }
 }
 function Get-DashboardChips($Status,$Provider,[string]$Name,[datetimeoffset]$Now) {
@@ -283,6 +286,33 @@ function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width
         New-DashboardOverviewBarRow $p $Now $Width -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
     }
 }
+function Format-DashboardWarmOutcome([string]$Outcome) {
+    switch($Outcome){
+        'observed-active'{'warm ok'};'requested'{'warm sent'};'sent'{'warm sent'};'expired'{'warm done'}
+        'unconfirmed'{'warm unconfirmed'};'failed'{'warm failed'};'account_changed'{'warm lost'}
+        default{'warm '+$Outcome.Replace('_',' ')}
+    }
+}
+function Get-DashboardActivityNote($Event,$Policy,[datetimeoffset]$Now) {
+    # A few words per automation event, using the account labels people know.
+    $slot=[string]$Event.slot;$label=$slot
+    if($Event.provider -eq 'codex'){$match=@($Policy.codex.slots|Where-Object {$_.id -eq $slot}|Select-Object -First 1);if($match.Count -and $match[0].label){$label=[string]$match[0].label}}
+    elseif($Policy.labels -and $Policy.labels.PSObject.Properties[$slot]){$label=[string]$Policy.labels.$slot}
+    $reason=[string]$Event.reason;$tone='muted'
+    $text=switch([string]$Event.kind){
+        'switch'{if($reason -eq 'native_switch_succeeded'){'switched → '+$label}else{$tone='amber';'switch failed → '+$label}}
+        'active_changed'{'active → '+$label}
+        'warm_attempt'{if($reason -eq 'sent'){'warm sent · '+$label}else{$tone='amber';'warm failed · '+$label}}
+        'warm_outcome'{if($reason -in @('unconfirmed','failed','account_changed')){$tone='amber'};(Format-DashboardWarmOutcome $reason)+' · '+$label}
+        'recovery_probe'{if($reason -eq 'sent'){'probe sent · '+$label}else{$tone='amber';'probe failed · '+$label}}
+        'recommendation'{'codex next → '+$label}
+        default{([string]$Event.kind).Replace('_',' ')+' · '+$label}
+    }
+    $seconds=Get-DashboardAge $Event.at $Now
+    $age=if($null -ne $seconds){Format-DashboardAge $seconds}else{''}
+    if($tone -ne 'amber' -and $null -ne $seconds -and $seconds -lt 300){$tone='mint'}
+    return @{text=$text;age=$age;tone=$tone;seconds=$seconds}
+}
 function New-DashboardTitleRow($Status,[datetimeoffset]$Now,[int]$Width,[switch]$Paused,[switch]$Nyan,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
     $left=if($Nyan){'  hotpl8  ·  nyan'}else{'  '+(Get-Hotpl8Cat $AnimationSeconds -ReducedMotion:$ReducedMotion)+'  hotpl8'}
     $meta=@()
@@ -357,7 +387,18 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     # Narrow frames drop key hints before they can crowd the page indicator.
     $keys='  q  ·  ↑↓'
     foreach($candidate in @('  q quit  ·  space freeze  ·  ↑↓ scroll','  q quit  ·  ↑↓ scroll')){if($candidate.Length+$page.Length+4 -le $inside){$keys=$candidate;break}}
-    Add-Hotpl8FrameBorder (New-Hotpl8StyledRow @(New-Hotpl8Span $keys 'muted';New-Hotpl8Span (' '*[math]::Max(2,$inside-2-$keys.Length-$page.Length));New-Hotpl8Span $page 'muted')) $inside
+    # The latest automation event sits beside the page indicator when it fits.
+    $footer=@(New-Hotpl8Span $keys 'muted')
+    $recent=@($Status.recentActions|Where-Object {$_}|Select-Object -Last 1)
+    $gap=[math]::Max(2,$inside-2-$keys.Length-$page.Length)
+    if($recent.Count){
+        $note=Get-DashboardActivityNote $recent[0] $Policy $Now
+        $activity=$note.text+$(if($note.age){'  ·  '+$note.age+' ago'})
+        if($activity.Length+4 -le $gap){$footer+=New-Hotpl8Span (' '*($gap-$activity.Length-$(if($page){2}else{0})));$footer+=New-Hotpl8Span $activity $note.tone;$gap=$(if($page){2}else{0})}
+    }
+    if($gap){$footer+=New-Hotpl8Span (' '*$gap)}
+    if($page){$footer+=New-Hotpl8Span $page 'muted'}
+    Add-Hotpl8FrameBorder (New-Hotpl8StyledRow $footer) $inside
     New-DashboardRow ('╰'+('─'*$inside)+'╯') border
 }
 function Enable-Hotpl8Terminal {
