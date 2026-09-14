@@ -194,5 +194,28 @@ Check 'display policy override changes estimate without changing cached data or 
         if($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-capacity-[a-f0-9]{32}$'){Remove-Item -LiteralPath $full -Recurse -Force}
     }
 }
+Check 'new Codex account remains visible beside confirmed exhausted subscription' {
+    $p=Clone $fixture.policy;$s=Snapshot
+    foreach($id in @('work','personal')){$p.codex.capacity.$id.weekly=1}
+    foreach($slot in $s.providers.codex.slots){$slot.buckets.codex.windows.PSObject.Properties.Remove('300')}
+    $empty=$s.providers.codex.slots[1];$empty.buckets.codex.status='blocked'
+    $empty.buckets.codex.windows.'10080'.usedPercent=100;$empty.buckets.codex.windows.'10080'.remainingPercent=0
+    $c=Get-Hotpl8ProviderCapacity $s $p.codex codex $now
+    Assert $c.complete;Near $c.totalUnits 2;Near $c.usableNowPercent 29.5;Near $c.unknownPercent 0
+    Assert (-not $c.projectionComplete -and $null -eq $c.projectedGainPercent)
+    $overview=Get-Hotpl8ProviderOverview $s $p $now
+    Assert ($overview.codex.measured -eq 2 -and $overview.codex.selected -eq 'work')
+    $empty.observedAt=$now.AddHours(-1).ToString('o')
+    Assert (-not (Get-Hotpl8ProviderCapacity $s $p.codex codex $now).complete)
+    $empty.observedAt=$now.ToString('o');$empty.buckets.codex.status='constraint_unknown'
+    Assert (-not (Get-Hotpl8ProviderCapacity $s $p.codex codex $now).complete)
+}
+Check 'tray capacity and projection lines appear once per provider' {
+    . (Join-Path $root 'src/tray.ps1')
+    $p=Policy;$s=Snapshot;$s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $p $now) -Force
+    $details=(Get-Hotpl8TrayModel $s $p $now).details
+    Assert ([regex]::Matches($details,'(?m)^  Capacity:').Count -eq 2)
+    Assert ([regex]::Matches($details,'(?m)^  Next reset:').Count -eq 2)
+}
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

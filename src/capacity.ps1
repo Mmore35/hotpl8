@@ -65,7 +65,8 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
         $gross=$null;$percent=$null
         if($known){$percent=($windows|Measure-Object remaining -Minimum).Minimum}
         if($scaled){$gross=($windows|ForEach-Object {$_.full*$_.remaining/100}|Measure-Object -Minimum).Minimum}
-        [pscustomobject]@{slot=[string]$id;fresh=[bool]$known;scaled=[bool]$scaled;weekly=$c.weekly;windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
+        $knownZero=$known -and $blocked -and $reason -eq 'blocked' -and $percent -eq 0
+        [pscustomobject]@{slot=[string]$id;fresh=[bool]$known;scaled=[bool]$scaled;knownZero=[bool]$knownZero;weekly=$c.weekly;windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
     }
 }
 function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Project,[bool]$Emergency=$false) {
@@ -85,7 +86,9 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     $accounts=@(Get-Hotpl8CapacityAccounts $Snapshot $Part $Provider $Now $Meter)
     $denominatorKnown=$accounts.Count -gt 0 -and @($accounts|Where-Object {$null -eq $_.weekly}).Count -eq 0
     $total=if($denominatorKnown){($accounts|Measure-Object weekly -Sum).Sum}else{$null}
-    $complete=$denominatorKnown -and @($accounts|Where-Object {-not $_.scaled -or $_.blocked}).Count -eq 0
+    $complete=$denominatorKnown -and @($accounts|Where-Object {-not $_.scaled -or ($_.blocked -and -not $_.knownZero)}).Count -eq 0
+    # A measured zero is known now, but a generic native block may survive reset.
+    $projectionComplete=$complete -and @($accounts|Where-Object blocked).Count -eq 0
     $hold=if($Provider -eq 'claude'){$Snapshot.hold}else{$Snapshot.providers.codex.hold}
     $selected=if($Provider -eq 'claude'){[string]$Snapshot.active}else{[string]$Snapshot.providers.codex.recommendedSlot}
     if($hold){try{if([datetimeoffset]::Parse($hold.until) -le $Now){$hold=$null}}catch{}}
@@ -93,15 +96,16 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     if($pause){try{if([datetimeoffset]::Parse($pause.until) -le $Now){$pause=$null}}catch{}}
     $restricted=$hold -or $pause -or ($Provider -eq 'claude' -and ($Part.mode -eq 'monitor' -or $Part.switchEnabled -eq $false))
     $critical=Get-Hotpl8CriticalDecision $accounts $Part $selected $(if($Provider -eq 'claude'){$Snapshot.critical}else{$Snapshot.providers.codex.critical.$Meter}) $Now
-    $resets=@($accounts|Where-Object {$_.fresh -and -not $_.blocked}|ForEach-Object {$_.windows}|Where-Object {$_.resetAt -and [datetimeoffset]::Parse($_.resetAt) -gt $Now}|Sort-Object {[datetimeoffset]::Parse($_.resetAt)})
+    $resets=@($accounts|Where-Object {$_.fresh -and (-not $_.blocked -or $_.knownZero)}|ForEach-Object {$_.windows}|Where-Object {$_.resetAt -and [datetimeoffset]::Parse($_.resetAt) -gt $Now}|Sort-Object {[datetimeoffset]::Parse($_.resetAt)})
     $next=if($resets.Count){[datetimeoffset]::Parse($resets[0].resetAt)}else{$null}
     $solid=0.0;$future=0.0;$unknown=0.0
     foreach($a in $accounts){
+        if($a.scaled -and $a.knownZero){continue}
         if(-not $a.scaled -or $a.blocked){if($a.weekly){$unknown+=$a.weekly};continue}
         if($restricted -and $a.slot -ne $selected){continue}
         $solid+=Get-Hotpl8CapacityAmount $a $Part $Now $false $critical.active
         if($next){$future+=Get-Hotpl8CapacityAmount $a $Part $next $true $critical.active}
     }
     $gain=if($next){[math]::Max(0.0,$future-$solid)}else{$null}
-    [pscustomobject]@{metric='weighted-weekly-capacity';unit='relative weekly allowance';totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectedGainPercent=$(if($complete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});projectionAssumption='No further consumption; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
+    [pscustomobject]@{metric='weighted-weekly-capacity';unit='relative weekly allowance';totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectionComplete=[bool]$projectionComplete;projectedGainPercent=$(if($projectionComplete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});projectionAssumption='No further consumption; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
 }

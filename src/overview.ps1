@@ -44,7 +44,7 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
                 if($fresh){$reason=if($modelBlock){$modelBlock}elseif($eligible){'eligible'}elseif(-not $weekly -or -not $short){'window_unmeasured'}else{'below_margin'}}
             }else{
                 $b=$s.buckets.$meter;$w=$b.windows.'10080'
-                if($fresh -and $b.status -eq 'observed' -and (Test-Hotpl8OverviewPercent $w.usedPercent) -and (Test-Hotpl8FutureReset $w.resetsAt $Now -Unix)){$remaining=100-[double]$w.usedPercent}
+                if($fresh -and ($b.status -eq 'observed' -or ($b.status -eq 'blocked' -and $w.usedPercent -eq 100)) -and (Test-Hotpl8OverviewPercent $w.usedPercent) -and (Test-Hotpl8FutureReset $w.resetsAt $Now -Unix)){$remaining=100-[double]$w.usedPercent}
                 if($s){$reason=Get-CodexEligibility $s $part $meter $Now;$eligible=$reason -eq 'eligible';$codexAccounts+=@($s)}
             }
             $members+=@([pscustomobject]@{slot=[string]$id;remainingPercent=$remaining;eligible=[bool]$eligible;reason=$reason;reserve=($id -in @($part.reserve))})

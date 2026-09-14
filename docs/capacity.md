@@ -4,6 +4,8 @@ HotPl8 has one layered bar per provider. The full track is the combined weekly a
 
 Account details retain raw quota percentages. Unknown readings and missing conversion factors remain visible. A paused/held/manual Claude configuration can leave allowance on other accounts outside the solid routed amount. Codex availability applies to a new launch; existing sessions retain their native account.
 
+A fresh, explicitly blocked Codex account with a measured zero contributes zero usable allowance and keeps its weight in the total. It does not turn the other subscriptions' readings into unknown data. The reset countdown can still be shown, but projected gain stays unknown until a later observation clears the block: a quota reset does not necessarily remove a spend or account restriction. Stale readings and unknown provider constraints remain unknown.
+
 ## Set subscription capacity
 
 Prices and percentages are not interchangeable units. The [profile catalogue](../data/capacity-profiles.json) records published tier names and session multipliers with sources. Published session multipliers alone do not establish weekly totals or the conversion between five-hour and weekly windows. Until these are configured, HotPl8 shows quota readings and a capacity-setup message. A single weekly-only Codex account can be normalized without comparing tiers.
