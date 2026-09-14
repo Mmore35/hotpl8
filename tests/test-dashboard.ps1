@@ -102,5 +102,16 @@ Check 'opening through a pipe returns one plain frame without changing cache' {
         if([IO.Path]::GetFullPath($dir).StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()),[StringComparison]::OrdinalIgnoreCase)){[IO.Directory]::Delete($dir,$true)}
     }
 }
+Check 'disabled Codex login never presents cached percentages as its current balance' {
+    $c=Copy-Value $s;$c.providers.codex.slots[0].status='disabled'
+    $text=((Render $c).text)-join "`n"
+    Assert ($text.Contains('Disabled: excluded from totals and selection.'))
+    Assert (-not $text.Contains('65% left') -and -not $text.Contains('NEXT LAUNCH'))
+}
+Check 'Claude detail marks an expired per-account observation stale despite a fresh collector tick' {
+    $c=Copy-Value $s;$c.slots[0]|Add-Member NoteProperty observedAt $now.AddHours(-1).ToString('o') -Force
+    $text=((Render $c).text)-join "`n"
+    Assert ($text.Contains('Claude 1  [1]  ·  STALE'))
+}
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

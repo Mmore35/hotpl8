@@ -221,5 +221,32 @@ Check 'tray capacity and projection lines appear once per provider' {
     Assert ([regex]::Matches($details,'(?m)^  Capacity:').Count -eq 2)
     Assert ([regex]::Matches($details,'(?m)^  Next reset:').Count -eq 2)
 }
+Check 'unconfigured Claude conversions preserve measured weekly inventory without claiming usable compute' {
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    $o=Get-Hotpl8ProviderOverview $s $p $now
+    $d=Get-Hotpl8CapacityDisplay $o.claude
+    Assert ($d.weekly -and $d.title -eq 'Weekly headroom (unweighted)')
+    Near $d.value $o.claude.remainingPercent
+    Assert ($null -eq $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
+    $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
+    Assert ($text.Contains('weekly') -and $text.Contains('ready; capacity setup needed') -and -not $text.Contains('???'))
+    $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Assert ($d.unknown -gt 0 -and $d.state.Contains('weekly readings'))
+}
+Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exclusions' {
+    $p=Clone $fixture.policy;$s=Snapshot
+    foreach($id in @('work','personal')){$p.codex.capacity.$id.weekly=1}
+    foreach($slot in $s.providers.codex.slots){$slot.buckets.codex.windows.PSObject.Properties.Remove('300')}
+    $s.providers.codex.slots[0].buckets.codex.windows.'10080'.remainingPercent=95
+    $s.providers.codex.slots[0].buckets.codex.windows.'10080'.usedPercent=5
+    $s.providers.codex.slots[1].buckets.codex.status='blocked'
+    $s.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=0
+    $s.providers.codex.slots[1].buckets.codex.windows.'10080'.usedPercent=100
+    Near (Get-Hotpl8ProviderOverview $s $p $now).codex.capacity.usableNowPercent 47.5
+    $p.codex|Add-Member NoteProperty disabled @('personal') -Force
+    $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
+    Assert ($text.Contains('95% now') -and $text.Contains('1 enabled / 1 disabled / next launch: work'))
+}
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

@@ -8,6 +8,8 @@ A fresh, explicitly blocked Codex account with a measured zero contributes zero 
 
 ## Set subscription capacity
 
+Without capacity conversions, the dashboard falls back to **Weekly headroom (unweighted)** when native weekly readings are available. That bar is an equal-account average, accompanied by the number of ready accounts; it does not claim immediately usable compute or forecast a gain. Missing observations remain shaded. Every provider shows enabled membership and any disabled or duplicate exclusions; Codex also shows the next-launch target. An exhausted enabled subscription contributes zero while retaining its weight. A disabled subscription is excluded, so the remaining account's percentage is not the combined budget of both subscriptions.
+
 Prices and percentages are not interchangeable units. The [profile catalogue](../data/capacity-profiles.json) records published tier names and session multipliers with sources. Published session multipliers alone do not establish weekly totals or the conversion between five-hour and weekly windows. Until these are configured, HotPl8 shows quota readings and a capacity-setup message. A single weekly-only Codex account can be normalized without comparing tiers.
 
 Choose a profile and supply calibrated relative capacities through an account operation:

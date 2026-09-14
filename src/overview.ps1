@@ -85,6 +85,24 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
     }
     return [pscustomobject]$result
 }
+function Get-Hotpl8CapacityDisplay($ProviderOverview) {
+    $p=$ProviderOverview;$c=$p.capacity
+    # Missing conversion data must not hide valid native quota readings, or turn
+    # their equal-account average into a claim about immediately usable compute.
+    $weekly=-not $c.complete -and ($null -eq $c.totalUnits -or $c.measured -eq 0) -and $p.measured -gt 0
+    $ready=@($p.members|Where-Object eligible).Count
+    $state=if($weekly){
+        $(if($null -ne $p.remainingPercent){'{0:0.#}% weekly' -f $p.remainingPercent}else{[string]$p.measured+'/'+$p.accounts+' weekly readings'})+' / '+$ready+'/'+$p.accounts+' ready; capacity setup needed'
+    }elseif($c.complete){'{0:0.#}% now' -f $c.usableNowPercent}else{'Usable capacity unmeasured; check setup/readings'}
+    [pscustomobject]@{
+        title=$(if($weekly){'Weekly headroom (unweighted)'}else{'Available capacity (estimate)'})
+        value=$(if($weekly){$p.knownRemainingPercent}else{$c.knownUsablePercent})
+        unknown=$(if($weekly){$p.unknownPercent}else{$c.unknownPercent})
+        gain=$(if(-not $weekly){$c.projectedGainPercent}else{$null})
+        state=$state
+        weekly=[bool]$weekly
+    }
+}
 function Format-Hotpl8Overview($Overview) {
     foreach($provider in @('claude','codex')){
         $p=$Overview.$provider
@@ -92,7 +110,9 @@ function Format-Hotpl8Overview($Overview) {
         $provider.ToUpper()+': weekly headroom '+$amount+'; '+$p.measured+'/'+$p.accounts+' measured; '+$p.availability+'; '+$p.automation
         if($p.capacity){
             $c=$p.capacity
-            '  Capacity: '+$(if($c.complete){'{0:0.#}% usable now' -f $c.usableNowPercent}else{$c.confidence})+'; '+$c.critical.reason
+            $display=Get-Hotpl8CapacityDisplay $p
+            '  Capacity: '+$display.state+'; '+$c.critical.reason
+            '  Membership: '+$p.accounts+' enabled; '+$p.disabled+' disabled; '+$p.duplicates+' duplicate entries excluded.'
             if($null -ne $c.projectedGainPercent){'  Next reset: +{0:0.#}% at {1}; assumes no further consumption.' -f $c.projectedGainPercent,$c.nextResetAt}
         }
         if($p.includesReserve){'  Includes reserve allowance.'}

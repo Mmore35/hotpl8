@@ -97,9 +97,9 @@ Check 'summary and view are pure, shared with tray, and pinned when scrolling' {
     Assert ($tray.providerOverview.claude.remainingPercent -eq $overview.claude.remainingPercent)
     $first=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 0)
     $last=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 999)
-    Assert (($first[4..10].text -join '') -eq ($last[4..10].text -join ''))
+    Assert (($first[4..11].text -join '') -eq ($last[4..11].text -join ''))
     Assert (($s|ConvertTo-Json -Depth 24 -Compress) -eq $before)
-    Assert (($first.text -join '') -match 'CLAUDE / Available' -and ($first.text -join '') -match 'CODEX / Available')
+    Assert (($first.text -join '') -match 'CLAUDE / Weekly headroom' -and ($first.text -join '') -match 'CODEX / Available')
 }
 Check 'CLI status and explain re-evaluate policy and clock without collecting' {
     $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-overview-'+[guid]::NewGuid().ToString('N'))
