@@ -128,26 +128,26 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
     New-DashboardRow ('  CODEX  /  '+$configured.Count+' subscription'+$(if($configured.Count -ne 1){'s'})) cyan
     if(-not $configured.Count){New-DashboardRow '    No Codex accounts enrolled yet.' muted}
     if($codex.failureCode){New-DashboardRow ('    Read failed: '+$codex.failureCode+' / '+$codex.failureStage) amber}
+    $ordinal=0
     foreach($config in $configured){
+        $ordinal++
         $slot=@($codex.slots|Where-Object id -EQ $config.id|Select-Object -First 1)
         $item=if($slot.Count){$slot[0]}else{$null}
         $name=if($config.label){$config.label}else{$config.id}
         $age=Get-DashboardAge $item.observedAt $Now
         $isStale=($null -eq $age -or $age -gt 900 -or $age -lt -5)
-        $badge=if(-not $item){'NO OBSERVATION'}elseif($item.status -ne 'ok'){Format-DashboardState $item.status}elseif($isStale){'STALE'}else{'MONITORED'}
-        if($item -and -not $isStale -and $Policy.codex -and $codex.recommendedSlot -eq $config.id -and (Get-CodexEligibility $item $Policy.codex $codex.defaultMeter $Now ([bool]$codex.critical.($codex.defaultMeter).active)) -eq 'eligible'){$badge='NEXT LAUNCH'}
+        $badge=Get-Hotpl8CodexAccountState $item $Policy.codex $codex $Now
         if($config.id -in @($Policy.codex.disabled)){$badge='DISABLED'}
-        New-DashboardRow ('  ○ '+$name+'  ['+$config.id+']  ·  '+$badge) cyan
+        New-DashboardRow ('  '+$ordinal+'/'+$configured.Count+' '+$name+' ['+$config.id+'] · '+$badge) cyan
         if($config.id -in @($Policy.codex.disabled) -or $item.status -eq 'disabled'){
             New-DashboardRow '    Disabled: excluded from totals and selection.' muted
             continue
         }
-        if($item.planType -and $item.planType -ne 'unknown' -and -not $Compact){New-DashboardRow ('    Native plan: '+$item.planType+' / capacity conversion configured separately') muted}
         if(-not $item -or -not $item.buckets){New-DashboardRow '    Waiting for quota readings.' muted}
         foreach($bucket in @($item.buckets.PSObject.Properties|Where-Object Name -NE 'codex_bengalfox'|Sort-Object @{Expression={if($_.Name -eq 'codex'){0}else{1}}},Name)){
             $label=switch($bucket.Name){'codex'{'Main'};'codex_bengalfox'{'Spark'};default{$bucket.Name}}
             $state=switch($bucket.Value.status){'constraint_unknown'{'limit status unknown'};'blocked'{'blocked'};'unsupported'{'unsupported quota'};default{''}}
-            if(-not $Compact -or $bucket.Name -ne 'codex' -or $state){New-DashboardRow ('    '+$label+$(if($state){'  /  '+$state})) $(if($state){'amber'}else{'muted'})}
+            if($bucket.Name -ne 'codex'){New-DashboardRow ('    '+$label+$(if($state){'  /  '+$state})) $(if($state){'amber'}else{'muted'})}
             $windows=@($bucket.Value.windows.PSObject.Properties|Sort-Object {[int]$_.Name})
             foreach($window in $windows){
                 $label=if($window.Name -eq '300'){'5h'}elseif($window.Name -eq '10080'){'7d'}else{$window.Name+'m'}
@@ -155,6 +155,7 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
             }
             if(-not $Compact -and $bucket.Name -eq 'codex' -and $windows.Count -eq 1 -and $windows[0].Name -eq '10080'){New-DashboardRow '    Weekly allowance · no five-hour window' muted}
             if(-not $windows.Count){New-DashboardRow '    Quota not available yet.' muted}
+            if(-not $Compact -and $item.planType -and $item.planType -ne 'unknown'){New-DashboardRow ('    Plan: '+$item.planType) muted}
             if(-not $Compact -and $bucket.Value.forecast -and -not $isStale){New-DashboardRow ('    '+(Format-Hotpl8Forecast $bucket.Value.forecast)) muted}
         }
         if(-not $Compact){New-DashboardRow ''}
@@ -175,7 +176,7 @@ function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width
         New-DashboardRow ('  '+$provider.ToUpper()+' / '+$display.title) $tone
         $suffix=if($display.nextResetAt){
             $(if($null -ne $display.gain){'+{0:0.#}% in ' -f $display.gain}else{'reset in '})+(Format-DashboardDuration ([datetimeoffset]::Parse($display.nextResetAt)-$Now).TotalSeconds)
-        }elseif($c.projectionComplete){'no refill in 24h'}else{'refill unconfirmed'}
+        }elseif(-not $c.complete){'awaiting readings'}elseif($c.projectionComplete){'no refill in 24h'}else{'refill not confirmed'}
         $size=[math]::Max(10,[math]::Min(45,$Width-6-$suffix.Length))
         $value=$display.value
         $fill=[int][math]::Floor($value*$size/100)

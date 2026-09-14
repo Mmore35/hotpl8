@@ -63,23 +63,35 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
                 $windows+=New-Hotpl8CapacityWindow $entry.Name $w.remainingPercent $full $reset $Now ($w.anchorState -eq 'observed-active')
             }
         }
+        $basis='calibrated'
         if($QuotaHeadroom){
-            # Dimensionless quota estimate, NOT an inferred weekly/session
-            # conversion. Every constraint caps the account's headroom; plan
-            # session multipliers weight accounts, never different providers.
+            # Normalize against a FULL currently usable window, not a full week.
+            # Weekly/session percentages have different denominators. Weekly
+            # limits cap units only when calibrated; otherwise they remain hard
+            # eligibility gates and are explicitly reported as unconverted.
             $profile=if($c.profile){(Get-Hotpl8CapacityCatalog).profiles.([string]$c.profile)}else{$null}
-            $weight=if($profile -and $profile.provider -eq $Provider -and ($Provider -ne 'codex' -or $profile.meter -eq $Meter)){$profile.sessionMultiplier}elseif($ids.Count -eq 1){1}else{$null}
+            $primary=@($windows|Where-Object name -EQ '300'|Select-Object -First 1)
+            if(-not $primary.Count){$primary=@($windows|Where-Object name -EQ '10080'|Select-Object -First 1)}
+            $calibrated=$primary.Count -eq 1 -and $null -ne $primary[0].full
+            $primaryFull=if($calibrated){$primary[0].full}else{$null}
+            $hasProfile=$profile -and $profile.provider -eq $Provider -and ($Provider -ne 'codex' -or $profile.meter -eq $Meter)
+            $weight=if($hasProfile){$profile.sessionMultiplier}elseif($calibrated){$primaryFull}elseif($ids.Count -eq 1){1}else{$null}
+            $basis=if($hasProfile -or -not $calibrated){'plan'}else{'calibrated'}
+            foreach($window in $windows){
+                if($window -eq $primary[0]){$window.full=$weight}
+                elseif(-not $calibrated){$window.full=$null}
+                elseif($null -ne $window.full){$window.full=$window.full/$primaryFull*$weight}
+            }
             $c.weekly=$weight
-            foreach($window in $windows){$window.full=$weight}
-            $c.confidence='plan-weighted quota headroom estimate'
+            $c.confidence=if(@($windows|Where-Object {$null -eq $_.full}).Count){'weekly/model conversion unavailable'}else{'calibrated current-window estimate'}
         }
         $known=$fresh -and $windows.Count -gt 0 -and @($windows|Where-Object {-not $_.valid}).Count -eq 0
-        $scaled=$known -and $null -ne $c.weekly -and @($windows|Where-Object {$null -eq $_.full}).Count -eq 0
+        $scaled=$known -and $null -ne $c.weekly -and ($QuotaHeadroom -or @($windows|Where-Object {$null -eq $_.full}).Count -eq 0)
         $gross=$null;$percent=$null
         if($known){$percent=($windows|Measure-Object remaining -Minimum).Minimum}
-        if($scaled){$gross=($windows|ForEach-Object {$_.full*$_.remaining/100}|Measure-Object -Minimum).Minimum}
+        if($scaled){$gross=($windows|Where-Object {$null -ne $_.full}|ForEach-Object {$_.full*$_.remaining/100}|Measure-Object -Minimum).Minimum}
         $knownZero=$known -and $blocked -and $reason -eq 'blocked' -and $percent -eq 0
-        [pscustomobject]@{slot=[string]$id;profile=$c.profile;fresh=[bool]$known;scaled=[bool]$scaled;knownZero=[bool]$knownZero;weekly=$c.weekly;windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
+        [pscustomobject]@{slot=[string]$id;profile=$c.profile;fresh=[bool]$known;scaled=[bool]$scaled;knownZero=[bool]$knownZero;weekly=$c.weekly;weightBasis=$basis;unconvertedConstraints=@($windows|Where-Object {$null -eq $_.full}|ForEach-Object name);windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
     }
 }
 function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Project,[bool]$Emergency=$false) {
@@ -91,13 +103,13 @@ function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Proj
         $margin=if($w.name -eq '300'){[double]$Part.margin5h}elseif($Account.reserve){[double]$Part.margin7d}elseif($null -ne $Part.margin7dWork){[double]$Part.margin7dWork}else{[double]$Part.margin7d}
         if($Emergency -and -not $Account.reserve){$margin=if($Part.critical.drainToZero){0}else{Get-Hotpl8CriticalSetting $Part 'floorPercent' 1}}
         if($left -le 0 -or $left -lt $margin){return 0.0}
-        $units=[math]::Min($units,$w.full*$left/100)
+        if($null -ne $w.full){$units=[math]::Min($units,$w.full*$left/100)}
     }
-    return $units
+    return [math]::Min([double]$Account.weekly,[double]$units)
 }
 function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeoffset]$Now,[string]$Meter='codex',[switch]$QuotaHeadroom) {
     $accounts=@(Get-Hotpl8CapacityAccounts $Snapshot $Part $Provider $Now $Meter -QuotaHeadroom:$QuotaHeadroom)
-    $denominatorKnown=$accounts.Count -gt 0 -and @($accounts|Where-Object {$null -eq $_.weekly}).Count -eq 0
+    $denominatorKnown=$accounts.Count -gt 0 -and @($accounts|Where-Object {$null -eq $_.weekly}).Count -eq 0 -and @($accounts|ForEach-Object weightBasis|Select-Object -Unique).Count -le 1
     $total=if($denominatorKnown){($accounts|Measure-Object weekly -Sum).Sum}else{$null}
     $complete=$denominatorKnown -and @($accounts|Where-Object {-not $_.scaled -or ($_.blocked -and -not $_.knownZero)}).Count -eq 0
     # A measured zero is known now, but a generic native block may survive reset.

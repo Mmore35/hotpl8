@@ -83,18 +83,38 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
         if($signIn){$availability+='; sign-in needed'}
         if($health -notin @('manual / no collector evidence','recent collection completed','collecting')){$availability+='; '+$health}
         $capacity=Get-Hotpl8ProviderCapacity $Snapshot $part $provider $Now $meter
-        $missingConversion=@($capacity.accounts|Where-Object {$null -eq $_.weekly -or @($_.windows|Where-Object {$null -eq $_.full}).Count -gt 0}).Count -gt 0
-        $immediate=if($missingConversion){Get-Hotpl8ProviderCapacity $Snapshot $part $provider $Now $meter -QuotaHeadroom}else{$capacity}
+        $immediate=Get-Hotpl8ProviderCapacity $Snapshot $part $provider $Now $meter -QuotaHeadroom
         if($capacity.critical.active){foreach($member in $members){if($member.slot -in $capacity.critical.ranked){$member.eligible=$true;$member.reason='critical_allowance'}}}
         if($capacity.critical.active -and $selected){$availability=if($provider -eq 'codex'){'Ready for next launch / critical'}else{'Ready / critical'}}
         $result[$provider]=[pscustomobject]@{schemaVersion=2;capacity=$capacity;immediate=$immediate;computedAt=$Now.ToString('o');metric='normalized-weekly-headroom';scope=$meter;accounts=$total;measured=$measured;disabled=($configured.Count-$ids.Count);duplicates=$duplicates;knownRemainingPercent=$known;unknownPercent=$unknown;remainingPercent=$(if($total -and $measured -eq $total){$known}else{$null});includesReserve=(@($members|Where-Object reserve).Count -gt 0);availability=$availability;automation=$automation;collectionHealth=$health;selected=$selected;members=$members}
     }
     return [pscustomobject]$result
 }
+function Get-Hotpl8CodexAccountState($Slot,$Part,$Provider,[datetimeoffset]$Now) {
+    if(-not $Slot){return 'NO OBSERVATION'}
+    if($Slot.id -in @($Part.disabled) -or $Slot.status -eq 'disabled'){return 'DISABLED'}
+    if($Slot.status -ne 'ok'){return ([string]$Slot.status).Replace('_',' ').ToUpperInvariant()}
+    if(-not (Test-Hotpl8FreshTimestamp $Slot.observedAt $Now)){return 'STALE'}
+    $bucket=$Slot.buckets.codex
+    if(@($bucket.windows.PSObject.Properties|Where-Object {(Test-Hotpl8Number $_.Value.remainingPercent) -and $_.Value.remainingPercent -eq 0}).Count){return 'EXHAUSTED'}
+    $eligibility=Get-CodexEligibility $Slot $Part 'codex' $Now ([bool]$Provider.critical.codex.active)
+    if($eligibility -eq 'eligible'){
+        $next=if($Provider.recommendations.codex){$Provider.recommendations.codex}elseif($Provider.defaultMeter -eq 'codex'){$Provider.recommendedSlot}else{$null}
+        if($Slot.id -eq $next){return 'NEXT LAUNCH'}
+        return 'AVAILABLE'
+    }
+    switch($eligibility){
+        'below_margin'{return 'LOW BALANCE'}
+        'blocked'{return 'BLOCKED'}
+        default{return 'LIMIT UNCONFIRMED'}
+    }
+}
 function Get-Hotpl8CapacityDisplay($ProviderOverview) {
     $p=$ProviderOverview;$c=if($p.immediate){$p.immediate}else{$p.capacity}
     $state=if($c.complete){'{0:0.#}% available now' -f $c.usableNowPercent}elseif($null -eq $c.totalUnits){'Plan allowance unknown; total unavailable'}else{'Partial: '+$c.measured+'/'+$p.accounts+' measured; total unavailable'}
-    if($c.metric -eq 'plan-weighted-quota-headroom' -and $c.complete){$state+=' (quota estimate)'}
+    if($c.metric -eq 'plan-weighted-quota-headroom' -and $c.complete){$state+=' (estimate)'}
+    $weeklyUncertain=@($c.accounts|Where-Object {($_.unconvertedConstraints -contains '10080') -and @($_.windows|Where-Object {$_.name -eq '10080' -and $_.remaining -gt 0 -and $_.remaining -le 20}).Count}).Count
+    if($weeklyUncertain -and $c.complete){$state=$state.Replace('(estimate)','(weekly cap uncertain)')}
     if($null -ne $p.remainingPercent){$state+=' / '+('{0:0.#}% weekly left' -f $p.remainingPercent)}
     if($p.accounts -eq 0){$state='No accounts enabled'}
     $stale=@($p.members|Where-Object reason -EQ 'stale').Count

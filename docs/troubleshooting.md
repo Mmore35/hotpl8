@@ -24,6 +24,8 @@ Claude's adapter schedules idle usage reads about ten minutes apart, with jitter
 
 If a reading still expires, account details show its age and the overview identifies incomplete coverage. Enrollment is retained. Check `hotpl8 explain` for provider failures and `hotpl8 doctor` for a missing or stalled scheduler. Provider throttling, offline machines and expired authorization can still prevent fresh readings; HotPl8 must not turn those into a full balance or select stale accounts. Re-login is needed only when native account status indicates an authentication problem.
 
+On Windows, older dashboard readers can temporarily prevent the collector from replacing its state files. Update the collector **and restart open dashboards** to load the reader fix. Readers now allow atomic replacement; the writer briefly retries sharing violations while preserving the previous complete file. Persistent locks still fail visibly. Collector failure events include a safe category, source filename/line and, for recognized state files, `stateFile` and numeric `ioCode`; they never include native error messages or account paths. A state-file lock is not an authentication failure.
+
 ## Codex quota disappeared after a collection error
 
 Update to a build containing the sparse-cache recovery fix. Failed collection retains old account evidence as unavailable and clears recommendations. During backoff, skipped wakes do not extend the deadline. `failureStage` and `failureCode` in provider status distinguish safe error categories; native error messages are not exported. A successful quota read and unsupported warming are separate conditions. A secondary unknown meter does not invalidate the selected meter.

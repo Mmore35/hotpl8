@@ -3,6 +3,7 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
 . (Join-Path $root 'src/diagnostics.ps1')
+. (Join-Path $root 'src/collection.ps1')
 . (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 $script:passed=0;$script:failed=0
@@ -159,6 +160,47 @@ try{
         $text=Get-Hotpl8Doctor $dir|ConvertTo-Json -Depth 10
         Assert (-not $text.Contains('PRIVATE_CANARY') -and -not $text.Contains($dir))
         Assert (@(Get-ChildItem -LiteralPath $dir -File).Count -eq $before)
+    }
+    Check 'state replacement survives a concurrent legacy reader and preserves valid JSON' {
+        Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Threading;
+public static class Hotpl8ReaderFixture {
+    public static Thread Hold(string path, int ms) {
+        var ready = new ManualResetEvent(false);
+        var thread = new Thread(() => {
+            using(var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) {
+                ready.Set(); Thread.Sleep(ms);
+            }
+        });
+        thread.Start(); ready.WaitOne(); ready.Dispose(); return thread;
+    }
+}
+'@
+        $path=Join-Path $dir 'concurrent.json'
+        Write-Hotpl8Text $path '{"generation":1}'
+        $thread=[Hotpl8ReaderFixture]::Hold($path,125)
+        try{Write-Hotpl8Text $path '{"generation":2}'}finally{$thread.Join()}
+        Assert ((Read-Hotpl8Json $path).generation -eq 2)
+        Assert (@(Get-ChildItem -LiteralPath $dir -Filter 'concurrent.json.*.tmp').Count -eq 0)
+    }
+    Check 'persistent file lock fails visibly without destroying the last complete snapshot' {
+        $path=Join-Path $dir 'status.json';Write-Hotpl8Text $path '{"generation":1}'
+        $handle=[IO.File]::Open($path,'Open','Read','ReadWrite');$caught=$null
+        try{Write-Hotpl8Text $path '{"generation":2}'}catch{$caught=$_}finally{$handle.Dispose()}
+        Assert ($null -ne $caught -and (Get-Hotpl8FailureCode $caught) -eq 'state_io_failed')
+        Assert ((Read-Hotpl8Json $path).generation -eq 1)
+        Write-Hotpl8Event $dir 'collector_failed' $caught
+        $event=Get-Content (Join-Path $dir 'events.jsonl') -Tail 1|ConvertFrom-Json
+        Assert ($event.source -eq 'common.ps1' -and $event.line -gt 0 -and $event.failureCode -eq 'state_io_failed')
+        Assert ($event.stateFile -eq 'status.json' -and $event.ioCode -eq 32)
+        Assert (($event|ConvertTo-Json) -notmatch [regex]::Escape($dir))
+    }
+    Check 'unexpected diagnostic errors never export their message or invocation' {
+        try{throw 'PRIVATE_CANARY native credential data'}catch{$_.Exception.Data['Hotpl8StateFile']='PRIVATE_CANARY';Write-Hotpl8Event $dir 'collector_failed' $_}
+        $line=Get-Content (Join-Path $dir 'events.jsonl') -Tail 1
+        Assert ($line -notmatch 'PRIVATE_CANARY|credential|Invocation|test-safety')
     }
     Check 'fixed-code event log rotates to a bounded backup' {
         [IO.File]::WriteAllText((Join-Path $dir 'events.jsonl'),('x'*262145))

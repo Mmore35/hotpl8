@@ -21,3 +21,5 @@ Change the renderer for a UI change, or the fixture for a different documentatio
 Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bundled attributed animation with a frozen frame; critical/unknown frames should be added or regenerated alongside main/detail screenshots. Both screenshot and terminal paths consume the same sanitized styled spans and palette.
 
 `available-now.png` shows the important counterexample: 90% weekly remaining, zero usable now, and a projected refill in five hours. It uses fictional detected Pro plans without window conversions, exercising the plan-weighted quota estimate.
+
+`session-capacity.png` shows three equal plans at 100%, 100% and 75% session allowance: 91.7% now, gaining 8.3 points at the next useful reset. Its two Codex accounts have distinct numbered headers, with one exhausted and the other ready for the next launch.

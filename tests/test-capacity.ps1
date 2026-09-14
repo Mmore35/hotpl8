@@ -222,7 +222,7 @@ Check 'tray capacity and projection lines appear once per provider' {
     Assert ([regex]::Matches($details,'(?m)^  Capacity:').Count -eq 2)
     Assert ([regex]::Matches($details,'(?m)^  Next reset:').Count -eq 2)
 }
-Check 'detected plan weights estimate tightest current limit without inventing conversions' {
+Check 'detected plan weights estimate current session allowance without inventing conversions' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
     foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force}
     $s.slots[1].plan.profile='claude-max-5x'
@@ -235,7 +235,7 @@ Check 'detected plan weights estimate tightest current limit without inventing c
     Assert ($o.claude.immediate.metric -eq 'plan-weighted-quota-headroom')
     Assert ($null -ne $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('quota estimate') -and $text.Contains('90% weekly left') -and -not $text.Contains('Weekly remaining'))
+    Assert ($text.Contains('(estimate)') -and $text.Contains('90% weekly left') -and -not $text.Contains('Weekly remaining'))
     $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
     Assert ($d.unknown -gt 0 -and $d.state.Contains('total unavailable') -and $null -eq $d.gain)
@@ -262,7 +262,7 @@ Check 'weekly allowance cannot fill the main bar while short windows are exhaust
         $slot.used5h=100;$slot.used7d=10;$slot.reset5h=$now.AddHours(5).ToString('o')
     }
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Near $d.value 0;Near $d.gain 90
+    Near $d.value 0;Near $d.gain 100
     Assert ([datetimeoffset]::Parse($d.nextResetAt) -eq $now.AddHours(5))
     foreach($slot in $s.slots){$slot.used7d=100}
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
@@ -312,6 +312,56 @@ Check 'blocked zero account cannot hide a known refill from another Codex subscr
     Assert ([datetimeoffset]::Parse($c.nextResetAt) -eq $now.AddHours(2))
     $blocked.observedAt=$now.AddHours(-1).ToString('o')
     Assert ($null -eq (Get-Hotpl8ProviderCapacity $s $p.codex codex $now).projectedGainPercent)
+}
+Check 'three equal plans show 91.7 now and refill to 100 despite unequal weekly percentages' {
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity');$p.prefer=@(1,2,3)
+    $third=Clone $s.slots[0];$third.slot=3;$s.slots+=@($third)
+    foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force;$slot.used5h=0}
+    $s.slots[0].used7d=22;$s.slots[1].used7d=20;$s.slots[2].used7d=29
+    $s.slots[1].used5h=25;$s.slots[1].reset5h=$now.AddMinutes(42).ToString('o')
+    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Get-Hotpl8CapacityDisplay $o.claude
+    Near $d.value (275/3);Near ($d.value+$d.gain) 100
+    Assert ([datetimeoffset]::Parse($d.nextResetAt) -eq $now.AddMinutes(42))
+    Assert ($o.claude.immediate.accounts[0].unconvertedConstraints -contains '10080')
+}
+Check 'known weekly conversion caps a full session in session units and caps its refill' {
+    $p=Policy;$s=Snapshot;$p.prefer=@(1)
+    $s.slots[0].used5h=0;$s.slots[0].used7d=98
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.value (100*0.02/0.3)
+    Assert ($null -eq $d.gain)
+    $s.slots[0].reset7d=$now.AddHours(2).ToString('o')
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near ($d.value+$d.gain) 100
+}
+Check 'unconverted weekly limits gate zero and policy reserve but never cap session percentages directly' {
+    $p=Policy;$s=Snapshot;$p.prefer=@(1);$p.PSObject.Properties.Remove('capacity')
+    $s.slots[0].used5h=0;$s.slots[0].used7d=98
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.value 100;Assert ($d.capacity.accounts[0].unconvertedConstraints -contains '10080' -and $d.state.Contains('weekly cap uncertain'))
+    $s.slots[0].used7d=100
+    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 0
+    $s.slots[0].used7d=98;$p|Add-Member NoteProperty margin7dWork 5;$p.critical.enabled=$false
+    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 0
+}
+Check 'calibrated mixed tiers normalize against session capacity and preserve the same ratio under unit changes' {
+    $p=Policy;$s=Snapshot
+    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
+    foreach($entry in $p.capacity.PSObject.Properties){$entry.Value.weekly*=10;$entry.Value.fiveHour*=10}
+    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
+    $s.slots[0]|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
+    Assert (-not (Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.complete)
+    $s.slots[1]|Add-Member NoteProperty plan @{status='detected';profile='claude-max-5x';observedAt=$now.ToString('o')} -Force
+    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
+}
+Check 'Codex details give two distinct account headers with one availability verdict each' {
+    $p=Policy;$s=Snapshot;$first=$s.providers.codex.slots[0];$first.buckets.codex.status='blocked'
+    $first.buckets.codex.windows.'10080'.remainingPercent=0;$first.buckets.codex.windows.'10080'.usedPercent=100
+    $s.providers.codex.recommendedSlot='personal'
+    $s.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=95
+    $text=((Get-Hotpl8DashboardRows $s $p $now 108).text)-join "`n"
+    Assert ($text.Contains('1/2 Work [work]') -and $text.Contains('EXHAUSTED') -and $text.Contains('2/2 Personal [personal]') -and $text.Contains('NEXT LAUNCH')) $text
+    Assert ($text.Substring($text.IndexOf('CODEX  /')) -notmatch 'MONITORED|Main  /|    Main')
 }
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

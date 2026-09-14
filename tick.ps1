@@ -40,7 +40,7 @@ try {
     } catch {
         $claudeError='collection_failed'; $failed=$true
         if($_.Exception.Message -in @('claude_missing','claude_no_accounts','claude_schema_unsupported','claude_read_failed','claude_switch_failed','process_timeout','process_output_limit')){$claudeError=$_.Exception.Message}
-        Write-Hotpl8Event $StateDirectory ('claude_'+$claudeError)
+        Write-Hotpl8Event $StateDirectory ('claude_'+$claudeError) $_
         Set-Hotpl8CollectionResult $collector 'claude' $false
     }
     if($policy.codex -and $policy.codex.slots){
@@ -57,7 +57,7 @@ try {
         } catch {
             $failed=$true
             $codex=Get-Hotpl8CodexFailure $previous.providers.codex 'collection_failed' (Get-Hotpl8FailureCode $_)
-            Write-Hotpl8Event $StateDirectory 'codex_collection_failed'
+            Write-Hotpl8Event $StateDirectory 'codex_collection_failed' $_
             Set-Hotpl8CollectionResult $collector 'codex' $false
         }
     }
@@ -91,7 +91,7 @@ try {
     if($claude.action){ConvertTo-Hotpl8SafeText $claude.action}
 } catch {
     $failed=$true
-    if($lock){Write-Hotpl8Event $StateDirectory 'collector_failed'}
+    if($lock){Write-Hotpl8Event $StateDirectory 'collector_failed' $_}
 } finally {if($lock){$lock.Dispose()}}
 if($Strict -and $failed){exit 1}
 exit 0

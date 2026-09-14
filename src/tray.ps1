@@ -12,7 +12,7 @@ function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoff
     }}
     foreach($s in @($Snapshot.providers.codex.slots)){
         $fresh=$s.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
-        $details+=('Codex '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))
+        $details+=('Codex '+$s.label+' ['+$s.id+']: '+(Get-Hotpl8CodexAccountState $s $Policy.codex $Snapshot.providers.codex $Now))
         foreach($b in @($s.buckets.PSObject.Properties|Where-Object Name -NE 'codex_bengalfox')){
             foreach($w in $b.Value.windows.PSObject.Properties){$details+=('  '+$b.Name+' '+$w.Name+'m: '+$w.Value.usedPercent+'% used; reset '+$w.Value.anchorState)}
             if($fresh -and $b.Value.forecast){$details+='  '+(Format-Hotpl8Forecast $b.Value.forecast)}

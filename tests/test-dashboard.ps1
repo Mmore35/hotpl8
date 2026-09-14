@@ -27,7 +27,7 @@ Check 'all accounts remain visible while Spark is excluded from the dashboard' {
     Assert ($t.Contains('3 subscriptions') -and $t.Contains('1 subscription'))
     foreach($name in @('Claude 1','Claude 2','Claude 3','NEXT LAUNCH','ACTIVE','no five-hour window')){Assert ($t.Contains($name))}
     Assert ($t.Contains('75% left') -and $t.Contains('65% left'))
-    Assert ($t.Contains('    Main') -and -not $t.Contains('Spark') -and -not $t.Contains('limit status unknown'))
+    Assert ($t.Contains('1/1 Main [main]') -and -not $t.Contains('    Main') -and -not $t.Contains('Spark'))
 }
 Check 'missing readings never become full balances or hide configured accounts' {
     $t=((Render $null).text)-join "`n"

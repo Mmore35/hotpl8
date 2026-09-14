@@ -103,3 +103,24 @@ foreach($slot in $available.status.slots){
     $slot.used5h=100;$slot.used7d=10;$slot.reset5h=$available.now.AddHours(5).ToString('o')
 }
 Write-DashboardImage 'available-now.png' $available.status $available.policy 94 25
+
+# Three equal session allowances; weekly percentages must not lower this bar.
+$session=Get-Hotpl8ScreenshotFixture
+$session.policy.mode='automate';$session.policy.reserve=@();$session.policy.prefer=@(1,2,3)
+$session.policy.PSObject.Properties.Remove('capacity')
+$third=$session.status.slots[0]|ConvertTo-Json -Depth 12|ConvertFrom-Json
+$third.slot=3;$third.label='Weekend';$third.active=$false
+$session.status.slots+=@($third)
+foreach($slot in $session.status.slots){
+    $slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';label='Pro';observedAt=$session.now.ToString('o')} -Force
+    $slot.used5h=0;$slot.used7d=20
+}
+$session.status.slots[1].label='Second';$session.status.slots[1].used5h=25
+$session.status.slots[1].reset5h=$session.now.AddMinutes(42).ToString('o')
+foreach($slot in $session.status.providers.codex.slots){$slot.buckets.codex.windows.PSObject.Properties.Remove('300');$session.policy.codex.capacity.($slot.id).weekly=1}
+$session.status.providers.codex.slots[0].buckets.codex.windows.'10080'.usedPercent=5
+$session.status.providers.codex.slots[0].buckets.codex.windows.'10080'.remainingPercent=95
+$session.status.providers.codex.slots[1].buckets.codex.status='blocked'
+$session.status.providers.codex.slots[1].buckets.codex.windows.'10080'.usedPercent=100
+$session.status.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=0
+Write-DashboardImage 'session-capacity.png' $session.status $session.policy 94 42
