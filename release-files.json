@@ -26,6 +26,8 @@
     "policy.example.json",
     "policy.schema.json",
     "src/providers/claude.ps1",
+    "src/providers/claude-plans.ps1",
+    "src/providers/claude_plan.py",
     "src/providers/codex.ps1",
     "release-files.json",
     "docs/install.md",

@@ -57,4 +57,6 @@ Preserve the platform-neutral `src/overview.ps1` metric and additive `providerOv
 
 ## Capacity-preview parity handoff
 
+Claude plans now use `src/providers/claude_plan.py` through the installed cswap Python interpreter. Qualify native macOS Keychain reads, interpreter discovery for pipx/venv installs, per-account identity checks, profile failures and the 15-minute cache. Never add a second token-refresh owner or copy credentials to make discovery work. The Windows helper and pure fixture tests do not establish native Mac qualification. Keep plan labels distinct from measured weekly/short-window conversions.
+
 Validate the new capacity/critical fixtures on PowerShell 7; verify native plan metadata and actual short/weekly conversions without price-based assumptions. Implement a single one-minute launchd wake with persisted healthy/critical due times and failure backoff; migrate an owned existing job without duplication. Test native session boundaries for Claude and Codex explicitly. Validate true-color styled spans, reduced-motion/no-color, Nyan half-block cell widths, resize, freeze, Ctrl+C and terminal restoration. Screenshots may be generated on Windows; Windows execution is not native Mac verification. Keep Codex session-owned resume and no implicit paid overage.

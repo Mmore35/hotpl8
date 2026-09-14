@@ -51,6 +51,7 @@ __pycache__/
 .claude/
 .codex/
 collector.json
+claude-plans.json
 activity.json
 warm-outcomes.json
 attempt-budget.json

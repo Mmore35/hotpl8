@@ -100,6 +100,7 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         if($slot.status -ne 'ok'){$badge=Format-DashboardState $slot.status}elseif($isStale){$badge='STALE'}elseif($slot.cold){$badge+=' / resting'}
         $name=if($slot.label){$slot.label}else{'Slot '+$slot.slot}
         if($slot.slot -in @($Policy.disabled)){$badge='DISABLED'}
+        if(Test-Hotpl8DetectedPlan $slot.plan $Now){$badge+=' / '+$slot.plan.label}
         New-DashboardRow ('  '+$(if($slot.active){'● '}else{'○ '})+$name+'  ['+$slot.slot+']  ·  '+$badge) $(if($slot.active){'peach'}else{'text'})
         if($slot.slot -in @($Policy.disabled) -or $slot.status -eq 'disabled'){
             New-DashboardRow '    Disabled: excluded from totals and selection.' muted
@@ -112,6 +113,7 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
             if($slot.warmOutcome){New-DashboardRow ('    Warm: '+$slot.warmOutcome.outcome) $(if($slot.warmOutcome.outcome -eq 'observed-active'){'mint'}else{'amber'})}
             if($slot.actionBlock){New-DashboardRow ('    Warming: '+$slot.actionBlock.Replace('_',' ')) muted}
             if($slot.modelBlock){New-DashboardRow ('    Selection: '+$slot.modelBlock.Replace('_',' ')) amber}
+            if($slot.plan -and -not (Test-Hotpl8DetectedPlan $slot.plan $Now)){New-DashboardRow '    Plan: not currently verified; quota readings still apply.' muted}
             foreach($scope in @($slot.scoped)){if($scope){New-DashboardRow ('    '+$scope.name+' weekly: '+$scope.pct+'% used') muted}}
         }
         if(-not $Compact){New-DashboardRow ''}

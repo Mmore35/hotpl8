@@ -233,6 +233,9 @@ Check 'unconfigured Claude conversions preserve measured weekly inventory withou
     $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
     Assert ($d.unknown -gt 0 -and $d.state.Contains('weekly readings'))
+    foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force}
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Assert ($d.state.Contains('window conversion unknown') -and -not $d.state.Contains('setup needed'))
 }
 Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exclusions' {
     $p=Clone $fixture.policy;$s=Snapshot

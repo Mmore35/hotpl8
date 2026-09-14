@@ -94,6 +94,7 @@ function Get-Hotpl8CapacityDisplay($ProviderOverview) {
     $state=if($weekly){
         $(if($null -ne $p.remainingPercent){'{0:0.#}% weekly' -f $p.remainingPercent}else{[string]$p.measured+'/'+$p.accounts+' weekly readings'})+' / '+$ready+'/'+$p.accounts+' ready; capacity setup needed'
     }elseif($c.complete){'{0:0.#}% now' -f $c.usableNowPercent}else{'Usable capacity unmeasured; check setup/readings'}
+    if($weekly -and @($c.accounts).Count -gt 0 -and @($c.accounts|Where-Object {-not $_.profile}).Count -eq 0){$state=$state.Replace('capacity setup needed','window conversion unknown')}
     [pscustomobject]@{
         title=$(if($weekly){'Weekly headroom (unweighted)'}else{'Available capacity (estimate)'})
         value=$(if($weekly){$p.knownRemainingPercent}else{$c.knownUsablePercent})
@@ -116,6 +117,10 @@ function Format-Hotpl8Overview($Overview) {
             if($null -ne $c.projectedGainPercent){'  Next reset: +{0:0.#}% at {1}; assumes no further consumption.' -f $c.projectedGainPercent,$c.nextResetAt}
         }
         if($p.includesReserve){'  Includes reserve allowance.'}
+        if($provider -eq 'claude' -and $p.capacity){
+            $profiles=@($p.capacity.accounts|Where-Object profile|ForEach-Object {$_.slot+'='+$_.profile})
+            if($profiles.Count){'  Profiles: '+($profiles -join ', ')}
+        }
     }
     'Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.'
 }

@@ -54,7 +54,7 @@ function Get-Hotpl8Capabilities([string]$Directory) {
     $d=Get-Hotpl8Doctor $Directory
     $status=Read-Hotpl8Snapshot $Directory
     return [pscustomobject]@{schemaVersion=1;platform=$(if($env:OS -eq 'Windows_NT'){'windows-preview'}else{'source-only-unqualified'});runtime=$d.runtime;policyValid=$d.policyValid;collector=Get-Hotpl8Health (Read-Hotpl8Json (Join-Path $Directory 'collector.json'));providers=@{
-        claude=@{installed=$d.cswapFound;configured=$d.claudeConfigured;freshAccounts=@($status.slots|Where-Object {$_.fresh -and (Test-Hotpl8FreshTimestamp $_.observedAt)}).Count;observe='supported adapter';selection='experimental';warming='experimental';authentication='native; verify with refresh'}
+        claude=@{installed=$d.cswapFound;configured=$d.claudeConfigured;freshAccounts=@($status.slots|Where-Object {$_.fresh -and (Test-Hotpl8FreshTimestamp $_.observedAt)}).Count;observe='supported adapter';selection='experimental';warming='experimental';authentication='native; verify with refresh';planDetection='automatic profile discovery';detectedPlans=@($status.slots|Where-Object {Test-Hotpl8DetectedPlan $_.plan}).Count}
         codex=@{installed=$d.codexFound;configured=$d.codexConfigured;freshAccounts=@($status.providers.codex.slots|Where-Object {$_.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $_.observedAt)}).Count;observe='native app-server';selection='next-launch';warming='unqualified: no confirmed window benefit';authentication='native; verify with refresh'}
     };capacity='configured relative-window estimates';critical='opt-in; new-launch Codex selection';motion='cat and nyan; reduced-motion supported';tray=($env:OS -eq 'Windows_NT');macHandoff='docs/plans/macos-handoff.md'}
 }
@@ -67,6 +67,7 @@ function Invoke-Hotpl8Setup([string]$Directory, [string]$CodeDirectory, [switch]
         'Codex: hotpl8 enroll -Slot main -AccountHome PATH'
         'Claude: sign in and enroll using cswap, then hotpl8 enroll -Provider claude -Slot NUMBER'
         'Capacity: hotpl8 accounts -Operation capacity -Provider PROVIDER -Slot ID -CapacityProfile PROFILE -WeeklyCapacity UNITS -FiveHourCapacity UNITS'
+        'Claude plans are detected automatically on refresh when profile metadata is available.'
         'See docs/capacity.md for calibrated units and opt-in critical mode.'
         'Next: hotpl8 refresh; hotpl8 explain; hotpl8'
         return

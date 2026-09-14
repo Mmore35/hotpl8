@@ -1,7 +1,7 @@
 ﻿. (Join-Path $PSScriptRoot 'notifications.ps1')
 function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     $overview=Get-Hotpl8ProviderOverview $Snapshot $Policy $Now
-    $details=@(Format-Hotpl8Overview $overview)+@(Format-Hotpl8Explanation $Snapshot $Now | Where-Object {$_ -notmatch '^(CLAUDE:|CODEX:|  Includes reserve|Weekly headroom|  Capacity:|  Membership:|  Next reset:)'})
+    $details=@(Format-Hotpl8Overview $overview)+@(Format-Hotpl8Explanation $Snapshot $Now | Where-Object {$_ -notmatch '^(CLAUDE:|CODEX:|  Includes reserve|Weekly headroom|  Capacity:|  Profiles:|  Membership:|  Next reset:)'})
     foreach($s in @($Snapshot.slots)){if($s){
         $fresh=$s.fresh -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
         $details+=('Claude '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))

@@ -2,6 +2,7 @@
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'warming.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'forecast.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
+. (Join-Path $PSScriptRoot 'claude-plans.ps1')
 function Get-ClaudeModelBlock($Scopes,$Policy,[int]$Slot,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     foreach($model in @($Policy.claudeModels|Where-Object {$_})){
         $scope=@($Scopes|Where-Object name -EQ $model)
@@ -584,6 +585,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $data=$read.output | ConvertFrom-Json
     if ($null -ne $data.schemaVersion -and $data.schemaVersion -ne 1) { throw 'claude_schema_unsupported' }
     if (-not $data.accounts) { throw 'claude_no_accounts' }
+    $plans=Read-Hotpl8ClaudePlans @($data.accounts|Where-Object {$_.number -in @($policy.prefer) -and $_.number -notin @($policy.disabled)}) $StateDirectory $cswap
 
     $m5 = [double]$policy.margin5h
     $hy = [double]$policy.hysteresis
@@ -1028,6 +1030,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 slot       = [int]$n
                 label      = $(if ($policy.labels) { [string]$policy.labels."$n" } else { '' })
                 registered = $true
+                plan       = $plans.([string]$n)
                 active     = ([int]$n -eq [int]$active)
                 cold       = [bool]$e.cold
                 fresh      = [bool]$e.fresh

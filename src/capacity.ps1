@@ -15,12 +15,14 @@ function Assert-Hotpl8CapacityPolicy($Part) {
         if($c.evidence -and ([string]$c.evidence).Length -gt 240){throw 'Capacity evidence is too long.'}
     }
 }
-function Get-Hotpl8AccountCapacity($Part,[string]$Slot,[string]$Provider,[string]$Meter='codex') {
-    $c=$Part.capacity.$Slot;$profile=if($c.profile){(Get-Hotpl8CapacityCatalog).profiles.([string]$c.profile)}else{$null}
+function Get-Hotpl8AccountCapacity($Part,[string]$Slot,[string]$Provider,[string]$Meter='codex',$DetectedPlan=$null,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    $c=$Part.capacity.$Slot
+    $profileId=if($c.profile){[string]$c.profile}elseif($Provider -eq 'claude' -and $DetectedPlan.status -eq 'detected' -and (Test-Hotpl8FreshTimestamp $DetectedPlan.observedAt $Now)){[string]$DetectedPlan.profile}else{$null}
+    $profile=if($profileId){(Get-Hotpl8CapacityCatalog).profiles.$profileId}else{$null}
     if($profile -and ($profile.provider -ne $Provider -or ($Provider -eq 'codex' -and $profile.meter -ne $Meter))){$profile=$null}
     $weekly=if($null -ne $c.weekly){$c.weekly}else{$profile.weekly}
     $short=if($null -ne $c.fiveHour){$c.fiveHour}else{$profile.fiveHour}
-    return [pscustomobject]@{weekly=$weekly;fiveHour=$short;scoped=$c.scoped;profile=$c.profile;confidence=$(if($c.weekly -or $c.fiveHour){'user estimate'}elseif($profile){$profile.confidence}else{'capacity setup needed'})}
+    return [pscustomobject]@{weekly=$weekly;fiveHour=$short;scoped=$c.scoped;profile=$profileId;confidence=$(if($c.weekly -or $c.fiveHour){'user estimate'}elseif($profile){$profile.confidence}else{'capacity setup needed'})}
 }
 function New-Hotpl8CapacityWindow([string]$Name,$Remaining,$Full,$Reset,[datetimeoffset]$Now,[bool]$Confirmed=$true) {
     $at=$null
@@ -36,7 +38,7 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
         $slot=@(if($Provider -eq 'claude'){$Snapshot.slots|Where-Object slot -EQ $id}else{$Snapshot.providers.codex.slots|Where-Object id -EQ $id})
         $s=if($slot.Count -eq 1){$slot[0]}else{$null}
         if($s.streamKey -and $s.status -in @('ok','duplicate_subscription')){if($seen.ContainsKey($s.streamKey)){continue};$seen[$s.streamKey]=$true}
-        $c=Get-Hotpl8AccountCapacity $Part ([string]$id) $Provider $Meter
+        $c=Get-Hotpl8AccountCapacity $Part ([string]$id) $Provider $Meter $s.plan $Now
         $fresh=$s -and $s.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
         $windows=@();$blocked=$false;$reason=''
         if($Provider -eq 'claude'){
@@ -67,7 +69,7 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
         if($known){$percent=($windows|Measure-Object remaining -Minimum).Minimum}
         if($scaled){$gross=($windows|ForEach-Object {$_.full*$_.remaining/100}|Measure-Object -Minimum).Minimum}
         $knownZero=$known -and $blocked -and $reason -eq 'blocked' -and $percent -eq 0
-        [pscustomobject]@{slot=[string]$id;fresh=[bool]$known;scaled=[bool]$scaled;knownZero=[bool]$knownZero;weekly=$c.weekly;windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
+        [pscustomobject]@{slot=[string]$id;profile=$c.profile;fresh=[bool]$known;scaled=[bool]$scaled;knownZero=[bool]$knownZero;weekly=$c.weekly;windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
     }
 }
 function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Project,[bool]$Emergency=$false) {

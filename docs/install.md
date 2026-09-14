@@ -29,6 +29,8 @@ Hooks are optional: `setup-codex.ps1` supports `-InstallHook`, then native Codex
 
 Use native Claude login and `cswap add` as documented upstream. Put the chosen numeric slot IDs into state/policy.json's `prefer` array and add non-sensitive display labels. Keep `mode: monitor` while verifying readings. The [configuration guide](configuration.md) explains reserves and experimental automation. HotPl8 does not provide a third-party sign-in flow.
 
+On refresh, supported cswap installations automatically detect Claude plan names using Anthropic profile metadata. No plan questionnaire is required. See [plan discovery and capacity conversions](capacity.md); an unavailable profile never blocks quota collection.
+
 ## Background collection
 
 Rerun the installer from the extracted release with `-Schedule`. It registers one hidden, unelevated task that wakes every minute for the signed-in user; persisted due times normally collect every five minutes and can shorten in critical mode. Repeated installation updates the owned task. It does not run while the user is signed out. Monitoring policy remains observation-only.

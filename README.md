@@ -40,6 +40,8 @@ Current source also includes [decision explanations, pause/work hours, weekly pa
 
 See [layered capacity, refill countdowns and critical mode](docs/capacity.md). For a little color, run `hotpl8 nyan`.
 
+Claude plan names are detected automatically on refresh. When window-capacity conversions are unavailable, the dashboard shows measured weekly headroom with a clear label.
+
 ## Under the hood
 
 PowerShell, local snapshots, and offline regression tests. [Architecture and source map](docs/architecture.md) · [Contributing](CONTRIBUTING.md) · [Regenerate the screenshots](docs/screenshots.md).
