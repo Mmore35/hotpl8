@@ -167,7 +167,7 @@ function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width
         $spans=@(New-Hotpl8Span '  ';New-Hotpl8Span '[' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ('█'*$fill) $health;New-Hotpl8Span ('▒'*$gain) $tone;New-Hotpl8Span ('·'*$empty) 'border';New-Hotpl8Span ('?'*$unknown) 'muted';New-Hotpl8Span ']' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ((' '*$spaces)+$suffix) 'muted')
         New-Hotpl8StyledRow $spans
         $state=if($c.complete){'{0:0.#}% now' -f $c.usableNowPercent}else{[string]$p.measured+'/'+$p.accounts+' quota readings; capacity setup needed'}
-        if($c.critical.active){$state+=' / CRITICAL / checks '+$c.critical.pollSeconds+'s'}
+        if($c.critical.active){$state+=' / CRITICAL / target '+$c.critical.pollSeconds+'s'}
         $state+=' / '+$p.automation
         if($p.collectionHealth -notin @('manual / no collector evidence','recent collection completed','collecting')){$state=$p.collectionHealth+' / '+$state}
         New-DashboardRow ('  '+$state) 'muted'
@@ -187,6 +187,7 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     $offset=[Math]::Max(0,[Math]::Min($Offset,[Math]::Max(0,$rows.Count-$available)))
     $age=Get-DashboardAge $Status.generatedAt $Now
     $freshness=if($null -eq $age){'no reading yet'}elseif($age -lt -5){'clock mismatch'}else{'usage read '+(Format-DashboardDuration $age)+' ago'}
+    if($Status.displayPolicy){$freshness='PREVIEW POLICY (display only) / '+$freshness}
     New-DashboardRow ('╭'+('─'*$inside)+'╮') border
     New-DashboardRow ('│'+(Format-DashboardText ('  '+$(if($Nyan){'~~~'}else{Get-Hotpl8Cat $AnimationSeconds -ReducedMotion:$motionOff})+'  hotpl8'+$(if($Nyan -and -not $nyanRows.Count){' / nyan (enlarge for animation)'}else{''})) $inside)+'│') rose
     foreach($r in $nyanRows){Add-Hotpl8FrameBorder $r $inside}
@@ -242,7 +243,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
         $status=$null; $policy=$null; $readAt=-1000; $frameTime=0; $viewNow=[datetimeoffset]::UtcNow
         while(-not $quit){
             if($clock.ElapsedMilliseconds -ge $next){
-                if((-not $paused -or -not $policy) -and $clock.ElapsedMilliseconds-$readAt -ge 1000){$policy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json $policyPath};$status=Read-Hotpl8Snapshot $StateDirectory $policy;$readAt=$clock.ElapsedMilliseconds}
+                if((-not $paused -or -not $policy) -and $clock.ElapsedMilliseconds-$readAt -ge 1000){$policy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json $policyPath};$status=Read-Hotpl8Snapshot $StateDirectory $PolicyOverride;$readAt=$clock.ElapsedMilliseconds}
                 if(-not $paused){$frameTime=$clock.Elapsed.TotalSeconds;$viewNow=[datetimeoffset]::UtcNow}
                 $w=[Math]::Max(1,[Console]::WindowWidth-1);$h=[Math]::Max(1,[Console]::WindowHeight-1)
                 $rows=@(Get-Hotpl8DashboardRows $status $policy ([datetimeoffset]::UtcNow) $w -Compact:($h -lt 32))

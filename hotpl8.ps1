@@ -32,8 +32,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 try {
-    if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}
     . (Join-Path $PSScriptRoot 'src/common.ps1')
+    if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}
     . (Join-Path $PSScriptRoot 'src/config.ps1')
     . (Join-Path $PSScriptRoot 'src/diagnostics.ps1')
     . (Join-Path $PSScriptRoot 'src/providers/claude.ps1')
@@ -114,7 +114,6 @@ try {
         exit 0
     }
 
-    if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}
     $policy = Read-Hotpl8Json $(if($PreviewPolicy){$PreviewPolicy}else{Join-Path $StateDirectory 'policy.json'})
     if (-not $policy) { throw 'No valid policy.json. Run hotpl8 init or see docs/install.md.' }
     Assert-Hotpl8Policy $policy
