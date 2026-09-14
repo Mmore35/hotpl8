@@ -51,6 +51,10 @@ Check 'single weekly-only Codex normalizes without guessed tier weights' {
     $s=Snapshot;$s.providers.codex.slots=@($s.providers.codex.slots[0]);$s.providers.codex.slots[0].buckets.codex.windows.PSObject.Properties.Remove('300')
     $c=Get-Hotpl8ProviderCapacity $s $p codex $now
     Assert $c.complete;Near $c.usableNowPercent 59
+    $p.slots+=([pscustomobject]@{id='disabled-copy'})
+    $p|Add-Member NoteProperty disabled @('disabled-copy')
+    $c=Get-Hotpl8ProviderCapacity $s $p codex $now
+    Assert $c.complete;Near $c.usableNowPercent 59
 }
 Check 'unconfirmed reset does not hide current measured quota or invent projection' {
     $p=Clone $fixture.policy.codex;$s=Snapshot

@@ -30,8 +30,9 @@ function New-Hotpl8CapacityWindow([string]$Name,$Remaining,$Full,$Reset,[datetim
 }
 function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeoffset]$Now,[string]$Meter='codex') {
     $ids=if($Provider -eq 'claude'){@($Part.prefer)}else{@($Part.slots|ForEach-Object id)}
+    $ids=@($ids|Where-Object {$null -ne $_ -and $_ -notin @($Part.disabled)}|Select-Object -Unique)
     $seen=@{}
-    foreach($id in @($ids|Where-Object {$null -ne $_ -and $_ -notin @($Part.disabled)}|Select-Object -Unique)){
+    foreach($id in $ids){
         $slot=@(if($Provider -eq 'claude'){$Snapshot.slots|Where-Object slot -EQ $id}else{$Snapshot.providers.codex.slots|Where-Object id -EQ $id})
         $s=if($slot.Count -eq 1){$slot[0]}else{$null}
         if($s.streamKey -and $s.status -in @('ok','duplicate_subscription')){if($seen.ContainsKey($s.streamKey)){continue};$seen[$s.streamKey]=$true}
