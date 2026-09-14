@@ -65,6 +65,18 @@ try{
         $result=Invoke-ClaudeTick $p $dir
         Assert ($script:nativeActive -eq 1 -and $result.payload.hold) 'hold must suppress critical switching'
         Remove-Item -LiteralPath (Join-Path $dir 'hold.json')
+        # Clearing reserve enrolls the former main/backup in the same low-balance pool.
+        $p.reserve=@();$script:nativeActive=3
+        $script:balances=@{1=14;2=9;3=0}
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 1 -and $result.payload.critical.coverage -eq '3/3') 'former reserve must compete on remaining allowance'
+        Assert (($result.payload.decision.accounts|Where-Object slot -EQ 1).reason -eq 'eligible_critical')
+        $script:balances=@{1=0;2=0;3=0.5}
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 3) 'any known positive included remainder wins over exhausted accounts'
+        $script:balances[3]=0
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($null -eq $result.payload.proposedSlot -and $result.payload.verdict -match 'no headroom') 'all exhausted cannot produce an included-allowance target'
     }
     Check 'successful warm process starts sent, never observed-active' {
         $o=New-Hotpl8WarmOutcome claude 1 account fiveHour $true $now
