@@ -14,6 +14,58 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-operations-'+[guid]::NewGuid(
 [void][IO.Directory]::CreateDirectory($dir)
 $now=[datetimeoffset]::Parse('2026-09-13T12:00:00Z')
 try{
+    Check 'Claude collector rotates low balances, persists dwell, and reports actual eligibility' {
+        $p=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
+        $p.mode='automate';$p.switchEnabled=$true;$p.prefer=@(3,2,1);$p.reserve=@(1)
+        $p.critical.enabled=$true;$p.critical.enterPercent=25;$p.critical.exitPercent=30
+        $p.critical.drainToZero=$true;$p.critical.advantagePercent=0
+        Assert-Hotpl8Policy $p
+        $script:nativeActive=1;$script:switchCalls=@();$script:balances=@{1=0;2=17;3=21}
+        $script:staleSlot=0
+        function Resolve-CswapExecutable {return 'fixture-only'}
+        function Read-Hotpl8ClaudePlans {return [pscustomobject]@{}}
+        function Invoke-Hotpl8Process($Executable,$Arguments,$TimeoutMs) {
+            Assert ($Executable -eq 'fixture-only')
+            if($Arguments[0] -eq 'switch'){
+                $script:nativeActive=[int]$Arguments[1];$script:switchCalls+= $script:nativeActive
+                return @{exitCode=0;output=''}
+            }
+            Assert ($Arguments[0] -eq 'list') 'No prompt, login, or other native command is allowed in this test'
+            $at=[datetimeoffset]::UtcNow
+            $accounts=@(foreach($id in @(1,2,3)){
+                @{number=$id;email=('fixture'+$id+'@example.invalid');usageStatus='ok';usageAgeSeconds=$(if($id -eq $script:staleSlot){1000}else{1});usage=@{fiveHour=@{pct=(100-$script:balances[$id]);resetsAt=$at.AddHours(1).ToString('o')};sevenDay=@{pct=30;resetsAt=$at.AddDays(3).ToString('o')}}}
+            })
+            return @{exitCode=0;output=(@{schemaVersion=1;activeAccountNumber=$script:nativeActive;accounts=$accounts}|ConvertTo-Json -Depth 10)}
+        }
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 3 -and $result.payload.active -eq 3 -and $result.payload.critical.active)
+        Assert ($result.payload.verdict -notmatch 'no headroom' -and $result.payload.verdict -match 'low-balance rotation')
+        Assert (@($result.payload.decision.accounts|Where-Object reason -EQ 'eligible_critical').Count -eq 2)
+        $script:balances[3]=16
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 3) 'one-minute dwell prevents immediate bounce'
+        $statePath=Join-Path $dir 'critical-claude.json';$state=Read-Hotpl8Json $statePath
+        $state.selectedAt=[datetimeoffset]::UtcNow.AddMinutes(-2).ToString('o')
+        Write-Hotpl8Text $statePath ($state|ConvertTo-Json -Depth 6)
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 2) 'higher remaining work account wins after dwell'
+        $script:balances[2]=0
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 3) 'exhaustion must bypass dwell'
+        $script:balances[2]=24;$script:staleSlot=2
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 3) 'stale high balance cannot authorize switching'
+        $script:staleSlot=0;$script:balances[2]=100
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 2 -and -not $result.payload.critical.active) 'confirmed refill returns to normal selection'
+        $script:nativeActive=1;$script:balances[2]=17;$script:balances[3]=21
+        $result=Invoke-ClaudeTick $p $dir -ObserveOnly
+        Assert ($script:nativeActive -eq 1 -and $result.payload.proposedSlot -eq 3) 'read-only preview must not switch'
+        Write-Hotpl8Text (Join-Path $dir 'hold.json') (@{until=[datetimeoffset]::UtcNow.AddMinutes(5).ToString('o');reason='fixture'}|ConvertTo-Json)
+        $result=Invoke-ClaudeTick $p $dir
+        Assert ($script:nativeActive -eq 1 -and $result.payload.hold) 'hold must suppress critical switching'
+        Remove-Item -LiteralPath (Join-Path $dir 'hold.json')
+    }
     Check 'successful warm process starts sent, never observed-active' {
         $o=New-Hotpl8WarmOutcome claude 1 account fiveHour $true $now
         Assert ($o.outcome -eq 'sent' -and -not $o.resetAt)

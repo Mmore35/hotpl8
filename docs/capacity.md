@@ -55,6 +55,10 @@ This is opt-in under `critical` for Claude, or `codex.critical` for Codex, in a 
 
 When every fresh available work account is at or below the entry threshold on its limiting window, emergency selection can use allowance below the ordinary comfort margins. It ranks by estimated usable units when conversions exist; otherwise it discloses a percentage-based fallback. It exits only after a fresh reading exceeds the exit threshold. Unknown, disabled, authentication/model/spend-blocked accounts are not emergency candidates. Reserve policy is retained.
 
+Set entry at least as high as your ordinary five-hour margin to avoid a gap between normal and emergency selection. For `margin5h: 25`, use `enterPercent: 25` and `exitPercent: 30`. Set `advantagePercent: 0` to choose any strictly higher balance after the dwell period; ties keep the current account. Status and `explain` report `eligible_critical` for accounts admitted below the ordinary margin.
+
+This is account selection, not a billing cutoff. Native usage readings can lag, and switching credentials cannot retract an in-flight request. If paid extra usage must never occur, disable it in the provider account settings as well.
+
 The default floor leaves 1%; `drainToZero: true` admits any positive measured remainder. Reported zero stays ineligible. A positive remainder is not a promise that an arbitrary prompt will finish. Dwell and a required advantage prevent constant bouncing; an unusable current account can be replaced immediately. Pauses and holds still apply. Warming/probe budgets and cooldowns remain independent of faster observation.
 
 The Windows collector wakes once per minute and checks persisted per-provider due times: normally 300 seconds, 60 in critical mode. Failure backoff takes precedence. Existing installations must update their owned collector task through installation to obtain the faster wake interval. Never run two collectors against one state directory. macOS scheduling and native-session verification remain in the [Mac handoff](plans/macos-handoff.md).

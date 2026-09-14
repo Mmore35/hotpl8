@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Report low-balance Claude rotation consistently in status and selection explanations. Add a collector regression covering exhausted-account escape, highest-balance rotation, dwell, stale readings, refills, holds and observation-only previews; document matching critical entry to the normal margin.
+
 - Keep the main bars on usable-now capacity, using an explicit plan-weighted quota-headroom estimate when conversions are unavailable. Weekly remaining is supporting text. Forecast only the first positive refill within 24 hours and exclude Spark from Codex summaries, dashboard and tray.
 
 - Observe Claude's adapter every scheduler minute so its native poll cadence does not compound with a second cache delay. Preserve freshness and backoff limits. Simplify overview labels, reserve hatching for attached refill projections, align weekly fallback projections with weekly resets, and remove the disappearing cat tail.

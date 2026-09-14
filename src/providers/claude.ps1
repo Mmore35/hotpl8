@@ -696,7 +696,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $stuck        = @($broken | Where-Object { Test-QuarantineStale $acc[$_].obj $staleS })
     $reallyBroken = @($broken | Where-Object { $stuck -notcontains $_ })
     $anyFresh     = @($prefer | Where-Object { $acc[$_] -and $acc[$_].fresh }).Count -gt 0
-    $anyEligible  = @($prefer | Where-Object { Test-Ok $acc[$_] $m5 (Get-Margin7dFor $policy $_) }).Count -gt 0
+    $anyEligible  = ($criticalState.active -and $criticalState.ranked.Count -gt 0) -or @($prefer | Where-Object { Test-Ok $acc[$_] $m5 (Get-Margin7dFor $policy $_) }).Count -gt 0
 
     # ---- warm: open cold windows so quota accrues instead of sitting dead ----
     # A spent window expires into NOTHING and stays there until something touches it
@@ -908,6 +908,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     }
     # A switch is an ACTION and is appended, never hidden behind a condition.
     if ($switched)              { $verdict += " · switched -> slot $active" }
+    if ($criticalState.active)  { $verdict += ' · low-balance rotation' }
     # Warming is an ACTION and is reported for the same reason a switch is: silence
     # about something that happened is how a rotted timer stays invisible.
     if ($warmed.Count -gt 0)     { $verdict += " · warm request sent to slot $($warmed -join '+'); window unconfirmed" }
@@ -1072,7 +1073,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     }
     $payload | Add-Member NoteProperty proposedSlot $target -Force
     $payload | Add-Member NoteProperty actions $actions -Force
-    $reasons=@(foreach($n in $prefer){$e=$acc[$n];[pscustomobject]@{slot=$n;rank=([array]::IndexOf($ranked,$n)+1);reason=$(if(-not $e){'not_observed'}elseif(-not $e.fresh){'stale_or_unavailable'}elseif($e.modelBlocked){$e.modelReason}elseif(-not (Test-Ok $e $m5 (Get-Margin7dFor $policy $n))){'below_margin_or_unknown'}elseif($n -in @($policy.reserve)){'eligible_reserve'}else{'eligible_work'})}})
+    $reasons=@(foreach($n in $prefer){$e=$acc[$n];[pscustomobject]@{slot=$n;rank=([array]::IndexOf($ranked,$n)+1);reason=$(if(-not $e){'not_observed'}elseif(-not $e.fresh){'stale_or_unavailable'}elseif($e.modelBlocked){$e.modelReason}elseif($criticalState.active -and [string]$n -in $criticalState.ranked){'eligible_critical'}elseif(-not (Test-Ok $e $m5 (Get-Margin7dFor $policy $n))){'below_margin_or_unknown'}elseif($n -in @($policy.reserve)){'eligible_reserve'}else{'eligible_work'})}})
     $payload|Add-Member NoteProperty critical $criticalState -Force
     $payload|Add-Member NoteProperty decision ([pscustomobject]@{policy=$orderMode;selected=$active;proposed=$target;reason=$(if($hold){'switch held'}elseif(-not $actions.switching){'switching disabled'}elseif($switched){'switched to higher ranked eligible account'}else{'retained current account'});accounts=$reasons}) -Force
     return @{ lines = $lines; payload = $payload; action = $action }
