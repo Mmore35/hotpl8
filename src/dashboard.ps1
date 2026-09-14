@@ -200,9 +200,10 @@ function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width
         New-DashboardRow $membership 'muted'
     }
 }
-function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[int]$Height=40,[int]$Offset=0,[switch]$Paused,[double]$AnimationSeconds=0,[switch]$Nyan,[switch]$ReducedMotion,$OverviewOverride=$null,[switch]$Plain) {
+function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[int]$Height=40,[int]$Offset=0,[switch]$Paused,[double]$AnimationSeconds=0,[switch]$Nyan,[switch]$ReducedMotion,$OverviewOverride=$null,[switch]$Plain,$ResolvedOffset=$null) {
     $width=[Math]::Max(1,[Math]::Min(110,$Width)); $inside=$width-2
     if($width -lt 48 -or $Height -lt 17){
+        if($ResolvedOffset){$ResolvedOffset.Value=0}
         @('hotpl8 (=^.^=)','Make the terminal larger.','Q quit / Esc back')|Select-Object -First ([Math]::Max(1,$Height))|ForEach-Object{New-DashboardRow (Format-DashboardText $_ $width) muted}
         return
     }
@@ -219,6 +220,10 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
         if($compactRows.Count -le $available){$rows=$compactRows}
     }
     $offset=[Math]::Max(0,[Math]::Min($Offset,[Math]::Max(0,$rows.Count-$available)))
+    # The interactive controller must use the exact displayed offset. Its old
+    # height-minus-14 estimate omitted pinned rows and could strand the final
+    # accounts; Nyan and adaptive compact layouts also change the true viewport.
+    if($ResolvedOffset){$ResolvedOffset.Value=$offset}
     $age=Get-DashboardAge $Status.generatedAt $Now
     $freshness=if($null -eq $age){'no reading yet'}elseif($age -lt -5){'clock mismatch'}else{'usage read '+(Format-DashboardDuration $age)+' ago'}
     if($Status.displayPolicy){$freshness='PREVIEW POLICY (display only) / '+$freshness}
@@ -260,6 +265,14 @@ function Get-Hotpl8DashboardPalette {
     # Shared by terminal output and the documentation screenshot harness.
     return @{text='220;225;238';muted='143;156;181';border='65;79;105';rose='246;169;193';peach='255;155;92';cyan='97;208;220';lavender='194;180;255';mint='151;222;191';amber='244;207;137'}
 }
+function Move-Hotpl8DashboardScroll([long]$Offset,[string]$Key) {
+    if($Key -eq 'Home'){return 0}
+    if($Key -eq 'End'){return [int]::MaxValue}
+    $delta=switch($Key){'UpArrow'{-1};'DownArrow'{1};'PageUp'{-10};'PageDown'{10};default{0}}
+    # End and Down can arrive in the same input batch before the next render.
+    # Saturate instead of overflowing the renderer's Int32 offset parameter.
+    return [int][math]::Min([long][int]::MaxValue,[math]::Max([long]0,$Offset+$delta))
+}
 function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$ReducedMotion,[switch]$NoColor,$PolicyOverride=$null) {
     $policyPath=Join-Path $StateDirectory 'policy.json'; $statusPath=Join-Path $StateDirectory 'status.json'
     # Pipes and non-console hosts get one plain frame; they must never hang.
@@ -286,9 +299,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                 # Quota/layout work runs at most once per second. Mascot frames reuse it.
                 if($resized -or $layoutAt -lt 0 -or (-not $paused -and $clock.ElapsedMilliseconds-$layoutAt -ge 1000)){
                     if($resized){$nyanLines=@{}}
-                    $rows=@(Get-Hotpl8DashboardRows $status $policy $viewNow $w -Compact:($h -lt 32))
-                    $offset=[Math]::Max(0,[Math]::Min($offset,[Math]::Max(0,$rows.Count-[Math]::Max(1,$h-14))))
-                    $frame=@(Get-Hotpl8DashboardFrame $status $policy $viewNow $w $h $offset -Paused:$paused -AnimationSeconds $frameTime -Nyan:$Nyan -ReducedMotion:$motionOff -OverviewOverride $status.providerOverview -Plain:(-not $ansi))
+                    $frame=@(Get-Hotpl8DashboardFrame $status $policy $viewNow $w $h $offset -Paused:$paused -AnimationSeconds $frameTime -Nyan:$Nyan -ReducedMotion:$motionOff -OverviewOverride $status.providerOverview -Plain:(-not $ansi) -ResolvedOffset ([ref]$offset))
                     $lines=@(foreach($row in $frame){if($ansi){ConvertTo-Hotpl8AnsiRow $row $colors}else{$row.text}})
                     $layoutAt=$clock.ElapsedMilliseconds;$layoutWidth=$w;$layoutHeight=$h
                 }
@@ -320,7 +331,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
             while([Console]::KeyAvailable){
                 $key=[Console]::ReadKey($true)
                 if($key.Key -in @('Q','Escape') -or ($key.Key -eq 'C' -and ($key.Modifiers -band [ConsoleModifiers]::Control))){$quit=$true;break}
-                switch([string]$key.Key){'Spacebar'{$paused=-not $paused};'UpArrow'{$offset--};'DownArrow'{$offset++};'PageUp'{$offset-=10};'PageDown'{$offset+=10};'Home'{$offset=0};'End'{$offset=[int]::MaxValue}}
+                if($key.Key -eq 'Spacebar'){$paused=-not $paused}else{$offset=Move-Hotpl8DashboardScroll $offset ([string]$key.Key)}
                 $next=0;$layoutAt=-1000
             }
             Start-Sleep -Milliseconds 100

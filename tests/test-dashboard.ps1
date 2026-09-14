@@ -133,6 +133,32 @@ Check 'three Claude accounts with verbose metadata cannot hide the usable second
     $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 24 999)
     Assert (($last.text -join "`n").Contains('2/2 Work [work]'))
     Assert (($last.text -join "`n").Contains('78% left'))
+    # Replay controller offsets, including its saved position on the next redraw.
+    # At 21 rows the old controller stopped at 9-13/15 instead of 11-15/15.
+    foreach($nyan in @($false,$true)){
+        $height=if($nyan){28}else{21}
+        $offset=0
+        for($press=0;$press -lt 25;$press++){
+            $offset=Move-Hotpl8DashboardScroll $offset 'DownArrow'
+            $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 $height $offset -Nyan:$nyan -ResolvedOffset ([ref]$offset))
+        }
+        $text=$last.text -join "`n"
+        Assert ($text.Contains('78% left') -and $text -match '-15/15\]')
+        if(-not $nyan){Assert ($text.Contains('[11-15/15]') -and $offset -eq 10)}
+        $offset=Move-Hotpl8DashboardScroll $offset 'End'
+        $offset=Move-Hotpl8DashboardScroll $offset 'DownArrow'
+        $offset=Move-Hotpl8DashboardScroll $offset 'PageDown'
+        $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 $height $offset -Nyan:$nyan -ResolvedOffset ([ref]$offset))
+        Assert (($last.text -join "`n").Contains('78% left') -and $offset -lt 15)
+        $offset=Move-Hotpl8DashboardScroll $offset 'UpArrow'
+        $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 $height $offset -Nyan:$nyan -ResolvedOffset ([ref]$offset))
+        Assert (($last.text -join "`n") -notmatch '-15/15\]')
+    }
+    $offset=10
+    $null=@(Get-Hotpl8DashboardFrame $c $policy $now 110 40 $offset -ResolvedOffset ([ref]$offset))
+    Assert ($offset -eq 0)
+    $offset=Move-Hotpl8DashboardScroll $offset 'PageUp'
+    Assert ($offset -eq 0)
 }
 Check 'Claude detail marks an expired per-account observation stale despite a fresh collector tick' {
     $c=Copy-Value $s;$c.slots[0]|Add-Member NoteProperty observedAt $now.AddHours(-1).ToString('o') -Force
