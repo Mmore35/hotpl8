@@ -33,16 +33,24 @@ function Format-DashboardDuration([double]$Seconds) {
     if($s -ge 3600){return ('{0}h {1:00}m' -f [int][Math]::Floor($s/3600),[int][Math]::Floor(($s%3600)/60))}
     return ('{0}m {1:00}s' -f [int][Math]::Floor($s/60),[int]($s%60))
 }
+function Format-DashboardAge([double]$Seconds) {
+    # Glanceable durations: two units at most, seconds only under a minute.
+    $s=[Math]::Max(0,[Math]::Floor($Seconds))
+    if($s -ge 86400){return ('{0}d {1:00}h' -f [int][Math]::Floor($s/86400),[int][Math]::Floor(($s%86400)/3600))}
+    if($s -ge 3600){return ('{0}h {1:00}m' -f [int][Math]::Floor($s/3600),[int][Math]::Floor(($s%3600)/60))}
+    if($s -ge 60){return ([string][int][Math]::Floor($s/60)+'m')}
+    return ([string][int]$s+'s')
+}
 function Format-DashboardReset($Reset,[datetimeoffset]$Now,[switch]$Unix,[switch]$Wide,[switch]$Unconfirmed) {
-    if($null -eq $Reset -or [string]$Reset -eq ''){return 'reset unknown'}
+    if($null -eq $Reset -or [string]$Reset -eq ''){return 'reset ?'}
     try {
         $at=if($Unix){[datetimeoffset]::FromUnixTimeSeconds([long]$Reset)}else{[datetimeoffset]::Parse([string]$Reset)}
-        if($at -le $Now){return 'reset awaiting update'}
-        if($Unconfirmed){return 'reset not confirmed'}
-        $text='reset in '+(Format-DashboardDuration ($at-$Now).TotalSeconds)
-        if($Wide){$text+='  /  '+$at.ToLocalTime().ToString('ddd HH:mm')}
+        if($at -le $Now){return 'reset due'}
+        if($Unconfirmed){return 'reset unconfirmed'}
+        $text='reset '+(Format-DashboardAge ($at-$Now).TotalSeconds)
+        if($Wide){$text+='  ·  '+$at.ToLocalTime().ToString('ddd HH:mm')}
         return $text
-    }catch{return 'reset unknown'}
+    }catch{return 'reset ?'}
 }
 function New-DashboardRow([string]$Text,[string]$Tone='text'){return [pscustomobject]@{text=$Text;tone=$Tone}}
 function Format-DashboardState([string]$State) {
@@ -56,149 +64,248 @@ function Format-DashboardState([string]$State) {
         default{return $State.Replace('_',' ').ToUpperInvariant()}
     }
 }
+function Get-DashboardBadgeTone([string]$Badge) {
+    # One meaning per color: mint = usable / chosen, lavender = held back on
+    # purpose, red = out of balance, amber = needs a look, muted = inert.
+    if($Badge -match 'EXHAUSTED|LOW BALANCE|BLOCKED'){return 'red'}
+    if($Badge -match 'DISABLED|MONITORED|NO OBSERVATION'){return 'muted'}
+    if($Badge -match 'RESERVE'){return 'lavender'}
+    if($Badge -match '^(ACTIVE|NEXT LAUNCH|AVAILABLE)'){return 'mint'}
+    return 'amber'
+}
+function Format-DashboardForecast($Forecast) {
+    if(-not $Forecast){return $null}
+    $hours=[math]::Round($Forecast.secondsToLimit/3600)
+    return ('pace '+$Forecast.pace+'  ·  ~'+$hours+'h to limit  ·  '+$(if($Forecast.lastsToReset){'lasts to reset'}else{'may run out first'}))
+}
 function New-DashboardQuotaRow([string]$Label,$Used,$Reset,[datetimeoffset]$Now,[int]$Width,[switch]$Unix,[switch]$Unconfirmed,[switch]$Stale,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
-    $size=if($Width -ge 80){14}else{8}
-    $tone='muted'; $percent='   ?'; $bar='·'*$size
-    if((Test-Hotpl8Number $Used) -and $Used -ge 0 -and $Used -le 100) {
-        $left=100-[double]$Used; $percent=('{0,3:0}%' -f $left)
-        $fill=[int][Math]::Floor($left*$size/100); $bar=('━'*$fill)+('·'*($size-$fill))
-        $tone=if($Stale){'muted'}else{Get-Hotpl8BudgetTone $left}
-    }
-    $resetText=Format-DashboardReset $Reset $Now -Unix:$Unix -Wide:($Width -ge 96) -Unconfirmed:$Unconfirmed
-    New-Hotpl8StyledRow @(New-Hotpl8Span ('    '+$Label.PadRight(3)+'  ');New-Hotpl8Span $(if(-not $Stale -and $percent -ne '   ?' -and $left -lt 10){'!'}else{' '}) $(if(-not $ReducedMotion -and ($AnimationSeconds%2) -ge 1){'text'}else{$tone});New-Hotpl8Span ($bar+' '+$percent+' left') $tone;New-Hotpl8Span ('   '+$resetText) 'muted')
+    $size=if($Width -ge 80){20}else{12}
+    $known=(Test-Hotpl8Number $Used) -and $Used -ge 0 -and $Used -le 100
+    $motion=-not $ReducedMotion
+    $left=if($known){100-[double]$Used}else{0}
+    $low=$known -and -not $Stale -and $left -lt 10
+    $health=if(-not $known -or $Stale){'muted'}else{Get-Hotpl8BudgetTone $left}
+    $pulse=if($low -and $motion){Get-Hotpl8Pulse $AnimationSeconds}else{0}
+    $fill=if($pulse){Get-Hotpl8ToneMix $health '255;255;255' (0.45*$pulse)}else{$health}
+    $reveal=if($motion){Get-Hotpl8Reveal $AnimationSeconds}else{1}
+    $bar=if($known){@(New-Hotpl8BarSpans -Value $left -Size $size -Tone $fill -Reveal $reveal)}else{@(New-Hotpl8Span ('·'*$size) 'border')}
+    $percent=if($known){('{0,3:0}%' -f $left)}else{'   ?'}
+    $mark=if($low -and ($pulse -ge 0.5 -or -not $motion)){'!'}else{' '}
+    # A full window with no reset time has not started; say so instead of 'reset ?'.
+    $resetText=if(-not $known){'no reading'}elseif($left -ge 100 -and ($null -eq $Reset -or [string]$Reset -eq '')){'idle'}else{Format-DashboardReset $Reset $Now -Unix:$Unix -Wide:($Width -ge 96) -Unconfirmed:$Unconfirmed}
+    $spans=@(New-Hotpl8Span ('    '+$Label.PadRight(3)) 'muted';New-Hotpl8Span $mark 'red')+$bar+@(New-Hotpl8Span ('  '+$percent) $health;New-Hotpl8Span ('   '+$resetText) 'muted')
+    $live=$null
+    if($motion -and $known){$live=New-Hotpl8Live 'New-DashboardQuotaRow' @{Label=$Label;Used=$Used;Reset=$Reset;Now=$Now;Width=$Width;Unix=[bool]$Unix;Unconfirmed=[bool]$Unconfirmed;Stale=[bool]$Stale} 0.9 -Loop:$low}
+    New-Hotpl8StyledRow $spans $live
+}
+function New-DashboardAccountRow([string]$Name,[string]$Id,[string]$Badge,[string]$Accent,[switch]$Selected) {
+    $marker=if($Selected){'● '}else{'○ '}
+    New-Hotpl8StyledRow @(New-Hotpl8Span '  ';New-Hotpl8Span $marker $(if($Selected){$Accent}else{'border'});New-Hotpl8Span $Name $(if($Selected){'text'}else{'muted'});New-Hotpl8Span ('  ['+$Id+']  ·  ') 'border';New-Hotpl8Span $Badge (Get-DashboardBadgeTone $Badge))
 }
 function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
     if (-not $Policy.prefer -and -not $Policy.codex.slots -and -not $Status) {
-        New-DashboardRow '  Connect an account to see its quota here.' text
-        New-DashboardRow '  Codex: sign in with the native CLI, then:' lavender
-        New-DashboardRow '    hotpl8 enroll -Slot main -AccountHome PATH' text
-        New-DashboardRow '  Claude: follow docs/install.md.' peach
-        New-DashboardRow '  Next: hotpl8 refresh' mint
+        New-DashboardRow '  No accounts yet.' text
+        New-DashboardRow '  Codex   sign in with the native CLI, then' cyan
+        New-DashboardRow '          hotpl8 enroll -Slot main -AccountHome PATH' text
+        New-DashboardRow '  Claude  follow docs/install.md' peach
+        New-DashboardRow '  then    hotpl8 refresh' mint
         return
     }
     $age=Get-DashboardAge $Status.generatedAt $Now
     $stale=($null -eq $age -or $age -gt 900 -or $age -lt -5)
-    if(-not $Status -or -not $Status.generatedAt){New-DashboardRow '  No reading yet. Run hotpl8 refresh.' amber}
-    elseif($stale){New-DashboardRow '  ! Usage is stale. Run hotpl8 refresh.' amber}
+    if(-not $Status -or -not $Status.generatedAt){New-DashboardRow '  no reading yet  ·  hotpl8 refresh' amber}
+    elseif($stale){New-DashboardRow '  ! readings stale  ·  hotpl8 refresh' amber}
     $needsHelp = (@($Status.slots | Where-Object { $_.status -notin @('ok','disabled') }).Count -gt 0 -or
         @($Status.providers.codex.slots | Where-Object { $_.status -notin @('ok','disabled') }).Count -gt 0)
-    if ($needsHelp) { New-DashboardRow '  Account unavailable? Run hotpl8 doctor; see docs/troubleshooting.md.' amber }
+    if ($needsHelp) { New-DashboardRow '  ! account unavailable  ·  hotpl8 doctor' amber }
     if($Status.collector){
         $health=Get-Hotpl8Health $Status.collector $Now
-        if(-not $Compact -or $health -notin @('recent collection completed','collecting')){New-DashboardRow ('  '+$health) $(if($health -in @('recent collection completed','collecting')){'muted'}else{'amber'})}
+        if($health -notin @('recent collection completed','collecting')){New-DashboardRow ('  ! '+$health) amber}
     }
-    if($Status.automationPause){New-DashboardRow ('  AUTOMATION PAUSED: '+$Status.automationPause.reason) amber}
     $claude=@($Status.slots|Where-Object {$null -ne $_})
     if(-not $claude.Count -and $Policy.labels){
         $claude=@($Policy.labels.PSObject.Properties|ForEach-Object{[pscustomobject]@{slot=$_.Name;label=$_.Value;status='no observation'}})
     }
     New-DashboardRow ('  CLAUDE  /  '+$claude.Count+' subscription'+$(if($claude.Count -ne 1){'s'})) peach
-    if(-not $claude.Count){New-DashboardRow '    No Claude accounts in this snapshot.' muted}
+    if(-not $claude.Count){New-DashboardRow '    none in this snapshot' muted}
     foreach($slot in $claude){
         $isStale=($stale -or -not $slot.fresh -or ($slot.observedAt -and -not (Test-Hotpl8FreshTimestamp $slot.observedAt $Now)))
         $badge=if($slot.active){'ACTIVE'}elseif(@($Policy.reserve) -contains $slot.slot){'RESERVE'}else{'MONITORED'}
-        if($slot.status -ne 'ok'){$badge=Format-DashboardState $slot.status}elseif($isStale){$badge='STALE'}elseif($slot.cold){$badge+=' / resting'}
+        if($slot.status -ne 'ok'){$badge=Format-DashboardState $slot.status}elseif($isStale){$badge='STALE'}elseif($slot.cold){$badge+=' · resting'}
         $name=if($slot.label){$slot.label}else{'Slot '+$slot.slot}
-        if($slot.slot -in @($Policy.disabled)){$badge='DISABLED'}
-        if(Test-Hotpl8DetectedPlan $slot.plan $Now){$badge+=' / '+$slot.plan.label}
-        New-DashboardRow ('  '+$(if($slot.active){'● '}else{'○ '})+$name+'  ['+$slot.slot+']  ·  '+$badge) $(if($slot.active){'peach'}else{'text'})
-        if($slot.slot -in @($Policy.disabled) -or $slot.status -eq 'disabled'){
-            New-DashboardRow '    Disabled: excluded from totals and selection.' muted
-            continue
-        }
+        $disabled=($slot.slot -in @($Policy.disabled) -or $slot.status -eq 'disabled')
+        if($disabled){$badge='DISABLED'}
+        if(Test-Hotpl8DetectedPlan $slot.plan $Now){$badge+=' · '+$slot.plan.label}
+        New-DashboardAccountRow $name ([string]$slot.slot) $badge peach -Selected:([bool]$slot.active -and -not $disabled)
+        if($disabled){continue}
         New-DashboardQuotaRow '5h' $slot.used5h $slot.reset5h $Now $Width -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
         New-DashboardQuotaRow '7d' $slot.used7d $slot.reset7d $Now $Width -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
         if(-not $Compact){
             if($isStale){
                 $readingAge=Get-DashboardAge $slot.observedAt $Now
-                New-DashboardRow ('    '+$(if($null -ne $readingAge){'Last reading '+(Format-DashboardDuration $readingAge)+' ago; awaiting update.'}else{'No valid reading; see hotpl8 explain.'})) amber
+                New-DashboardRow ('    '+$(if($null -ne $readingAge){'last read '+(Format-DashboardAge $readingAge)+' ago  ·  awaiting update'}else{'no valid reading  ·  hotpl8 explain'})) amber
             }
-            if($slot.forecast -and -not $isStale){New-DashboardRow ('    '+(Format-Hotpl8Forecast $slot.forecast)) muted}
-            if($slot.warmOutcome){New-DashboardRow ('    Warm: '+$slot.warmOutcome.outcome) $(if($slot.warmOutcome.outcome -eq 'observed-active'){'mint'}else{'amber'})}
-            if($slot.actionBlock){New-DashboardRow ('    Warming: '+$slot.actionBlock.Replace('_',' ')) muted}
-            if($slot.modelBlock){New-DashboardRow ('    Selection: '+$slot.modelBlock.Replace('_',' ')) amber}
-            if($slot.plan -and -not (Test-Hotpl8DetectedPlan $slot.plan $Now)){New-DashboardRow '    Plan: not currently verified; quota readings still apply.' muted}
-            foreach($scope in @($slot.scoped)){if($scope){New-DashboardRow ('    '+$scope.name+' weekly: '+$scope.pct+'% used') muted}}
+            $forecast=if(-not $isStale){Format-DashboardForecast $slot.forecast}else{$null}
+            if($forecast){New-DashboardRow ('    '+$forecast) muted}
+            $notes=@();$attention=$false
+            if($slot.warmOutcome){$ok=$slot.warmOutcome.outcome -eq 'observed-active';$notes+='warm '+$(if($ok){'ok'}else{$slot.warmOutcome.outcome});if(-not $ok){$attention=$true}}
+            if($slot.actionBlock){$notes+='warming off · '+([string]$slot.actionBlock).Replace('_',' ')}
+            if($slot.modelBlock){$notes+=([string]$slot.modelBlock).Replace('_',' ');$attention=$true}
+            if($slot.plan -and -not (Test-Hotpl8DetectedPlan $slot.plan $Now)){$notes+='plan unverified'}
+            foreach($scope in @($slot.scoped)){if($scope){$notes+=$scope.name+' '+$scope.pct+'% used'}}
+            if($notes.Count){New-DashboardRow ('    '+($notes -join '  ·  ')) $(if($attention){'amber'}else{'muted'})}
+            New-DashboardRow ''
         }
-        if(-not $Compact){New-DashboardRow ''}
     }
     $codex=$Status.providers.codex
     $configured=@($Policy.codex.slots|Where-Object {$null -ne $_})
     if(-not $configured.Count){$configured=@($codex.slots|Where-Object {$null -ne $_})}
     New-DashboardRow ('  CODEX  /  '+$configured.Count+' subscription'+$(if($configured.Count -ne 1){'s'})) cyan
-    if(-not $configured.Count){New-DashboardRow '    No Codex accounts enrolled yet.' muted}
-    if($codex.failureCode){New-DashboardRow ('    Read failed: '+$codex.failureCode+' / '+$codex.failureStage) amber}
-    $ordinal=0
+    if(-not $configured.Count){New-DashboardRow '    none enrolled yet' muted}
+    if($codex.failureCode){New-DashboardRow ('    ! read failed  ·  '+$codex.failureCode+' / '+$codex.failureStage) amber}
     foreach($config in $configured){
-        $ordinal++
         $slot=@($codex.slots|Where-Object id -EQ $config.id|Select-Object -First 1)
         $item=if($slot.Count){$slot[0]}else{$null}
         $name=if($config.label){$config.label}else{$config.id}
         $age=Get-DashboardAge $item.observedAt $Now
         $isStale=($null -eq $age -or $age -gt 900 -or $age -lt -5)
         $badge=Get-Hotpl8CodexAccountState $item $Policy.codex $codex $Now
-        if($config.id -in @($Policy.codex.disabled)){$badge='DISABLED'}
-        New-DashboardRow ('  '+$ordinal+'/'+$configured.Count+' '+$name+' ['+$config.id+'] · '+$badge) cyan
-        if($config.id -in @($Policy.codex.disabled) -or $item.status -eq 'disabled'){
-            New-DashboardRow '    Disabled: excluded from totals and selection.' muted
-            continue
-        }
-        if(-not $item -or -not $item.buckets){New-DashboardRow '    Waiting for quota readings.' muted}
+        $disabled=($config.id -in @($Policy.codex.disabled) -or $item.status -eq 'disabled')
+        if($disabled){$badge='DISABLED'}
+        New-DashboardAccountRow $name ([string]$config.id) $badge cyan -Selected:($badge -eq 'NEXT LAUNCH')
+        if($disabled){continue}
+        if(-not $item -or -not $item.buckets){New-DashboardRow '    no reading yet' muted}
         foreach($bucket in @($item.buckets.PSObject.Properties|Where-Object Name -NE 'codex_bengalfox'|Sort-Object @{Expression={if($_.Name -eq 'codex'){0}else{1}}},Name)){
             $label=switch($bucket.Name){'codex'{'Main'};'codex_bengalfox'{'Spark'};default{$bucket.Name}}
-            $state=switch($bucket.Value.status){'constraint_unknown'{'limit status unknown'};'blocked'{'blocked'};'unsupported'{'unsupported quota'};default{''}}
-            if($bucket.Name -ne 'codex'){New-DashboardRow ('    '+$label+$(if($state){'  /  '+$state})) $(if($state){'amber'}else{'muted'})}
+            $state=switch($bucket.Value.status){'constraint_unknown'{'limit unknown'};'blocked'{'blocked'};'unsupported'{'unsupported quota'};default{''}}
+            if($bucket.Name -ne 'codex'){New-DashboardRow ('    '+$label+$(if($state){'  ·  '+$state})) $(if($state){'amber'}else{'muted'})}
             $windows=@($bucket.Value.windows.PSObject.Properties|Sort-Object {[int]$_.Name})
             foreach($window in $windows){
                 $label=if($window.Name -eq '300'){'5h'}elseif($window.Name -eq '10080'){'7d'}else{$window.Name+'m'}
                 New-DashboardQuotaRow $label $window.Value.usedPercent $window.Value.resetsAt $Now $Width -Unix -Unconfirmed:($window.Value.anchorState -eq 'unconfirmed') -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
             }
-            if(-not $Compact -and $bucket.Name -eq 'codex' -and $windows.Count -eq 1 -and $windows[0].Name -eq '10080'){New-DashboardRow '    Weekly allowance · no five-hour window' muted}
-            if(-not $windows.Count){New-DashboardRow '    Quota not available yet.' muted}
-            if(-not $Compact -and $item.planType -and $item.planType -ne 'unknown'){New-DashboardRow ('    Plan: '+$item.planType) muted}
-            if(-not $Compact -and $bucket.Value.forecast -and -not $isStale){New-DashboardRow ('    '+(Format-Hotpl8Forecast $bucket.Value.forecast)) muted}
+            if(-not $windows.Count){New-DashboardRow '    no quota yet' muted}
+            if(-not $Compact){
+                $forecast=if(-not $isStale){Format-DashboardForecast $bucket.Value.forecast}else{$null}
+                if($forecast){New-DashboardRow ('    '+$forecast) muted}
+                if($item.planType -and $item.planType -ne 'unknown'){New-DashboardRow ('    plan '+$item.planType) muted}
+            }
         }
         if(-not $Compact){New-DashboardRow ''}
     }
-    if($Status.hold){New-DashboardRow ('  Rotation held until '+[string]$Status.hold.until) amber}
     if(-not $Compact -and $Status.recentActions){
-        New-DashboardRow '  RECENT ACTIONS / hotpl8 explain for selection details' muted
-        foreach($event in @($Status.recentActions|Select-Object -Last 3)){New-DashboardRow ('    '+$event.provider+' '+$event.slot+': '+$event.kind+' / '+$event.reason) muted}
+        New-DashboardRow '  RECENT' muted
+        foreach($event in @($Status.recentActions|Select-Object -Last 3)){New-DashboardRow ('    '+$event.provider+' '+$event.slot+'  ·  '+([string]$event.kind).Replace('_',' ')+'  ·  '+([string]$event.reason).Replace('_',' ')) muted}
     }
+}
+function Get-DashboardChips($Status,$Provider,[string]$Name,[datetimeoffset]$Now) {
+    # Short right-aligned status words for a provider header. Empty when all is well.
+    $p=$Provider;$c=if($p.immediate){$p.immediate}else{$p.capacity};$chips=@()
+    if($Name -eq 'claude'){
+        if($Status.hold -and $p.automation -ne 'automation paused'){$chips+=@{text='HELD';tone='amber'}}
+        switch($p.automation){
+            'automation paused'{$left=Get-DashboardAge $Status.automationPause.until $Now;$chips+=@{text=('PAUSED'+$(if($null -ne $left -and $left -lt 0){' '+(Format-DashboardAge (-$left))}));tone='amber'}}
+            'rotation held'{}
+            'automatic selection on'{$chips+=@{text='auto';tone='muted'}}
+            'manual selection'{$chips+=@{text='manual';tone='muted'}}
+            'monitor only'{$chips+=@{text='monitor';tone='muted'}}
+        }
+    }elseif($p.accounts){
+        if($p.selected){$chips+=@{text=('next: '+$p.selected);tone='mint'}}else{$chips+=@{text='NO LAUNCH';tone='amber'}}
+    }
+    if($c.critical.active){$chips+=@{text='CRITICAL';tone='rose'}}
+    $availability=[string]$p.availability
+    if($availability -match '^Unavailable'){$chips+=@{text='UNAVAILABLE';tone='amber'}}
+    elseif($availability -match '^Readings stale'){$chips+=@{text='STALE';tone='amber'}}
+    elseif($availability -match 'manual selection needed'){$chips+=@{text='PICK MANUALLY';tone='amber'}}
+    elseif($availability -match 'selection held'){$chips+=@{text='HELD';tone='amber'}}
+    elseif($availability -match '^No accounts'){$chips+=@{text='none enabled';tone='muted'}}
+    if($availability -match 'sign-in'){$chips+=@{text='SIGN-IN';tone='amber'}}
+    if($p.collectionHealth -and $p.collectionHealth -notin @('manual / no collector evidence','recent collection completed','collecting')){$chips+=@{text=$p.collectionHealth;tone='amber'}}
+    if($p.accounts -and -not $c.complete -and $null -eq $c.totalUnits){$chips+=@{text='plan unknown';tone='amber'}}
+    if($p.accounts -and $p.measured -lt $p.accounts){$chips+=@{text=([string]$p.measured+'/'+$p.accounts+' read');tone='amber'}}
+    if($p.disabled){$chips+=@{text=([string]$p.disabled+' off');tone='muted'}}
+    if($p.duplicates){$chips+=@{text=([string]$p.duplicates+' dup');tone='muted'}}
+    return ,$chips
+}
+function New-DashboardHeaderRow([string]$Title,[string]$Accent,$Chips,[int]$Width) {
+    $chips=@($Chips)
+    $length={param($items) $sum=0;foreach($chip in $items){$sum+=$chip.text.Length+2};[math]::Max(0,$sum-2)}
+    # Keep the row on one line: drop the quietest chips first when space is short.
+    while($chips.Count -and (2+$Title.Length+2+(& $length $chips)+2) -gt $Width){
+        $drop=@($chips|Where-Object tone -EQ 'muted'|Select-Object -Last 1)
+        if(-not $drop.Count){$drop=@($chips|Select-Object -Last 1)}
+        $chips=@($chips|Where-Object {$_ -ne $drop[0]})
+    }
+    $spans=@(New-Hotpl8Span ('  '+$Title) $Accent)
+    if($chips.Count){
+        $spans+=New-Hotpl8Span (' '*[math]::Max(2,$Width-4-$Title.Length-(& $length $chips)))
+        for($i=0;$i -lt $chips.Count;$i++){if($i){$spans+=New-Hotpl8Span '  '};$spans+=New-Hotpl8Span $chips[$i].text $chips[$i].tone}
+    }
+    New-Hotpl8StyledRow $spans
+}
+function New-DashboardOverviewBarRow($Overview,[datetimeoffset]$Now,[int]$Width,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
+    $p=$Overview;$c=if($p.immediate){$p.immediate}else{$p.capacity};$motion=-not $ReducedMotion
+    $value=[double]$c.knownUsablePercent
+    $gain=if($c.complete -and $null -ne $c.projectedGainPercent -and $c.nextResetAt){[double]$c.projectedGainPercent}else{0}
+    $unknown=if($c.complete){0}else{[double]$c.unknownPercent}
+    $estimate=$c.metric -eq 'plan-weighted-quota-headroom'
+    $percent=if($c.complete){$(if($estimate){'~'}else{''})+('{0:0}% now' -f $c.usableNowPercent)}else{'? now'}
+    $refill=''
+    if($gain -ge 0.5){$refill='+{0:0}% in {1}' -f $gain,(Format-DashboardAge ([datetimeoffset]::Parse($c.nextResetAt)-$Now).TotalSeconds)}
+    elseif($c.complete -and $c.nextResetAt){$refill='reset '+(Format-DashboardAge ([datetimeoffset]::Parse($c.nextResetAt)-$Now).TotalSeconds)}
+    elseif($c.complete -and -not $c.projectionComplete){$refill='refill unconfirmed'}
+    $weekly=if($null -ne $p.remainingPercent -and ($estimate -or [math]::Abs([double]$p.remainingPercent-$value) -ge 0.5)){'7d {0:0}%' -f $p.remainingPercent}else{''}
+    $text=$percent+$(if($refill){'  '+$refill})
+    $size=[math]::Min(40,$Width-8-$text.Length-$(if($weekly){3+$weekly.Length}else{0}))
+    if($size -lt 12 -and $weekly){$weekly='';$size=[math]::Min(40,$Width-8-$text.Length)}
+    $size=[math]::Max(8,$size)
+    $health=Get-Hotpl8BudgetTone $value
+    $low=$c.complete -and $value -lt 10
+    $pulse=if($low -and $motion){Get-Hotpl8Pulse $AnimationSeconds}else{0}
+    $fill=if($pulse){Get-Hotpl8ToneMix $health '255;255;255' (0.45*$pulse)}else{$health}
+    $reveal=if($motion){Get-Hotpl8Reveal $AnimationSeconds}else{1}
+    $shimmer=if($motion -and $gain -ge 0.5){($AnimationSeconds/3.2)%1}else{-1}
+    $edge=if($low){Get-Hotpl8ToneMix 'red' 'border' (1-$pulse)}else{'border'}
+    $spans=@(New-Hotpl8Span '  ';New-Hotpl8Span '[' $edge)+@(New-Hotpl8BarSpans -Value $value -Gain $gain -Unknown $unknown -Size $size -Tone $fill -Reveal $reveal -Shimmer $shimmer)+@(New-Hotpl8Span ']' $edge)
+    $spans+=New-Hotpl8Span ('  '+$percent) $(if($c.complete){$health}else{'muted'})
+    if($refill){$spans+=New-Hotpl8Span ('  '+$refill) 'muted'}
+    if($weekly){$spans+=New-Hotpl8Span ('   '+$weekly) 'muted'}
+    $live=$null
+    if($motion -and ($c.complete -or $value -gt 0)){$live=New-Hotpl8Live 'New-DashboardOverviewBarRow' @{Overview=$Overview;Now=$Now;Width=$Width} 0.9 -Loop:($low -or $shimmer -ge 0)}
+    New-Hotpl8StyledRow $spans $live
 }
 function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width,[double]$AnimationSeconds=0,[switch]$ReducedMotion,$OverviewOverride=$null) {
     $overview=if($OverviewOverride){$OverviewOverride}else{Get-Hotpl8ProviderOverview $Status $Policy $Now}
     foreach($provider in @('claude','codex')){
         $p=$overview.$provider
-        $display=Get-Hotpl8CapacityDisplay $p
-        $c=$display.capacity
-        $tone=if($provider -eq 'claude'){'peach'}else{'cyan'}
-        New-DashboardRow ('  '+$provider.ToUpper()+' / '+$display.title) $tone
-        $suffix=if($display.nextResetAt){
-            $(if($null -ne $display.gain){'+{0:0.#}% in ' -f $display.gain}else{'reset in '})+(Format-DashboardDuration ([datetimeoffset]::Parse($display.nextResetAt)-$Now).TotalSeconds)
-        }elseif(-not $c.complete){'awaiting readings'}elseif($c.projectionComplete){'no refill in 24h'}else{'refill not confirmed'}
-        $size=[math]::Max(10,[math]::Min(45,$Width-6-$suffix.Length))
-        $value=$display.value
-        $fill=[int][math]::Floor($value*$size/100)
-        $gain=if($null -ne $display.gain){[int][math]::Floor(($value+$display.gain)*$size/100)-$fill}else{0}
-        $empty=[math]::Max(0,$size-$fill-$gain)
-        $health=Get-Hotpl8BudgetTone $value
-        $warning=$c.complete -and $value -lt 10
-        $pulse=if($warning -and -not $ReducedMotion -and ($AnimationSeconds%2) -ge 1){'text'}else{$health}
-        $spaces=[math]::Max(1,$Width-4-$size-$suffix.Length)
-        $spans=@(New-Hotpl8Span '  ';New-Hotpl8Span '[' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ('█'*$fill) $health;New-Hotpl8Span ('▒'*$gain) $tone;New-Hotpl8Span ('·'*$empty) 'border';New-Hotpl8Span ']' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ((' '*$spaces)+$suffix) 'muted')
-        New-Hotpl8StyledRow $spans
-        $state=$display.state
-        if($c.critical.active){$state+=' / CRITICAL / target '+$c.critical.pollSeconds+'s'}
-        if($p.collectionHealth -notin @('manual / no collector evidence','recent collection completed','collecting')){$state=$p.collectionHealth+' / '+$state}
-        New-DashboardRow ('  '+$state) 'muted'
-        $membership='  '+$p.accounts+' enabled'
-        $membership+=' / '+$p.measured+'/'+$p.accounts+' readings'
-        if($p.disabled){$membership+=' / '+$p.disabled+' disabled'}
-        if($p.duplicates){$membership+=' / '+$p.duplicates+' duplicate excluded'}
-        $membership+=if($provider -eq 'codex'){' / next launch: '+$(if($p.selected){$p.selected}else{'unavailable'})}else{' / '+$p.automation}
-        New-DashboardRow $membership 'muted'
+        New-DashboardHeaderRow $provider.ToUpper() $(if($provider -eq 'claude'){'peach'}else{'cyan'}) (Get-DashboardChips $Status $p $provider $Now) $Width
+        New-DashboardOverviewBarRow $p $Now $Width -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
     }
+}
+function New-DashboardTitleRow($Status,[datetimeoffset]$Now,[int]$Width,[switch]$Paused,[switch]$Nyan,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
+    $left=if($Nyan){'  hotpl8  ·  nyan'}else{'  '+(Get-Hotpl8Cat $AnimationSeconds -ReducedMotion:$ReducedMotion)+'  hotpl8'}
+    $meta=@()
+    if($Status.displayPolicy){$meta+=@{text='PREVIEW POLICY';tone='lavender'}}
+    if($Paused){$meta+=@{text='FROZEN';tone='amber'}}
+    $age=Get-DashboardAge $Status.generatedAt $Now
+    if($null -eq $age){$meta+=@{text='no reading';tone='amber'}}
+    elseif($age -lt -5){$meta+=@{text='clock mismatch';tone='amber'}}
+    elseif($age -gt 900){$meta+=@{text=('stale '+(Format-DashboardAge $age));tone='amber'}}
+    else{$meta+=@{text=('read '+(Format-DashboardAge $age)+' ago');tone='muted'}}
+    $length=0;foreach($m in $meta){$length+=$m.text.Length+3};$length-=3
+    $spans=@(New-Hotpl8Span $left 'rose';New-Hotpl8Span (' '*[math]::Max(2,$Width-2-$left.Length-$length)))
+    for($i=0;$i -lt $meta.Count;$i++){if($i){$spans+=New-Hotpl8Span ' · ' 'border'};$spans+=New-Hotpl8Span $meta[$i].text $meta[$i].tone}
+    $live=$null
+    if(-not $Nyan -and -not $ReducedMotion){$live=New-Hotpl8Live 'New-DashboardTitleRow' @{Status=$Status;Now=$Now;Width=$Width;Paused=[bool]$Paused;Nyan=$false} 0 -Loop -Rate 200}
+    New-Hotpl8StyledRow $spans $live
+}
+function Get-Hotpl8NyanRow([int]$Index,[int]$Width,[double]$AnimationSeconds=0) {
+    # Per-row entry point for live redraws; the whole sprite is computed once per instant.
+    if(-not $script:Hotpl8NyanLast -or $script:Hotpl8NyanLast.at -ne $AnimationSeconds -or $script:Hotpl8NyanLast.width -ne $Width){
+        $script:Hotpl8NyanLast=@{at=$AnimationSeconds;width=$Width;rows=@(Get-Hotpl8NyanAnsiRows $AnimationSeconds $Width (Get-Hotpl8DashboardPalette))}
+    }
+    return $script:Hotpl8NyanLast.rows[$Index]
 }
 function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[int]$Height=40,[int]$Offset=0,[switch]$Paused,[double]$AnimationSeconds=0,[switch]$Nyan,[switch]$ReducedMotion,$OverviewOverride=$null,[switch]$Plain,$ResolvedOffset=$null) {
     $width=[Math]::Max(1,[Math]::Min(110,$Width)); $inside=$width-2
@@ -207,11 +314,15 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
         @('hotpl8 (=^.^=)','Make the terminal larger.','Q quit / Esc back')|Select-Object -First ([Math]::Max(1,$Height))|ForEach-Object{New-DashboardRow (Format-DashboardText $_ $width) muted}
         return
     }
-    $rows=@(Get-Hotpl8DashboardRows $Status $Policy $Now $width -Compact:($Height -lt 32) -AnimationSeconds $AnimationSeconds -ReducedMotion:($ReducedMotion -or $Policy.display.reducedMotion -or [bool]$env:HOTPL8_REDUCED_MOTION))
-    $motionOff=$ReducedMotion -or $Policy.display.reducedMotion -or [bool]$env:HOTPL8_REDUCED_MOTION
-    $summary=@(Get-Hotpl8OverviewRows $Status $Policy $Now ($width-2) $AnimationSeconds -ReducedMotion:$motionOff -OverviewOverride $OverviewOverride)
-    $nyanRows=if($Nyan -and $Height -ge 24){@(Get-Hotpl8NyanRows $AnimationSeconds -ReducedMotion:$motionOff -Plain:$Plain)}else{@()}
-    $available=[Math]::Max(1,$Height-7-$summary.Count-1-$nyanRows.Count)
+    $motionOff=$ReducedMotion -or $Policy.display.reducedMotion -or [bool]$env:HOTPL8_REDUCED_MOTION -or $Plain
+    $rows=@(Get-Hotpl8DashboardRows $Status $Policy $Now $width -Compact:($Height -lt 32) -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff)
+    $summary=@(Get-Hotpl8OverviewRows $Status $Policy $Now $inside $AnimationSeconds -ReducedMotion:$motionOff -OverviewOverride $OverviewOverride)
+    $nyanRows=@()
+    if($Nyan -and $Height -ge 24){
+        $nyanRows=@(Get-Hotpl8NyanRows $AnimationSeconds -ReducedMotion:$motionOff -Plain:$Plain -Width $inside)
+        if(-not $motionOff){for($i=0;$i -lt $nyanRows.Count;$i++){$nyanRows[$i]=New-Hotpl8StyledRow $nyanRows[$i].spans (New-Hotpl8Live 'Get-Hotpl8NyanRow' @{Index=$i;Width=$inside} 0 -Loop -Rate 100)}}
+    }
+    $available=[Math]::Max(1,$Height-7-$summary.Count-$nyanRows.Count)
     # Prefer showing every account over spending the viewport on forecasts and
     # other optional lines above an account that would otherwise disappear below
     # the fold. Base this on actual content, not just a fixed terminal height.
@@ -224,21 +335,29 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     # height-minus-14 estimate omitted pinned rows and could strand the final
     # accounts; Nyan and adaptive compact layouts also change the true viewport.
     if($ResolvedOffset){$ResolvedOffset.Value=$offset}
-    $age=Get-DashboardAge $Status.generatedAt $Now
-    $freshness=if($null -eq $age){'no reading yet'}elseif($age -lt -5){'clock mismatch'}else{'usage read '+(Format-DashboardDuration $age)+' ago'}
-    if($Status.displayPolicy){$freshness='PREVIEW POLICY (display only) / '+$freshness}
     New-DashboardRow ('╭'+('─'*$inside)+'╮') border
-    New-DashboardRow ('│'+(Format-DashboardText ('  '+$(if($Nyan){'~~~'}else{Get-Hotpl8Cat $AnimationSeconds -ReducedMotion:$motionOff})+'  hotpl8'+$(if($Nyan -and -not $nyanRows.Count){' / nyan (enlarge for animation)'}else{''})) $inside)+'│') rose
+    Add-Hotpl8FrameBorder (New-DashboardTitleRow $Status $Now $inside -Paused:$Paused -Nyan:$Nyan -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff) $inside
     foreach($r in $nyanRows){Add-Hotpl8FrameBorder $r $inside}
-    New-DashboardRow ('│'+(Format-DashboardText ('  '+$(if($Paused){'VIEW FROZEN'}else{'CACHED VIEW'})+'  ·  '+$freshness) $inside)+'│') muted
     New-DashboardRow ('├'+('─'*$inside)+'┤') border
     foreach($row in $summary){Add-Hotpl8FrameBorder $row $inside}
-    New-DashboardRow ('│'+(Format-DashboardText '  ACCOUNT DETAILS / scroll below' $inside)+'│') muted
-    foreach($row in @($rows|Select-Object -Skip $offset -First $available)){Add-Hotpl8FrameBorder $row $inside}
     New-DashboardRow ('├'+('─'*$inside)+'┤') border
-    $keys='  Q quit  ·  Space freeze  ·  ↑↓ scroll / End last'
-    if($rows.Count -gt $available){$keys+='  ['+($offset+1)+'-'+[Math]::Min($rows.Count,$offset+$available)+'/'+$rows.Count+']'}
-    New-DashboardRow ('│'+(Format-DashboardText $keys $inside)+'│') muted
+    $visible=@($rows|Select-Object -Skip $offset -First $available)
+    # A thumb in the right border shows where the details viewport sits.
+    $thumb=0;$thumbAt=0
+    if($rows.Count -gt $available){
+        $thumb=[math]::Max(1,[int][math]::Floor($available*$available/$rows.Count))
+        $thumbAt=[int][math]::Round($offset/[math]::Max(1,$rows.Count-$available)*($available-$thumb))
+    }
+    for($i=0;$i -lt $visible.Count;$i++){
+        if($thumb -and $i -ge $thumbAt -and $i -lt $thumbAt+$thumb){Add-Hotpl8FrameBorder $visible[$i] $inside '┃' 'muted'}
+        else{Add-Hotpl8FrameBorder $visible[$i] $inside}
+    }
+    New-DashboardRow ('├'+('─'*$inside)+'┤') border
+    $page=if($rows.Count -gt $available){'['+($offset+1)+'-'+[Math]::Min($rows.Count,$offset+$available)+'/'+$rows.Count+']'}else{''}
+    # Narrow frames drop key hints before they can crowd the page indicator.
+    $keys='  q  ·  ↑↓'
+    foreach($candidate in @('  q quit  ·  space freeze  ·  ↑↓ scroll','  q quit  ·  ↑↓ scroll')){if($candidate.Length+$page.Length+4 -le $inside){$keys=$candidate;break}}
+    Add-Hotpl8FrameBorder (New-Hotpl8StyledRow @(New-Hotpl8Span $keys 'muted';New-Hotpl8Span (' '*[math]::Max(2,$inside-2-$keys.Length-$page.Length));New-Hotpl8Span $page 'muted')) $inside
     New-DashboardRow ('╰'+('─'*$inside)+'╯') border
 }
 function Enable-Hotpl8Terminal {
@@ -260,10 +379,6 @@ public static class HotPl8Console {
         $enabled=([HotPl8Console]::GetConsoleMode($handle,[ref]$mode) -and [HotPl8Console]::SetConsoleMode($handle,($mode -bor 4)))
         return @{enabled=$enabled;handle=$handle;mode=$mode}
     }catch{return @{enabled=$false;handle=$null;mode=$null}}
-}
-function Get-Hotpl8DashboardPalette {
-    # Shared by terminal output and the documentation screenshot harness.
-    return @{text='220;225;238';muted='143;156;181';border='65;79;105';rose='246;169;193';peach='255;155;92';cyan='97;208;220';lavender='194;180;255';mint='151;222;191';amber='244;207;137'}
 }
 function Move-Hotpl8DashboardScroll([long]$Offset,[string]$Key) {
     if($Key -eq 'Home'){return 0}
@@ -288,7 +403,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
         [Console]::TreatControlCAsInput=$true; [Console]::CursorVisible=$false
         if($ansi){[Console]::Write($esc+'[?1049h'+$esc+'[?25l'+$esc+'[48;2;18;23;35m'+$esc+'[2J')}
         $status=$null; $policy=$null; $readAt=-1000; $frameTime=0; $viewNow=[datetimeoffset]::UtcNow
-        $layoutAt=-1000; $layoutWidth=0; $layoutHeight=0; $nyanLines=@{}; $lastLines=@(); $lines=@()
+        $layoutAt=-1000; $layoutWidth=0; $layoutHeight=0; $frame=@(); $lastLines=@(); $lines=@()
         while(-not $quit){
             if($clock.ElapsedMilliseconds -ge $next){
                 if((-not $paused -or -not $policy) -and $clock.ElapsedMilliseconds-$readAt -ge 1000){$policy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json $policyPath};$status=Read-Hotpl8Snapshot $StateDirectory $PolicyOverride;$readAt=$clock.ElapsedMilliseconds}
@@ -296,22 +411,19 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                 $w=[Math]::Max(1,[Console]::WindowWidth-1);$h=[Math]::Max(1,[Console]::WindowHeight-1)
                 $resized=$w -ne $layoutWidth -or $h -ne $layoutHeight
                 $motionOff=$ReducedMotion -or $policy.display.reducedMotion -or [bool]$env:HOTPL8_REDUCED_MOTION -or -not $ansi
-                # Quota/layout work runs at most once per second. Mascot frames reuse it.
+                # Quota/layout work runs at most once per second. Between passes only
+                # rows that declared themselves live (bars, mascot, title) are redrawn.
+                $rate=0
                 if($resized -or $layoutAt -lt 0 -or (-not $paused -and $clock.ElapsedMilliseconds-$layoutAt -ge 1000)){
-                    if($resized){$nyanLines=@{}}
                     $frame=@(Get-Hotpl8DashboardFrame $status $policy $viewNow $w $h $offset -Paused:$paused -AnimationSeconds $frameTime -Nyan:$Nyan -ReducedMotion:$motionOff -OverviewOverride $status.providerOverview -Plain:(-not $ansi) -ResolvedOffset ([ref]$offset))
                     $lines=@(foreach($row in $frame){if($ansi){ConvertTo-Hotpl8AnsiRow $row $colors}else{$row.text}})
                     $layoutAt=$clock.ElapsedMilliseconds;$layoutWidth=$w;$layoutHeight=$h
-                }
-                if($ansi -and $w -ge 48 -and $h -ge 15){
-                    $inside=[math]::Min(110,$w)-2
-                    if($Nyan -and $h -ge 24){
-                        $index=if($motionOff){0}else{[int][math]::Floor($frameTime*5)%$script:Hotpl8Nyan.frames.Count}
-                        if(-not $nyanLines.ContainsKey($index)){$nyanLines[$index]=@(foreach($r in @(Get-Hotpl8NyanRows $frameTime -ReducedMotion:$motionOff)){ConvertTo-Hotpl8AnsiRow (Add-Hotpl8FrameBorder $r $inside) $colors})}
-                        for($i=0;$i -lt $nyanLines[$index].Count;$i++){$lines[2+$i]=$nyanLines[$index][$i]}
-                    }elseif(-not $Nyan){
-                        $titleRow=New-DashboardRow ('│'+(Format-DashboardText ('  '+(Get-Hotpl8Cat $frameTime -ReducedMotion:$motionOff)+'  hotpl8') $inside)+'│') rose
-                        $lines[1]=ConvertTo-Hotpl8AnsiRow $titleRow $colors
+                    if($ansi -and -not $paused -and -not $motionOff){foreach($row in $frame){if(Test-Hotpl8LiveRow $row $frameTime){$rate=if($rate){[math]::Min($rate,$row.live.rate)}else{$row.live.rate}}}}
+                }elseif($ansi -and -not $paused -and -not $motionOff){
+                    for($i=0;$i -lt $frame.Count;$i++){
+                        if(-not (Test-Hotpl8LiveRow $frame[$i] $frameTime)){continue}
+                        $lines[$i]=ConvertTo-Hotpl8AnsiRow (Invoke-Hotpl8LiveRow $frame[$i] $frameTime) $colors
+                        $rate=if($rate){[math]::Min($rate,$frame[$i].live.rate)}else{$frame[$i].live.rate}
                     }
                 }
                 $text=$lines -join "`r`n"
@@ -326,7 +438,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                     }else{[Console]::SetCursorPosition(0,0);[Console]::Write($text)}
                     $last=$text;$lastLines=@($lines)
                 }
-                $next=$clock.ElapsedMilliseconds+$(if($paused -or $motionOff -or (-not $Nyan -and $frameTime%11 -lt 10)){1000}else{200})
+                $next=$clock.ElapsedMilliseconds+$(if($rate){$rate}else{1000})
             }
             while([Console]::KeyAvailable){
                 $key=[Console]::ReadKey($true)
@@ -334,7 +446,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                 if($key.Key -eq 'Spacebar'){$paused=-not $paused}else{$offset=Move-Hotpl8DashboardScroll $offset ([string]$key.Key)}
                 $next=0;$layoutAt=-1000
             }
-            Start-Sleep -Milliseconds 100
+            Start-Sleep -Milliseconds 40
         }
     }finally{
         if($ansi){[Console]::Write($esc+'[0m'+$esc+'[?25h'+$esc+'[?1049l')}

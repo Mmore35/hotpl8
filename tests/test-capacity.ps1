@@ -235,7 +235,7 @@ Check 'detected plan weights estimate current session allowance without inventin
     Assert ($o.claude.immediate.metric -eq 'plan-weighted-quota-headroom')
     Assert ($null -ne $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('(estimate)') -and $text.Contains('90% weekly left') -and -not $text.Contains('Weekly remaining'))
+    Assert ($text.Contains('~42% now') -and $text.Contains('7d 90%') -and -not $text.Contains('Weekly remaining'))
     $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
     Assert ($d.unknown -gt 0 -and $d.state.Contains('total unavailable') -and $null -eq $d.gain)
@@ -253,7 +253,7 @@ Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exc
     Near (Get-Hotpl8ProviderOverview $s $p $now).codex.capacity.usableNowPercent 47.5
     $p.codex|Add-Member NoteProperty disabled @('personal') -Force
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('95% available now') -and $text.Contains('1 enabled / 1/1 readings / 1 disabled / next launch: work'))
+    Assert ($text.Contains('95% now') -and $text.Contains('next: work') -and $text.Contains('1 off'))
 }
 Check 'weekly allowance cannot fill the main bar while short windows are exhausted' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
@@ -277,14 +277,14 @@ Check 'hatching means refill only and is contiguous with the measured fill at ev
     foreach($width in @(46,77,108)){
         $rows=@(Get-Hotpl8OverviewRows $s $p $now $width)
         Assert ((Get-DashboardCells $rows[1].text) -le $width)
-        Assert ($rows[1].text -match '\[█+▒+·*\]' -and $rows[1].text.Contains('% in '))
+        Assert ($rows[1].text -match '\[█+[▏▎▍▌▋▊▉]?▒+·*\]' -and $rows[1].text.Contains('% in '))
     }
     $p=Policy;$s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
     $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
-    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[2].text.Contains('total unavailable'))
+    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[1].text.Contains('? now') -and $rows[0].text.Contains('1/2 read'))
     $p.PSObject.Properties.Remove('capacity')
     $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
-    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[2].text.Contains('total unavailable'))
+    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[1].text.Contains('? now') -and $rows[0].text.Contains('1/2 read'))
 }
 Check 'refill horizon includes 24h exactly and excludes a second later' {
     $p=Policy;$s=Snapshot
@@ -360,7 +360,7 @@ Check 'Codex details give two distinct account headers with one availability ver
     $s.providers.codex.recommendedSlot='personal'
     $s.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=95
     $text=((Get-Hotpl8DashboardRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('1/2 Work [work]') -and $text.Contains('EXHAUSTED') -and $text.Contains('2/2 Personal [personal]') -and $text.Contains('NEXT LAUNCH')) $text
+    Assert ($text.Contains('Work  [work]') -and $text.Contains('EXHAUSTED') -and $text.Contains('Personal  [personal]') -and $text.Contains('NEXT LAUNCH')) $text
     Assert ($text.Substring($text.IndexOf('CODEX  /')) -notmatch 'MONITORED|Main  /|    Main')
 }
 'passed='+$script:passed+' failed='+$script:failed

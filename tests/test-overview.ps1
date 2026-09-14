@@ -69,7 +69,7 @@ Check 'new model constraints re-evaluate cached scope observations' {
 Check 'pause and monitor status never claim automatic routing' {
     $c=Copy-Value $s;$c|Add-Member NoteProperty automationPause @{until=$now.AddHours(1).ToString('o')}
     Assert ((Get-Hotpl8ProviderOverview $c $p $now).claude.automation -eq 'automation paused')
-    Assert (((Get-Hotpl8DashboardFrame $c $p $now 50 18).text -join '') -match 'automation paused')
+    Assert (((Get-Hotpl8DashboardFrame $c $p $now 50 18).text -join '') -match 'PAUSED')
     $policy=Copy-Value $p;$policy.mode='monitor'
     Assert ((Get-Hotpl8ProviderOverview $s $policy $now).claude.automation -eq 'monitor only')
 }
@@ -98,9 +98,9 @@ Check 'summary and view are pure, shared with tray, and pinned when scrolling' {
     Assert ($tray.providerOverview.claude.remainingPercent -eq $overview.claude.remainingPercent)
     $first=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 0)
     $last=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 999)
-    Assert (($first[4..11].text -join '') -eq ($last[4..11].text -join ''))
+    Assert (($first[2..7].text -join '') -eq ($last[2..7].text -join ''))
     Assert (($s|ConvertTo-Json -Depth 24 -Compress) -eq $before)
-    Assert (($first.text -join '') -match 'CLAUDE / Available now' -and ($first.text -join '') -match 'CODEX / Available now')
+    Assert (($first.text -join '') -match '│  CLAUDE\s' -and ($first.text -join '') -match '│  CODEX\s')
 }
 Check 'CLI status and explain re-evaluate policy and clock without collecting' {
     $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-overview-'+[guid]::NewGuid().ToString('N'))

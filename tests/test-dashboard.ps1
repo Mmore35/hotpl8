@@ -15,7 +15,7 @@ Check 'empty policy has enrollment and refresh guidance without implying a runni
     $empty=@{mode='monitor';prefer=@();codex=@{slots=@()}}|ConvertTo-Json -Depth 4|ConvertFrom-Json
     $text=((Get-Hotpl8DashboardFrame $null $empty $now 80 24).text)-join "`n"
     Assert ($text.Contains('hotpl8 enroll') -and $text.Contains('hotpl8 refresh'))
-    Assert ($text.Contains('CACHED VIEW') -and -not $text.Contains('LIVE') -and -not $text.Contains('every 5m'))
+    Assert ($text.Contains('no reading') -and -not $text.Contains('LIVE') -and -not $text.Contains('every 5m'))
 }
 Check 'stale and failed readings offer a recovery action' {
     $c=Copy-Value $s;$c.generatedAt=$now.AddHours(-1).ToString('o');$c.slots[0].status='authentication_required'
@@ -25,14 +25,14 @@ Check 'stale and failed readings offer a recovery action' {
 Check 'all accounts remain visible while Spark is excluded from the dashboard' {
     $t=((Render).text)-join "`n"
     Assert ($t.Contains('3 subscriptions') -and $t.Contains('1 subscription'))
-    foreach($name in @('Claude 1','Claude 2','Claude 3','NEXT LAUNCH','ACTIVE','no five-hour window')){Assert ($t.Contains($name))}
-    Assert ($t.Contains('75% left') -and $t.Contains('65% left'))
-    Assert ($t.Contains('1/1 Main [main]') -and -not $t.Contains('    Main') -and -not $t.Contains('Spark'))
+    foreach($name in @('Claude 1','Claude 2','Claude 3','NEXT LAUNCH','ACTIVE')){Assert ($t.Contains($name))}
+    Assert ($t -match '5h\s+\S+\s+75%' -and $t -match '7d\s+\S+\s+65%')
+    Assert ($t.Contains('Main  [main]') -and -not $t.Contains('    Main') -and -not $t.Contains('Spark'))
 }
 Check 'missing readings never become full balances or hide configured accounts' {
     $t=((Render $null).text)-join "`n"
     Assert ($t.Contains('reserve') -and $t.Contains('Main') -and $t.Contains('NO OBSERVATION'))
-    Assert (-not $t.Contains('100% left'))
+    Assert ($t -notmatch '\s100%')
 }
 Check 'stale and exhausted Codex accounts never show next launch' {
     $c=Copy-Value $s;$c.providers.codex.slots[0].observedAt=$now.AddHours(-1).ToString('o')
@@ -41,8 +41,8 @@ Check 'stale and exhausted Codex accounts never show next launch' {
     Assert (-not (((Render $c).text)-join "`n").Contains('NEXT LAUNCH'))
 }
 Check 'elapsed resets await observation and unconfirmed resets are not countdowns' {
-    Assert ((Format-DashboardReset $now.AddSeconds(-1).ToString('o') $now) -eq 'reset awaiting update')
-    Assert ((Format-DashboardReset $now.AddHours(1).ToUnixTimeSeconds() $now -Unix -Unconfirmed) -eq 'reset not confirmed')
+    Assert ((Format-DashboardReset $now.AddSeconds(-1).ToString('o') $now) -eq 'reset due')
+    Assert ((Format-DashboardReset $now.AddHours(1).ToUnixTimeSeconds() $now -Unix -Unconfirmed) -eq 'reset unconfirmed')
     Assert ((Format-DashboardDuration 3599) -eq '59m 59s')
 }
 Check 'narrow frames and a scrolled last page fit their viewport' {
@@ -53,13 +53,15 @@ Check 'narrow frames and a scrolled last page fit their viewport' {
             foreach($row in $rows){Assert ((Get-DashboardCells $row.text) -eq $width)}
         }
     }
-    Assert ((((Render $s 79 18 999).text)-join "`n").Contains('65% left'))
+    Assert ((((Render $s 79 18 999).text)-join "`n") -match '7d\s+\S+\s+65%')
 }
 Check 'standard terminal prioritizes both provider summaries above account details' {
     $rows=Render $s 79 23
     $text=$rows.text -join "`n"
-    Assert ($rows.Count -le 23 -and $text.Contains('CLAUDE / Available now') -and $text.Contains('CODEX / Available now') -and $text.Contains('ACCOUNT DETAILS'))
-    Assert ($text.IndexOf('CLAUDE /') -lt $text.IndexOf('CODEX /') -and $text.IndexOf('CODEX /') -lt $text.IndexOf('ACCOUNT DETAILS'))
+    Assert ($rows.Count -le 23 -and $text -match '
+│  CLAUDE\s' -and $text -match '
+│  CODEX\s' -and $text.Contains('% now'))
+    Assert ($text.IndexOf('│  CLAUDE ') -lt $text.IndexOf('│  CODEX ') -and $text.IndexOf('│  CODEX ') -lt $text.IndexOf('CLAUDE  /'))
 }
 Check 'tiny resized terminals show a bounded recovery hint' {
     $rows=Render $s 15 4
@@ -106,8 +108,8 @@ Check 'opening through a pipe returns one plain frame without changing cache' {
 Check 'disabled Codex login never presents cached percentages as its current balance' {
     $c=Copy-Value $s;$c.providers.codex.slots[0].status='disabled'
     $text=((Render $c).text)-join "`n"
-    Assert ($text.Contains('Disabled: excluded from totals and selection.'))
-    Assert (-not $text.Contains('65% left') -and -not $text.Contains('NEXT LAUNCH'))
+    Assert ($text.Contains('Main  [main]  ·  DISABLED'))
+    Assert ($text -notmatch '7d\s+\S+\s+65%' -and -not $text.Contains('NEXT LAUNCH'))
 }
 Check 'three Claude accounts with verbose metadata cannot hide the usable second Codex account in a standard terminal' {
     $c=Copy-Value $s;$policy=Copy-Value $p
@@ -125,16 +127,16 @@ Check 'three Claude accounts with verbose metadata cannot hide the usable second
     foreach($width in @(79,110)){
         $frame=@(Get-Hotpl8DashboardFrame $c $policy $now $width 40)
         $text=$frame.text -join "`n"
-        Assert ($text.Contains('1/2 Main [main]') -and $text.Contains('EXHAUSTED'))
-        Assert ($text.Contains('2/2 Work [work]') -and $text.Contains('NEXT LAUNCH') -and $text.Contains('78% left'))
+        Assert ($text.Contains('Main  [main]') -and $text.Contains('EXHAUSTED'))
+        Assert ($text.Contains('Work  [work]') -and $text.Contains('NEXT LAUNCH') -and $text -match '7d\s+\S+\s+78%')
         Assert ($frame.Count -le 40)
         foreach($row in $frame){Assert ((Get-DashboardCells $row.text) -eq $width)}
     }
     $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 24 999)
-    Assert (($last.text -join "`n").Contains('2/2 Work [work]'))
-    Assert (($last.text -join "`n").Contains('78% left'))
+    Assert (($last.text -join "`n").Contains('Work  [work]'))
+    Assert (($last.text -join "`n") -match '7d\s+\S+\s+78%')
     # Replay controller offsets, including its saved position on the next redraw.
-    # At 21 rows the old controller stopped at 9-13/15 instead of 11-15/15.
+    # At 21 rows the old controller stopped short of the last page.
     foreach($nyan in @($false,$true)){
         $height=if($nyan){28}else{21}
         $offset=0
@@ -143,13 +145,13 @@ Check 'three Claude accounts with verbose metadata cannot hide the usable second
             $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 $height $offset -Nyan:$nyan -ResolvedOffset ([ref]$offset))
         }
         $text=$last.text -join "`n"
-        Assert ($text.Contains('78% left') -and $text -match '-15/15\]')
-        if(-not $nyan){Assert ($text.Contains('[11-15/15]') -and $offset -eq 10)}
+        Assert ($text -match '7d\s+\S+\s+78%' -and $text -match '-15/15\]')
+        if(-not $nyan){Assert ($text.Contains('[6-15/15]') -and $offset -eq 5)}
         $offset=Move-Hotpl8DashboardScroll $offset 'End'
         $offset=Move-Hotpl8DashboardScroll $offset 'DownArrow'
         $offset=Move-Hotpl8DashboardScroll $offset 'PageDown'
         $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 $height $offset -Nyan:$nyan -ResolvedOffset ([ref]$offset))
-        Assert (($last.text -join "`n").Contains('78% left') -and $offset -lt 15)
+        Assert (($last.text -join "`n") -match '7d\s+\S+\s+78%' -and $offset -lt 15)
         $offset=Move-Hotpl8DashboardScroll $offset 'UpArrow'
         $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 $height $offset -Nyan:$nyan -ResolvedOffset ([ref]$offset))
         Assert (($last.text -join "`n") -notmatch '-15/15\]')
