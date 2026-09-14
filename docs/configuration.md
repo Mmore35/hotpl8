@@ -24,3 +24,5 @@ Examples in [examples/](../examples/README.md) show provider combinations using 
 Existing policies without schemaVersion preserve their legacy switching and probing defaults. Migrate deliberately by adding schemaVersion 2, mode automate, and explicit action booleans matching your intended behavior, or choose monitor to disable all actions. New installers never replace an existing policy.
 
 See [account operations](operations.md) for version-2 schedules, persistent pause, attempt budgets, disabled accounts, scoped eligibility, history, notifications and selection replay. Account commands preserve action choices during migration and save a policy backup.
+
+Capacity profiles, critical-mode thresholds and display motion/color preferences are additive version-2 settings. See [capacity configuration](capacity.md) for units, examples and fallback behavior. Existing selection `weights` continue to control warming distribution; they are not capacity estimates.

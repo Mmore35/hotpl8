@@ -517,7 +517,9 @@ function Resolve-CswapExecutable([string]$CswapExecutable) {
     }
     return $cswap
 }
-function Get-ClaudeSelection($policy, $prefer, $acc, [int]$active, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
+function Get-ClaudeSelection($policy, $prefer, $acc, [int]$active, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, $CriticalState=$null) {
+    $critical=Get-Hotpl8ClaudeCritical $policy $acc $active $CriticalState $Now
+    if($critical.active -and $critical.ranked.Count){return @{target=$(if($critical.selected){[int]$critical.selected}else{$null});activeOk=([string]$active -in $critical.ranked);ranked=@($critical.ranked|ForEach-Object {[int]$_});critical=$critical}}
     $orderMode=if($policy.order){$policy.order}else{'prefer'}
     $m5=[double]$policy.margin5h; $hy=[double]$policy.hysteresis
     $soonest   = ($orderMode -eq 'soonest-reset')
@@ -646,7 +648,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
 
     $orderMode = if ($policy.order) { [string]$policy.order } else { 'prefer' }
     $active=[int]$data.activeAccountNumber
-    $selection=Get-ClaudeSelection $policy $prefer $acc $active
+    $criticalPrior=Read-Hotpl8Json (Join-Path $StateDirectory 'critical-claude.json')
+    $selection=Get-ClaudeSelection $policy $prefer $acc $active ([datetimeoffset]::UtcNow) $criticalPrior
     $ranked=@($selection.ranked);$target=$selection.target
 
     # A hold suppresses the SWITCH ONLY, and is deliberately not an early return.
@@ -671,6 +674,11 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         }
         else { throw 'claude_switch_failed' }
     }
+
+    $criticalState=Get-Hotpl8ClaudeCritical $policy $acc $active $criticalPrior ([datetimeoffset]::UtcNow)
+    $criticalState.selected=[string]$active
+    if($switched -or -not $criticalPrior.selectedAt){$criticalState.selectedAt=[datetimeoffset]::UtcNow.ToString('o')}else{$criticalState.selectedAt=$criticalPrior.selectedAt}
+    Write-Hotpl8Text (Join-Path $StateDirectory 'critical-claude.json') ($criticalState|ConvertTo-Json -Depth 6)
 
     # Eligibility is computed BEFORE warming, and deliberately so: warming does not
     # make a slot usable for ~3 minutes (W9), so "can anything serve me right now?"
@@ -1062,6 +1070,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $payload | Add-Member NoteProperty proposedSlot $target -Force
     $payload | Add-Member NoteProperty actions $actions -Force
     $reasons=@(foreach($n in $prefer){$e=$acc[$n];[pscustomobject]@{slot=$n;rank=([array]::IndexOf($ranked,$n)+1);reason=$(if(-not $e){'not_observed'}elseif(-not $e.fresh){'stale_or_unavailable'}elseif($e.modelBlocked){$e.modelReason}elseif(-not (Test-Ok $e $m5 (Get-Margin7dFor $policy $n))){'below_margin_or_unknown'}elseif($n -in @($policy.reserve)){'eligible_reserve'}else{'eligible_work'})}})
+    $payload|Add-Member NoteProperty critical $criticalState -Force
     $payload|Add-Member NoteProperty decision ([pscustomobject]@{policy=$orderMode;selected=$active;proposed=$target;reason=$(if($hold){'switch held'}elseif(-not $actions.switching){'switching disabled'}elseif($switched){'switched to higher ranked eligible account'}else{'retained current account'});accounts=$reasons}) -Force
     return @{ lines = $lines; payload = $payload; action = $action }
 }

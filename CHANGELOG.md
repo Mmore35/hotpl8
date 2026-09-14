@@ -34,3 +34,10 @@
 - Correct UTF-8 quota-pipe input and preserve Unicode account paths independently of console encoding.
 
 This is an early Windows preview, not a stable-support designation. Live provider/concurrency qualification remains open. See [compatibility](docs/compatibility.md) and the [release checklist](docs/release-checklist.md).
+
+## Unreleased — capacity preview
+
+- Recover Codex collection after sparse failure snapshots without extending retry deadlines on skipped wakes.
+- Add weighted current/next-reset capacity estimates, configurable capacity profiles, independent provider/health colors and reduced motion.
+- Add opt-in critical-budget selection with persisted hysteresis, dwell, emergency floors and faster healthy polling.
+- Animate the header cat and add `hotpl8 nyan` using credited terminal-project frames.

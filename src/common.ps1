@@ -142,3 +142,7 @@ function Stop-Hotpl8Process($Process) {
     } catch { try { $Process.Kill() } catch { } }
     finally { $Process.Dispose() }
 }
+
+function Test-Hotpl8FreshTimestamp($Timestamp,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    try{$age=($Now-[datetimeoffset]::Parse([string]$Timestamp)).TotalSeconds;return ($age -ge -5 -and $age -le 900)}catch{return $false}
+}

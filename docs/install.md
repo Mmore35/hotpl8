@@ -31,7 +31,7 @@ Use native Claude login and `cswap add` as documented upstream. Put the chosen n
 
 ## Background collection
 
-Rerun the installer from the extracted release with `-Schedule`. It registers one hidden, unelevated task every five minutes for the signed-in user; repeated installation updates the owned task. It does not run while the user is signed out. Monitoring policy remains observation-only.
+Rerun the installer from the extracted release with `-Schedule`. It registers one hidden, unelevated task that wakes every minute for the signed-in user; persisted due times normally collect every five minutes and can shorten in critical mode. Repeated installation updates the owned task. It does not run while the user is signed out. Monitoring policy remains observation-only.
 
 A source checkout is also portable: run `powershell -NoProfile -ExecutionPolicy Bypass -File .\hotpl8.ps1 init`, enroll accounts, then use the same command with `refresh` in place of `init`. Source checkout state defaults to that directory. An explicit `-StateDirectory` overrides `HOTPL8_STATE_DIRECTORY`, which overrides the installed binding or portable default.
 

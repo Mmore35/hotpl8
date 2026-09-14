@@ -80,6 +80,17 @@
     "src/overview.ps1",
     "tests/test-overview.ps1",
     "docs/provider-overview.md",
-    "docs/assets/details.png"
+    "docs/assets/details.png",
+    "src/capacity.ps1",
+    "src/critical.ps1",
+    "src/presentation.ps1",
+    "data/capacity-profiles.json",
+    "data/nyan-frames.json",
+    "tests/test-capacity.ps1",
+    "docs/capacity.md",
+    "docs/assets/nyan.png",
+    "docs/assets/critical.png",
+    "docs/assets/unknown.png",
+    "docs/assets/narrow.png"
   ]
 }

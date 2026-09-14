@@ -29,4 +29,8 @@ The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `explain`, `ca
 
 ## Provider overview
 
-The dashboard opens with one weekly-headroom bar per provider. These estimates summarize the subscription set; the readiness line accounts for short-window and model constraints. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, unknown readings and reserves](provider-overview.md).
+The dashboard opens with one layered capacity bar per provider. Solid fill estimates usable allowance; the patterned extension projects the next refill, with a countdown on the right. Missing capacity conversions remain visible. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, unknown readings and reserves](provider-overview.md).
+
+## Capacity and mascot commands
+
+`hotpl8 nyan` runs the same passive dashboard with the bundled terminal Nyan Cat animation. `-ReducedMotion` and `-NoColor` also work with the standard dashboard. `hotpl8 accounts -Operation capacity` configures a subscription profile and relative window capacities; see [capacity and critical mode](capacity.md).

@@ -27,7 +27,7 @@ try {
             $claude=Invoke-ClaudeTick $policy $StateDirectory $CswapExecutable -ObserveOnly:$ObserveOnly
             if($policy.prefer){
                 $healthy=@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -eq @($claude.payload.slots).Count
-                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -gt 0)
+                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -gt 0) -HealthySeconds $(if($claude.payload.critical.active){[int]$claude.payload.critical.pollSeconds}else{300})
                 if(-not $healthy){$failed=$true}
             }
         }elseif($policy.prefer){
@@ -45,15 +45,15 @@ try {
             . (Join-Path $PSScriptRoot 'src/providers/codex.ps1')
             if(Test-Hotpl8CollectionDue $collector 'codex' ([bool]$Scheduled)){
                 $codex=Invoke-CodexCollection $policy.codex $StateDirectory $CodexExecutable $previous.providers.codex $CodexReader
-                Set-Hotpl8CollectionResult $collector 'codex' (@($codex.slots|Where-Object {$_.status -in @('ok','disabled')}).Count -gt 0)
+                Set-Hotpl8CollectionResult $collector 'codex' (@($codex.slots|Where-Object {$_.status -in @('ok','disabled')}).Count -gt 0) -HealthySeconds $(if($codex.critical.($policy.codex.defaultMeter).active){[int]$codex.critical.($policy.codex.defaultMeter).pollSeconds}else{300})
             }else{
                 $codex=$previous.providers.codex
-                if($codex -and $collector.providers.codex.failures){$codex.recommendedSlot=$null;$codex.recommendations=[pscustomobject]@{};foreach($s in $codex.slots){if($s.status -ne 'disabled'){$s.status='backoff'}};$codex.decisions=@()}
+                if($codex -and $collector.providers.codex.failures){$codex=Get-Hotpl8CodexFailure $codex 'backoff' $null}
             }
             if(@($codex.slots|Where-Object {$_.status -notin @('ok','disabled')}).Count){$failed=$true;Write-Hotpl8Event $StateDirectory 'codex_observation_unavailable'}
         } catch {
             $failed=$true
-            $codex=[pscustomobject]@{status='collection_failed';observedAt=[datetimeoffset]::UtcNow.ToString('o');recommendedSlot=$null;slots=@()}
+            $codex=Get-Hotpl8CodexFailure $previous.providers.codex 'collection_failed' (Get-Hotpl8FailureCode $_)
             Write-Hotpl8Event $StateDirectory 'codex_collection_failed'
             Set-Hotpl8CollectionResult $collector 'codex' $false
         }

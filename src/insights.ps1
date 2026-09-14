@@ -23,9 +23,7 @@ function Get-Hotpl8Health($Collector, [datetimeoffset]$Now = [datetimeoffset]::U
         return 'recent collection completed'
     } catch { return 'collector state invalid' }
 }
-function Test-Hotpl8FreshTimestamp($Timestamp,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    try{$age=($Now-[datetimeoffset]::Parse([string]$Timestamp)).TotalSeconds;return ($age -ge -5 -and $age -le 900)}catch{return $false}
-}
+
 function Add-Hotpl8Insights($Snapshot, $Policy, [string]$Directory, $Previous, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     $history=if($Policy.historyEnabled -eq $true){Read-Hotpl8Json (Join-Path $Directory 'usage-history.json')}else{$null}; $newSamples=@()
     foreach ($slot in @($Snapshot.slots)) {
@@ -63,7 +61,7 @@ function Add-Hotpl8Insights($Snapshot, $Policy, [string]$Directory, $Previous, [
     $shadow=Invoke-Hotpl8Replay @($Snapshot) $Policy
     $Snapshot|Add-Member NoteProperty shadow @($shadow.decisions) -Force
 }
-function Read-Hotpl8Snapshot([string]$Directory) {
+function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null) {
     $s=Read-Hotpl8Json (Join-Path $Directory 'status.json')
     $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
     $pause=Get-Hotpl8Pause $Directory
@@ -73,7 +71,8 @@ function Read-Hotpl8Snapshot([string]$Directory) {
         if($c){$s|Add-Member NoteProperty collector $c -Force}
         $s|Add-Member NoteProperty automationPause $pause -Force
     }
-    if($s){$s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s (Read-Hotpl8Json (Join-Path $Directory 'policy.json'))) -Force}
+    if($s -and $PolicyOverride){$s|Add-Member NoteProperty displayPolicy 'explicit reader policy' -Force}
+    if($s){$s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $(if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json (Join-Path $Directory 'policy.json')})) -Force}
     return $s
 }
 function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
@@ -83,10 +82,12 @@ function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoff
     if($Snapshot.providerOverview){Format-Hotpl8Overview $Snapshot.providerOverview}
     'Observed: '+$Snapshot.generatedAt
     if($Snapshot.automationPause){'Automation paused: '+$Snapshot.automationPause.reason}
+    if($Snapshot.critical.active){'Claude critical: '+$Snapshot.critical.reason+' / '+$Snapshot.critical.basis+' / checks '+$Snapshot.critical.pollSeconds+'s'}
     if($Snapshot.decision){
         'Claude: '+$Snapshot.decision.reason+'; policy '+$Snapshot.decision.policy
         foreach($r in @($Snapshot.decision.accounts)){'  slot '+$r.slot+': '+$r.reason+'; rank '+$r.rank}
     }
+    foreach($c in $Snapshot.providers.codex.critical.PSObject.Properties){if($c.Value.active){'Codex '+$c.Name+' critical: '+$c.Value.reason+' / '+$c.Value.basis+' / checks '+$c.Value.pollSeconds+'s'}}
     foreach($d in @($Snapshot.providers.codex.decisions)){
         'Codex '+$d.meter+': next launch '+$(if($d.selected){$d.selected}else{'none'})+'; policy '+$d.policy
         foreach($r in @($d.accounts)){'  '+$r.slot+': '+$r.reason+'; reserve='+$r.reserve}

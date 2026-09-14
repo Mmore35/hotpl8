@@ -53,7 +53,7 @@ function Register-Hotpl8Task($Installation,[string]$Directory) {
     $hostExe=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
     $arguments='-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File '+(ConvertTo-NativeArgument (Join-Path $Directory 'app/tick.ps1'))+' -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $Installation.stateDirectory)
     $action=New-ScheduledTaskAction -Execute $hostExe -Argument $arguments -WorkingDirectory $Directory
-    $trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5)
+    $trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
     $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     $user=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited

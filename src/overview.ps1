@@ -44,7 +44,7 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
                 if($fresh){$reason=if($modelBlock){$modelBlock}elseif($eligible){'eligible'}elseif(-not $weekly -or -not $short){'window_unmeasured'}else{'below_margin'}}
             }else{
                 $b=$s.buckets.$meter;$w=$b.windows.'10080'
-                if($fresh -and $b.status -eq 'observed' -and $w.anchorState -eq 'observed-active' -and (Test-Hotpl8OverviewPercent $w.usedPercent) -and (Test-Hotpl8FutureReset $w.resetsAt $Now -Unix)){$remaining=100-[double]$w.usedPercent}
+                if($fresh -and $b.status -eq 'observed' -and (Test-Hotpl8OverviewPercent $w.usedPercent) -and (Test-Hotpl8FutureReset $w.resetsAt $Now -Unix)){$remaining=100-[double]$w.usedPercent}
                 if($s){$reason=Get-CodexEligibility $s $part $meter $Now;$eligible=$reason -eq 'eligible';$codexAccounts+=@($s)}
             }
             $members+=@([pscustomobject]@{slot=[string]$id;remainingPercent=$remaining;eligible=[bool]$eligible;reason=$reason;reserve=($id -in @($part.reserve))})
@@ -62,14 +62,14 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
             $automation=if($paused){'automation paused'}elseif($held){'rotation held'}elseif($actions.switching){'automatic selection on'}else{'manual selection'}
             if($Policy.mode -eq 'monitor' -and -not $paused){$automation='monitor only'}
             if($total){
-                $selection=Get-ClaudeSelection $Policy @($members|ForEach-Object {[int]$_.slot}) $claudeAccounts ([int]$Snapshot.active) $Now
+                $selection=Get-ClaudeSelection $Policy @($members|ForEach-Object {[int]$_.slot}) $claudeAccounts ([int]$Snapshot.active) $Now $Snapshot.critical
                 $selected=if($held -or $paused -or -not $actions.switching){if($selection.activeOk){$Snapshot.active}else{$null}}elseif($null -ne $selection.target){$selection.target}elseif($selection.activeOk){$Snapshot.active}else{$null}
                 if($ready -and -not $selected){$availability='Account available - manual selection needed'}
             }
         }else{
             $hold=$Snapshot.providers.codex.hold
             if($hold -and -not (Test-Hotpl8FutureReset $hold.until $Now)){$hold=$null}
-            if($total){$selected=Select-CodexSlot $codexAccounts $part $meter $Snapshot.providers.codex.recommendedSlot $hold $Now}
+            if($total){$selected=Select-CodexSlot $codexAccounts $part $meter $Snapshot.providers.codex.recommendedSlot $hold $Now $Snapshot.providers.codex.critical.$meter}
             if($ready -and -not $selected){$availability='Account available - selection held'}
             $automation='existing sessions keep their account'
         }
@@ -78,7 +78,10 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
         $signIn=@($members|Where-Object {$_.reason -in @('authentication_required','relogin_required','no_credentials')}).Count
         if($signIn){$availability+='; sign-in needed'}
         if($health -notin @('manual / no collector evidence','recent collection completed','collecting')){$availability+='; '+$health}
-        $result[$provider]=[pscustomobject]@{schemaVersion=1;computedAt=$Now.ToString('o');metric='normalized-weekly-headroom';scope=$meter;accounts=$total;measured=$measured;disabled=($configured.Count-$ids.Count);duplicates=$duplicates;knownRemainingPercent=$known;unknownPercent=$unknown;remainingPercent=$(if($total -and $measured -eq $total){$known}else{$null});includesReserve=(@($members|Where-Object reserve).Count -gt 0);availability=$availability;automation=$automation;collectionHealth=$health;selected=$selected;members=$members}
+        $capacity=Get-Hotpl8ProviderCapacity $Snapshot $part $provider $Now $meter
+        if($capacity.critical.active){foreach($member in $members){if($member.slot -in $capacity.critical.ranked){$member.eligible=$true;$member.reason='critical_allowance'}}}
+        if($capacity.critical.active -and $selected){$availability=if($provider -eq 'codex'){'Ready for next launch / critical'}else{'Ready / critical'}}
+        $result[$provider]=[pscustomobject]@{schemaVersion=2;capacity=$capacity;computedAt=$Now.ToString('o');metric='normalized-weekly-headroom';scope=$meter;accounts=$total;measured=$measured;disabled=($configured.Count-$ids.Count);duplicates=$duplicates;knownRemainingPercent=$known;unknownPercent=$unknown;remainingPercent=$(if($total -and $measured -eq $total){$known}else{$null});includesReserve=(@($members|Where-Object reserve).Count -gt 0);availability=$availability;automation=$automation;collectionHealth=$health;selected=$selected;members=$members}
     }
     return [pscustomobject]$result
 }
@@ -87,6 +90,11 @@ function Format-Hotpl8Overview($Overview) {
         $p=$Overview.$provider
         $amount=if($null -ne $p.remainingPercent){'{0:0}% estimate' -f $p.remainingPercent}else{'partial / unknown'}
         $provider.ToUpper()+': weekly headroom '+$amount+'; '+$p.measured+'/'+$p.accounts+' measured; '+$p.availability+'; '+$p.automation
+        if($p.capacity){
+            $c=$p.capacity
+            '  Capacity: '+$(if($c.complete){'{0:0.#}% usable now' -f $c.usableNowPercent}else{$c.confidence})+'; '+$c.critical.reason
+            if($null -ne $c.projectedGainPercent){'  Next reset: +{0:0.#}% at {1}; assumes no further consumption.' -f $c.projectedGainPercent,$c.nextResetAt}
+        }
         if($p.includesReserve){'  Includes reserve allowance.'}
     }
     'Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.'

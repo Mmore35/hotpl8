@@ -1,4 +1,4 @@
-function ConvertTo-Hotpl8PolicyV2($Policy) {
+﻿function ConvertTo-Hotpl8PolicyV2($Policy) {
     $next=$Policy|ConvertTo-Json -Depth 24|ConvertFrom-Json
     # Freeze legacy defaults before assigning a version, so migration cannot enable actions.
     $actions=Get-Hotpl8Actions $next $false
@@ -56,7 +56,7 @@ function Get-Hotpl8Capabilities([string]$Directory) {
     return [pscustomobject]@{schemaVersion=1;platform=$(if($env:OS -eq 'Windows_NT'){'windows-preview'}else{'source-only-unqualified'});runtime=$d.runtime;policyValid=$d.policyValid;collector=Get-Hotpl8Health (Read-Hotpl8Json (Join-Path $Directory 'collector.json'));providers=@{
         claude=@{installed=$d.cswapFound;configured=$d.claudeConfigured;freshAccounts=@($status.slots|Where-Object {$_.fresh -and (Test-Hotpl8FreshTimestamp $_.observedAt)}).Count;observe='supported adapter';selection='experimental';warming='experimental';authentication='native; verify with refresh'}
         codex=@{installed=$d.codexFound;configured=$d.codexConfigured;freshAccounts=@($status.providers.codex.slots|Where-Object {$_.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $_.observedAt)}).Count;observe='native app-server';selection='next-launch';warming='unqualified: no confirmed window benefit';authentication='native; verify with refresh'}
-    };tray=($env:OS -eq 'Windows_NT');macHandoff='docs/plans/macos-handoff.md'}
+    };capacity='configured relative-window estimates';critical='opt-in; new-launch Codex selection';motion='cat and nyan; reduced-motion supported';tray=($env:OS -eq 'Windows_NT');macHandoff='docs/plans/macos-handoff.md'}
 }
 function Invoke-Hotpl8Setup([string]$Directory, [string]$CodeDirectory, [switch]$Interactive) {
     [void][IO.Directory]::CreateDirectory($Directory)
@@ -66,6 +66,8 @@ function Invoke-Hotpl8Setup([string]$Directory, [string]$CodeDirectory, [switch]
         'Monitoring policy ready. Use hotpl8 setup -Interactive for guided enrollment.'
         'Codex: hotpl8 enroll -Slot main -AccountHome PATH'
         'Claude: sign in and enroll using cswap, then hotpl8 enroll -Provider claude -Slot NUMBER'
+        'Capacity: hotpl8 accounts -Operation capacity -Provider PROVIDER -Slot ID -CapacityProfile PROFILE -WeeklyCapacity UNITS -FiveHourCapacity UNITS'
+        'See docs/capacity.md for calibrated units and opt-in critical mode.'
         'Next: hotpl8 refresh; hotpl8 explain; hotpl8'
         return
     }
@@ -97,4 +99,21 @@ function Add-Hotpl8ClaudeAccount([string]$Directory,[string]$Slot,[string]$Label
     if($Label){$p.labels|Add-Member NoteProperty $Slot $Label -Force}
     Save-Hotpl8Policy $Directory $p $hash
     'Claude account enrolled for monitoring. Native credentials remain managed by cswap.'
+}
+
+function Set-Hotpl8CapacityProfile($Policy,[string]$Provider,[string]$Slot,[string]$Profile,$Weekly,$FiveHour) {
+    $next=Set-Hotpl8Account $Policy $Provider $Slot 'list' ''
+    $part=if($Provider -eq 'claude'){$next}else{$next.codex}
+    if(-not $part.capacity){$part|Add-Member NoteProperty capacity ([pscustomobject]@{}) -Force}
+    $c=[ordered]@{}
+    if($Profile){
+        $known=(Get-Hotpl8CapacityCatalog).profiles.$Profile
+        if(-not $known -or $known.provider -ne $Provider){throw 'Choose a matching provider capacity profile.'}
+        $c.profile=$Profile
+    }
+    if($null -ne $Weekly){$c.weekly=$Weekly}
+    if($null -ne $FiveHour){$c.fiveHour=$FiveHour}
+    $c.evidence='user-supplied relative capacity estimate'
+    $part.capacity|Add-Member NoteProperty $Slot ([pscustomobject]$c) -Force
+    return $next
 }

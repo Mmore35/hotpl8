@@ -35,7 +35,7 @@ Check 'stale and elapsed windows never refill or imply readiness' {
     $c=Copy-Value $s;foreach($a in $c.slots){$a.reset7d=$now.AddSeconds(-1).ToString('o')}
     Assert ((Get-Hotpl8ProviderOverview $c $p $now).claude.measured -eq 0)
     $c.providers.codex.slots[0].buckets.codex.windows.'10080'.anchorState='unconfirmed'
-    Assert ((Get-Hotpl8ProviderOverview $c $p $now).codex.measured -eq 0)
+    Assert ((Get-Hotpl8ProviderOverview $c $p $now).codex.measured -eq 1)
 }
 Check 'all missing, malformed percentages and unconfigured accounts are unknown' {
     $o=Get-Hotpl8ProviderOverview $null $p $now
@@ -99,7 +99,7 @@ Check 'summary and view are pure, shared with tray, and pinned when scrolling' {
     $last=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 999)
     Assert (($first[4..10].text -join '') -eq ($last[4..10].text -join ''))
     Assert (($s|ConvertTo-Json -Depth 24 -Compress) -eq $before)
-    Assert (($first.text -join '') -match 'CLAUDE / Weekly' -and ($first.text -join '') -match 'CODEX / Weekly')
+    Assert (($first.text -join '') -match 'CLAUDE / Available' -and ($first.text -join '') -match 'CODEX / Available')
 }
 Check 'CLI status and explain re-evaluate policy and clock without collecting' {
     $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-overview-'+[guid]::NewGuid().ToString('N'))

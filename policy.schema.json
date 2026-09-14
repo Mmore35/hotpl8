@@ -234,6 +234,92 @@
           "type": "number",
           "minimum": 0,
           "maximum": 604800
+        },
+        "capacity": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,40}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile": {
+                "enum": [
+                  "claude-pro",
+                  "claude-max-5x",
+                  "claude-max-20x",
+                  "codex-plus",
+                  "codex-pro-5x",
+                  "codex-pro-20x"
+                ]
+              },
+              "weekly": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "fiveHour": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "scoped": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000
+                }
+              },
+              "evidence": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          }
+        },
+        "critical": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "drainToZero": {
+              "type": "boolean"
+            },
+            "enterPercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "exitPercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "floorPercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "advantagePercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "pollSeconds": {
+              "type": "number",
+              "minimum": 60,
+              "maximum": 300
+            },
+            "dwellSeconds": {
+              "type": "number",
+              "minimum": 60,
+              "maximum": 300
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -312,6 +398,104 @@
           }
         }
       }
+    },
+    "capacity": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-zA-Z0-9_-]{1,40}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "enum": [
+              "claude-pro",
+              "claude-max-5x",
+              "claude-max-20x",
+              "codex-plus",
+              "codex-pro-5x",
+              "codex-pro-20x"
+            ]
+          },
+          "weekly": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000
+          },
+          "fiveHour": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000
+          },
+          "scoped": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      }
+    },
+    "critical": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "drainToZero": {
+          "type": "boolean"
+        },
+        "enterPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "exitPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "floorPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "advantagePercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "pollSeconds": {
+          "type": "number",
+          "minimum": 60,
+          "maximum": 300
+        },
+        "dwellSeconds": {
+          "type": "number",
+          "minimum": 60,
+          "maximum": 300
+        }
+      }
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reducedMotion": {
+          "type": "boolean"
+        },
+        "noColor": {
+          "type": "boolean"
+        }
+      }
     }
   },
   "additionalProperties": false,
@@ -350,6 +534,21 @@
             {
               "required": [
                 "automation"
+              ]
+            },
+            {
+              "required": [
+                "capacity"
+              ]
+            },
+            {
+              "required": [
+                "critical"
+              ]
+            },
+            {
+              "required": [
+                "display"
               ]
             }
           ]

@@ -29,3 +29,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\test-dashboard.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\test-onboarding.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\screenshots.ps1
 ```
+
+Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do not infer weekly or short-window capacity from price ratios, weaken unknown-state checks, or count a skipped retry as a failed provider attempt. Preserve third-party animation notices in source and release packages.

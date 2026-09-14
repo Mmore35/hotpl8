@@ -102,3 +102,7 @@ PowerShell keeps the Windows installation small, but other platforms are not rel
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
 
 Provider summaries are additive `providerOverview` fields on snapshots and status output. Readers recompute them from current policy, cached observations and the current clock; an old saved summary never makes old data fresh. The pinned dashboard overview, tray and CLI use the same pure calculation. [Metric contract](provider-overview.md).
+
+## Capacity and emergency selection
+
+`src/capacity.ps1` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `src/critical.ps1` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. `src/presentation.ps1` provides sanitized styled spans and clock-driven mascots shared by terminal and screenshot rendering. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).

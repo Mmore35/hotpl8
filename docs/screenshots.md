@@ -17,3 +17,5 @@ The [fixture](../tests/fixtures/screenshots.ps1) fixes account labels, percentag
 Change the renderer for a UI change, or the fixture for a different documentation scenario. Keep fixtures fictional and independent of the machine. Never load policy.json, status.json, account homes, environment secrets, or native provider output into this harness. This is a development tool, not an application demo command.
 
 `dashboard.png` fixes the opening view at 94 columns by 25 rows. `details.png` renders the last details page at 94 by 34 with the same pinned provider overview. `operations.png` exercises operational detail at 110 by 50. All use the same fixed clock and renderer.
+
+Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bundled attributed animation with a frozen frame; critical/unknown frames should be added or regenerated alongside main/detail screenshots. Both screenshot and terminal paths consume the same sanitized styled spans and palette.

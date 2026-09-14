@@ -63,7 +63,7 @@ function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$Timeou
         $identity = Get-Hotpl8Hash ([string]$account.account.email + '|' + $workspace)
         $standardTransport = -not $config.config.model_providers.openai.base_url
         if ($config.config.chatgpt_base_url -and [string]$config.config.chatgpt_base_url -notmatch '^https://chatgpt\.com/backend-api/?$') { $standardTransport = $false }
-        return [pscustomobject]@{ status = 'ok'; quota = $quota; identityKey = $identity; model = [string]$config.config.model; modelProvider = [string]$config.config.model_provider; standardTransport = $standardTransport; elapsedMs = $clock.ElapsedMilliseconds }
+        return [pscustomobject]@{ status = 'ok'; quota = $quota; identityKey = $identity; planType = $(if([string]$account.account.planType -in @('free','plus','pro','team','business','enterprise','edu')){[string]$account.account.planType}else{'unknown'}); model = [string]$config.config.model; modelProvider = [string]$config.config.model_provider; standardTransport = $standardTransport; elapsedMs = $clock.ElapsedMilliseconds }
     } catch {
         $known = @('home_busy','timeout','home_missing','codex_missing','native_codex_required','process_exited','response_too_large','invalid_json','invalid_response','authentication_required','access_denied','rate_limited','rpc_failed','subscription_login_required')
         $reason = [string]$_.Exception.Message
@@ -128,7 +128,7 @@ function Get-CodexMargin($Policy, [string]$SlotId, [string]$Duration) {
     if ($null -ne $Policy.margin7d) { return [double]$Policy.margin7d }
     return 20.0
 }
-function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$Now) {
+function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$Now, [bool]$Emergency=$false) {
     if($Slot.id -in @($Policy.disabled)){return 'disabled'}
     if ($Slot.status -ne 'ok') { return [string]$Slot.status }
     try { $age = ($Now - [datetimeoffset]::Parse($Slot.observedAt)).TotalSeconds } catch { return 'unknown' }
@@ -140,12 +140,18 @@ function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$N
     foreach ($w in $b.windows.PSObject.Properties) {
         $count++
         if ($null -ne $w.Value.resetsAt -and $w.Value.resetsAt -le $Now.ToUnixTimeSeconds()) { return 'reset_unconfirmed' }
-        if ($w.Value.remainingPercent -le 0 -or $w.Value.remainingPercent -lt (Get-CodexMargin $Policy $Slot.id $w.Name)) { return 'below_margin' }
+        $margin=Get-CodexMargin $Policy $Slot.id $w.Name
+        if($Emergency -and $Policy.critical.enabled -eq $true -and $Slot.id -notin @($Policy.reserve)){$margin=if($Policy.critical.drainToZero){0}else{Get-Hotpl8CriticalSetting $Policy 'floorPercent' 1}}
+        if (-not (Test-Hotpl8Number $w.Value.remainingPercent) -or $w.Value.remainingPercent -gt 100 -or $w.Value.remainingPercent -le 0 -or $w.Value.remainingPercent -lt $margin) { return 'below_margin' }
     }
     if ($count -eq 0) { return 'unknown' }
     return 'eligible'
 }
-function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, $Hold, [datetimeoffset]$Now) {
+function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, $Hold, [datetimeoffset]$Now, $CriticalState=$null) {
+    $snapshot=[pscustomobject]@{providers=[pscustomobject]@{codex=[pscustomobject]@{slots=$Slots}}}
+    $accounts=@(Get-Hotpl8CapacityAccounts $snapshot $Policy 'codex' $Now $Meter)
+    $critical=Get-Hotpl8CriticalDecision $accounts $Policy $PreviousId $CriticalState $Now
+    if($critical.active -and $critical.ranked.Count){if($Hold){if($PreviousId -in $critical.ranked){return $PreviousId};return $null};return $critical.selected}
     $rows = @(); $index = 0
     $preferred = @($Policy.prefer)
     foreach ($slot in @($Slots)) {
@@ -186,7 +192,9 @@ function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, 
     return $best.id
 }
 function Assert-CodexPolicy($Policy) {
-    foreach($field in $Policy.PSObject.Properties){if($field.Name -notin @('slots','prefer','reserve','disabled','order','defaultMeter','modelMeters','margin5h','margin7d','margin7dWork','hysteresis','resetLeadMin')){throw 'invalid_codex_field'}}
+    Assert-Hotpl8CapacityPolicy $Policy
+    Assert-Hotpl8CriticalPolicy $Policy
+    foreach($field in $Policy.PSObject.Properties){if($field.Name -notin @('slots','prefer','reserve','disabled','order','defaultMeter','modelMeters','margin5h','margin7d','margin7dWork','hysteresis','resetLeadMin','capacity','critical')){throw 'invalid_codex_field'}}
     $ids = @{}; $homes = @{}
     foreach ($slot in @($Policy.slots)) {
         if (-not $slot -or [string]$slot.id -notmatch '^[a-zA-Z0-9_-]{1,40}$') { throw 'invalid_slot' }
@@ -246,7 +254,7 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
         $attempt = if ($read.status -in @('collection_budget','backoff')) { $old.lastAttemptAt } else { $observed.ToString('o') }
         $retry = if ($read.status -eq 'rate_limited') { $observed.AddMinutes(5).ToString('o') } elseif ($read.status -eq 'backoff') { $old.retryAfter } else { $null }
         $nextState[$id] = [pscustomobject]@{ binding = $binding; identityKey = $identity; lastAttemptAt = $attempt; lastSuccessAt = $lastSuccess; buckets = $buckets; retryAfter = $retry }
-        $slots += [pscustomobject]@{ id = $id; label = $(if ($slot.label) { [string]$slot.label } else { $id }); status = [string]$read.status; observedAt = $lastSuccess; lastAttemptAt = $attempt; elapsedMs = $read.elapsedMs; buckets = $buckets; defaultModel = [string]$read.model; modelProvider = [string]$read.modelProvider }
+        $slots += [pscustomobject]@{ id = $id; label = $(if ($slot.label) { [string]$slot.label } else { $id }); status = [string]$read.status; observedAt = $lastSuccess; lastAttemptAt = $attempt; elapsedMs = $read.elapsedMs; buckets = $buckets; planType = $read.planType; defaultModel = [string]$read.model; modelProvider = [string]$read.modelProvider }
         # Status uses a separate local stream pseudonym, never the login-binding key.
         $slots[-1]|Add-Member NoteProperty streamKey (Get-Hotpl8Hash ($StateDirectory+'|usage|'+$identity)) -Force
     }
@@ -261,13 +269,19 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
     }
     $hold = Get-Hold $StateDirectory
     $recommendations = [ordered]@{}
+    $criticalStates=[ordered]@{}
     foreach ($meter in @('codex','codex_bengalfox')) {
         $priorId = $Previous.recommendations.$meter
-        $recommendations[$meter] = Select-CodexSlot $slots $Policy $meter $priorId $hold ([datetimeoffset]::UtcNow)
+        $recommendations[$meter] = Select-CodexSlot $slots $Policy $meter $priorId $hold ([datetimeoffset]::UtcNow) $Previous.critical.$meter
+        $criticalAccounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=@{slots=$slots}}}) $Policy 'codex' $now $meter)
+        $criticalStates[$meter]=Get-Hotpl8CriticalDecision $criticalAccounts $Policy $priorId $Previous.critical.$meter $now
+        $criticalStates[$meter].selected=$recommendations[$meter]
+        if($recommendations[$meter] -ne $Previous.recommendations.$meter){$criticalStates[$meter].selectedAt=$now.ToString('o')}
     }
     $default = if ($Policy.defaultMeter) { [string]$Policy.defaultMeter } else { 'codex' }
     $result = [pscustomobject]@{ status = 'observed'; observedAt = [datetimeoffset]::UtcNow.ToString('o'); defaultMeter = $default; recommendations = [pscustomobject]$recommendations; recommendedSlot = $recommendations[$default]; slots = @($slots); warm = 'unmeasured: automatic Codex warming unavailable'; hold = $(if ($hold) { @{ until = $hold.until.ToString('o'); reason = $hold.reason } } else { $null }); elapsedMs = $clock.ElapsedMilliseconds }
-    $decisions=@(foreach($meter in @('codex','codex_bengalfox')){[pscustomobject]@{meter=$meter;selected=$recommendations[$meter];policy=$Policy.order;accounts=@(foreach($slot in $slots){[pscustomobject]@{slot=$slot.id;reason=(Get-CodexEligibility $slot $Policy $meter $now);reserve=($slot.id -in @($Policy.reserve))}})}})
+    $decisions=@(foreach($meter in @('codex','codex_bengalfox')){[pscustomobject]@{meter=$meter;selected=$recommendations[$meter];policy=$Policy.order;accounts=@(foreach($slot in $slots){[pscustomobject]@{slot=$slot.id;reason=(Get-CodexEligibility $slot $Policy $meter $now ([bool]$criticalStates[$meter].active));reserve=($slot.id -in @($Policy.reserve))}})}})
+    $result|Add-Member NoteProperty critical ([pscustomobject]$criticalStates) -Force
     $result|Add-Member NoteProperty decisions $decisions -Force
     Write-Hotpl8Text $statePath (([pscustomobject]@{ schemaVersion = 1; slots = [pscustomobject]$nextState }) | ConvertTo-Json -Depth 24)
     # Quota-only history supports reset experiments and scheduled-soak auditing.
@@ -285,6 +299,8 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
 }
 function Format-CodexStatus($Codex, $Policy, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     $chosen = if ($Codex.recommendedSlot) { [string]$Codex.recommendedSlot } else { 'unavailable' }
+    $criticalAccounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$Codex}}) $Policy 'codex' $Now $Codex.defaultMeter)
+    $critical=Get-Hotpl8CriticalDecision $criticalAccounts $Policy $chosen $Codex.critical.($Codex.defaultMeter) $Now
     $reasons = @{}
     foreach ($slot in @($Codex.slots)) {
         $reason = [string]$slot.status
@@ -293,7 +309,7 @@ function Format-CodexStatus($Codex, $Policy, [datetimeoffset]$Now = [datetimeoff
                 $age = ($Now - [datetimeoffset]::Parse($slot.observedAt)).TotalSeconds
                 if ($age -lt -5 -or $age -gt 900) { $reason = 'stale' }
             } catch { $reason = 'unknown' }
-            if ($reason -eq 'ok' -and $Policy) { $reason = Get-CodexEligibility $slot $Policy $Codex.defaultMeter $Now }
+            if ($reason -eq 'ok' -and $Policy) { $reason = Get-CodexEligibility $slot $Policy $Codex.defaultMeter $Now $critical.active }
         }
         $reasons[[string]$slot.id] = $reason
     }
@@ -345,11 +361,13 @@ function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, 
     if ($matches.Count -ne 1) { throw 'Unknown or duplicate Codex slot.' }
     $slot = $matches[0]
     if($slot.id -in @($Policy.disabled)){throw 'This Codex slot is disabled. Enable it before launch.'}
+    $criticalAccounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$Status}}) $Policy 'codex' $Now $meter)
+    $critical=Get-Hotpl8CriticalDecision $criticalAccounts $Policy $SlotId $Status.critical.$meter $Now
     $observed = @($Status.slots | Where-Object id -EQ $SlotId | Select-Object -First 1)
-    if (-not $explicit -and ($observed.Count -ne 1 -or (Get-CodexEligibility $observed[0] $Policy $meter $Now) -ne 'eligible')) { throw 'Recommended slot is no longer eligible.' }
+    if (-not $explicit -and ($observed.Count -ne 1 -or (Get-CodexEligibility $observed[0] $Policy $meter $Now $critical.active) -ne 'eligible')) { throw 'Recommended slot is no longer eligible.' }
     if (-not $Model -and $observed.Count) { $Model = [string]$observed[0].defaultModel }
     if (-not $explicit -and (-not $Model -or [string]$Policy.modelMeters.$Model -ne $meter)) { throw 'Default model quota mapping is unverified. Configure codex.modelMeters or launch an explicit -Slot.' }
-    return [pscustomobject]@{ policy = $Policy; slot = $slot; model = $Model; meter = $meter; automatic = (-not $explicit); arguments = @($Arguments) }
+    return [pscustomobject]@{ policy = $Policy; slot = $slot; model = $Model; meter = $meter; automatic = (-not $explicit); emergency=[bool]$critical.active; arguments = @($Arguments) }
 }
 function Invoke-Hotpl8Codex($Plan, [string]$StateDirectory, [string]$Executable, [string]$WorkingDirectory) {
     $exe = Resolve-CodexExecutable $Executable
@@ -363,7 +381,7 @@ function Invoke-Hotpl8Codex($Plan, [string]$StateDirectory, [string]$Executable,
         if (-not $prior -or $prior.identityKey -ne $read.identityKey -or $prior.binding -ne (Get-Hotpl8Hash ([IO.Path]::GetFullPath([string]$Plan.slot.home)))) { throw 'Account binding changed since collection. Refresh HotPl8 before automatic launch.' }
         $now = [datetimeoffset]::UtcNow
         $current = [pscustomobject]@{ id = $Plan.slot.id; status = 'ok'; observedAt = $now.ToString('o'); buckets = (ConvertTo-CodexBuckets $read.quota $null $now) }
-        if ((Get-CodexEligibility $current $Plan.policy $Plan.meter $now) -ne 'eligible') { throw 'Quota changed before launch; the selected subscription is no longer eligible.' }
+        if ((Get-CodexEligibility $current $Plan.policy $Plan.meter $now ([bool]$Plan.emergency)) -ne 'eligible') { throw 'Quota changed before launch; the selected subscription is no longer eligible.' }
     }
     $arguments = @()
     if ($Plan.model) { $arguments += @('--model', [string]$Plan.model) }

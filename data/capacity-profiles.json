@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-09-13",
+  "unit": "relative weekly allowance within the same provider and meter",
+  "note": "Published session multipliers do not establish weekly capacity or a weekly/short-window conversion. Supply measured estimates explicitly; null means unknown.",
+  "profiles": {
+    "claude-pro": {"provider":"claude","tier":"Pro","weekly":null,"fiveHour":null,"sessionMultiplier":1,"confidence":"conversion needed","source":"https://support.claude.com/en/articles/11049741-what-is-the-max-plan"},
+    "claude-max-5x": {"provider":"claude","tier":"Max 5x","weekly":null,"fiveHour":null,"sessionMultiplier":5,"confidence":"conversion needed","source":"https://support.claude.com/en/articles/11049741-what-is-the-max-plan"},
+    "claude-max-20x": {"provider":"claude","tier":"Max 20x","weekly":null,"fiveHour":null,"sessionMultiplier":20,"confidence":"conversion needed","source":"https://support.claude.com/en/articles/11049741-what-is-the-max-plan"},
+    "codex-plus": {"provider":"codex","meter":"codex","tier":"Plus","weekly":null,"fiveHour":null,"sessionMultiplier":1,"confidence":"conversion needed","source":"https://learn.chatgpt.com/docs/pricing"},
+    "codex-pro-5x": {"provider":"codex","meter":"codex","tier":"Pro 5x","weekly":null,"fiveHour":null,"sessionMultiplier":5,"confidence":"conversion needed","source":"https://learn.chatgpt.com/docs/pricing"},
+    "codex-pro-20x": {"provider":"codex","meter":"codex","tier":"Pro 20x","weekly":null,"fiveHour":null,"sessionMultiplier":20,"confidence":"conversion needed","source":"https://learn.chatgpt.com/docs/pricing"}
+  }
+}

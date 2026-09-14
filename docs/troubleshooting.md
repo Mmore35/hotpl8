@@ -17,3 +17,7 @@ Start with `hotpl8 doctor -AsJson`. It is offline and redacted. Run `hotpl8 refr
 | First installation failed | Fix the reported problem and rerun the same installer command. Its ownership marker permits retry while preserving state; do not delete your policy or native accounts. |
 
 Events rotate at 256 KiB to one backup. State, labels, native homes, quota observations, and credential-generation logs are private. Share redacted doctor output rather than a ZIP of the installation. See [SECURITY.md](../SECURITY.md) for sensitive reports.
+
+## Codex quota disappeared after a collection error
+
+Update to a build containing the sparse-cache recovery fix. Failed collection retains old account evidence as unavailable and clears recommendations. During backoff, skipped wakes do not extend the deadline. `failureStage` and `failureCode` in provider status distinguish safe error categories; native error messages are not exported. A successful quota read and unsupported warming are separate conditions. A secondary unknown meter does not invalidate the selected meter.

@@ -54,3 +54,7 @@ Commit the Mac implementation, tests and qualification record together in review
 ## Provider overview parity
 
 Preserve the platform-neutral `src/overview.ps1` metric and additive `providerOverview` contract when implementing Mac UI. Present the two provider summaries above individual details, preserve unknown shares and reserve disclosure, and distinguish next-launch readiness from current-session binding. Run `tests/test-overview.ps1` through the native test-port work; verify narrow/short terminal scrolling with the overview fixed. See [provider overview](../provider-overview.md).
+
+## Capacity-preview parity handoff
+
+Validate the new capacity/critical fixtures on PowerShell 7; verify native plan metadata and actual short/weekly conversions without price-based assumptions. Implement a single one-minute launchd wake with persisted healthy/critical due times and failure backoff; migrate an owned existing job without duplication. Test native session boundaries for Claude and Codex explicitly. Validate true-color styled spans, reduced-motion/no-color, Nyan half-block cell widths, resize, freeze, Ctrl+C and terminal restoration. Screenshots may be generated on Windows; Windows execution is not native Mac verification. Keep Codex session-owned resume and no implicit paid overage.

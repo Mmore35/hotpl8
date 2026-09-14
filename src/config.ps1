@@ -1,5 +1,7 @@
 ﻿# Configuration is validated before provider actions. Legacy policy remains explicit.
 . (Join-Path $PSScriptRoot 'automation.ps1')
+. (Join-Path $PSScriptRoot 'capacity.ps1')
+. (Join-Path $PSScriptRoot 'critical.ps1')
 function Resolve-Hotpl8StateDirectory([string]$Explicit, [string]$CodeDirectory) {
     if ($Explicit) { return [IO.Path]::GetFullPath($Explicit) }
     if ($env:HOTPL8_STATE_DIRECTORY) { return [IO.Path]::GetFullPath($env:HOTPL8_STATE_DIRECTORY) }
@@ -11,13 +13,14 @@ function Resolve-Hotpl8StateDirectory([string]$Explicit, [string]$CodeDirectory)
 function Assert-Hotpl8Policy($Policy) {
     if (-not $Policy -or $Policy -is [array] -or $Policy -isnot [pscustomobject]) { throw 'Invalid policy: expected an object.' }
     if ($null -ne $Policy.schemaVersion -and (-not (Test-Hotpl8Number $Policy.schemaVersion) -or $Policy.schemaVersion -notin @(1,2))) { throw 'Invalid policy: unsupported schemaVersion.' }
-    $v2Fields=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled')
+    $v2Fields=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled','capacity','critical','display')
     if($Policy.schemaVersion -ne 2 -and @($Policy.PSObject.Properties|Where-Object {$_.Name -in $v2Fields}).Count){throw 'New operational settings require schemaVersion 2.'}
     if($Policy.schemaVersion -in @(1,2)){
         $allowed=@('schemaVersion','mode','prefer','reserve','labels','weights','switchEnabled','warm','probeEnabled','order','pattern','margin5h','margin7d','margin7dWork','hysteresis','warmMin7d','warmMin7dWork','maxUsageAgeS','staleQuarantineS','warmFloorMin','warmPhaseWindowMin','warmGroup','resetLeadMin','codex')
-        if($Policy.schemaVersion -eq 2){$allowed+=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled');Assert-Hotpl8AutomationPolicy $Policy}
+        if($Policy.schemaVersion -eq 2){$allowed+=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled','capacity','critical','display');Assert-Hotpl8AutomationPolicy $Policy}
         foreach($field in $Policy.PSObject.Properties){if($field.Name -notin $allowed){throw 'Invalid policy: unknown versioned field.'}}
     }
+    if($Policy.schemaVersion -ne 2 -and ($Policy.codex.capacity -or $Policy.codex.critical)){throw 'Capacity and critical settings require schemaVersion 2.'}
     if ($Policy.mode -and $Policy.mode -notin @('monitor','automate')) { throw 'Invalid policy: mode must be monitor or automate.' }
     foreach ($key in @('warm','switchEnabled','probeEnabled')) {
         if ($null -ne $Policy.$key -and $Policy.$key -isnot [bool]) { throw ('Invalid policy field: '+$key) }
@@ -47,6 +50,9 @@ function Assert-Hotpl8Policy($Policy) {
     foreach ($p in @($Policy.labels.PSObject.Properties)) {
         if ($p -and ([string]$p.Value -match '[\x00-\x1f\x7f]' -or ([string]$p.Value).Length -gt 80)) { throw 'Invalid policy field: labels' }
     }
+    Assert-Hotpl8CapacityPolicy $Policy
+    Assert-Hotpl8CriticalPolicy $Policy
+    if($Policy.display){foreach($f in $Policy.display.PSObject.Properties){if($f.Name -notin @('reducedMotion','noColor') -or $f.Value -isnot [bool]){throw 'Invalid display setting.'}}}
     foreach ($p in @($Policy.weights.PSObject.Properties)) {
         if ($p -and (-not (Test-Hotpl8Number $p.Value) -or $p.Value -le 0 -or $p.Value -gt 10000)) { throw 'Invalid policy field: weights' }
     }

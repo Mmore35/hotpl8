@@ -1,3 +1,5 @@
+﻿. (Join-Path $PSScriptRoot 'capacity.ps1')
+. (Join-Path $PSScriptRoot 'critical.ps1')
 # Optional policies keep reserve/degraded tiers outside this key.
 function Get-Hotpl8SelectionKey([string]$Order, $FiveRemaining, $WeekRemaining, $WeekReset, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     try { $reset=[datetimeoffset]::Parse([string]$WeekReset); if($reset -le $Now){return [double]::MaxValue} } catch { return [double]::MaxValue }

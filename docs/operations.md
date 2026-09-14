@@ -89,3 +89,7 @@ Run `hotpl8 tray` in a Windows desktop session. It reads the same cache, shows a
 Notifications require `notificationsEnabled: true` and follow work hours. They cover sustained collector failure, no eligible account, native sign-in needs and a fresh depletion estimate. Transition state persists across restarts and ignores harmless reset drift. Routine polls and warm successes do not notify. Windows may suppress balloons under system notification settings. This companion is optional, is not installed at startup, and has not yet completed an interactive desktop/idle-resource qualification pass. Native Mac delivery belongs to the [Mac handoff](plans/macos-handoff.md).
 
 The dashboard, status command and tray share the [provider overview](provider-overview.md). `status -AsJson` adds `providerOverview` while retaining all per-account fields; `explain -AsJson` also includes it. `remainingPercent` is null with partial coverage; `knownRemainingPercent` and `unknownPercent` use the full enabled membership as their denominator. `computedAt` is the calculation clock, not a quota observation timestamp.
+
+## Critical-budget operation
+
+[Critical mode](capacity.md) is opt-in, uses per-window floors and hysteresis, and persists decisions across collector restarts. Successful collection uses a shorter due time while critical; failed observations retain their retry deadline through skipped wakes. No automatic replay of a failed prompt or migration of an existing Codex session is performed.

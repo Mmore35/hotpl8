@@ -3,9 +3,11 @@ function Get-Hotpl8ScreenshotFixture([switch]$Operations) {
     $now = [datetimeoffset]::Parse('2026-09-12T12:00:00Z')
     $policy = @{
         mode = 'monitor'; prefer = @(1, 2); reserve = @(2)
+        capacity=@{'1'=@{weekly=1;fiveHour=0.3};'2'=@{weekly=5;fiveHour=1.5}}
         labels = @{ '1' = 'Everyday'; '2' = 'Reserve' }
         codex = @{
             slots = @(@{ id = 'work'; label = 'Work' }, @{ id = 'personal'; label = 'Personal' })
+            capacity=@{work=@{weekly=5;fiveHour=1.5};personal=@{weekly=1;fiveHour=0.3}}
             defaultMeter = 'codex'; margin5h = 25; margin7d = 20; margin7dWork = 5
         }
     }
@@ -19,7 +21,8 @@ function Get-Hotpl8ScreenshotFixture([switch]$Operations) {
         )
         providers = @{
             codex = @{
-                defaultMeter = 'codex'; recommendedSlot = 'work'
+                capacity=@{work=@{weekly=5;fiveHour=1.5};personal=@{weekly=1;fiveHour=0.3}}
+            defaultMeter = 'codex'; recommendedSlot = 'work'
                 slots = @(
                     @{ id = 'work'; label = 'Work'; status = 'ok'; observedAt = $now.AddSeconds(-42).ToString('o')
                        buckets = @{ codex = @{ status = 'observed'; windows = @{
