@@ -1,4 +1,5 @@
 ﻿# Styled spans retain plain text and terminal-cell layout without allowing ANSI in data.
+$script:Hotpl8SingleCellTextPattern='^[\x20-\x7e\u00b7\u2022\u2190-\u21ff\u2500-\u25ff]*$'
 function New-Hotpl8Span([string]$Text,[string]$Tone='text',[string]$Background='') {
     [pscustomobject]@{text=([regex]::Replace($Text,'[\p{Cc}\p{Cf}]',' '));tone=$Tone;background=$Background}
 }
@@ -12,6 +13,12 @@ function Get-Hotpl8RowSpans($Row) {
 function Add-Hotpl8FrameBorder($Row,[int]$Width) {
     $spans=@(New-Hotpl8Span '│' 'border');$used=0
     foreach($part in @(Get-Hotpl8RowSpans $Row)){
+        # Common terminal glyphs need no per-character grapheme enumeration.
+        if([regex]::IsMatch($part.text,$script:Hotpl8SingleCellTextPattern)){
+            $count=[math]::Min($part.text.Length,[math]::Max(0,$Width-$used))
+            if($count){$spans+=New-Hotpl8Span $part.text.Substring(0,$count) $part.tone $part.background;$used+=$count}
+            continue
+        }
         $elements=[Globalization.StringInfo]::GetTextElementEnumerator($part.text);$text=''
         while($elements.MoveNext()){$glyph=[string]$elements.Current;$size=Get-DashboardCells $glyph;if($used+$size -gt $Width){break};$text+=$glyph;$used+=$size}
         if($text){$spans+=New-Hotpl8Span $text $part.tone $part.background}

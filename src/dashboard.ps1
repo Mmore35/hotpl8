@@ -2,6 +2,7 @@
 . (Join-Path $PSScriptRoot 'insights.ps1')
 . (Join-Path $PSScriptRoot 'presentation.ps1')
 function Get-DashboardCells([string]$Text) {
+    if([regex]::IsMatch($Text,$script:Hotpl8SingleCellTextPattern)){return $Text.Length}
     $cells=0; $elements=[Globalization.StringInfo]::GetTextElementEnumerator($Text)
     while($elements.MoveNext()) {
         $part=[string]$elements.Current; $code=[char]::ConvertToUtf32($part,0)
@@ -13,6 +14,7 @@ function Get-DashboardCells([string]$Text) {
 function Format-DashboardText([string]$Text,[int]$Width) {
     # Cached labels must never inject terminal controls. Keep printable Unicode.
     $text=[regex]::Replace($Text,'[\p{Cc}\p{Cf}]',' ')
+    if([regex]::IsMatch($text,$script:Hotpl8SingleCellTextPattern)){return $text.Substring(0,[math]::Min($text.Length,[math]::Max(0,$Width))).PadRight([math]::Max(0,$Width))}
     $result=''; $cells=0; $elements=[Globalization.StringInfo]::GetTextElementEnumerator($text)
     while($elements.MoveNext()) {
         $part=[string]$elements.Current
@@ -241,24 +243,53 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
         [Console]::TreatControlCAsInput=$true; [Console]::CursorVisible=$false
         if($ansi){[Console]::Write($esc+'[?1049h'+$esc+'[?25l'+$esc+'[48;2;18;23;35m'+$esc+'[2J')}
         $status=$null; $policy=$null; $readAt=-1000; $frameTime=0; $viewNow=[datetimeoffset]::UtcNow
+        $layoutAt=-1000; $layoutWidth=0; $layoutHeight=0; $nyanLines=@{}; $lastLines=@(); $lines=@()
         while(-not $quit){
             if($clock.ElapsedMilliseconds -ge $next){
                 if((-not $paused -or -not $policy) -and $clock.ElapsedMilliseconds-$readAt -ge 1000){$policy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json $policyPath};$status=Read-Hotpl8Snapshot $StateDirectory $PolicyOverride;$readAt=$clock.ElapsedMilliseconds}
                 if(-not $paused){$frameTime=$clock.Elapsed.TotalSeconds;$viewNow=[datetimeoffset]::UtcNow}
                 $w=[Math]::Max(1,[Console]::WindowWidth-1);$h=[Math]::Max(1,[Console]::WindowHeight-1)
-                $rows=@(Get-Hotpl8DashboardRows $status $policy ([datetimeoffset]::UtcNow) $w -Compact:($h -lt 32))
-                $offset=[Math]::Max(0,[Math]::Min($offset,[Math]::Max(0,$rows.Count-[Math]::Max(1,$h-14))))
-                $frame=@(Get-Hotpl8DashboardFrame $status $policy $viewNow $w $h $offset -Paused:$paused -AnimationSeconds $frameTime -Nyan:$Nyan -ReducedMotion:($ReducedMotion -or -not $ansi) -OverviewOverride $status.providerOverview -Plain:(-not $ansi))
-                $lines=@(foreach($row in $frame){if($ansi){ConvertTo-Hotpl8AnsiRow $row $colors}else{$row.text}})
+                $resized=$w -ne $layoutWidth -or $h -ne $layoutHeight
+                $motionOff=$ReducedMotion -or $policy.display.reducedMotion -or [bool]$env:HOTPL8_REDUCED_MOTION -or -not $ansi
+                # Quota/layout work runs at most once per second. Mascot frames reuse it.
+                if($resized -or $layoutAt -lt 0 -or (-not $paused -and $clock.ElapsedMilliseconds-$layoutAt -ge 1000)){
+                    if($resized){$nyanLines=@{}}
+                    $rows=@(Get-Hotpl8DashboardRows $status $policy $viewNow $w -Compact:($h -lt 32))
+                    $offset=[Math]::Max(0,[Math]::Min($offset,[Math]::Max(0,$rows.Count-[Math]::Max(1,$h-14))))
+                    $frame=@(Get-Hotpl8DashboardFrame $status $policy $viewNow $w $h $offset -Paused:$paused -AnimationSeconds $frameTime -Nyan:$Nyan -ReducedMotion:$motionOff -OverviewOverride $status.providerOverview -Plain:(-not $ansi))
+                    $lines=@(foreach($row in $frame){if($ansi){ConvertTo-Hotpl8AnsiRow $row $colors}else{$row.text}})
+                    $layoutAt=$clock.ElapsedMilliseconds;$layoutWidth=$w;$layoutHeight=$h
+                }
+                if($ansi -and $w -ge 48 -and $h -ge 15){
+                    $inside=[math]::Min(110,$w)-2
+                    if($Nyan -and $h -ge 24){
+                        $index=if($motionOff){0}else{[int][math]::Floor($frameTime*5)%$script:Hotpl8Nyan.frames.Count}
+                        if(-not $nyanLines.ContainsKey($index)){$nyanLines[$index]=@(foreach($r in @(Get-Hotpl8NyanRows $frameTime -ReducedMotion:$motionOff)){ConvertTo-Hotpl8AnsiRow (Add-Hotpl8FrameBorder $r $inside) $colors})}
+                        for($i=0;$i -lt $nyanLines[$index].Count;$i++){$lines[2+$i]=$nyanLines[$index][$i]}
+                    }elseif(-not $Nyan){
+                        $titleRow=New-DashboardRow ('│'+(Format-DashboardText ('  '+(Get-Hotpl8Cat $frameTime -ReducedMotion:$motionOff)+'  hotpl8') $inside)+'│') rose
+                        $lines[1]=ConvertTo-Hotpl8AnsiRow $titleRow $colors
+                    }
+                }
                 $text=$lines -join "`r`n"
-                if($text -cne $last){if($ansi){[Console]::Write($esc+'[H'+$text+$esc+'[J')}else{[Console]::SetCursorPosition(0,0);[Console]::Write($text)};$last=$text}
-                $next=$clock.ElapsedMilliseconds+$(if($ReducedMotion -or $policy.display.reducedMotion -or -not $ansi -or (-not $Nyan -and $frameTime%11 -lt 10 -and $frameTime%17 -lt 15)){1000}else{200})
+                if($text -cne $last -or $resized){
+                    if($ansi){
+                        if($resized -or -not $lastLines.Count){[Console]::Write($esc+'[H'+$text+$esc+'[J')}
+                        else{
+                            $changed='';for($i=0;$i -lt $lines.Count;$i++){if($i -ge $lastLines.Count -or $lines[$i] -cne $lastLines[$i]){$changed+=$esc+'['+($i+1)+';1H'+$lines[$i]}}
+                            if($lines.Count -lt $lastLines.Count){$changed+=$esc+'['+($lines.Count+1)+';1H'+$esc+'[J'}
+                            [Console]::Write($changed)
+                        }
+                    }else{[Console]::SetCursorPosition(0,0);[Console]::Write($text)}
+                    $last=$text;$lastLines=@($lines)
+                }
+                $next=$clock.ElapsedMilliseconds+$(if($paused -or $motionOff -or (-not $Nyan -and $frameTime%11 -lt 10 -and $frameTime%17 -lt 15)){1000}else{200})
             }
             while([Console]::KeyAvailable){
                 $key=[Console]::ReadKey($true)
                 if($key.Key -in @('Q','Escape') -or ($key.Key -eq 'C' -and ($key.Modifiers -band [ConsoleModifiers]::Control))){$quit=$true;break}
                 switch([string]$key.Key){'Spacebar'{$paused=-not $paused};'UpArrow'{$offset--};'DownArrow'{$offset++};'PageUp'{$offset-=10};'PageDown'{$offset+=10};'Home'{$offset=0};'End'{$offset=[int]::MaxValue}}
-                $next=0
+                $next=0;$layoutAt=-1000
             }
             Start-Sleep -Milliseconds 100
         }
