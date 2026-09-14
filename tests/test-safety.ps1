@@ -50,6 +50,20 @@ try{
         @{number=1;email='one@example.invalid';usageStatus='ok';usageAgeSeconds=0;usage=@{fiveHour=@{pct=90;resetsAt=$now.AddHours(1).ToString('o')};sevenDay=@{pct=20;resetsAt=$now.AddDays(1).ToString('o')}}},
         @{number=2;email='two@example.invalid';usageStatus='ok';usageAgeSeconds=0;usage=@{fiveHour=@{pct=10;resetsAt=$now.AddHours(1).ToString('o')};sevenDay=@{pct=20;resetsAt=$now.AddDays(1).ToString('o')}}}
     )}
+    Check 'scheduled Claude collection updates before cached native readings expire' {
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($fixture|ConvertTo-Json -Depth 12)
+        Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 12)
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $dir -CswapExecutable $stub -Scheduled -ObserveOnly -Strict
+        Assert ($LASTEXITCODE -eq 0)
+        $state=Read-Hotpl8Json (Join-Path $dir 'collector.json')
+        $delay=([datetimeoffset]::Parse($state.providers.claude.nextAttemptAt)-[datetimeoffset]::Parse($state.providers.claude.lastAttemptAt)).TotalSeconds
+        Assert ($delay -eq 60)
+        # Native idle polling: 600s + 10% jitter. Observe the existing cache,
+        # allowing one scheduler minute and one observation interval of delay.
+        Assert ((660+60+$delay) -lt 900)
+        Assert (@((Read-Hotpl8Json (Join-Path $dir 'status.json')).slots|Where-Object fresh).Count -eq 2)
+        Assert (-not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
+    }
     Check 'monitor proposes a useful switch but never executes it' {
         Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($fixture|ConvertTo-Json -Depth 12)
         $r=Invoke-ClaudeTick $p $dir $stub

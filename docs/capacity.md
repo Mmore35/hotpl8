@@ -2,7 +2,7 @@
 
 HotPl8 has one layered bar per provider. The full track is the combined weekly allowance of enabled unique subscriptions. The solid foreground is estimated usable allowance under current limits and routing policy. The patterned extension is the additional allowance expected at the next confirmed reset, assuming no further consumption. The right-hand countdown refers to that reset. A reset still blocked by another limit adds zero. The clock reaching zero never turns a projection into measured capacity.
 
-Account details retain raw quota percentages. Unknown readings and missing conversion factors remain visible. A paused/held/manual Claude configuration can leave allowance on other accounts outside the solid routed amount. Codex availability applies to a new launch; existing sessions retain their native account.
+Account details retain raw quota percentages. The heading is **Available now** when relative capacities can be calculated. Otherwise **Weekly remaining** shows the equal-account weekly average and projects only a weekly reset, without claiming immediately usable compute. Unknown readings appear as a partial-coverage message, never as hatching at the end of the bar. Hatching is reserved for the contiguous refill extension. A paused/held/manual Claude configuration can leave allowance on other accounts outside the solid routed amount. Codex availability applies to a new launch; existing sessions retain their native account.
 
 A fresh, explicitly blocked Codex account with a measured zero contributes zero usable allowance and keeps its weight in the total. It does not turn the other subscriptions' readings into unknown data. The reset countdown can still be shown, but projected gain stays unknown until a later observation clears the block: a quota reset does not necessarily remove a spend or account restriction. Stale readings and unknown provider constraints remain unknown.
 
@@ -18,7 +18,7 @@ Detecting a tier is different from measuring its window capacities. Anthropic pu
 
 Without capacity conversions, the dashboard falls back to **Weekly headroom (unweighted)** when native weekly readings are available. That bar is an equal-account average, accompanied by the number of ready accounts; it does not claim immediately usable compute or forecast a gain. Missing observations remain shaded. Every provider shows enabled membership and any disabled or duplicate exclusions; Codex also shows the next-launch target. An exhausted enabled subscription contributes zero while retaining its weight. A disabled subscription is excluded, so the remaining account's percentage is not the combined budget of both subscriptions.
 
-Prices and percentages are not interchangeable units. The [profile catalogue](../data/capacity-profiles.json) records published tier names and session multipliers with sources. Published session multipliers alone do not establish weekly totals or the conversion between five-hour and weekly windows. Until these are configured, HotPl8 shows quota readings and a capacity-setup message. A single weekly-only Codex account can be normalized without comparing tiers.
+Prices and percentages are not interchangeable units. The [profile catalogue](../data/capacity-profiles.json) records published tier names and session multipliers with sources. Published session multipliers alone do not establish weekly totals or the conversion between five-hour and weekly windows. Until these are configured, HotPl8 shows the weekly account average and per-account quota readings. A single weekly-only Codex account can be normalized without comparing tiers.
 
 Choose a profile and supply calibrated relative capacities through an account operation:
 
@@ -59,7 +59,7 @@ The Windows collector wakes once per minute and checks persisted per-provider du
 
 Provider accents: Claude orange and Codex cyan. Budget fills transition green, yellow, orange and red. Below 10%, a small critical marker pulses red/pale white; stale or unknown values do not pulse. Disable motion with `hotpl8 -ReducedMotion`, `HOTPL8_REDUCED_MOTION=1`, or `display.reducedMotion` in policy. `-NoColor`, `NO_COLOR`, or `display.noColor` suppresses color; redirected output is a single static frame.
 
-`hotpl8 nyan` opens the dashboard with a compact Nyan Cat animation from the existing terminal project. It is silent, uses bundled data and sends no requests. The standard cat occasionally blinks or moves its tail. [Animation attribution and license](../THIRD_PARTY_NOTICES.md). Small terminals use a static compact header. Both modes retain normal quit, scrolling and freeze controls.
+`hotpl8 nyan` opens the dashboard with a compact Nyan Cat animation from the existing terminal project. It is silent, uses bundled data and sends no requests. The standard cat occasionally blinks. [Animation attribution and license](../THIRD_PARTY_NOTICES.md). Small terminals use a static compact header. Both modes retain normal quit, scrolling and freeze controls.
 
 ## Preview before merge
 

@@ -109,6 +109,10 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         New-DashboardQuotaRow '5h' $slot.used5h $slot.reset5h $Now $Width -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
         New-DashboardQuotaRow '7d' $slot.used7d $slot.reset7d $Now $Width -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
         if(-not $Compact){
+            if($isStale){
+                $readingAge=Get-DashboardAge $slot.observedAt $Now
+                New-DashboardRow ('    '+$(if($null -ne $readingAge){'Last reading '+(Format-DashboardDuration $readingAge)+' ago; awaiting update.'}else{'No valid reading; see hotpl8 explain.'})) amber
+            }
             if($slot.forecast -and -not $isStale){New-DashboardRow ('    '+(Format-Hotpl8Forecast $slot.forecast)) muted}
             if($slot.warmOutcome){New-DashboardRow ('    Warm: '+$slot.warmOutcome.outcome) $(if($slot.warmOutcome.outcome -eq 'observed-active'){'mint'}else{'amber'})}
             if($slot.actionBlock){New-DashboardRow ('    Warming: '+$slot.actionBlock.Replace('_',' ')) muted}
@@ -168,24 +172,26 @@ function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width
         $display=Get-Hotpl8CapacityDisplay $p
         $tone=if($provider -eq 'claude'){'peach'}else{'cyan'}
         New-DashboardRow ('  '+$provider.ToUpper()+' / '+$display.title) $tone
-        $size=[math]::Max(10,[math]::Min(45,$Width-30))
+        $suffix=if($display.nextResetAt){
+            $(if($null -ne $display.gain){'+{0:0.#}% in ' -f $display.gain}else{'reset in '})+(Format-DashboardDuration ([datetimeoffset]::Parse($display.nextResetAt)-$Now).TotalSeconds)
+        }else{'reset unknown'}
+        $size=[math]::Max(10,[math]::Min(45,$Width-6-$suffix.Length))
         $value=$display.value
         $fill=[int][math]::Floor($value*$size/100)
-        $gain=if($null -ne $display.gain){[int][math]::Floor($display.gain*$size/100)}else{0}
-        $unknown=[math]::Min($size-$fill-$gain,[int][math]::Ceiling($display.unknown*$size/100))
-        $empty=[math]::Max(0,$size-$fill-$gain-$unknown)
+        $gain=if($null -ne $display.gain){[int][math]::Floor(($value+$display.gain)*$size/100)-$fill}else{0}
+        $empty=[math]::Max(0,$size-$fill-$gain)
         $health=Get-Hotpl8BudgetTone $value
         $warning=$c.complete -and $value -lt 10
         $pulse=if($warning -and -not $ReducedMotion -and ($AnimationSeconds%2) -ge 1){'text'}else{$health}
-        $suffix=if($c.nextResetAt){' '+$(if($null -ne $display.gain){'+{0:0.#}% ' -f $display.gain}else{'reset '})+(Format-DashboardDuration ([datetimeoffset]::Parse($c.nextResetAt)-$Now).TotalSeconds)}else{' reset unknown'}
         $spaces=[math]::Max(1,$Width-4-$size-$suffix.Length)
-        $spans=@(New-Hotpl8Span '  ';New-Hotpl8Span '[' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ('█'*$fill) $health;New-Hotpl8Span ('▒'*$gain) $tone;New-Hotpl8Span ('·'*$empty) 'border';New-Hotpl8Span ('░'*$unknown) 'muted';New-Hotpl8Span ']' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ((' '*$spaces)+$suffix) 'muted')
+        $spans=@(New-Hotpl8Span '  ';New-Hotpl8Span '[' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ('█'*$fill) $health;New-Hotpl8Span ('▒'*$gain) $tone;New-Hotpl8Span ('·'*$empty) 'border';New-Hotpl8Span ']' $(if($warning){$pulse}else{'border'});New-Hotpl8Span ((' '*$spaces)+$suffix) 'muted')
         New-Hotpl8StyledRow $spans
         $state=$display.state
         if($c.critical.active){$state+=' / CRITICAL / target '+$c.critical.pollSeconds+'s'}
         if($p.collectionHealth -notin @('manual / no collector evidence','recent collection completed','collecting')){$state=$p.collectionHealth+' / '+$state}
         New-DashboardRow ('  '+$state) 'muted'
         $membership='  '+$p.accounts+' enabled'
+        $membership+=' / '+$p.measured+'/'+$p.accounts+' readings'
         if($p.disabled){$membership+=' / '+$p.disabled+' disabled'}
         if($p.duplicates){$membership+=' / '+$p.duplicates+' duplicate excluded'}
         $membership+=if($provider -eq 'codex'){' / next launch: '+$(if($p.selected){$p.selected}else{'unavailable'})}else{' / '+$p.automation}
@@ -300,7 +306,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                     }else{[Console]::SetCursorPosition(0,0);[Console]::Write($text)}
                     $last=$text;$lastLines=@($lines)
                 }
-                $next=$clock.ElapsedMilliseconds+$(if($paused -or $motionOff -or (-not $Nyan -and $frameTime%11 -lt 10 -and $frameTime%17 -lt 15)){1000}else{200})
+                $next=$clock.ElapsedMilliseconds+$(if($paused -or $motionOff -or (-not $Nyan -and $frameTime%11 -lt 10)){1000}else{200})
             }
             while([Console]::KeyAvailable){
                 $key=[Console]::ReadKey($true)

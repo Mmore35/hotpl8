@@ -225,17 +225,17 @@ Check 'unconfigured Claude conversions preserve measured weekly inventory withou
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
     $o=Get-Hotpl8ProviderOverview $s $p $now
     $d=Get-Hotpl8CapacityDisplay $o.claude
-    Assert ($d.weekly -and $d.title -eq 'Weekly headroom (unweighted)')
+    Assert ($d.weekly -and $d.title -eq 'Weekly remaining')
     Near $d.value $o.claude.remainingPercent
-    Assert ($null -eq $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
+    Assert ($null -ne $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('weekly') -and $text.Contains('ready; capacity setup needed') -and -not $text.Contains('???'))
+    Assert ($text.Contains('weekly left (account average)') -and $text.Contains('ready') -and -not $text.Contains('???'))
     $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Assert ($d.unknown -gt 0 -and $d.state.Contains('weekly readings'))
+    Assert ($d.unknown -gt 0 -and $d.state.Contains('2 readings; total unavailable') -and $null -eq $d.gain)
     foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force}
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Assert ($d.state.Contains('window conversion unknown') -and -not $d.state.Contains('setup needed'))
+    Assert ($d.state.Contains('expired; awaiting update') -and -not $d.state.Contains('setup needed'))
 }
 Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exclusions' {
     $p=Clone $fixture.policy;$s=Snapshot
@@ -249,7 +249,35 @@ Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exc
     Near (Get-Hotpl8ProviderOverview $s $p $now).codex.capacity.usableNowPercent 47.5
     $p.codex|Add-Member NoteProperty disabled @('personal') -Force
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('95% now') -and $text.Contains('1 enabled / 1 disabled / next launch: work'))
+    Assert ($text.Contains('95% available now') -and $text.Contains('1 enabled / 1/1 readings / 1 disabled / next launch: work'))
+}
+Check 'weekly fallback projects only the matching weekly reset and never fills expired readings' {
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    $s.slots[0].used7d=60;$s.slots[1].used7d=20
+    $s.slots[0].reset7d=$now.AddDays(1).ToString('o');$s.slots[1].reset7d=$now.AddDays(2).ToString('o')
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.value 60;Near $d.gain 30
+    Assert ([datetimeoffset]::Parse($d.nextResetAt) -eq $now.AddDays(1))
+    $s.slots[1].reset7d=$s.slots[0].reset7d
+    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).gain 40
+    $s.slots[0].reset7d=$now.AddSeconds(-1).ToString('o')
+    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Assert ($null -eq $d.gain -and $d.state.Contains('total unavailable'))
+}
+Check 'hatching means refill only and is contiguous with the measured fill at every viewport' {
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    $s.slots[0].used7d=60;$s.slots[1].used7d=20
+    foreach($width in @(46,77,108)){
+        $rows=@(Get-Hotpl8OverviewRows $s $p $now $width)
+        Assert ((Get-DashboardCells $rows[1].text) -le $width)
+        Assert ($rows[1].text -match '\[█+▒+·*\]' -and $rows[1].text.Contains('% in '))
+    }
+    $p=Policy;$s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
+    $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
+    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[2].text.Contains('total unavailable'))
+    $p.PSObject.Properties.Remove('capacity')
+    $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
+    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[2].text.Contains('total unavailable'))
 }
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

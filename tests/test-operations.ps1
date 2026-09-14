@@ -159,6 +159,12 @@ try{
         Assert ([datetimeoffset]::Parse($s.providers.codex.nextAttemptAt) -eq $now.AddMinutes(30))
         Set-Hotpl8CollectionResult $s codex $true $now
         Assert (Test-Hotpl8CollectionDue $s codex $false $now.AddSeconds(1))
+        Assert (-not (Test-Hotpl8CollectionDue $s codex $true $now.AddSeconds(1)))
+        Set-Hotpl8CollectionResult $s claude $true $now 60
+        Assert (Test-Hotpl8CollectionDue $s claude $true $now.AddSeconds(59))
+        Set-Hotpl8CollectionResult $s claude $false $now
+        Assert (-not (Test-Hotpl8CollectionDue $s claude $true $now.AddSeconds(59)))
+        Assert (-not (Test-Hotpl8CollectionDue $s claude $false $now.AddSeconds(59)))
     }
     Check 'health distinguishes collecting stalled overdue and partial collection' {
         $s=Clone @{startedAt=$now.ToString('o')}

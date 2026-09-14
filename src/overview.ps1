@@ -30,24 +30,27 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
             if($identity -and $identities.ContainsKey($identity)){$duplicates++;continue}
             if($identity){$identities[$identity]=$true}
             $fresh=($s -and $s.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now))
-            $remaining=$null;$reason='no_observation';$eligible=$false
+            $remaining=$null;$reason='no_observation';$eligible=$false;$weeklyReset=$null
             if($s){$reason=if(-not $fresh){if($s.status -ne 'ok'){[string]$s.status}else{'stale'}}else{'weekly_unmeasured'}}
             if($provider -eq 'claude'){
                 $fresh=$fresh -and $s.fresh
                 $weekly=$fresh -and (Test-Hotpl8OverviewPercent $s.used7d) -and (Test-Hotpl8FutureReset $s.reset7d $Now)
-                if($weekly){$remaining=100-[double]$s.used7d}
+                if($weekly){$remaining=100-[double]$s.used7d;$weeklyReset=[datetimeoffset]::Parse($s.reset7d).ToString('o')}
                 $short=$fresh -and (Test-Hotpl8OverviewPercent $s.used5h) -and ((Test-Hotpl8FutureReset $s.reset5h $Now) -or ($s.cold -and $s.used5h -eq 0 -and -not $s.reset5h))
                 $modelBlock=Get-ClaudeModelBlock $s.scoped $Policy ([int]$id) $Now
                 $e=@{h5=$(if($short){100-[double]$s.used5h}else{$null});h7=$remaining;fresh=[bool]($short -and $weekly);modelBlocked=[bool]$modelBlock;obj=@{usage=@{fiveHour=@{resetsAt=$s.reset5h};sevenDay=@{resetsAt=$s.reset7d}}}}
                 $claudeAccounts[[int]$id]=$e
                 $eligible=(Test-Ok $e ([double]$Policy.margin5h) (Get-Margin7dFor $Policy $id)) -and $e.h5 -gt 0 -and $remaining -gt 0
-                if($fresh){$reason=if($modelBlock){$modelBlock}elseif($eligible){'eligible'}elseif(-not $weekly -or -not $short){'window_unmeasured'}else{'below_margin'}}
+                if($fresh){$reason=if($modelBlock){$modelBlock}elseif($eligible){'eligible'}elseif(-not $weekly -or -not $short){'window_unmeasured'}else{'below_margin'}}elseif($s -and $s.status -eq 'ok'){$reason='stale'}
             }else{
                 $b=$s.buckets.$meter;$w=$b.windows.'10080'
-                if($fresh -and ($b.status -eq 'observed' -or ($b.status -eq 'blocked' -and $w.usedPercent -eq 100)) -and (Test-Hotpl8OverviewPercent $w.usedPercent) -and (Test-Hotpl8FutureReset $w.resetsAt $Now -Unix)){$remaining=100-[double]$w.usedPercent}
+                if($fresh -and ($b.status -eq 'observed' -or ($b.status -eq 'blocked' -and $w.usedPercent -eq 100)) -and (Test-Hotpl8OverviewPercent $w.usedPercent) -and (Test-Hotpl8FutureReset $w.resetsAt $Now -Unix)){
+                    $remaining=100-[double]$w.usedPercent
+                    if($w.anchorState -eq 'observed-active'){$weeklyReset=[datetimeoffset]::FromUnixTimeSeconds([long]$w.resetsAt).ToString('o')}
+                }
                 if($s){$reason=Get-CodexEligibility $s $part $meter $Now;$eligible=$reason -eq 'eligible';$codexAccounts+=@($s)}
             }
-            $members+=@([pscustomobject]@{slot=[string]$id;remainingPercent=$remaining;eligible=[bool]$eligible;reason=$reason;reserve=($id -in @($part.reserve))})
+            $members+=@([pscustomobject]@{slot=[string]$id;remainingPercent=$remaining;weeklyResetAt=$weeklyReset;eligible=[bool]$eligible;reason=$reason;reserve=($id -in @($part.reserve))})
         }
         $measured=@($members|Where-Object {$null -ne $_.remainingPercent}).Count
         $sum=0.0;foreach($m in $members){if($null -ne $m.remainingPercent){$sum+=$m.remainingPercent}}
@@ -89,17 +92,34 @@ function Get-Hotpl8CapacityDisplay($ProviderOverview) {
     $p=$ProviderOverview;$c=$p.capacity
     # Missing conversion data must not hide valid native quota readings, or turn
     # their equal-account average into a claim about immediately usable compute.
-    $weekly=-not $c.complete -and ($null -eq $c.totalUnits -or $c.measured -eq 0) -and $p.measured -gt 0
+    $weekly=-not $c.complete -and ($null -eq $c.totalUnits -or $c.measured -eq 0) -and $p.accounts -gt 0
     $ready=@($p.members|Where-Object eligible).Count
-    $state=if($weekly){
-        $(if($null -ne $p.remainingPercent){'{0:0.#}% weekly' -f $p.remainingPercent}else{[string]$p.measured+'/'+$p.accounts+' weekly readings'})+' / '+$ready+'/'+$p.accounts+' ready; capacity setup needed'
-    }elseif($c.complete){'{0:0.#}% now' -f $c.usableNowPercent}else{'Usable capacity unmeasured; check setup/readings'}
-    if($weekly -and @($c.accounts).Count -gt 0 -and @($c.accounts|Where-Object {-not $_.profile}).Count -eq 0){$state=$state.Replace('capacity setup needed','window conversion unknown')}
+    $next=$c.nextResetAt;$gain=$c.projectedGainPercent
+    if($weekly){
+        # A weekly average has its own denominator and reset horizon. Never
+        # attach a five-hour refill to it, or imply it is immediately usable.
+        $next=$null;$gain=$null
+        $resets=@($p.members|Where-Object weeklyResetAt|Sort-Object {[datetimeoffset]::Parse($_.weeklyResetAt)})
+        if($resets.Count){$next=$resets[0].weeklyResetAt}
+        if($next -and $p.measured -eq $p.accounts -and $resets.Count -eq $p.accounts){
+            $gain=0.0
+            foreach($m in $p.members){if($m.weeklyResetAt -and [datetimeoffset]::Parse($m.weeklyResetAt) -eq [datetimeoffset]::Parse($next)){$gain+=(100-$m.remainingPercent)/$p.accounts}}
+        }
+    }
+    $state=if($weekly -and $null -ne $p.remainingPercent){
+        ('{0:0.#}% weekly left (account average) / ' -f $p.remainingPercent)+$ready+'/'+$p.accounts+' ready'
+    }elseif(-not $weekly -and $c.complete){'{0:0.#}% available now' -f $c.usableNowPercent}else{
+        'Partial: '+$p.measured+'/'+$p.accounts+' readings; total unavailable'
+    }
+    if($p.accounts -eq 0){$state='No accounts enabled'}
+    $stale=@($p.members|Where-Object reason -EQ 'stale').Count
+    if($stale){$state+=' / '+$stale+' expired; awaiting update'}
     [pscustomobject]@{
-        title=$(if($weekly){'Weekly headroom (unweighted)'}else{'Available capacity (estimate)'})
+        title=$(if($weekly){'Weekly remaining'}else{'Available now'})
         value=$(if($weekly){$p.knownRemainingPercent}else{$c.knownUsablePercent})
         unknown=$(if($weekly){$p.unknownPercent}else{$c.unknownPercent})
-        gain=$(if(-not $weekly){$c.projectedGainPercent}else{$null})
+        gain=$gain
+        nextResetAt=$next
         state=$state
         weekly=[bool]$weekly
     }
@@ -114,7 +134,7 @@ function Format-Hotpl8Overview($Overview) {
             $display=Get-Hotpl8CapacityDisplay $p
             '  Capacity: '+$display.state+'; '+$c.critical.reason
             '  Membership: '+$p.accounts+' enabled; '+$p.disabled+' disabled; '+$p.duplicates+' duplicate entries excluded.'
-            if($null -ne $c.projectedGainPercent){'  Next reset: +{0:0.#}% at {1}; assumes no further consumption.' -f $c.projectedGainPercent,$c.nextResetAt}
+            if($null -ne $display.gain){'  Next reset: +{0:0.#}% {1} at {2}; assumes no further consumption.' -f $display.gain,$(if($display.weekly){'weekly'}else{'available'}),$display.nextResetAt}
         }
         if($p.includesReserve){'  Includes reserve allowance.'}
         if($provider -eq 'claude' -and $p.capacity){

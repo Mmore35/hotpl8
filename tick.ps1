@@ -27,7 +27,10 @@ try {
             $claude=Invoke-ClaudeTick $policy $StateDirectory $CswapExecutable -ObserveOnly:$ObserveOnly
             if($policy.prefer){
                 $healthy=@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -eq @($claude.payload.slots).Count
-                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -gt 0) -HealthySeconds $(if($claude.payload.critical.active){[int]$claude.payload.critical.pollSeconds}else{300})
+                # cswap owns API cadence/backoff. Observe its cache every scheduler
+                # wake: a second five-minute cache can age a healthy ten-minute
+                # native poll (plus jitter) past our fifteen-minute freshness bound.
+                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -gt 0) -HealthySeconds 60
                 if(-not $healthy){$failed=$true}
             }
         }elseif($policy.prefer){

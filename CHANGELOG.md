@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Observe Claude's adapter every scheduler minute so its native poll cadence does not compound with a second cache delay. Preserve freshness and backoff limits. Simplify overview labels, reserve hatching for attached refill projections, align weekly fallback projections with weekly resets, and remove the disappearing cat tail.
+
 - Detect Claude subscription plans automatically using identity-verified profile metadata, with bounded retries, private caching and explicit handling of unknown tiers. Surface detected plans in dashboard/JSON/text/tray and prefer configured capacity overrides.
 
 - Unified Claude and Codex weekly-headroom overview with pinned summaries and scrollable account details. Shared CLI/tray summaries show partial coverage, reserves, readiness and automation state without treating percentages as absolute capacity.

@@ -8,8 +8,10 @@ function Test-Hotpl8CollectionDue($State, [string]$Provider, [bool]$Scheduled, [
     $p=$State.providers.$Provider
     if(-not $p.nextAttemptAt){return $true}
     try{
-        # Manual reads can refresh healthy data, but cannot cancel failure backoff.
-        if(-not $Scheduled -and -not $p.failures){return $true}
+        # cswap already owns each account's polling/cache deadlines. Observe it
+        # on every healthy scheduler wake; adding a second cache can expire its
+        # otherwise valid readings. Neither path may cancel failure backoff.
+        if(-not $p.failures -and (-not $Scheduled -or $Provider -eq 'claude')){return $true}
         return [datetimeoffset]::Parse($p.nextAttemptAt) -le $Now
     }catch{return $true}
 }

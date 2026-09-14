@@ -58,7 +58,8 @@ Check 'narrow frames and a scrolled last page fit their viewport' {
 Check 'standard terminal prioritizes both provider summaries above account details' {
     $rows=Render $s 79 23
     $text=$rows.text -join "`n"
-    Assert ($rows.Count -le 23 -and $text.Contains('CLAUDE / Available') -and $text.Contains('CODEX / Available') -and $text.Contains('ACCOUNT DETAILS'))
+    Assert ($rows.Count -le 23 -and $text.Contains('CLAUDE / Weekly remaining') -and $text.Contains('CODEX / Available now') -and $text.Contains('ACCOUNT DETAILS'))
+    Assert ($text.IndexOf('CLAUDE /') -lt $text.IndexOf('CODEX /') -and $text.IndexOf('CODEX /') -lt $text.IndexOf('ACCOUNT DETAILS'))
 }
 Check 'tiny resized terminals show a bounded recovery hint' {
     $rows=Render $s 15 4

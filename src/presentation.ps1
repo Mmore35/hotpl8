@@ -52,7 +52,6 @@ function ConvertTo-Hotpl8AnsiRow($Row,$Palette) {
 function Get-Hotpl8Cat([double]$AnimationSeconds,[switch]$ReducedMotion) {
     if($ReducedMotion){return '(=^.^=)'}
     if(($AnimationSeconds%11) -ge 10.6){return '(=-.-=)'}
-    if(($AnimationSeconds%17) -ge 15){return '(=^.^=)~'}
     return '(=^.^=)'
 }
 function Get-Hotpl8NyanRows([double]$AnimationSeconds,[switch]$ReducedMotion,[switch]$Plain) {
