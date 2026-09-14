@@ -109,6 +109,31 @@ Check 'disabled Codex login never presents cached percentages as its current bal
     Assert ($text.Contains('Disabled: excluded from totals and selection.'))
     Assert (-not $text.Contains('65% left') -and -not $text.Contains('NEXT LAUNCH'))
 }
+Check 'three Claude accounts with verbose metadata cannot hide the usable second Codex account in a standard terminal' {
+    $c=Copy-Value $s;$policy=Copy-Value $p
+    $policy.codex.slots+=@([pscustomobject]@{id='work';label='Work'})
+    $work=Copy-Value $c.providers.codex.slots[0];$work.id='work';$work.label='Work'
+    $work.buckets.codex.windows.'10080'.usedPercent=22;$work.buckets.codex.windows.'10080'.remainingPercent=78
+    $c.providers.codex.slots+=@($work);$c.providers.codex.recommendedSlot='work'
+    $main=$c.providers.codex.slots[0];$main.buckets.codex.status='blocked'
+    $main.buckets.codex.windows.'10080'.usedPercent=100;$main.buckets.codex.windows.'10080'.remainingPercent=0
+    foreach($slot in $c.slots){
+        $slot|Add-Member NoteProperty warmOutcome @{outcome='observed-active'}
+        $slot|Add-Member NoteProperty actionBlock 'outside_work_hours'
+        $slot|Add-Member NoteProperty modelBlock 'model_below_margin'
+    }
+    foreach($width in @(79,110)){
+        $frame=@(Get-Hotpl8DashboardFrame $c $policy $now $width 40)
+        $text=$frame.text -join "`n"
+        Assert ($text.Contains('1/2 Main [main]') -and $text.Contains('EXHAUSTED'))
+        Assert ($text.Contains('2/2 Work [work]') -and $text.Contains('NEXT LAUNCH') -and $text.Contains('78% left'))
+        Assert ($frame.Count -le 40)
+        foreach($row in $frame){Assert ((Get-DashboardCells $row.text) -eq $width)}
+    }
+    $last=@(Get-Hotpl8DashboardFrame $c $policy $now 79 24 999)
+    Assert (($last.text -join "`n").Contains('2/2 Work [work]'))
+    Assert (($last.text -join "`n").Contains('78% left'))
+}
 Check 'Claude detail marks an expired per-account observation stale despite a fresh collector tick' {
     $c=Copy-Value $s;$c.slots[0]|Add-Member NoteProperty observedAt $now.AddHours(-1).ToString('o') -Force
     $text=((Render $c).text)-join "`n"

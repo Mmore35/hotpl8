@@ -10,7 +10,7 @@ The patterned extension appears only for the **first positive refill within the 
 
 The dashboard, CLI and tray consume the same `providerOverview.PROVIDER.immediate` JSON computation. Each account exposes `confidence`, `weightBasis` and `unconvertedConstraints`. The original `capacity` and normalized weekly-headroom fields remain for compatibility. Codex's unconfirmed reset anchors restrict projections, not otherwise valid current quota percentages. Automatic Codex warming remains unavailable; weekly-only accounts report warming as not applicable.
 
-Codex details number each subscription (`1/2`, `2/2`) and show its label, unique slot ID and one availability verdict, such as **EXHAUSTED** or **NEXT LAUNCH**. A successfully read but exhausted account is not labeled available. Scroll the account details to see subsequent entries; the provider summaries stay pinned.
+Codex details number each subscription (`1/2`, `2/2`) and show its label, unique slot ID and one availability verdict, such as **EXHAUSTED** or **NEXT LAUNCH**. A successfully read but exhausted account is not labeled available. When optional details would hide accounts, the dashboard condenses them if that lets every account fit. Larger windows retain the extra detail. In smaller windows, use the arrow keys or **End** to reach later accounts; the provider summaries stay pinned.
 
 ![Account details below the overview](assets/details.png)
 

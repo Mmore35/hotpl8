@@ -211,6 +211,13 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     $summary=@(Get-Hotpl8OverviewRows $Status $Policy $Now ($width-2) $AnimationSeconds -ReducedMotion:$motionOff -OverviewOverride $OverviewOverride)
     $nyanRows=if($Nyan -and $Height -ge 24){@(Get-Hotpl8NyanRows $AnimationSeconds -ReducedMotion:$motionOff -Plain:$Plain)}else{@()}
     $available=[Math]::Max(1,$Height-7-$summary.Count-1-$nyanRows.Count)
+    # Prefer showing every account over spending the viewport on forecasts and
+    # other optional lines above an account that would otherwise disappear below
+    # the fold. Base this on actual content, not just a fixed terminal height.
+    if($Height -ge 32 -and $rows.Count -gt $available){
+        $compactRows=@(Get-Hotpl8DashboardRows $Status $Policy $Now $width -Compact -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff)
+        if($compactRows.Count -le $available){$rows=$compactRows}
+    }
     $offset=[Math]::Max(0,[Math]::Min($Offset,[Math]::Max(0,$rows.Count-$available)))
     $age=Get-DashboardAge $Status.generatedAt $Now
     $freshness=if($null -eq $age){'no reading yet'}elseif($age -lt -5){'clock mismatch'}else{'usage read '+(Format-DashboardDuration $age)+' ago'}
@@ -224,7 +231,7 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     New-DashboardRow ('│'+(Format-DashboardText '  ACCOUNT DETAILS / scroll below' $inside)+'│') muted
     foreach($row in @($rows|Select-Object -Skip $offset -First $available)){Add-Hotpl8FrameBorder $row $inside}
     New-DashboardRow ('├'+('─'*$inside)+'┤') border
-    $keys='  Q quit  ·  Space freeze view  ·  ↑↓ scroll'
+    $keys='  Q quit  ·  Space freeze  ·  ↑↓ scroll / End last'
     if($rows.Count -gt $available){$keys+='  ['+($offset+1)+'-'+[Math]::Min($rows.Count,$offset+$available)+'/'+$rows.Count+']'}
     New-DashboardRow ('│'+(Format-DashboardText $keys $inside)+'│') muted
     New-DashboardRow ('╰'+('─'*$inside)+'╯') border
