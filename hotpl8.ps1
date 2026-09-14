@@ -175,7 +175,7 @@ try {
 
     if ($Command -in @('watch','nyan')) {
         . (Join-Path $PSScriptRoot 'src/dashboard.ps1')
-        Show-Hotpl8Dashboard $StateDirectory -Nyan:($Command -eq 'nyan') -ReducedMotion:$ReducedMotion -NoColor:$NoColor -PolicyOverride $policy
+        Show-Hotpl8Dashboard $StateDirectory -Nyan:($Command -eq 'nyan') -ReducedMotion:$ReducedMotion -NoColor:$NoColor -PolicyOverride $(if($PreviewPolicy){$policy})
         exit 0
     }
     if ($Command -in @('refresh', 'tick')) {
@@ -189,7 +189,7 @@ try {
         $Command = 'status'
     }
 
-    $status = Read-Hotpl8Snapshot $StateDirectory $policy
+    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy})
     if($Command -eq 'explain'){
         if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory) -Force}
         if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}

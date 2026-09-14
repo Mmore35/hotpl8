@@ -80,6 +80,22 @@ Check 'opening through a pipe returns one plain frame without changing cache' {
         $before=(Get-FileHash (Join-Path $dir 'status.json')).Hash
         $out=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hotpl8.ps1') -StateDirectory $dir
         Assert ($LASTEXITCODE -eq 0 -and ($out -join "`n").Contains('hotpl8'))
+        Assert (-not ($out -join "`n").Contains('PREVIEW POLICY'))
+        foreach($command in @('watch','nyan','status')){
+            $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'hotpl8.ps1'),$command,'-StateDirectory',$dir)
+            if($command -eq 'status'){$args+='-AsJson'}
+            $normal=& powershell @args
+            Assert ($LASTEXITCODE -eq 0)
+            $preview=& powershell @args -PreviewPolicy (Join-Path $dir 'policy.json')
+            Assert ($LASTEXITCODE -eq 0)
+            if($command -eq 'status'){
+                Assert (-not (($normal -join "`n"|ConvertFrom-Json).displayPolicy))
+                Assert (($preview -join "`n"|ConvertFrom-Json).displayPolicy)
+            }else{
+                Assert (-not ($normal -join "`n").Contains('PREVIEW POLICY'))
+                Assert (($preview -join "`n").Contains('PREVIEW POLICY'))
+            }
+        }
         Assert ((Get-FileHash (Join-Path $dir 'status.json')).Hash -eq $before)
         Assert (@(Get-ChildItem $dir -File).Count -eq 2)
     } finally {
