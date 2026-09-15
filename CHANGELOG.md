@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased ? local agent interface
+
+- Add a versioned JSON agent command and local MCP read tools with explicit cached readiness.
+- Add opt-in independent pause leases, retry-safe acquisition/release and active-lease rollback protection.
+- Preserve legacy CLI JSON formats; agent reads omit labels, native paths and identities.
+
+
 ## Unreleased
 
 - Preserve the renovated dashboard, full-resolution Nyan animation and updated fictional screenshots. Retry Windows replacement error 1175, release read handles before parsing JSON, distinguish storage recovery from provider backoff, isolate provider health, and keep legacy output failures from invalidating the primary snapshot.

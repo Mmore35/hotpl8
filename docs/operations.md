@@ -93,3 +93,7 @@ The dashboard, status command and tray share the [provider overview](provider-ov
 ## Critical-budget operation
 
 [Critical mode](capacity.md) is opt-in, uses per-window floors and hysteresis, and persists decisions across collector restarts. Successful collection uses a shorter due time while critical; failed observations retain their retry deadline through skipped wakes. No automatic replay of a failed prompt or migration of an existing Codex session is performed.
+
+## Cooperative agent pauses
+
+Agent jobs may acquire independent expiring pauses through the [agent API](agent-api.md). Effective automation pause combines manual pause state with all active leases. Manual `resume` affects only the manual pause, and reports when other pause state remains. Invalid lease state blocks automation and requires local inspection. Collection continues.

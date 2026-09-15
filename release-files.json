@@ -94,6 +94,14 @@
     "docs/assets/critical.png",
     "docs/assets/unknown.png",
     "docs/assets/narrow.png",
-    "docs/assets/available-now.png"
+    "docs/assets/available-now.png",
+    "src/agent-api.ps1",
+    "src/leases.ps1",
+    "src/mcp.ps1",
+    "agent-api.schema.json",
+    "tests/test-agent-api.ps1",
+    "tests/test-leases.ps1",
+    "tests/test-mcp.ps1",
+    "docs/agent-api.md"
   ]
 }

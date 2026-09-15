@@ -37,3 +37,7 @@ Owned scheduler/PATH/app files and this installation's exact optional HotPl8 hoo
 The default portable state behavior remains supported. To migrate, install into a new directory and point StateDirectory at the existing HotPl8 state directory. Existing policy is preserved. Disable the old scheduler only when the new scheduler is verified; do not leave two independent timers. Re-register optional hooks with the new stable app path and remove only obsolete HotPl8 handlers. Never copy native auth.json or cswap credentials between account homes.
 
 Private development repositories may contain account data in older commits. Keep their history private when migrating to this public source release; never import native credentials or private logs into a public branch.
+
+## Agent pause compatibility
+
+The new collector reads `automation-leases.json` in addition to the manual pause file. Upgrade every collector and pause writer sharing that state before enabling MCP pause writes. Old binaries cannot honor leases. The new rollback command refuses rollback while live or invalid lease state exists; released and expired leases do not block it. Old rollback/install binaries cannot enforce this guard. See [agent API](agent-api.md).

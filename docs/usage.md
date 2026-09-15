@@ -34,3 +34,7 @@ The dashboard opens with one **Available now** bar per provider. Solid fill esti
 ## Capacity and mascot commands
 
 `hotpl8 nyan` runs the same passive dashboard with the bundled terminal Nyan Cat animation. `-ReducedMotion` and `-NoColor` also work with the standard dashboard. `hotpl8 accounts -Operation capacity` configures a subscription profile and relative window capacities; see [capacity and critical mode](capacity.md).
+
+## Agents and MCP
+
+`hotpl8 agent` accepts one v1 JSON request from stdin or `-RequestJson`. `hotpl8 mcp` serves local cached read tools; `-AllowAgentPause` enables independent pause leases. See [agent API](agent-api.md). These commands do not collect quota or launch work.

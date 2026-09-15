@@ -2,7 +2,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update')]
+    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp')]
     [string]$Command = 'watch',
     [string]$Slot,
     [string]$Model,
@@ -26,6 +26,8 @@ param(
     [string]$ReleaseVersion,
     [string]$InstallDirectory,
     [string]$SourceDigest,
+    [string]$RequestJson,
+    [switch]$AllowAgentPause,
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
     [string[]]$CodexArguments
 )
@@ -41,6 +43,26 @@ try {
     . (Join-Path $PSScriptRoot 'src/insights.ps1')
     . (Join-Path $PSScriptRoot 'src/management.ps1')
     $StateDirectory = Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
+
+    if($Command -in @('agent','mcp')){
+        . (Join-Path $PSScriptRoot 'src/agent-api.ps1')
+        [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
+        [Console]::InputEncoding=New-Object Text.UTF8Encoding($false)
+        if($Command -eq 'mcp'){
+            . (Join-Path $PSScriptRoot 'src/mcp.ps1')
+            Start-Hotpl8Mcp $StateDirectory -AllowAgentPause:$AllowAgentPause
+            exit 0
+        }
+        if(-not $PSBoundParameters.ContainsKey('RequestJson')){
+            # Bound memory before parsing. UTF-8 byte size is checked by the shared handler.
+            $buffer=New-Object Text.StringBuilder
+            while($buffer.Length -le 65536){$character=[Console]::In.Read();if($character -lt 0){break};[void]$buffer.Append([char]$character)}
+            $RequestJson=$buffer.ToString()
+        }
+        $response=Invoke-Hotpl8AgentJson $RequestJson $StateDirectory
+        [Console]::WriteLine(($response|ConvertTo-Json -Depth 24 -Compress))
+        if($response.ok){exit 0}else{exit 1}
+    }
 
     # These commands do not need an existing policy or a provider observation.
     if ($Command -eq 'version') {
@@ -67,6 +89,8 @@ try {
         'history [-Operation clear]: inspect retention or delete local usage history.'
         'tray [-Once]: optional Windows tray; -Once prints its view model without opening a window.'
         'update-check [-Channel preview] [-Operation dismiss] / update -InstallDirectory PATH'
+        'agent [-RequestJson JSON]: versioned local agent request; stdin JSON is also accepted.'
+        'mcp [-AllowAgentPause]: local stdio MCP; read tools only unless pause writes are enabled.'
         exit 0
     }
     if($Command -eq 'setup'){Invoke-Hotpl8Setup $StateDirectory $PSScriptRoot -Interactive:$Interactive;exit 0}
@@ -120,7 +144,9 @@ try {
     if($Command -in @('pause','resume')){
         $duration=if($Command -eq 'resume'){0}else{$Minutes}
         Set-Hotpl8Pause $StateDirectory $duration $Command
-        if($duration){'Automation paused for '+$duration+' minutes. Collection continues.'}else{'Automation resumed under the existing policy.'}
+        if($duration){'Automation paused for '+$duration+' minutes. Collection continues.'}
+        elseif(Get-Hotpl8Pause $StateDirectory){'Manual pause cleared. Agent pauses or invalid pause state still block automation.'}
+        else{'Automation resumed under the existing policy.'}
         exit 0
     }
     if($Command -eq 'accounts'){

@@ -1,4 +1,5 @@
 # Shared action controls. Collector callers hold tick.lock while updating state.
+. (Join-Path $PSScriptRoot 'leases.ps1')
 function Test-Hotpl8WorkTime($Schedule, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     if (-not $Schedule) { return $true }
     $zone = if ($Schedule.timeZone) { [TimeZoneInfo]::FindSystemTimeZoneById($Schedule.timeZone) } else { [TimeZoneInfo]::Local }
@@ -13,14 +14,20 @@ function Test-Hotpl8WorkTime($Schedule, [datetimeoffset]$Now = [datetimeoffset]:
     return ($time -lt $end -and (($day + 6) % 7) -in @($Schedule.days))
 }
 function Get-Hotpl8Pause([string]$Directory, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
+    $leases=Get-Hotpl8LeasePause $Directory $Now
+    if ($leases.invalid) { return $leases }
     $path = Join-Path $Directory 'automation-pause.json'
-    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    if (-not (Test-Path -LiteralPath $path)) { return $leases }
     $pause = Read-Hotpl8Json $path
     try {
         if (-not $pause.until) { throw 'invalid pause' }
-        if ([datetimeoffset]::Parse($pause.until) -gt $Now) { return $pause }
+        if ([datetimeoffset]::Parse($pause.until) -gt $Now) {
+            if (-not $leases) { return $pause }
+            $until=if ([datetimeoffset]::Parse($pause.until) -gt [datetimeoffset]::Parse($leases.until)) { $pause.until } else { $leases.until }
+            return [pscustomobject]@{until=$until;reason='manual_and_agent_leases';invalid=$false;leaseCount=$leases.leaseCount}
+        }
     } catch { return [pscustomobject]@{until=$null;reason='invalid_pause';invalid=$true} }
-    return $null
+    return $leases
 }
 function Get-Hotpl8ActionBlock($Policy, [string]$Directory, [string]$Provider, [string]$Slot, [string]$Kind, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     if (Get-Hotpl8Pause $Directory $Now) { return 'automation_paused' }
