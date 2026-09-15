@@ -26,6 +26,8 @@
     "policy.example.json",
     "policy.schema.json",
     "src/providers/claude.ps1",
+    "src/providers/claude-plans.ps1",
+    "src/providers/claude_plan.py",
     "src/providers/codex.ps1",
     "release-files.json",
     "docs/install.md",
@@ -76,6 +78,22 @@
     "docs/plans/subscription-roadmap.md",
     "docs/operations.md",
     "docs/assets/operations.png",
-    "tests/test-tray.ps1"
+    "tests/test-tray.ps1",
+    "src/overview.ps1",
+    "tests/test-overview.ps1",
+    "docs/provider-overview.md",
+    "docs/assets/details.png",
+    "src/capacity.ps1",
+    "src/critical.ps1",
+    "src/presentation.ps1",
+    "data/capacity-profiles.json",
+    "data/nyan-frames.json",
+    "tests/test-capacity.ps1",
+    "docs/capacity.md",
+    "docs/assets/nyan.png",
+    "docs/assets/critical.png",
+    "docs/assets/unknown.png",
+    "docs/assets/narrow.png",
+    "docs/assets/available-now.png"
   ]
 }

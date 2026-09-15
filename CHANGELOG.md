@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Preserve the renovated dashboard, full-resolution Nyan animation and updated fictional screenshots. Retry Windows replacement error 1175, release read handles before parsing JSON, distinguish storage recovery from provider backoff, isolate provider health, and keep legacy output failures from invalidating the primary snapshot.
+
+- Report low-balance Claude rotation consistently in status and selection explanations. Add a collector regression covering exhausted-account escape, highest-balance rotation, dwell, stale readings, refills, holds and observation-only previews; document matching critical entry to the normal margin.
+
+- Keep the main bars on usable-now capacity, using an explicit plan-weighted quota-headroom estimate when conversions are unavailable. Weekly remaining is supporting text. Forecast only the first positive refill within 24 hours and exclude Spark from Codex summaries, dashboard and tray.
+
+- Observe Claude's adapter every scheduler minute so its native poll cadence does not compound with a second cache delay. Preserve freshness and backoff limits. Simplify overview labels, reserve hatching for attached refill projections, align weekly fallback projections with weekly resets, and remove the disappearing cat tail.
+
+- Detect Claude subscription plans automatically using identity-verified profile metadata, with bounded retries, private caching and explicit handling of unknown tiers. Surface detected plans in dashboard/JSON/text/tray and prefer configured capacity overrides.
+
+- Unified Claude and Codex weekly-headroom overview with pinned summaries and scrollable account details. Shared CLI/tray summaries show partial coverage, reserves, readiness and automation state without treating percentages as absolute capacity.
+
 ## 0.2.0-rc.1 ? source candidate
 
 - Add observed warming receipts, explanations/activity, collector health/backoff, weekly estimates and optional local history.
@@ -30,3 +44,10 @@
 - Correct UTF-8 quota-pipe input and preserve Unicode account paths independently of console encoding.
 
 This is an early Windows preview, not a stable-support designation. Live provider/concurrency qualification remains open. See [compatibility](docs/compatibility.md) and the [release checklist](docs/release-checklist.md).
+
+## Unreleased — capacity preview
+
+- Recover Codex collection after sparse failure snapshots without extending retry deadlines on skipped wakes.
+- Add weighted current/next-reset capacity estimates, configurable capacity profiles, independent provider/health colors and reduced motion.
+- Add opt-in critical-budget selection with persisted hysteresis, dwell, emergency floors and faster healthy polling.
+- Animate the header cat and add `hotpl8 nyan` using credited terminal-project frames.

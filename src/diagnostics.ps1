@@ -1,12 +1,27 @@
 ﻿# Diagnostic fields are allowlisted; native credentials and provider output are never exported.
-function Write-Hotpl8Event([string]$Directory, [string]$Code) {
+function Write-Hotpl8Event([string]$Directory, [string]$Code, $Failure=$null) {
     try {
         $path = Join-Path $Directory 'events.jsonl'
         if ((Test-Path -LiteralPath $path) -and (Get-Item -LiteralPath $path).Length -gt 262144) {
             [IO.File]::Copy($path, $path+'.1', $true)
             [IO.File]::WriteAllText($path, '')
         }
-        $row = @{ at=[datetimeoffset]::UtcNow.ToString('o'); code=$Code } | ConvertTo-Json -Compress
+        $event = @{ at=[datetimeoffset]::UtcNow.ToString('o'); code=$Code }
+        if($Failure){
+            $event.failureCode=Get-Hotpl8FailureCode $Failure
+            $stateFile=$Failure.Exception.Data['Hotpl8StateFile']
+            if($stateFile -in @('status.json','status.js','status.txt','collector.json','warm-outcomes.json','warm-state.json','usage-history.json','activity.json','codex-state.json','critical-claude.json','policy.json')){
+                $event.stateFile=$stateFile
+                $event.ioCode=[int]$Failure.Exception.Data['Hotpl8IoCode']
+            }
+            # Only known source names and numeric lines, never exception text,
+            # paths, invocation text or native output (which can contain secrets).
+            $source=Split-Path ([string]$Failure.InvocationInfo.ScriptName) -Leaf
+            if($source -in @('common.ps1','tick.ps1','claude.ps1','codex.ps1','warming.ps1','insights.ps1','collection.ps1','claude-plans.ps1')){
+                $event.source=$source;$event.line=[int]$Failure.InvocationInfo.ScriptLineNumber
+            }
+        }
+        $row = $event | ConvertTo-Json -Compress
         [IO.File]::AppendAllText($path, $row+[Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     } catch { }
 }

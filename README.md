@@ -6,9 +6,11 @@
 
 - **Pick the best available account.** Automatically switch Claude accounts using quota, reset times, and your reserve rules. Codex selects an account for your next launch.
 - **Warm idle Claude accounts.** Optional small requests aim to start usage windows earlier, so accounts are ready when you need them.
-- **See every account at a glance.** Remaining quota, reset times, active accounts, and stale readings in one terminal dashboard.
+- **See your subscriptions at a glance.** One layered bar for Claude and one for Codex: usable allowance now, projected refill, and full capacity. Individual accounts remain below.
 
-![HotPl8 showing two fictional Claude accounts and two Codex accounts, with quota bars, reset times, and separate ACTIVE and NEXT LAUNCH indicators](docs/assets/dashboard.png)
+![HotPl8 showing layered Claude and Codex capacity bars with account details below](docs/assets/dashboard.png)
+
+[How the provider bars work](docs/provider-overview.md) · Scroll down for individual quotas, resets and selection details.
 
 Windows preview. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming remains unavailable pending native qualification. [Compatibility and provider boundaries](docs/compatibility.md).
 
@@ -17,7 +19,10 @@ Windows preview. Starts in monitoring mode; Claude switching and warming are opt
 ```mermaid
 flowchart TD
     A[Read quotas] --> B[Exclude stale and insufficient readings]
-    B --> C[Rank by policy: work first, reserves last]
+    B --> G{Critical mode enabled and all work accounts low?}
+    G -- Yes --> H[Most usable allowance; dwell and emergency floor]
+    G -- No --> C[Normal policy: work first, reserves last]
+    H --> D
     C --> D{Provider?}
     D -- Claude --> E[cswap switches account when allowed]
     D -- Codex --> F[Next launch uses the selected native home]
@@ -32,6 +37,10 @@ HotPl8 decides; **cswap carries out Claude switches**, and **native Codex launch
 Working from this source? See the [current setup guide](docs/install.md), including guided `hotpl8 setup -Interactive`. [All commands](docs/usage.md) · [Automation settings](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md).
 
 Current source also includes [decision explanations, pause/work hours, weekly pace and an optional Windows tray](docs/operations.md). Mac implementation has a [ready-to-run handoff](docs/plans/macos-handoff.md).
+
+See [layered capacity, refill countdowns and critical mode](docs/capacity.md). For a little color, run `hotpl8 nyan`.
+
+Claude plan names are detected automatically on refresh. When window-capacity conversions are unavailable, the dashboard shows measured weekly headroom with a clear label.
 
 ## Under the hood
 

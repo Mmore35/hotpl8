@@ -26,3 +26,11 @@ Doctor prints setup and dependency guidance in human mode. Its `-AsJson` fields 
 ## Account operations
 
 The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `explain`, `capabilities`, `pause`/`resume`, `history`, `tray`, `update-check` and `update`. See [commands and operational semantics](operations.md) and [verified updates](upgrading.md). These are not present in the older downloadable preview.
+
+## Provider overview
+
+The dashboard opens with one **Available now** bar per provider. Solid fill estimates usable allowance across current limits; the patterned extension shows the first positive refill within 24 hours, with its countdown on the right. Weekly remaining is supporting text; Spark is excluded. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, estimates, unknown readings and reserves](provider-overview.md).
+
+## Capacity and mascot commands
+
+`hotpl8 nyan` runs the same passive dashboard with the bundled terminal Nyan Cat animation. `-ReducedMotion` and `-NoColor` also work with the standard dashboard. `hotpl8 accounts -Operation capacity` configures a subscription profile and relative window capacities; see [capacity and critical mode](capacity.md).

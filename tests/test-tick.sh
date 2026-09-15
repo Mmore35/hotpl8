@@ -39,6 +39,7 @@ winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else pr
 # Execute unmodified production files with an explicit binary dependency.
 cp "$HERE/tick.ps1" "$S/tick.ps1"
 cp -R "$HERE/src" "$S/src"
+cp -R "$HERE/data" "$S/data"
 # Seed from the TRACKED example, never from policy.json (2026-08-30). policy.json is
 # gitignored per-machine config carrying this fleet's labels and reserve set, so seeding
 # from it made every result depend on a file no other machine has and no commit records

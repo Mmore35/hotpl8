@@ -50,3 +50,13 @@ Record pass/fail, exact versions and sanitized evidence for each row; do not mar
 | Engineering | Windows suite still passes; Mac suite and CI pass; reproducible package includes every dependency; secret scan passes. |
 
 Commit the Mac implementation, tests and qualification record together in reviewable increments, push the public branch, and open a PR. Update compatibility, install/usage/upgrading docs, policy schema, release manifest and feature-status plan as applicable. Keep unsupported cells explicit. Leave the owner a short report of what works, any real account/provider boundary requiring a decision, and links to the PR and tested artifact. Do not publish a stable support claim until its rows pass.
+
+## Provider overview parity
+
+Preserve the platform-neutral `src/overview.ps1` metric and additive `providerOverview` contract when implementing Mac UI. Present the two provider summaries above individual details, preserve unknown shares and reserve disclosure, and distinguish next-launch readiness from current-session binding. Run `tests/test-overview.ps1` through the native test-port work; verify narrow/short terminal scrolling with the overview fixed. See [provider overview](../provider-overview.md).
+
+## Capacity-preview parity handoff
+
+Claude plans now use `src/providers/claude_plan.py` through the installed cswap Python interpreter. Qualify native macOS Keychain reads, interpreter discovery for pipx/venv installs, per-account identity checks, profile failures and the 15-minute cache. Never add a second token-refresh owner or copy credentials to make discovery work. The Windows helper and pure fixture tests do not establish native Mac qualification. Keep plan labels distinct from measured weekly/short-window conversions.
+
+Validate the new capacity/critical fixtures on PowerShell 7; verify native plan metadata and actual short/weekly conversions without price-based assumptions. Implement a single one-minute launchd wake with persisted healthy/critical due times and failure backoff; migrate an owned existing job without duplication. Test native session boundaries for Claude and Codex explicitly. Validate true-color styled spans, reduced-motion/no-color, Nyan half-block cell widths, resize, freeze, Ctrl+C and terminal restoration. Screenshots may be generated on Windows; Windows execution is not native Mac verification. Keep Codex session-owned resume and no implicit paid overage.

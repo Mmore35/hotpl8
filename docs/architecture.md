@@ -2,6 +2,10 @@
 
 HotPl8 collects quota readings, chooses accounts according to policy, and renders a cached terminal dashboard. Displaying the dashboard never launches a provider process. There is no HotPl8 server.
 
+`status.json` is the authoritative published snapshot and includes the collector's completion record. `collector.json` can supply a newer in-progress marker; an older marker cannot override an already completed snapshot. The legacy `status.js` and `status.txt` mirrors, usage history and activity log are best-effort outputs: their write failures are logged without invalidating the JSON observation. Required action receipts and safety state still fail closed.
+
+Local file failures and provider failures have separate retry behavior. Safe Windows replacement contention gets a bounded retry in the shared writer. If a required state write still fails, the provider remains unavailable and retries on the next one-minute scheduler wake, preserving observation timestamps. Native request failures retain their longer backoff. No read failure authorizes a credential change or marks old quota as fresh.
+
 ```mermaid
 flowchart LR
     A[Native provider tools] --> B[tick.ps1: collect and apply policy]
@@ -77,6 +81,7 @@ src/
   automation.ps1            Shared pause, schedule and attempt gates
   warming.ps1               Receipt persistence and observation reconciliation
   collection.ps1            Persisted collection due times and backoff
+  overview.ps1              Pure provider summaries shared by all cached views
   forecast.ps1 / insights.ps1
                             Shared estimates, bounded history and activity
   selection.ps1 / replay.ps1 Optional ranking keys and production-selector replay
@@ -99,3 +104,9 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 PowerShell keeps the Windows installation small, but other platforms are not release-qualified. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. Monitor mode is the starting point; optional automation needs explicit configuration. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
+
+Provider summaries are additive `providerOverview` fields on snapshots and status output. Readers recompute them from current policy, cached observations and the current clock; an old saved summary never makes old data fresh. The pinned dashboard overview, tray and CLI use the same pure calculation. [Metric contract](provider-overview.md).
+
+## Capacity and emergency selection
+
+`src/capacity.ps1` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `src/critical.ps1` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. `src/presentation.ps1` provides sanitized styled spans and clock-driven mascots shared by terminal and screenshot rendering. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).

@@ -1,18 +1,24 @@
-# refresh observes; tick applies policy. Authentication belongs to native provider tools.
+﻿# refresh observes; tick applies policy. Authentication belongs to native provider tools.
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('watch', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update')]
+    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update')]
     [string]$Command = 'watch',
     [string]$Slot,
     [string]$Model,
     [string]$StateDirectory,
+    [string]$PreviewPolicy,
     [string]$CodexExecutable,
     [switch]$AsJson,
     [string]$AccountHome,
     [string]$Label,
+    [string]$CapacityProfile,
+    [Nullable[double]]$WeeklyCapacity,
+    [Nullable[double]]$FiveHourCapacity,
+    [switch]$ReducedMotion,
+    [switch]$NoColor,
     [ValidateSet('claude','codex')][string]$Provider = 'codex',
-    [ValidateSet('list','rename','enable','disable','reserve','work','clear','dismiss')][string]$Operation = 'list',
+    [ValidateSet('list','rename','enable','disable','reserve','work','capacity','clear','dismiss')][string]$Operation = 'list',
     [ValidateRange(1,10080)][int]$Minutes = 60,
     [switch]$Interactive,
     [switch]$Once,
@@ -27,6 +33,7 @@ param(
 $ErrorActionPreference = 'Stop'
 try {
     . (Join-Path $PSScriptRoot 'src/common.ps1')
+    if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}
     . (Join-Path $PSScriptRoot 'src/config.ps1')
     . (Join-Path $PSScriptRoot 'src/diagnostics.ps1')
     . (Join-Path $PSScriptRoot 'src/providers/claude.ps1')
@@ -41,6 +48,8 @@ try {
         exit 0
     }
     if ($Command -eq 'help') {
+        'nyan: dashboard with animated Nyan Cat; -ReducedMotion / -NoColor supported.'
+        'accounts -Operation capacity -Provider claude -Slot 1 -CapacityProfile claude-pro -WeeklyCapacity 1 -FiveHourCapacity 0.1 (supply calibrated values). '
         'hotpl8 [watch|status|refresh|tick|doctor|version|init|enroll|codex]'
         'watch: cached dashboard; Space freezes the view only.'
         'refresh: collect quotas without switching, warming, or recovery prompts.'
@@ -105,7 +114,7 @@ try {
         exit 0
     }
 
-    $policy = Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
+    $policy = Read-Hotpl8Json $(if($PreviewPolicy){$PreviewPolicy}else{Join-Path $StateDirectory 'policy.json'})
     if (-not $policy) { throw 'No valid policy.json. Run hotpl8 init or see docs/install.md.' }
     Assert-Hotpl8Policy $policy
     if($Command -in @('pause','resume')){
@@ -117,16 +126,16 @@ try {
     if($Command -eq 'accounts'){
         if($Operation -eq 'list'){
             $rows=@(
-                foreach($n in @($policy.prefer)){if($n){[pscustomobject]@{provider='claude';slot=$n;label=$policy.labels.([string]$n);disabled=($n -in @($policy.disabled));reserve=($n -in @($policy.reserve))}}}
-                foreach($s in @($policy.codex.slots)){if($s){[pscustomobject]@{provider='codex';slot=$s.id;label=$s.label;disabled=($s.id -in @($policy.codex.disabled));reserve=($s.id -in @($policy.codex.reserve))}}}
+                foreach($n in @($policy.prefer)){if($n){[pscustomobject]@{provider='claude';slot=$n;label=$policy.labels.([string]$n);capacity=$policy.capacity.([string]$n);disabled=($n -in @($policy.disabled));reserve=($n -in @($policy.reserve))}}}
+                foreach($s in @($policy.codex.slots)){if($s){[pscustomobject]@{provider='codex';slot=$s.id;label=$s.label;capacity=$policy.codex.capacity.([string]$s.id);disabled=($s.id -in @($policy.codex.disabled));reserve=($s.id -in @($policy.codex.reserve))}}}
             )
             if($AsJson){ConvertTo-Json -InputObject $rows -Depth 6}else{$rows}
         }else{
-            if(-not $Slot -or $Operation -notin @('rename','enable','disable','reserve','work') -or ($Operation -eq 'rename' -and -not $Label)){throw 'Account changes require -Slot and a supported operation; rename also requires -Label.'}
+            if(-not $Slot -or $Operation -notin @('rename','enable','disable','reserve','work','capacity') -or ($Operation -eq 'rename' -and -not $Label)){throw 'Account changes require -Slot and a supported operation; rename also requires -Label.'}
             $path=Join-Path $StateDirectory 'policy.json';$hash=(Get-FileHash $path -Algorithm SHA256).Hash
             # Read after hashing so concurrent edits are rejected when committing.
             $policy=Read-Hotpl8Json $path
-            $next=Set-Hotpl8Account $policy $Provider $Slot $Operation $Label
+            $next=if($Operation -eq 'capacity'){Set-Hotpl8CapacityProfile $policy $Provider $Slot $CapacityProfile $WeeklyCapacity $FiveHourCapacity}else{Set-Hotpl8Account $policy $Provider $Slot $Operation $Label}
             Save-Hotpl8Policy $StateDirectory $next $hash
             'Account policy updated. The next refresh updates cached decisions.'
         }
@@ -164,9 +173,9 @@ try {
     }
     if ($AccountHome -or $Label) { throw '-AccountHome and -Label are enrollment options. Use hotpl8 enroll.' }
 
-    if ($Command -eq 'watch') {
+    if ($Command -in @('watch','nyan')) {
         . (Join-Path $PSScriptRoot 'src/dashboard.ps1')
-        Show-Hotpl8Dashboard $StateDirectory
+        Show-Hotpl8Dashboard $StateDirectory -Nyan:($Command -eq 'nyan') -ReducedMotion:$ReducedMotion -NoColor:$NoColor -PolicyOverride $(if($PreviewPolicy){$policy})
         exit 0
     }
     if ($Command -in @('refresh', 'tick')) {
@@ -180,16 +189,17 @@ try {
         $Command = 'status'
     }
 
-    $status = Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')
+    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy})
     if($Command -eq 'explain'){
         if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory) -Force}
-        if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause}|ConvertTo-Json -Depth 16}
+        if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}
         else{Format-Hotpl8Explanation $status|ForEach-Object {ConvertTo-Hotpl8SafeText $_}}
         exit 0
     }
     if ($Command -eq 'status') {
-        if (-not $status) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
+        if (-not $status -or -not $status.generatedAt) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
         if ($AsJson) { $status | ConvertTo-Json -Depth 24; exit 0 }
+        Format-Hotpl8Overview $status.providerOverview | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
         'HotPl8 | generated ' + (ConvertTo-Hotpl8SafeText $status.generatedAt)
         if($status.collector){Get-Hotpl8Health $status.collector}
         $pause=Get-Hotpl8Pause $StateDirectory

@@ -27,7 +27,10 @@ try {
             $claude=Invoke-ClaudeTick $policy $StateDirectory $CswapExecutable -ObserveOnly:$ObserveOnly
             if($policy.prefer){
                 $healthy=@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -eq @($claude.payload.slots).Count
-                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -gt 0)
+                # cswap owns API cadence/backoff. Observe its cache every scheduler
+                # wake: a second five-minute cache can age a healthy ten-minute
+                # native poll (plus jitter) past our fifteen-minute freshness bound.
+                Set-Hotpl8CollectionResult $collector 'claude' (@($claude.payload.slots|Where-Object {$_.fresh -or $_.status -eq 'disabled'}).Count -gt 0) -HealthySeconds 60
                 if(-not $healthy){$failed=$true}
             }
         }elseif($policy.prefer){
@@ -36,26 +39,28 @@ try {
         }
     } catch {
         $claudeError='collection_failed'; $failed=$true
+        $failureCode=Get-Hotpl8FailureCode $_
+        if($failureCode -eq 'state_io_failed'){$claudeError='local_state_unavailable'}
         if($_.Exception.Message -in @('claude_missing','claude_no_accounts','claude_schema_unsupported','claude_read_failed','claude_switch_failed','process_timeout','process_output_limit')){$claudeError=$_.Exception.Message}
-        Write-Hotpl8Event $StateDirectory ('claude_'+$claudeError)
-        Set-Hotpl8CollectionResult $collector 'claude' $false
+        Write-Hotpl8Event $StateDirectory ('claude_'+$claudeError) $_
+        Set-Hotpl8CollectionResult $collector 'claude' $false -FailureCode $failureCode
     }
     if($policy.codex -and $policy.codex.slots){
         try {
             . (Join-Path $PSScriptRoot 'src/providers/codex.ps1')
             if(Test-Hotpl8CollectionDue $collector 'codex' ([bool]$Scheduled)){
                 $codex=Invoke-CodexCollection $policy.codex $StateDirectory $CodexExecutable $previous.providers.codex $CodexReader
-                Set-Hotpl8CollectionResult $collector 'codex' (@($codex.slots|Where-Object {$_.status -in @('ok','disabled')}).Count -gt 0)
+                Set-Hotpl8CollectionResult $collector 'codex' (@($codex.slots|Where-Object {$_.status -in @('ok','disabled')}).Count -gt 0) -HealthySeconds $(if($codex.critical.($policy.codex.defaultMeter).active){[int]$codex.critical.($policy.codex.defaultMeter).pollSeconds}else{300})
             }else{
                 $codex=$previous.providers.codex
-                if($codex -and $collector.providers.codex.failures){$codex.recommendedSlot=$null;$codex.recommendations=[pscustomobject]@{};foreach($s in $codex.slots){if($s.status -ne 'disabled'){$s.status='backoff'}};$codex.decisions=@()}
+                if($codex -and $collector.providers.codex.failures){$codex=Get-Hotpl8CodexFailure $codex 'backoff' $null}
             }
             if(@($codex.slots|Where-Object {$_.status -notin @('ok','disabled')}).Count){$failed=$true;Write-Hotpl8Event $StateDirectory 'codex_observation_unavailable'}
         } catch {
             $failed=$true
-            $codex=[pscustomobject]@{status='collection_failed';observedAt=[datetimeoffset]::UtcNow.ToString('o');recommendedSlot=$null;slots=@()}
-            Write-Hotpl8Event $StateDirectory 'codex_collection_failed'
-            Set-Hotpl8CollectionResult $collector 'codex' $false
+            $codex=Get-Hotpl8CodexFailure $previous.providers.codex 'collection_failed' (Get-Hotpl8FailureCode $_)
+            Write-Hotpl8Event $StateDirectory 'codex_collection_failed' $_
+            Set-Hotpl8CollectionResult $collector 'codex' $false -FailureCode (Get-Hotpl8FailureCode $_)
         }
     }
     if($claude){$payload=$claude.payload;$lines=@($claude.lines)}
@@ -82,13 +87,21 @@ try {
     Add-Hotpl8Insights $payload $policy $StateDirectory $previous
     $json=$payload|ConvertTo-Json -Depth 24
     Write-Hotpl8Text (Join-Path $StateDirectory 'status.json') ($json+[Environment]::NewLine)
-    Write-Hotpl8Text (Join-Path $StateDirectory 'status.js') ('window.CSWAP = '+$json+';'+[Environment]::NewLine)
-    Write-Hotpl8Text (Join-Path $StateDirectory 'status.txt') ((@($lines|ForEach-Object{ConvertTo-Hotpl8SafeText $_}) -join [Environment]::NewLine)+[Environment]::NewLine)
+    # status.json is the authoritative snapshot. Legacy text/browser mirrors
+    # must not turn successful observation into a failed collection.
+    $mirrors=@{
+        'status.js'=('window.CSWAP = '+$json+';'+[Environment]::NewLine)
+        'status.txt'=((@($lines|ForEach-Object{ConvertTo-Hotpl8SafeText $_}) -join [Environment]::NewLine)+[Environment]::NewLine)
+    }
+    foreach($name in $mirrors.Keys){
+        try{Write-Hotpl8Text (Join-Path $StateDirectory $name) $mirrors[$name]}
+        catch{Write-Hotpl8Event $StateDirectory 'compatibility_output_failed' $_}
+    }
     Write-Hotpl8Text (Join-Path $StateDirectory 'collector.json') ($collector|ConvertTo-Json -Depth 8)
     if($claude.action){ConvertTo-Hotpl8SafeText $claude.action}
 } catch {
     $failed=$true
-    if($lock){Write-Hotpl8Event $StateDirectory 'collector_failed'}
+    if($lock){Write-Hotpl8Event $StateDirectory 'collector_failed' $_}
 } finally {if($lock){$lock.Dispose()}}
 if($Strict -and $failed){exit 1}
 exit 0

@@ -2,6 +2,16 @@
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'warming.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'forecast.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
+. (Join-Path $PSScriptRoot 'claude-plans.ps1')
+function Get-ClaudeModelBlock($Scopes,$Policy,[int]$Slot,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    foreach($model in @($Policy.claudeModels|Where-Object {$_})){
+        $scope=@($Scopes|Where-Object name -EQ $model)
+        if($scope.Count -ne 1 -or -not (Test-Hotpl8Number $scope[0].pct) -or $scope[0].pct -lt 0 -or $scope[0].pct -gt 100){return 'model_quota_unknown'}
+        try{if([datetimeoffset]::Parse($scope[0].resetsAt) -le $Now){throw 'expired'}}catch{return 'model_reset_unconfirmed'}
+        if(100-[double]$scope[0].pct -lt (Get-Margin7dFor $Policy $Slot) -or $scope[0].pct -ge 100){return 'model_below_margin'}
+    }
+    return $null
+}
 function Test-Ok($e, $m, $margin7d) {
     if ($null -eq $e) { return $false }
     if ($e.modelBlocked) { return $false }
@@ -508,7 +518,9 @@ function Resolve-CswapExecutable([string]$CswapExecutable) {
     }
     return $cswap
 }
-function Get-ClaudeSelection($policy, $prefer, $acc, [int]$active, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
+function Get-ClaudeSelection($policy, $prefer, $acc, [int]$active, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, $CriticalState=$null) {
+    $critical=Get-Hotpl8ClaudeCritical $policy $acc $active $CriticalState $Now
+    if($critical.active -and $critical.ranked.Count){return @{target=$(if($critical.selected){[int]$critical.selected}else{$null});activeOk=([string]$active -in $critical.ranked);ranked=@($critical.ranked|ForEach-Object {[int]$_});critical=$critical}}
     $orderMode=if($policy.order){$policy.order}else{'prefer'}
     $m5=[double]$policy.margin5h; $hy=[double]$policy.hysteresis
     $soonest   = ($orderMode -eq 'soonest-reset')
@@ -573,6 +585,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $data=$read.output | ConvertFrom-Json
     if ($null -ne $data.schemaVersion -and $data.schemaVersion -ne 1) { throw 'claude_schema_unsupported' }
     if (-not $data.accounts) { throw 'claude_no_accounts' }
+    $plans=Read-Hotpl8ClaudePlans @($data.accounts|Where-Object {$_.number -in @($policy.prefer) -and $_.number -notin @($policy.disabled)}) $StateDirectory $cswap
 
     $m5 = [double]$policy.margin5h
     $hy = [double]$policy.hysteresis
@@ -619,13 +632,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $entry=$acc[[int]$a.number]
         $entry.identity=Get-Hotpl8Hash ([string]$a.email)
         $entry.observedAt=if($valid -and (Test-Hotpl8Number $a.usageAgeSeconds) -and $a.usageAgeSeconds -ge 0){[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.usageAgeSeconds).ToString('o')}else{$null}
-        $entry.modelBlocked=$false; $entry.modelReason=$null
-        foreach($model in @($policy.claudeModels|Where-Object {$_})){
-            $scope=@($a.usage.scoped|Where-Object name -EQ $model)
-            if($scope.Count -ne 1 -or -not (Test-Hotpl8Number $scope[0].pct) -or $scope[0].pct -lt 0 -or $scope[0].pct -gt 100){$entry.modelBlocked=$true;$entry.modelReason='model_quota_unknown';break}
-            try{$scopeReset=[datetimeoffset]::Parse($scope[0].resetsAt);if($scopeReset -le [datetimeoffset]::UtcNow){throw 'expired'}}catch{$entry.modelBlocked=$true;$entry.modelReason='model_reset_unconfirmed';break}
-            if(100-[double]$scope[0].pct -lt (Get-Margin7dFor $policy ([int]$a.number)) -or $scope[0].pct -ge 100){$entry.modelBlocked=$true;$entry.modelReason='model_below_margin';break}
-        }
+        $entry.modelReason=Get-ClaudeModelBlock $a.usage.scoped $policy ([int]$a.number)
+        $entry.modelBlocked=[bool]$entry.modelReason
     }
 
     $outcomes=Read-Hotpl8WarmOutcomes $StateDirectory
@@ -642,7 +650,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
 
     $orderMode = if ($policy.order) { [string]$policy.order } else { 'prefer' }
     $active=[int]$data.activeAccountNumber
-    $selection=Get-ClaudeSelection $policy $prefer $acc $active
+    $criticalPrior=Read-Hotpl8Json (Join-Path $StateDirectory 'critical-claude.json')
+    $selection=Get-ClaudeSelection $policy $prefer $acc $active ([datetimeoffset]::UtcNow) $criticalPrior
     $ranked=@($selection.ranked);$target=$selection.target
 
     # A hold suppresses the SWITCH ONLY, and is deliberately not an early return.
@@ -668,6 +677,11 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         else { throw 'claude_switch_failed' }
     }
 
+    $criticalState=Get-Hotpl8ClaudeCritical $policy $acc $active $criticalPrior ([datetimeoffset]::UtcNow)
+    $criticalState.selected=[string]$active
+    if($switched -or -not $criticalPrior.selectedAt){$criticalState.selectedAt=[datetimeoffset]::UtcNow.ToString('o')}else{$criticalState.selectedAt=$criticalPrior.selectedAt}
+    Write-Hotpl8Text (Join-Path $StateDirectory 'critical-claude.json') ($criticalState|ConvertTo-Json -Depth 6)
+
     # Eligibility is computed BEFORE warming, and deliberately so: warming does not
     # make a slot usable for ~3 minutes (W9), so "can anything serve me right now?"
     # must be answered from the pre-warm world or the self-healing override below
@@ -682,7 +696,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $stuck        = @($broken | Where-Object { Test-QuarantineStale $acc[$_].obj $staleS })
     $reallyBroken = @($broken | Where-Object { $stuck -notcontains $_ })
     $anyFresh     = @($prefer | Where-Object { $acc[$_] -and $acc[$_].fresh }).Count -gt 0
-    $anyEligible  = @($prefer | Where-Object { Test-Ok $acc[$_] $m5 (Get-Margin7dFor $policy $_) }).Count -gt 0
+    $anyEligible  = ($criticalState.active -and $criticalState.ranked.Count -gt 0) -or @($prefer | Where-Object { Test-Ok $acc[$_] $m5 (Get-Margin7dFor $policy $_) }).Count -gt 0
 
     # ---- warm: open cold windows so quota accrues instead of sitting dead ----
     # A spent window expires into NOTHING and stays there until something touches it
@@ -894,6 +908,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     }
     # A switch is an ACTION and is appended, never hidden behind a condition.
     if ($switched)              { $verdict += " · switched -> slot $active" }
+    if ($criticalState.active)  { $verdict += ' · low-balance rotation' }
     # Warming is an ACTION and is reported for the same reason a switch is: silence
     # about something that happened is how a rotted timer stays invisible.
     if ($warmed.Count -gt 0)     { $verdict += " · warm request sent to slot $($warmed -join '+'); window unconfirmed" }
@@ -1016,6 +1031,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 slot       = [int]$n
                 label      = $(if ($policy.labels) { [string]$policy.labels."$n" } else { '' })
                 registered = $true
+                plan       = $plans.([string]$n)
                 active     = ([int]$n -eq [int]$active)
                 cold       = [bool]$e.cold
                 fresh      = [bool]$e.fresh
@@ -1057,7 +1073,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     }
     $payload | Add-Member NoteProperty proposedSlot $target -Force
     $payload | Add-Member NoteProperty actions $actions -Force
-    $reasons=@(foreach($n in $prefer){$e=$acc[$n];[pscustomobject]@{slot=$n;rank=([array]::IndexOf($ranked,$n)+1);reason=$(if(-not $e){'not_observed'}elseif(-not $e.fresh){'stale_or_unavailable'}elseif($e.modelBlocked){$e.modelReason}elseif(-not (Test-Ok $e $m5 (Get-Margin7dFor $policy $n))){'below_margin_or_unknown'}elseif($n -in @($policy.reserve)){'eligible_reserve'}else{'eligible_work'})}})
+    $reasons=@(foreach($n in $prefer){$e=$acc[$n];[pscustomobject]@{slot=$n;rank=([array]::IndexOf($ranked,$n)+1);reason=$(if(-not $e){'not_observed'}elseif(-not $e.fresh){'stale_or_unavailable'}elseif($e.modelBlocked){$e.modelReason}elseif($criticalState.active -and [string]$n -in $criticalState.ranked){'eligible_critical'}elseif(-not (Test-Ok $e $m5 (Get-Margin7dFor $policy $n))){'below_margin_or_unknown'}elseif($n -in @($policy.reserve)){'eligible_reserve'}else{'eligible_work'})}})
+    $payload|Add-Member NoteProperty critical $criticalState -Force
     $payload|Add-Member NoteProperty decision ([pscustomobject]@{policy=$orderMode;selected=$active;proposed=$target;reason=$(if($hold){'switch held'}elseif(-not $actions.switching){'switching disabled'}elseif($switched){'switched to higher ranked eligible account'}else{'retained current account'});accounts=$reasons}) -Force
     return @{ lines = $lines; payload = $payload; action = $action }
 }

@@ -1,6 +1,7 @@
-. (Join-Path $PSScriptRoot 'notifications.ps1')
+﻿. (Join-Path $PSScriptRoot 'notifications.ps1')
 function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    $details=@(Format-Hotpl8Explanation $Snapshot $Now)
+    $overview=Get-Hotpl8ProviderOverview $Snapshot $Policy $Now
+    $details=@(Format-Hotpl8Overview $overview)+@(Format-Hotpl8Explanation $Snapshot $Now | Where-Object {$_ -notmatch '^(CLAUDE:|CODEX:|  Includes reserve|Weekly headroom|  Capacity:|  Profiles:|  Membership:|  Next reset:)'})
     foreach($s in @($Snapshot.slots)){if($s){
         $fresh=$s.fresh -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
         $details+=('Claude '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))
@@ -11,14 +12,14 @@ function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoff
     }}
     foreach($s in @($Snapshot.providers.codex.slots)){
         $fresh=$s.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
-        $details+=('Codex '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))
-        foreach($b in $s.buckets.PSObject.Properties){
+        $details+=('Codex '+$s.label+' ['+$s.id+']: '+(Get-Hotpl8CodexAccountState $s $Policy.codex $Snapshot.providers.codex $Now))
+        foreach($b in @($s.buckets.PSObject.Properties|Where-Object Name -NE 'codex_bengalfox')){
             foreach($w in $b.Value.windows.PSObject.Properties){$details+=('  '+$b.Name+' '+$w.Name+'m: '+$w.Value.usedPercent+'% used; reset '+$w.Value.anchorState)}
             if($fresh -and $b.Value.forecast){$details+='  '+(Format-Hotpl8Forecast $b.Value.forecast)}
         }
     }
     $details=@($details|ForEach-Object {ConvertTo-Hotpl8SafeText $_})
-    return [pscustomobject]@{title='HotPl8 - '+(Get-Hotpl8Health $Snapshot.collector $Now);details=($details -join [Environment]::NewLine);alerts=@(Get-Hotpl8Alerts $Snapshot $Policy $Now)}
+    return [pscustomobject]@{providerOverview=$overview;title='HotPl8 - '+(Get-Hotpl8Health $Snapshot.collector $Now);details=($details -join [Environment]::NewLine);alerts=@(Get-Hotpl8Alerts $Snapshot $Policy $Now)}
 }
 function Show-Hotpl8Tray([string]$Directory,[string]$CodeDirectory,[switch]$Once,[switch]$SmokeTest) {
     $snapshot=Read-Hotpl8Snapshot $Directory;$policy=Read-Hotpl8Json (Join-Path $Directory 'policy.json')
