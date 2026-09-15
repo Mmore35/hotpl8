@@ -58,9 +58,7 @@ Check 'narrow frames and a scrolled last page fit their viewport' {
 Check 'standard terminal prioritizes both provider summaries above account details' {
     $rows=Render $s 79 23
     $text=$rows.text -join "`n"
-    Assert ($rows.Count -le 23 -and $text -match '
-│  CLAUDE\s' -and $text -match '
-│  CODEX\s' -and $text.Contains('% now'))
+    Assert ($rows.Count -le 23 -and $text -match '(?m)^│  CLAUDE\s' -and $text -match '(?m)^│  CODEX\s' -and $text.Contains('% now'))
     Assert ($text.IndexOf('│  CLAUDE ') -lt $text.IndexOf('│  CODEX ') -and $text.IndexOf('│  CODEX ') -lt $text.IndexOf('CLAUDE  /'))
 }
 Check 'tiny resized terminals show a bounded recovery hint' {

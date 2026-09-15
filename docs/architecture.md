@@ -2,6 +2,10 @@
 
 HotPl8 collects quota readings, chooses accounts according to policy, and renders a cached terminal dashboard. Displaying the dashboard never launches a provider process. There is no HotPl8 server.
 
+`status.json` is the authoritative published snapshot and includes the collector's completion record. `collector.json` can supply a newer in-progress marker; an older marker cannot override an already completed snapshot. The legacy `status.js` and `status.txt` mirrors, usage history and activity log are best-effort outputs: their write failures are logged without invalidating the JSON observation. Required action receipts and safety state still fail closed.
+
+Local file failures and provider failures have separate retry behavior. Safe Windows replacement contention gets a bounded retry in the shared writer. If a required state write still fails, the provider remains unavailable and retries on the next one-minute scheduler wake, preserving observation timestamps. Native request failures retain their longer backoff. No read failure authorizes a credential change or marks old quota as fresh.
+
 ```mermaid
 flowchart LR
     A[Native provider tools] --> B[tick.ps1: collect and apply policy]

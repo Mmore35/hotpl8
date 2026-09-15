@@ -185,6 +185,30 @@ public static class Hotpl8ReaderFixture {
         Assert ((Read-Hotpl8Json $path).generation -eq 2)
         Assert (@(Get-ChildItem -LiteralPath $dir -Filter 'concurrent.json.*.tmp').Count -eq 0)
     }
+    Check 'Windows replace delete-phase contention retries safely' {
+        $script:replaceAttempts=0
+        function Move-Hotpl8AtomicFile($Source,$Destination){
+            $script:replaceAttempts++
+            if($script:replaceAttempts -le 2){throw [IO.IOException]::new('fixture contention',-2147023721)} # 0x80070497 / 1175
+            [IO.File]::Replace($Source,$Destination,[NullString]::Value)
+        }
+        $path=Join-Path $dir 'delete-phase.json'
+        [IO.File]::WriteAllText($path,'{"generation":1}')
+        Write-Hotpl8Text $path '{"generation":2}'
+        Assert ($script:replaceAttempts -eq 3 -and (Read-Hotpl8Json $path).generation -eq 2)
+        Assert (@(Get-ChildItem -LiteralPath $dir -Filter 'delete-phase.json.*.tmp').Count -eq 0)
+    }
+    Check 'partial replacement failure retains recoverable staged data' {
+        function Move-Hotpl8AtomicFile($Source,$Destination){
+            [IO.File]::Delete($Destination)
+            throw [IO.IOException]::new('fixture partial rename',-2147023720) # 1176: old name may be gone
+        }
+        $path=Join-Path $dir 'partial.json';[IO.File]::WriteAllText($path,'{"generation":1}')
+        $caught=$null
+        try{Write-Hotpl8Text $path '{"generation":2}'}catch{$caught=$_}
+        $staged=@(Get-ChildItem -LiteralPath $dir -Filter 'partial.json.*.tmp')
+        Assert ($caught -and $staged.Count -eq 1 -and (Read-Hotpl8Json $staged[0].FullName).generation -eq 2)
+    }
     Check 'persistent file lock fails visibly without destroying the last complete snapshot' {
         $path=Join-Path $dir 'status.json';Write-Hotpl8Text $path '{"generation":1}'
         $handle=[IO.File]::Open($path,'Open','Read','ReadWrite');$caught=$null

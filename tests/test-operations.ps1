@@ -14,6 +14,41 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-operations-'+[guid]::NewGuid(
 [void][IO.Directory]::CreateDirectory($dir)
 $now=[datetimeoffset]::Parse('2026-09-13T12:00:00Z')
 try{
+    Check 'local storage failures retry next wake without inflating provider backoff' {
+        $state=[pscustomobject]@{providers=[pscustomobject]@{}}
+        foreach($provider in @('claude','codex')){
+            foreach($n in 1..4){Set-Hotpl8CollectionResult $state $provider $false $now -FailureCode state_io_failed}
+            Assert ([datetimeoffset]::Parse($state.providers.$provider.nextAttemptAt) -eq $now.AddSeconds(60))
+            Assert (-not (Test-Hotpl8CollectionDue $state $provider $true $now.AddSeconds(59)))
+            Assert (Test-Hotpl8CollectionDue $state $provider $true $now.AddSeconds(60))
+            Set-Hotpl8CollectionResult $state $provider $false $now -FailureCode unexpected_collection_error
+            Assert ($state.providers.$provider.failures -eq 1 -and [datetimeoffset]::Parse($state.providers.$provider.nextAttemptAt) -eq $now.AddMinutes(5))
+            Set-Hotpl8CollectionResult $state $provider $true $now
+            Assert (-not $state.providers.$provider.failureCode -and $state.providers.$provider.failures -eq 0)
+        }
+    }
+    Check 'one provider storage failure does not mark the other provider unhealthy' {
+        $c=[pscustomobject]@{startedAt=$now.ToString('o');completedAt=$now.ToString('o');status='incomplete';providers=[pscustomobject]@{}}
+        Set-Hotpl8CollectionResult $c claude $true $now
+        Set-Hotpl8CollectionResult $c codex $false $now -FailureCode state_io_failed
+        Assert ((Get-Hotpl8Health $c $now claude) -eq 'recent collection completed')
+        Assert ((Get-Hotpl8Health $c $now codex) -eq 'local state write failed; retrying')
+        Assert ((Get-Hotpl8Health $c $now) -eq 'local state write failed; retrying')
+    }
+    Check 'completed snapshot outranks its older collector started marker' {
+        $p=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
+        $started=$now.AddSeconds(-2).ToString('o');$done=$now.ToString('o')
+        Write-Hotpl8Text (Join-Path $dir 'status.json') (@{generatedAt=$done;slots=@();collector=@{startedAt=$started;completedAt=$done;status='ok'}}|ConvertTo-Json -Depth 5)
+        Write-Hotpl8Text (Join-Path $dir 'collector.json') (@{startedAt=$started;completedAt=$now.AddMinutes(-1).ToString('o');status='ok'}|ConvertTo-Json)
+        $s=Read-Hotpl8Snapshot $dir $p
+        Assert ($s.collector.completedAt -eq $done)
+        Write-Hotpl8Text (Join-Path $dir 'collector.json') (@{startedAt=$now.AddSeconds(1).ToString('o');completedAt=$done;status='ok'}|ConvertTo-Json)
+        $s=Read-Hotpl8Snapshot $dir $p
+        Assert ($s.collector.startedAt -eq $now.AddSeconds(1).ToString('o')) 'a genuinely newer in-progress collection stays visible'
+        $state=Get-Hotpl8CollectionState $dir
+        Set-Hotpl8CollectionResult $state codex $true $now
+        Assert ($state.providers.codex.status -eq 'ok') 'a timing-only legacy marker can accept fresh provider results'
+    }
     Check 'Claude collector rotates low balances, persists dwell, and reports actual eligibility' {
         $p=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
         $p.mode='automate';$p.switchEnabled=$true;$p.prefer=@(3,2,1);$p.reserve=@(1)

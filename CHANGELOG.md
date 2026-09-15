@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve the renovated dashboard, full-resolution Nyan animation and updated fictional screenshots. Retry Windows replacement error 1175, release read handles before parsing JSON, distinguish storage recovery from provider backoff, isolate provider health, and keep legacy output failures from invalidating the primary snapshot.
+
 - Report low-balance Claude rotation consistently in status and selection explanations. Add a collector regression covering exhausted-account escape, highest-balance rotation, dwell, stale readings, refills, holds and observation-only previews; document matching critical entry to the normal margin.
 
 - Keep the main bars on usable-now capacity, using an explicit plan-weighted quota-headroom estimate when conversions are unavailable. Weekly remaining is supporting text. Forecast only the first positive refill within 24 hours and exclude Spark from Codex summaries, dashboard and tray.

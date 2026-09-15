@@ -2,6 +2,9 @@
 function Get-Hotpl8CollectionState([string]$Directory) {
     $state=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
     if(-not $state){$state=[pscustomobject]@{schemaVersion=1;providers=[pscustomobject]@{}}}
+    # Older/partial collector markers may contain timing alone. Rebuild this
+    # derived map rather than failing every provider's next result assignment.
+    if($state.providers -isnot [pscustomobject]){$state|Add-Member NoteProperty providers ([pscustomobject]@{}) -Force}
     return $state
 }
 function Test-Hotpl8CollectionDue($State, [string]$Provider, [bool]$Scheduled, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
@@ -15,11 +18,16 @@ function Test-Hotpl8CollectionDue($State, [string]$Provider, [bool]$Scheduled, [
         return [datetimeoffset]::Parse($p.nextAttemptAt) -le $Now
     }catch{return $true}
 }
-function Set-Hotpl8CollectionResult($State, [string]$Provider, [bool]$Success, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, [int]$HealthySeconds=300) {
+function Set-Hotpl8CollectionResult($State, [string]$Provider, [bool]$Success, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, [int]$HealthySeconds=300, [string]$FailureCode) {
     $old=$State.providers.$Provider
-    $failures=if($Success){0}else{[math]::Min(10,1+[int]$old.failures)}
-    $delay=if($Success){[math]::Max(60,[math]::Min(300,$HealthySeconds))}else{[math]::Min(1800,300*[math]::Pow(2,[math]::Max(0,$failures-1)))}
+    $localFailure=$FailureCode -eq 'state_io_failed'
+    $priorFailures=if($old.failureCode -eq 'state_io_failed' -and -not $localFailure){0}else{[int]$old.failures}
+    $failures=if($Success){0}else{[math]::Min(10,1+$priorFailures)}
+    # A local write failure is not a rejected provider request. Recover at the
+    # next scheduler wake, while native/provider failures retain their backoff.
+    $delay=if($Success){[math]::Max(60,[math]::Min(300,$HealthySeconds))}elseif($localFailure){60}else{[math]::Min(1800,300*[math]::Pow(2,[math]::Max(0,$failures-1)))}
     $p=[pscustomobject]@{lastAttemptAt=$Now.ToString('o');lastSuccessAt=$(if($Success){$Now.ToString('o')}else{$old.lastSuccessAt});failures=$failures;nextAttemptAt=$Now.AddSeconds($delay).ToString('o');status=$(if($Success){'ok'}else{'unavailable'})}
+    if(-not $Success -and $FailureCode){$p|Add-Member NoteProperty failureCode $FailureCode}
     $State.providers|Add-Member NoteProperty $Provider $p -Force
 }
 

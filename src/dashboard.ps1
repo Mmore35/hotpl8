@@ -162,7 +162,8 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
     if(-not $configured.Count){$configured=@($codex.slots|Where-Object {$null -ne $_})}
     New-DashboardRow ('  CODEX  /  '+$configured.Count+' subscription'+$(if($configured.Count -ne 1){'s'})) cyan
     if(-not $configured.Count){New-DashboardRow '    none enrolled yet' muted}
-    if($codex.failureCode){New-DashboardRow ('    ! read failed  ·  '+$codex.failureCode+' / '+$codex.failureStage) amber}
+    if($codex.failureCode -eq 'state_io_failed'){New-DashboardRow '    ! local state write failed; retrying · last readings below' amber}
+    elseif($codex.failureCode){New-DashboardRow ('    ! read failed  ·  '+$codex.failureCode+' / '+$codex.failureStage) amber}
     foreach($config in $configured){
         $slot=@($codex.slots|Where-Object id -EQ $config.id|Select-Object -First 1)
         $item=if($slot.Count){$slot[0]}else{$null}

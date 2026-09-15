@@ -77,7 +77,7 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
             if($ready -and -not $selected){$availability='Account available - selection held'}
             $automation='existing sessions keep their account'
         }
-        $health=Get-Hotpl8Health $Snapshot.collector $Now
+        $health=Get-Hotpl8Health $Snapshot.collector $Now $provider
         if($total -and @($members|Where-Object reason -EQ 'stale').Count -eq $total){$availability='Readings stale - refresh'}
         $signIn=@($members|Where-Object {$_.reason -in @('authentication_required','relogin_required','no_credentials')}).Count
         if($signIn){$availability+='; sign-in needed'}

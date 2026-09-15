@@ -41,22 +41,31 @@ function Invoke-Hotpl8Process([string]$Executable, [string[]]$Arguments, [int]$T
         return [pscustomobject]@{exitCode=$proc.ExitCode; output=$out.ToString()}
     } finally { Stop-Hotpl8Process $proc }
 }
+function Move-Hotpl8AtomicFile([string]$Source,[string]$Destination) {
+    if ([IO.File]::Exists($Destination)) { [IO.File]::Replace($Source, $Destination, [NullString]::Value) }
+    else { [IO.File]::Move($Source, $Destination) }
+}
 function Write-Hotpl8Text([string]$Path, [string]$Text, [switch]$NoBom) {
     $temp = $Path + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+    $preserveTemp=$false
     try {
         [IO.File]::WriteAllText($temp, $Text, (New-Object Text.UTF8Encoding(-not $NoBom)))
         for($attempt=0;;$attempt++){
             try{
-                if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temp, $Path, [NullString]::Value) }
-                else { [IO.File]::Move($temp, $Path) }
+                Move-Hotpl8AtomicFile $temp $Path
                 break
             }catch{
                 $errorException=$_.Exception
                 while($errorException.InnerException){$errorException=$errorException.InnerException}
                 # Legacy viewers and third-party readers may omit FileShare.Delete.
-                # Retry only transient Windows sharing/lock violations, bounded to
-                # 250ms; never truncate the old snapshot or swallow other IO errors.
-                if($env:OS -ne 'Windows_NT' -or $errorException -isnot [IO.IOException] -or ($errorException.HResult -band 65535) -notin @(32,33) -or $attempt -ge 10){
+                # ReplaceFile also reports 1175 when its delete phase is blocked;
+                # Microsoft guarantees both original names survive that failure.
+                # Retry these safe cases for at most one second. Never truncate.
+                # 1176/1177 can leave a partially completed replacement: retain
+                # its staging file for recovery instead of deleting the only copy.
+                $ioCode=$errorException.HResult -band 65535
+                $preserveTemp=$errorException -is [IO.IOException] -and $ioCode -in @(1176,1177)
+                if($env:OS -ne 'Windows_NT' -or $errorException -isnot [IO.IOException] -or $ioCode -notin @(32,33,1175) -or $attempt -ge 40){
                     $_.Exception.Data['Hotpl8StateFile']=[IO.Path]::GetFileName($Path)
                     $_.Exception.Data['Hotpl8IoCode']=$errorException.HResult -band 65535
                     throw
@@ -64,7 +73,7 @@ function Write-Hotpl8Text([string]$Path, [string]$Text, [switch]$NoBom) {
                 Start-Sleep -Milliseconds 25
             }
         }
-    } finally { if ([IO.File]::Exists($temp)) { [IO.File]::Delete($temp) } }
+    } finally { if (-not $preserveTemp -and [IO.File]::Exists($temp)) { [IO.File]::Delete($temp) } }
 }
 function Read-Hotpl8Json([string]$Path) {
     $stream=$null;$reader=$null
@@ -73,10 +82,13 @@ function Read-Hotpl8Json([string]$Path) {
         # otherwise make a passive preview intermittently break its collector.
         $stream=[IO.File]::Open($Path,'Open','Read',([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
         $reader=New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8,$true)
-        return $reader.ReadToEnd() | ConvertFrom-Json -ErrorAction Stop
+        $text=$reader.ReadToEnd()
     }
     catch { return $null }
     finally{if($reader){$reader.Dispose()}elseif($stream){$stream.Dispose()}}
+    # Parsing can be much slower than reading. Release the file first so the
+    # collector never waits for dashboard JSON conversion to finish.
+    try{return $text|ConvertFrom-Json -ErrorAction Stop}catch{return $null}
 }
 function Test-Hotpl8Number($Value) {
     if ($null -eq $Value -or $Value -is [bool] -or $Value -is [string]) { return $false }

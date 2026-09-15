@@ -39,9 +39,11 @@ try {
         }
     } catch {
         $claudeError='collection_failed'; $failed=$true
+        $failureCode=Get-Hotpl8FailureCode $_
+        if($failureCode -eq 'state_io_failed'){$claudeError='local_state_unavailable'}
         if($_.Exception.Message -in @('claude_missing','claude_no_accounts','claude_schema_unsupported','claude_read_failed','claude_switch_failed','process_timeout','process_output_limit')){$claudeError=$_.Exception.Message}
         Write-Hotpl8Event $StateDirectory ('claude_'+$claudeError) $_
-        Set-Hotpl8CollectionResult $collector 'claude' $false
+        Set-Hotpl8CollectionResult $collector 'claude' $false -FailureCode $failureCode
     }
     if($policy.codex -and $policy.codex.slots){
         try {
@@ -58,7 +60,7 @@ try {
             $failed=$true
             $codex=Get-Hotpl8CodexFailure $previous.providers.codex 'collection_failed' (Get-Hotpl8FailureCode $_)
             Write-Hotpl8Event $StateDirectory 'codex_collection_failed' $_
-            Set-Hotpl8CollectionResult $collector 'codex' $false
+            Set-Hotpl8CollectionResult $collector 'codex' $false -FailureCode (Get-Hotpl8FailureCode $_)
         }
     }
     if($claude){$payload=$claude.payload;$lines=@($claude.lines)}
@@ -85,8 +87,16 @@ try {
     Add-Hotpl8Insights $payload $policy $StateDirectory $previous
     $json=$payload|ConvertTo-Json -Depth 24
     Write-Hotpl8Text (Join-Path $StateDirectory 'status.json') ($json+[Environment]::NewLine)
-    Write-Hotpl8Text (Join-Path $StateDirectory 'status.js') ('window.CSWAP = '+$json+';'+[Environment]::NewLine)
-    Write-Hotpl8Text (Join-Path $StateDirectory 'status.txt') ((@($lines|ForEach-Object{ConvertTo-Hotpl8SafeText $_}) -join [Environment]::NewLine)+[Environment]::NewLine)
+    # status.json is the authoritative snapshot. Legacy text/browser mirrors
+    # must not turn successful observation into a failed collection.
+    $mirrors=@{
+        'status.js'=('window.CSWAP = '+$json+';'+[Environment]::NewLine)
+        'status.txt'=((@($lines|ForEach-Object{ConvertTo-Hotpl8SafeText $_}) -join [Environment]::NewLine)+[Environment]::NewLine)
+    }
+    foreach($name in $mirrors.Keys){
+        try{Write-Hotpl8Text (Join-Path $StateDirectory $name) $mirrors[$name]}
+        catch{Write-Hotpl8Event $StateDirectory 'compatibility_output_failed' $_}
+    }
     Write-Hotpl8Text (Join-Path $StateDirectory 'collector.json') ($collector|ConvertTo-Json -Depth 8)
     if($claude.action){ConvertTo-Hotpl8SafeText $claude.action}
 } catch {

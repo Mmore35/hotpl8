@@ -171,6 +171,60 @@ Check 'real scheduled tick normalizes sparse failure and retries only when due' 
         if($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-capacity-[a-f0-9]{32}$'){Remove-Item -LiteralPath $full -Recurse -Force}
     }
 }
+Check 'actual state lock does not become a five-minute Codex outage' {
+    $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-storage-'+[guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($dir)
+    $handle=$null
+    try{
+        $p=@{schemaVersion=2;mode='monitor';prefer=@();codex=@{slots=@(@{id='fixture';home=$dir});defaultMeter='codex'}}
+        Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 8)
+        $script:nativeReads=0
+        $reader={$script:nativeReads++;return [pscustomobject]@{status='ok';standardTransport=$true;identityKey='fictional';quota=$null;elapsedMs=0}}
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        $before=Read-Hotpl8Json (Join-Path $dir 'status.json')
+        $handle=[IO.File]::Open((Join-Path $dir 'codex-state.json'),'Open','Read','ReadWrite')
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        $after=Read-Hotpl8Json (Join-Path $dir 'status.json');$c=Read-Hotpl8Json (Join-Path $dir 'collector.json')
+        Assert ($after.providers.codex.failureCode -eq 'state_io_failed' -and $null -eq $after.providers.codex.recommendedSlot)
+        Assert ($after.providers.codex.slots[0].observedAt -eq $before.providers.codex.slots[0].observedAt)
+        $provider=$c.providers.codex
+        Assert (([datetimeoffset]::Parse($provider.nextAttemptAt)-[datetimeoffset]::Parse($provider.lastAttemptAt)).TotalSeconds -eq 60)
+        $reads=$script:nativeReads
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexReader $reader
+        Assert ($script:nativeReads -eq $reads)
+        $handle.Dispose();$handle=$null
+        $c.providers.codex.nextAttemptAt=[datetimeoffset]::UtcNow.AddSeconds(-1).ToString('o')
+        Write-Hotpl8Text (Join-Path $dir 'collector.json') ($c|ConvertTo-Json -Depth 8)
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexReader $reader
+        $recovered=Read-Hotpl8Json (Join-Path $dir 'status.json')
+        Assert ($recovered.providers.codex.slots[0].status -eq 'ok' -and -not $recovered.collector.providers.codex.failureCode)
+        $handle=[IO.File]::Open((Join-Path $dir 'status.js'),'Open','Read','ReadWrite')
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        $mirrored=Read-Hotpl8Snapshot $dir
+        Assert ($mirrored.collector.status -eq 'ok' -and $mirrored.providers.codex.slots[0].status -eq 'ok') 'a locked compatibility mirror must not break the primary snapshot'
+        $handle.Dispose();$handle=$null
+        $p.historyEnabled=$true
+        Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 8)
+        Write-Hotpl8Text (Join-Path $dir 'usage-history.json') '{"samples":[]}'
+        $handle=[IO.File]::Open((Join-Path $dir 'usage-history.json'),'Open','Read','ReadWrite')
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        $withHistory=Read-Hotpl8Snapshot $dir
+        Assert ($withHistory.generationId -ne $mirrored.generationId -and $withHistory.collector.status -eq 'ok') 'optional history cannot block a fresh snapshot'
+        $handle.Dispose();$handle=$null
+        Write-Hotpl8Text (Join-Path $dir 'activity.json') '{"events":[]}'
+        $handle=[IO.File]::Open((Join-Path $dir 'activity.json'),'Open','Read','ReadWrite')
+        $withHistory.active=2
+        Add-Hotpl8Insights $withHistory ([pscustomobject]$p) $dir ([pscustomobject]@{active=1})
+        Assert ($withHistory.providerOverview -and $withHistory.collector.status -eq 'ok') 'activity output cannot invalidate the current observation'
+        $handle.Dispose();$handle=$null
+        $events=@(Get-Content -LiteralPath (Join-Path $dir 'events.jsonl')|ForEach-Object {$_|ConvertFrom-Json})
+        Assert ('history_output_failed' -in $events.code -and 'activity_output_failed' -in $events.code) 'optional write failures remain diagnosable'
+    }finally{
+        if($handle){$handle.Dispose()}
+        $full=[IO.Path]::GetFullPath($dir)
+        if((Split-Path $full -Parent) -eq [IO.Path]::GetTempPath().TrimEnd('\','/') -and (Split-Path $full -Leaf) -match '^hotpl8-storage-[a-f0-9]{32}$'){Remove-Item -LiteralPath $full -Recurse -Force}
+    }
+}
 Check 'Codex emergency recommendation and preflight eligibility agree' {
     $p=Clone $fixture.policy.codex;$p|Add-Member NoteProperty critical @{enabled=$true}
     $s=Snapshot

@@ -1,5 +1,13 @@
 # Troubleshooting
 
+## Readings become unavailable while the dashboard is open
+
+Run `hotpl8 explain` and inspect the sanitized local `events.jsonl`. `state_io_failed` with a known state filename means local persistence failed; it does not mean the provider rejected your login. Windows replacement error 1175 can occur during replacement's delete phase. The shared writer retries safe contention for up to one second, retaining complete old data on failure. Persistent required-state failures retry on the next scheduler minute; network/provider failures keep their own backoff.
+
+The dashboard distinguishes local write failure from native observation failure and retains old account details without treating them as current launch permission. A failure for one provider does not mark the other provider unhealthy. A locked legacy `status.js` or `status.txt` mirror cannot invalidate a successfully published `status.json`.
+
+Update the installed collector as well as the preview code, then reopen the dashboard to load reader changes. A passive preview alone cannot repair the collector. Do not delete account homes or sign in again merely because a local state write failed. If failures continue after updating, retain the sanitized error code, state filename and timestamp for diagnosis. Avoid attaching credentials or unredacted provider output.
+
 Start with `hotpl8 doctor -AsJson`. It is offline and redacted. Run `hotpl8 refresh` when you explicitly want fresh provider reads.
 
 | Symptom | Next step |

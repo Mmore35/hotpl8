@@ -1,6 +1,7 @@
 ﻿. (Join-Path $PSScriptRoot 'overview.ps1')
 . (Join-Path $PSScriptRoot 'forecast.ps1')
 . (Join-Path $PSScriptRoot 'replay.ps1')
+. (Join-Path $PSScriptRoot 'diagnostics.ps1')
 function Add-Hotpl8ActionEvent([string]$Directory, [string]$Provider, [string]$Slot, [string]$Kind, [string]$Reason, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     $path=Join-Path $Directory 'activity.json'
     $old=Read-Hotpl8Json $path
@@ -8,7 +9,7 @@ function Add-Hotpl8ActionEvent([string]$Directory, [string]$Provider, [string]$S
     $events=@(@($old.events | Where-Object {$_}) + @($event) | Select-Object -Last 100)
     Write-Hotpl8Text $path (@{schemaVersion=1;events=$events}|ConvertTo-Json -Depth 6)
 }
-function Get-Hotpl8Health($Collector, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
+function Get-Hotpl8Health($Collector, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, [string]$Provider) {
     if (-not $Collector) { return 'manual / no collector evidence' }
     try {
         $started=[datetimeoffset]::Parse($Collector.startedAt)
@@ -19,6 +20,17 @@ function Get-Hotpl8Health($Collector, [datetimeoffset]$Now = [datetimeoffset]::U
         }
         $completed=[datetimeoffset]::Parse($Collector.completedAt)
         if (($Now-$completed).TotalSeconds -gt 900) { return 'collector overdue' }
+        if($Provider -and $Collector.providers.$Provider){
+            $p=$Collector.providers.$Provider
+            if($p.failureCode -eq 'state_io_failed'){return 'local state write failed; retrying'}
+            if($p.status -eq 'ok'){
+                $age=($Now-[datetimeoffset]::Parse($p.lastSuccessAt)).TotalSeconds
+                if($age -gt 900 -or $age -lt -5){return 'provider readings stale'}
+                return 'recent collection completed'
+            }
+            return 'provider checks incomplete'
+        }
+        if(@($Collector.providers.PSObject.Properties|Where-Object {$_.Value.failureCode -eq 'state_io_failed'}).Count){return 'local state write failed; retrying'}
         if ($Collector.status -ne 'ok') { return 'provider checks incomplete' }
         return 'recent collection completed'
     } catch { return 'collector state invalid' }
@@ -49,12 +61,23 @@ function Add-Hotpl8Insights($Snapshot, $Policy, [string]$Directory, $Previous, [
             if($f){$newSamples+=@(@{key=$key;observedAt=$slot.observedAt;resetAt=$reset;used=$window.usedPercent})}
         }
     }
-    if($Policy.historyEnabled -eq $true){$null=Update-Hotpl8History $Directory $newSamples $Now}
+    # Historical diagnostics are optional; a blocked history/activity file must
+    # not discard freshly collected quota or its required safety state.
+    if($Policy.historyEnabled -eq $true){
+        try{$null=Update-Hotpl8History $Directory $newSamples $Now}
+        catch{Write-Hotpl8Event $Directory 'history_output_failed' $_}
+    }
     $pause=Get-Hotpl8Pause $Directory $Now
     $Snapshot|Add-Member NoteProperty automationPause $pause -Force
-    if($Snapshot.active -and $Previous.active -and $Snapshot.active -ne $Previous.active){Add-Hotpl8ActionEvent $Directory 'claude' ([string]$Snapshot.active) 'active_changed' 'observed_account_change' $Now}
+    if($Snapshot.active -and $Previous.active -and $Snapshot.active -ne $Previous.active){
+        try{Add-Hotpl8ActionEvent $Directory 'claude' ([string]$Snapshot.active) 'active_changed' 'observed_account_change' $Now}
+        catch{Write-Hotpl8Event $Directory 'activity_output_failed' $_}
+    }
     $next=$Snapshot.providers.codex.recommendedSlot
-    if($next -and $next -ne $Previous.providers.codex.recommendedSlot){Add-Hotpl8ActionEvent $Directory 'codex' $next 'recommendation' 'next_launch_only' $Now}
+    if($next -and $next -ne $Previous.providers.codex.recommendedSlot){
+        try{Add-Hotpl8ActionEvent $Directory 'codex' $next 'recommendation' 'next_launch_only' $Now}
+        catch{Write-Hotpl8Event $Directory 'activity_output_failed' $_}
+    }
     $activity=Read-Hotpl8Json (Join-Path $Directory 'activity.json')
     $Snapshot|Add-Member NoteProperty recentActions @($activity.events|Select-Object -Last 5) -Force
     $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
@@ -68,7 +91,19 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null) {
     # First collection can stall before there is a snapshot. Show that evidence too.
     if(-not $s -and ($c -or $pause)){$s=[pscustomobject]@{schemaVersion=2;generatedAt=$null;slots=@()}}
     if($s){
-        if($c){$s|Add-Member NoteProperty collector $c -Force}
+        if($c){
+            # A failed trailing collector.json write can leave its earlier
+            # "started" marker behind a successfully published snapshot.
+            # Prefer the completed evidence embedded in that newer snapshot.
+            $useCollector=$true
+            try{
+                if($s.collector.completedAt){
+                    $completed=[datetimeoffset]::Parse($s.collector.completedAt)
+                    $useCollector=[datetimeoffset]::Parse($c.startedAt) -gt $completed -or ($c.completedAt -and [datetimeoffset]::Parse($c.completedAt) -ge $completed)
+                }
+            }catch{}
+            if($useCollector){$s|Add-Member NoteProperty collector $c -Force}
+        }
         $s|Add-Member NoteProperty automationPause $pause -Force
     }
     if($s -and $PolicyOverride){$s|Add-Member NoteProperty displayPolicy 'explicit reader policy' -Force}
