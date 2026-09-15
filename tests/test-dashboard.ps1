@@ -165,5 +165,79 @@ Check 'Claude detail marks an expired per-account observation stale despite a fr
     $text=((Render $c).text)-join "`n"
     Assert ($text.Contains('Claude 1  [1]  ·  STALE'))
 }
+Check 'nyan scales in both dimensions and keeps account space at small sizes' {
+    $sizes=@()
+    foreach($viewport in @(@(48,24),@(79,28),@(94,35),@(110,40),@(79,17))){
+        $frame=@(Get-Hotpl8DashboardFrame $s $p $now $viewport[0] $viewport[1] -Nyan)
+        Assert ($frame.Count -le $viewport[1])
+        foreach($row in $frame){Assert ((Get-DashboardCells $row.text) -eq $viewport[0])}
+        $cat=@($frame|Where-Object {$_.live.render -eq 'Get-Hotpl8NyanRow'})
+        $sizes+=$cat.Count
+        if($cat.Count){Assert ($cat.Count -in @(5,9))}
+    }
+    Assert ($sizes[0] -eq 5 -and $sizes[2] -eq 5 -and $sizes[3] -eq 9 -and $sizes[4] -eq 0)
+}
+Check 'scaled live nyan matches layout through a whole loop and same-width resize' {
+    foreach($height in @(5,9,5)){
+        foreach($tick in 0..11){
+            $at=$tick/12.0+0.001
+            $styled=@(Get-Hotpl8NyanRows $at -Width 77 -Rows $height)
+            for($i=0;$i -lt $height;$i++){
+                $live=Get-Hotpl8NyanRow $i 77 $at -Rows $height
+                $text=[regex]::Replace($live.ansi,([string][char]27+'\[[0-9;]*[mK]'),'')
+                $expected=Add-Hotpl8FrameBorder $styled[$i] 77
+                Assert ($text -ceq $expected.text)
+            }
+        }
+    }
+    $a=@(Get-Hotpl8NyanRows 0 -Width 77 -Rows 5 -ReducedMotion)|ConvertTo-Json -Depth 8
+    $b=@(Get-Hotpl8NyanRows 9 -Width 77 -Rows 5 -ReducedMotion)|ConvertTo-Json -Depth 8
+    Assert ($a -ceq $b)
+}
+Check 'background layout renders fixtures and preserves a frozen snapshot on resize' {
+    $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-animation-'+[guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($dir)
+    $worker=$null
+    try{
+        Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 20)
+        Write-Hotpl8Text (Join-Path $dir 'status.json') ($s|ConvertTo-Json -Depth 20)
+        $before=Get-FileHash (Join-Path $dir 'status.json')
+        $worker=New-Hotpl8DashboardRenderer
+        $pending=Start-Hotpl8DashboardRender $worker $dir $null 79 28 0 $false 0 $false $false $true
+        Assert ($pending.AsyncWaitHandle.WaitOne(15000))
+        $result=@($worker.EndInvoke($pending))[0]
+        Assert (-not $worker.HadErrors -and $result.frame.Count -le 28 -and $result.lines.Count -eq $result.frame.Count)
+        Assert (@($result.frame|Where-Object {$_.live.render -eq 'Get-Hotpl8NyanRow'}).Count -gt 0)
+        Assert ((Get-FileHash (Join-Path $dir 'status.json')).Hash -eq $before.Hash)
+        $changed=Copy-Value $s;$changed.slots[0].label='Changed fixture'
+        Write-Hotpl8Text (Join-Path $dir 'status.json') ($changed|ConvertTo-Json -Depth 20)
+        $pending=Start-Hotpl8DashboardRender $worker $dir $null 94 35 0 $true 0 $false $false $true
+        Assert ($pending.AsyncWaitHandle.WaitOne(15000))
+        $result=@($worker.EndInvoke($pending))[0]
+        Assert (-not $worker.HadErrors -and $result.frame.Count -le 35 -and $result.paused)
+        Assert (($result.frame.text -join '') -notmatch 'Changed fixture')
+    }finally{
+        if($worker){$worker.Dispose()}
+        $full=[IO.Path]::GetFullPath($dir)
+        Assert ($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-animation-[a-f0-9]{32}$')
+        Remove-Item -LiteralPath $full -Recurse -Force
+    }
+}
+Check 'both nyan sizes retain exact palette pixels and compact eyes in every frame' {
+    $data=Get-Hotpl8NyanData
+    $colors=@('')+@($data.palette.PSObject.Properties|ForEach-Object Value)
+    Assert ($data.compact.frames.Count -eq $data.frames.Count)
+    foreach($i in 0..11){
+        $small=$data.compact.frames[$i]
+        Assert ($small.Count -eq 10 -and @($small|Where-Object {$_.Length -ne 32}).Count -eq 0)
+        Assert ($small[5][21] -eq '.' -and $small[5][27] -eq '.')
+        Assert ($small[6][20] -eq '%' -and $small[6][29] -eq '%')
+        foreach($height in @(5,9)){
+            $scene=Get-Hotpl8NyanScene $i 44 $height
+            Assert ($scene.Count -eq $height)
+            foreach($row in $scene){foreach($run in $row){Assert ($run.tone -in $colors -and $run.background -in $colors)}}
+        }
+    }
+}
 'passed='+$script:passed+' failed='+$script:failed
 if($script:failed){exit 1}

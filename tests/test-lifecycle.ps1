@@ -68,6 +68,28 @@ try{
         Assert $d.policyValid
         Assert (-not (Test-Path -LiteralPath (Join-Path $install 'app/policy.json')))
     }
+    Check 'one installed dashboard update reaches watch and nyan through the same launcher' {
+        $renderer=Join-Path $source 'src/dashboard.ps1';$checksums=Join-Path $source 'checksums.json'
+        $original=[IO.File]::ReadAllBytes($renderer);$originalHashes=[IO.File]::ReadAllBytes($checksums)
+        try{
+            # Simulate a later shared-dashboard update in a fixture release.
+            Add-Content -LiteralPath $renderer -Encoding UTF8 -Value "`nfunction New-DashboardTitleRow { New-DashboardRow 'SHARED UPDATE PROBE' text }"
+            $hashes=Read-Hotpl8Json $checksums
+            $hashes.'src/dashboard.ps1'=(Get-FileHash $renderer -Algorithm SHA256).Hash
+            Write-Hotpl8Text $checksums ($hashes|ConvertTo-Json -Depth 4) -NoBom
+            & (Join-Path $source 'install.ps1') -InstallDirectory $install -NoPath|Out-Null
+            foreach($mode in @('watch','nyan')){
+                $output=& (Join-Path $install 'hotpl8.cmd') $mode -ReducedMotion
+                Assert ($LASTEXITCODE -eq 0 -and ($output -join "`n").Contains('SHARED UPDATE PROBE'))
+            }
+            foreach($asset in @('src/presentation.ps1','data/nyan-frames.json')){
+                Assert ((Get-FileHash (Join-Path $install ('app/'+$asset))).Hash -eq (Get-FileHash (Join-Path $source $asset)).Hash)
+            }
+        }finally{
+            [IO.File]::WriteAllBytes($renderer,$original);[IO.File]::WriteAllBytes($checksums,$originalHashes)
+            & (Join-Path $source 'install.ps1') -InstallDirectory $install -NoPath|Out-Null
+        }
+    }
     Check 'tampered archive refuses upgrade before changing installed code' {
         $path=Join-Path $source 'VERSION';$original=[IO.File]::ReadAllText($path)
         [IO.File]::WriteAllText($path,'99.0.0')
