@@ -69,7 +69,7 @@ Write-DashboardImage 'first-run.png' $null $emptyPolicy 80 24
 $operations=Get-Hotpl8ScreenshotFixture -Operations
 Write-DashboardImage 'operations.png' $operations.status $operations.policy 110 50
 
-Write-DashboardImage 'nyan.png' $fixture.status $fixture.policy 94 35 -Nyan
+Write-DashboardImage 'nyan.png' $fixture.status $fixture.policy 94 40 -Nyan
 
 $healthy=Get-Hotpl8ScreenshotFixture
 $healthy.policy.mode='automate'
@@ -82,7 +82,7 @@ $healthy.policy.capacity.'2'.fiveHour=4
 $healthy.policy.codex.capacity.work.fiveHour=4
 $healthy.policy.codex.capacity.personal.fiveHour=0.8
 Write-DashboardImage 'dashboard.png' $healthy.status $healthy.policy 94 25
-Write-DashboardImage 'nyan.png' $healthy.status $healthy.policy 94 35 -Nyan
+Write-DashboardImage 'nyan.png' $healthy.status $healthy.policy 94 40 -Nyan
 $critical=Get-Hotpl8ScreenshotFixture
 $critical.policy.mode='automate'
 $critical.policy.reserve=@()
@@ -124,3 +124,5 @@ $session.status.providers.codex.slots[1].buckets.codex.status='blocked'
 $session.status.providers.codex.slots[1].buckets.codex.windows.'10080'.usedPercent=100
 $session.status.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=0
 Write-DashboardImage 'session-capacity.png' $session.status $session.policy 94 42
+
+Write-DashboardImage 'nyan-compact.png' $healthy.status $healthy.policy 48 24 -Nyan

@@ -200,6 +200,8 @@ try {
     if ($AccountHome -or $Label) { throw '-AccountHome and -Label are enrollment options. Use hotpl8 enroll.' }
 
     if ($Command -in @('watch','nyan')) {
+        # Nyan is a presentation flag on the installed dashboard. Keep both
+        # modes here so every application update reaches both views together.
         . (Join-Path $PSScriptRoot 'src/dashboard.ps1')
         Show-Hotpl8Dashboard $StateDirectory -Nyan:($Command -eq 'nyan') -ReducedMotion:$ReducedMotion -NoColor:$NoColor -PolicyOverride $(if($PreviewPolicy){$policy})
         exit 0

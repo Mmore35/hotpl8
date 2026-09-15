@@ -331,10 +331,10 @@ function New-DashboardTitleRow($Status,[datetimeoffset]$Now,[int]$Width,[switch]
     if(-not $Nyan -and -not $ReducedMotion){$live=New-Hotpl8Live 'New-DashboardTitleRow' @{Status=$Status;Now=$Now;Width=$Width;Paused=[bool]$Paused;Nyan=$false} 0 -Loop -Rate 200}
     New-Hotpl8StyledRow $spans $live
 }
-function Get-Hotpl8NyanRow([int]$Index,[int]$Width,[double]$AnimationSeconds=0) {
+function Get-Hotpl8NyanRow([int]$Index,[int]$Width,[double]$AnimationSeconds=0,[ValidateSet(5,9)][int]$Rows=9) {
     # Per-row entry point for live redraws; the whole sprite is computed once per instant.
-    if(-not $script:Hotpl8NyanLast -or $script:Hotpl8NyanLast.at -ne $AnimationSeconds -or $script:Hotpl8NyanLast.width -ne $Width){
-        $script:Hotpl8NyanLast=@{at=$AnimationSeconds;width=$Width;rows=@(Get-Hotpl8NyanAnsiRows $AnimationSeconds $Width (Get-Hotpl8DashboardPalette))}
+    if(-not $script:Hotpl8NyanLast -or $script:Hotpl8NyanLast.at -ne $AnimationSeconds -or $script:Hotpl8NyanLast.width -ne $Width -or $script:Hotpl8NyanLast.height -ne $Rows){
+        $script:Hotpl8NyanLast=@{at=$AnimationSeconds;width=$Width;height=$Rows;rows=@(Get-Hotpl8NyanAnsiRows $AnimationSeconds $Width (Get-Hotpl8DashboardPalette) $Rows)}
     }
     return $script:Hotpl8NyanLast.rows[$Index]
 }
@@ -349,9 +349,10 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     $rows=@(Get-Hotpl8DashboardRows $Status $Policy $Now $width -Compact:($Height -lt 32) -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff)
     $summary=@(Get-Hotpl8OverviewRows $Status $Policy $Now $inside $AnimationSeconds -ReducedMotion:$motionOff -OverviewOverride $OverviewOverride)
     $nyanRows=@()
-    if($Nyan -and $Height -ge 24){
-        $nyanRows=@(Get-Hotpl8NyanRows $AnimationSeconds -ReducedMotion:$motionOff -Plain:$Plain -Width $inside)
-        if(-not $motionOff){for($i=0;$i -lt $nyanRows.Count;$i++){$nyanRows[$i]=New-Hotpl8StyledRow $nyanRows[$i].spans (New-Hotpl8Live 'Get-Hotpl8NyanRow' @{Index=$i;Width=$inside} 0 -Loop -Rate 100)}}
+    $nyanHeight=Get-Hotpl8NyanSize $inside $Height $summary.Count
+    if($Nyan -and $nyanHeight -gt 0){
+        $nyanRows=@(Get-Hotpl8NyanRows $AnimationSeconds -ReducedMotion:$motionOff -Plain:$Plain -Width $inside -Rows $nyanHeight)
+        if(-not $motionOff){for($i=0;$i -lt $nyanRows.Count;$i++){$nyanRows[$i]=New-Hotpl8StyledRow $nyanRows[$i].spans (New-Hotpl8Live 'Get-Hotpl8NyanRow' @{Index=$i;Width=$inside;Rows=$nyanHeight} 0 -Loop -Rate 42)}}
     }
     $available=[Math]::Max(1,$Height-7-$summary.Count-$nyanRows.Count)
     # Prefer showing every account over spending the viewport on forecasts and
@@ -430,6 +431,51 @@ function Move-Hotpl8DashboardScroll([long]$Offset,[string]$Key) {
     # Saturate instead of overflowing the renderer's Int32 offset parameter.
     return [int][math]::Min([long][int]::MaxValue,[math]::Max([long]0,$Offset+$delta))
 }
+function New-Hotpl8DashboardRenderer {
+    # A separate runspace keeps snapshot parsing and layout off the animation
+    # thread. It only reads cached state, just like the foreground dashboard.
+    $worker=[powershell]::Create()
+    try{
+        [void]$worker.AddScript({param($Source)
+            . (Join-Path $Source 'common.ps1')
+            . (Join-Path $Source 'providers/codex.ps1')
+            . (Join-Path $Source 'dashboard.ps1')
+        }).AddArgument($PSScriptRoot)
+        $null=$worker.Invoke()
+        if($worker.HadErrors){throw $worker.Streams.Error[0]}
+        $worker.Commands.Clear()
+        return $worker
+    }catch{$worker.Dispose();throw}
+}
+function Start-Hotpl8DashboardRender($Worker,[string]$StateDirectory,$PolicyOverride,[int]$Width,[int]$Height,[int]$Offset,[bool]$Paused,[double]$AnimationSeconds,[bool]$ReducedMotion,[bool]$Plain,[bool]$Nyan) {
+    $Worker.Commands.Clear();$Worker.Streams.Error.Clear()
+    [void]$Worker.AddScript({param($StateDirectory,$PolicyOverride,$Width,$Height,$Offset,$Paused,$AnimationSeconds,$ReducedMotion,$Plain,$Nyan)
+        $ErrorActionPreference='Stop'
+        if(-not $Paused -or -not $script:RenderPolicy){
+            $script:RenderPolicy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')}
+            $script:RenderStatus=Read-Hotpl8Snapshot $StateDirectory $PolicyOverride
+            $script:RenderNow=[datetimeoffset]::UtcNow
+        }
+        $policy=$script:RenderPolicy;$status=$script:RenderStatus
+        $resolved=$Offset
+        $frame=@(Get-Hotpl8DashboardFrame $status $policy $script:RenderNow $Width $Height $Offset -Paused:$Paused -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion -Plain:$Plain -Nyan:$Nyan -OverviewOverride $status.providerOverview -ResolvedOffset ([ref]$resolved))
+        $palette=Get-Hotpl8DashboardPalette
+        $lines=@(foreach($row in $frame){if($Plain){$row.text}else{ConvertTo-Hotpl8AnsiRow $row $palette}})
+        $cat=@($frame|Where-Object {$_.live.render -eq 'Get-Hotpl8NyanRow'}|Select-Object -First 1)
+        if($cat.Count){
+            # Prepare the complete loop here so first-use filtering and ANSI
+            # conversion never stall the foreground animation after a resize.
+            $size=$cat[0].live.arguments
+            for($i=0;$i -lt (Get-Hotpl8NyanData).frames.Count;$i++){
+                $null=Get-Hotpl8NyanAnsiScene $i ($size.Width-2) $palette $size.Rows
+            }
+        }
+        $scenes=if($script:Hotpl8NyanScenes){$script:Hotpl8NyanScenes.Clone()}else{$null}
+        $ansiScenes=if($script:Hotpl8NyanAnsiScenes){$script:Hotpl8NyanAnsiScenes.Clone()}else{$null}
+        [pscustomobject]@{frame=$frame;lines=$lines;policy=$policy;width=$Width;height=$Height;requestedOffset=$Offset;offset=$resolved;paused=$Paused;scenes=$scenes;ansiScenes=$ansiScenes}
+    }).AddArgument($StateDirectory).AddArgument($PolicyOverride).AddArgument($Width).AddArgument($Height).AddArgument($Offset).AddArgument($Paused).AddArgument($AnimationSeconds).AddArgument($ReducedMotion).AddArgument($Plain).AddArgument($Nyan)
+    return $Worker.BeginInvoke()
+}
 function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$ReducedMotion,[switch]$NoColor,$PolicyOverride=$null) {
     $policyPath=Join-Path $StateDirectory 'policy.json'; $statusPath=Join-Path $StateDirectory 'status.json'
     # Pipes and non-console hosts get one plain frame; they must never hang.
@@ -440,28 +486,40 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
     $colors=Get-Hotpl8DashboardPalette
     $oldEncoding=[Console]::OutputEncoding; $oldCtrl=[Console]::TreatControlCAsInput; $oldCursor=[Console]::CursorVisible
     $offset=0; $paused=$false; $quit=$false; $last=''; $next=0; $clock=[Diagnostics.Stopwatch]::StartNew()
+    $worker=$null;$pending=$null
     try {
         [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
         [Console]::TreatControlCAsInput=$true; [Console]::CursorVisible=$false
         if($ansi){[Console]::Write($esc+'[?1049h'+$esc+'[?25l'+$esc+'[48;2;18;23;35m'+$esc+'[2J')}
-        $status=$null; $policy=$null; $readAt=-1000; $frameTime=0; $viewNow=[datetimeoffset]::UtcNow
+        $worker=New-Hotpl8DashboardRenderer
+        $policy=$null; $frameTime=0
         $layoutAt=-1000; $layoutWidth=0; $layoutHeight=0; $frame=@(); $lastLines=@(); $lines=@()
         while(-not $quit){
             if($clock.ElapsedMilliseconds -ge $next){
-                if((-not $paused -or -not $policy) -and $clock.ElapsedMilliseconds-$readAt -ge 1000){$policy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json $policyPath};$status=Read-Hotpl8Snapshot $StateDirectory $PolicyOverride;$readAt=$clock.ElapsedMilliseconds}
-                if(-not $paused){$frameTime=$clock.Elapsed.TotalSeconds;$viewNow=[datetimeoffset]::UtcNow}
+                $renderStarted=$clock.ElapsedMilliseconds
+                if(-not $paused){$frameTime=$clock.Elapsed.TotalSeconds}
                 $w=[Math]::Max(1,[Console]::WindowWidth-1);$h=[Math]::Max(1,[Console]::WindowHeight-1)
                 $resized=$w -ne $layoutWidth -or $h -ne $layoutHeight
+                if($pending -and $pending.IsCompleted){
+                    $result=@($worker.EndInvoke($pending));$pending=$null
+                    if($worker.HadErrors){throw $worker.Streams.Error[0]}
+                    $ready=$result[0]
+                    # Input or a resize may have overtaken this background render.
+                    if($ready.width -eq $w -and $ready.height -eq $h -and $ready.requestedOffset -eq $offset -and $ready.paused -eq $paused){
+                        $frame=$ready.frame;$lines=$ready.lines;$policy=$ready.policy;$offset=$ready.offset
+                        if($ready.scenes){$script:Hotpl8NyanScenes=$ready.scenes}
+                        if($ready.ansiScenes){$script:Hotpl8NyanAnsiScenes=$ready.ansiScenes}
+                        $layoutWidth=$w;$layoutHeight=$h;$layoutAt=$clock.ElapsedMilliseconds
+                    }else{$layoutAt=-1000}
+                }
                 $motionOff=$ReducedMotion -or $policy.display.reducedMotion -or [bool]$env:HOTPL8_REDUCED_MOTION -or -not $ansi
-                # Quota/layout work runs at most once per second. Between passes only
-                # rows that declared themselves live (bars, mascot, title) are redrawn.
+                if(-not $pending -and ($w -ne $layoutWidth -or $h -ne $layoutHeight -or $layoutAt -lt 0 -or (-not $paused -and $clock.ElapsedMilliseconds-$layoutAt -ge 1000))){
+                    $pending=Start-Hotpl8DashboardRender $worker $StateDirectory $PolicyOverride $w $h $offset $paused $frameTime ([bool]$ReducedMotion) (-not $ansi) ([bool]$Nyan)
+                }
                 $rate=0
-                if($resized -or $layoutAt -lt 0 -or (-not $paused -and $clock.ElapsedMilliseconds-$layoutAt -ge 1000)){
-                    $frame=@(Get-Hotpl8DashboardFrame $status $policy $viewNow $w $h $offset -Paused:$paused -AnimationSeconds $frameTime -Nyan:$Nyan -ReducedMotion:$motionOff -OverviewOverride $status.providerOverview -Plain:(-not $ansi) -ResolvedOffset ([ref]$offset))
-                    $lines=@(foreach($row in $frame){if($ansi){ConvertTo-Hotpl8AnsiRow $row $colors}else{$row.text}})
-                    $layoutAt=$clock.ElapsedMilliseconds;$layoutWidth=$w;$layoutHeight=$h
-                    if($ansi -and -not $paused -and -not $motionOff){foreach($row in $frame){if(Test-Hotpl8LiveRow $row $frameTime){$rate=if($rate){[math]::Min($rate,$row.live.rate)}else{$row.live.rate}}}}
-                }elseif($ansi -and -not $paused -and -not $motionOff){
+                # Refresh live rows even when a layout arrives: its animation time
+                # is already old. All visible motion uses this one current instant.
+                if($ansi -and -not $paused -and -not $motionOff){
                     for($i=0;$i -lt $frame.Count;$i++){
                         if(-not (Test-Hotpl8LiveRow $frame[$i] $frameTime)){continue}
                         $lines[$i]=ConvertTo-Hotpl8AnsiRow (Invoke-Hotpl8LiveRow $frame[$i] $frameTime) $colors
@@ -469,7 +527,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                     }
                 }
                 $text=$lines -join "`r`n"
-                if($text -cne $last -or $resized){
+                if($lines.Count -and $layoutWidth -eq $w -and $layoutHeight -eq $h -and ($text -cne $last -or $resized)){
                     if($ansi){
                         if($resized -or -not $lastLines.Count){[Console]::Write($esc+'[H'+$text+$esc+'[J')}
                         else{
@@ -480,7 +538,9 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                     }else{[Console]::SetCursorPosition(0,0);[Console]::Write($text)}
                     $last=$text;$lastLines=@($lines)
                 }
-                $next=$clock.ElapsedMilliseconds+$(if($rate){$rate}else{1000})
+                # Rendering is part of the frame budget, not an additional delay.
+                # If a layout pass runs late, skip catch-up frames instead of bursting.
+                $next=$renderStarted+$(if($rate){$rate}elseif($pending){42}else{1000})
             }
             while([Console]::KeyAvailable){
                 $key=[Console]::ReadKey($true)
@@ -488,9 +548,11 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
                 if($key.Key -eq 'Spacebar'){$paused=-not $paused}else{$offset=Move-Hotpl8DashboardScroll $offset ([string]$key.Key)}
                 $next=0;$layoutAt=-1000
             }
-            Start-Sleep -Milliseconds 40
+            $wait=[int][math]::Max(1,[math]::Min(16,$next-$clock.ElapsedMilliseconds))
+            Start-Sleep -Milliseconds $wait
         }
     }finally{
+        if($worker){try{if($pending){$worker.Stop()}}finally{$worker.Dispose()}}
         if($ansi){[Console]::Write($esc+'[0m'+$esc+'[?25h'+$esc+'[?1049l')}
         if($terminal.handle){[void][HotPl8Console]::SetConsoleMode($terminal.handle,$terminal.mode)}
         [Console]::TreatControlCAsInput=$oldCtrl;[Console]::CursorVisible=$oldCursor;[Console]::OutputEncoding=$oldEncoding

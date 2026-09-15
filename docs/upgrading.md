@@ -1,5 +1,7 @@
 # Updates, rollback, and uninstall
 
+`hotpl8 watch` and `hotpl8 nyan` are modes of the same installed application, using the same state, policy, dashboard and update path. Nyan only adds the animated banner; it has no separate installation or update step. After updating, restart either view to load the new code. Development preview commands must remain explicit; do not redirect the ordinary `nyan` command to a pinned checkout.
+
 ## Verified update commands (0.2 source candidate)
 
 ```powershell
