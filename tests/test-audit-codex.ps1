@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference='Stop'
+﻿$root = Split-Path $PSScriptRoot -Parent
+$ErrorActionPreference='Stop'
 $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-audit-'+[guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($dir)
 $path=Join-Path $dir 'observations.jsonl'
@@ -9,7 +10,7 @@ function Row([datetimeoffset]$Time,[string]$Status='ok'){
 }
 function Run($Lines,[datetimeoffset]$Since=[datetimeoffset]::MinValue){
     [IO.File]::WriteAllLines($path,[string[]]$Lines,(New-Object Text.UTF8Encoding($false)))
-    & (Join-Path $PSScriptRoot 'audit-codex.ps1') -Slot main -HistoryPath $path -Now $now -Since $Since -RequiredHours 1|ConvertFrom-Json
+    & (Join-Path $root 'audit-codex.ps1') -Slot main -HistoryPath $path -Now $now -Since $Since -RequiredHours 1|ConvertFrom-Json
 }
 function Check([string]$Name,[scriptblock]$Body){
     try{& $Body; $script:passed++; 'PASS '+$Name}catch{$script:failed++; 'FAIL '+$Name+': '+$_.Exception.Message}
@@ -19,7 +20,7 @@ try{
     $healthy=@(for($i=12;$i -ge 0;$i--){Row $now.AddMinutes(-5*$i)})
     Check 'complete dense fresh coverage qualifies and leaves source untouched' {
         $r=Run $healthy; $before=(Get-FileHash $path).Hash
-        $again=& (Join-Path $PSScriptRoot 'audit-codex.ps1') -Slot main -HistoryPath $path -Now $now -RequiredHours 1|ConvertFrom-Json
+        $again=& (Join-Path $root 'audit-codex.ps1') -Slot main -HistoryPath $path -Now $now -RequiredHours 1|ConvertFrom-Json
         Assert ($r.coverageStatus -eq 'sufficient' -and $again.currentContinuousHours -eq 1)
         Assert ((Get-FileHash $path).Hash -eq $before)
     }
@@ -53,7 +54,7 @@ try{
         Assert ($r.invalidRows -eq 1 -and $r.coverageStatus -eq 'incomplete')
     }
     Check 'missing history is explicitly unavailable' {
-        $r=& (Join-Path $PSScriptRoot 'audit-codex.ps1') -Slot main -HistoryPath (Join-Path $dir 'absent.jsonl')|ConvertFrom-Json
+        $r=& (Join-Path $root 'audit-codex.ps1') -Slot main -HistoryPath (Join-Path $dir 'absent.jsonl')|ConvertFrom-Json
         Assert ($r.coverageStatus -eq 'no_observations' -and $r.observations -eq 0)
     }
 }finally{

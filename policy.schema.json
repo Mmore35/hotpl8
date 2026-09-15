@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "HotPl8 policy version 1",
+  "title": "HotPl8 policy versions 1 and 2",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -8,7 +8,10 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "mode": {
       "enum": [
@@ -54,7 +57,9 @@
     "order": {
       "enum": [
         "prefer",
-        "soonest-reset"
+        "soonest-reset",
+        "weekly-expiry",
+        "balanced"
       ]
     },
     "pattern": {
@@ -178,7 +183,9 @@
         "order": {
           "enum": [
             "prefer",
-            "soonest-reset"
+            "soonest-reset",
+            "weekly-expiry",
+            "balanced"
           ]
         },
         "defaultMeter": {
@@ -215,10 +222,361 @@
           "type": "number",
           "minimum": 0,
           "maximum": 100
+        },
+        "disabled": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "resetLeadMin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 604800
+        },
+        "capacity": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,40}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile": {
+                "enum": [
+                  "claude-pro",
+                  "claude-max-5x",
+                  "claude-max-20x",
+                  "codex-plus",
+                  "codex-pro-5x",
+                  "codex-pro-20x"
+                ]
+              },
+              "weekly": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "fiveHour": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "scoped": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000
+                }
+              },
+              "evidence": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          }
+        },
+        "critical": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "drainToZero": {
+              "type": "boolean"
+            },
+            "enterPercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "exitPercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "floorPercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "advantagePercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "pollSeconds": {
+              "type": "number",
+              "minimum": 60,
+              "maximum": 300
+            },
+            "dwellSeconds": {
+              "type": "number",
+              "minimum": 60,
+              "maximum": 300
+            }
+          }
         }
       },
       "additionalProperties": false
+    },
+    "disabled": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      }
+    },
+    "claudeModels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+      }
+    },
+    "historyEnabled": {
+      "type": "boolean"
+    },
+    "notificationsEnabled": {
+      "type": "boolean"
+    },
+    "automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dailyAttemptLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "warmExcluded": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(claude:[0-9]+|codex:[a-zA-Z0-9_-]{1,40})$"
+          }
+        },
+        "schedule": {
+          "type": "object",
+          "required": [
+            "start",
+            "end",
+            "days"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            "days": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              }
+            },
+            "timeZone": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-zA-Z0-9_-]{1,40}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "enum": [
+              "claude-pro",
+              "claude-max-5x",
+              "claude-max-20x",
+              "codex-plus",
+              "codex-pro-5x",
+              "codex-pro-20x"
+            ]
+          },
+          "weekly": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000
+          },
+          "fiveHour": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000
+          },
+          "scoped": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      }
+    },
+    "critical": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "drainToZero": {
+          "type": "boolean"
+        },
+        "enterPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "exitPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "floorPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "advantagePercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "pollSeconds": {
+          "type": "number",
+          "minimum": 60,
+          "maximum": 300
+        },
+        "dwellSeconds": {
+          "type": "number",
+          "minimum": 60,
+          "maximum": 300
+        }
+      }
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reducedMotion": {
+          "type": "boolean"
+        },
+        "noColor": {
+          "type": "boolean"
+        }
+      }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "disabled"
+              ]
+            },
+            {
+              "required": [
+                "claudeModels"
+              ]
+            },
+            {
+              "required": [
+                "historyEnabled"
+              ]
+            },
+            {
+              "required": [
+                "notificationsEnabled"
+              ]
+            },
+            {
+              "required": [
+                "automation"
+              ]
+            },
+            {
+              "required": [
+                "capacity"
+              ]
+            },
+            {
+              "required": [
+                "critical"
+              ]
+            },
+            {
+              "required": [
+                "display"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "order": {
+            "enum": [
+              "prefer",
+              "soonest-reset"
+            ]
+          },
+          "codex": {
+            "not": {
+              "required": [
+                "disabled"
+              ]
+            },
+            "properties": {
+              "order": {
+                "enum": [
+                  "prefer",
+                  "soonest-reset"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

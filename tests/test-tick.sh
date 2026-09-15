@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-tick.sh — decision-logic tests for tick.ps1, using fixtures instead of live accounts.
+# tests/test-tick.sh — decision-logic tests for tick.ps1, using fixtures instead of live accounts.
 #
 # WHY: the interesting cases (stale usage, both subs low, the 7d gate, a DEAD
 # CREDENTIAL) either cannot be produced on demand or would require waiting days. This
@@ -10,13 +10,13 @@
 # otherwise blocked until slot 2 reports a weekly window, and its regression cases
 # pin the 2026-07-30 freshness bug (see § the 503s cases).
 #
-#   bash test-tick.sh
+#   bash tests/test-tick.sh
 #
 set -u
 for tool in dirname mktemp cp rm tr; do
     command -v "$tool" >/dev/null 2>&1 || { echo "FATAL: missing $tool"; exit 2; }
 done
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 S="$(mktemp -d)" || exit 2
 [[ -n "$S" && -d "$S" ]] || exit 2
 trap '[[ -n "$S" && -d "$S" ]] && rm -rf -- "$S"' EXIT
@@ -38,10 +38,8 @@ winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else pr
 
 # Execute unmodified production files with an explicit binary dependency.
 cp "$HERE/tick.ps1" "$S/tick.ps1"
-cp -R "$HERE/providers" "$S/providers"
-cp "$HERE/common.ps1" "$S/common.ps1" || exit 2
-cp "$HERE/config.ps1" "$S/config.ps1" || exit 2
-cp "$HERE/diagnostics.ps1" "$S/diagnostics.ps1" || exit 2
+cp -R "$HERE/src" "$S/src"
+cp -R "$HERE/data" "$S/data"
 # Seed from the TRACKED example, never from policy.json (2026-08-30). policy.json is
 # gitignored per-machine config carrying this fleet's labels and reserve set, so seeding
 # from it made every result depend on a file no other machine has and no commit records
@@ -112,6 +110,8 @@ tick() {  # invoke the real tick against the current fixture; leaves calls/runs/
     # warm-state.json MUST be cleared: it lives in $PSScriptRoot (= $S) and its
     # 20-minute floor would make every warm case after the first silently no-op.
     rm -f "$S/calls" "$S/runs" "$S/status.txt" "$S/warm-state.json"
+    # Each scenario is an independent fleet. Persistence is tested separately.
+    rm -f "$S/collector.json" "$S/warm-outcomes.json" "$S/attempt-budget.json"
     CSWAP_BIN="$(winpath "$STUB")" \
     FIXTURE="$(winpath "$S/fixture.json")" \
     CALLS="$(winpath "$S/calls")" \
@@ -321,7 +321,7 @@ echo "== warm: pattern -> offsets (fleet-shape portability) =="
 # Offsets are pure: (pattern, prefer, weights) -> slot:minute. Testing the function
 # directly rather than through a tick keeps these independent of wall-clock time,
 # which is what lets them assert fleet shapes nobody here owns (Max20x, N=5, N=1).
-cp "$HERE/providers/claude.ps1" "$S/funcs.ps1"
+cp "$HERE/src/providers/claude.ps1" "$S/funcs.ps1" || exit 2
 cat > "$S/offsets.ps1" <<'EOF'
 . (Join-Path $PSScriptRoot 'funcs.ps1')
 $spec = Get-Content (Join-Path $PSScriptRoot 'spec.json') -Raw | ConvertFrom-Json

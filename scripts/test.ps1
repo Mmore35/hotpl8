@@ -1,8 +1,8 @@
-# Run offline suites in separate Windows PowerShell processes with isolated user directories.
+﻿# Run offline suites in separate Windows PowerShell processes with isolated user directories.
 param([switch]$SkipClaude)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-. (Join-Path $root 'common.ps1')
+. (Join-Path $root 'src/common.ps1')
 if($env:OS -ne 'Windows_NT'){throw 'Full suite currently requires Windows PowerShell 5.1.'}
 $ps=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $bash=Join-Path $env:ProgramFiles 'Git/bin/bash.exe'
@@ -32,13 +32,15 @@ function Invoke-IsolatedSuite([string]$Executable,[string[]]$Arguments){
         if($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-suite-[a-f0-9]{32}$'){Remove-Item -LiteralPath $full -Recurse -Force}
     }
 }
-foreach($suite in @('test-codex.ps1','test-dashboard.ps1','test-audit-codex.ps1','tests/test-safety.ps1','tests/test-lifecycle.ps1')){
+foreach($suite in @('tests/test-codex.ps1','tests/test-dashboard.ps1','tests/test-overview.ps1','tests/test-capacity.ps1','tests/test-claude-plans.ps1','tests/test-audit-codex.ps1','tests/test-safety.ps1','tests/test-lifecycle.ps1','tests/test-onboarding.ps1','tests/test-operations.ps1','tests/test-tray.ps1')){
     $code=Invoke-IsolatedSuite $ps @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root $suite))
     if($code -ne 0){$failures+=$suite}
 }
 if(-not $SkipClaude){
+    $code=Invoke-IsolatedSuite (Get-Command python).Source @((Join-Path $root 'tests/test_claude_plan.py'))
+    if($code -ne 0){$failures+='tests/test_claude_plan.py'}
     Push-Location $root
-    try{$code=Invoke-IsolatedSuite $bash @('--login','test-tick.sh');if($code -ne 0){$failures+='test-tick.sh'}}finally{Pop-Location}
+    try{$code=Invoke-IsolatedSuite $bash @('--login','tests/test-tick.sh');if($code -ne 0){$failures+='tests/test-tick.sh'}}finally{Pop-Location}
 }
 if($failures){throw ('Failed suites: '+($failures -join ', '))}
 'All requested offline suites passed.'

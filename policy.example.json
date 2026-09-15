@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "mode": "monitor",
   "prefer": [],
   "reserve": [],
@@ -30,6 +30,38 @@
     "margin5h": 25,
     "margin7d": 20,
     "margin7dWork": 5,
-    "modelMeters": {}
+    "modelMeters": {},
+    "critical": {
+      "enabled": false,
+      "enterPercent": 20,
+      "exitPercent": 25,
+      "floorPercent": 1,
+      "drainToZero": false,
+      "pollSeconds": 60,
+      "dwellSeconds": 60,
+      "advantagePercent": 10
+    },
+    "capacity": {}
+  },
+  "historyEnabled": false,
+  "notificationsEnabled": false,
+  "automation": {
+    "dailyAttemptLimit": 12,
+    "warmExcluded": []
+  },
+  "critical": {
+    "enabled": false,
+    "enterPercent": 20,
+    "exitPercent": 25,
+    "floorPercent": 1,
+    "drainToZero": false,
+    "pollSeconds": 60,
+    "dwellSeconds": 60,
+    "advantagePercent": 10
+  },
+  "capacity": {},
+  "display": {
+    "reducedMotion": false,
+    "noColor": false
   }
 }

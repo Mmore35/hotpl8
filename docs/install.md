@@ -9,24 +9,40 @@ This is a release candidate. Use Windows PowerShell 5.1 and a terminal such as W
 
 ## Enroll Codex
 
-Sign into the desired native Codex home first. From the installed app directory:
+Sign into the desired native Codex home first. Open a new terminal after installation, then run:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\HotPl8\app\setup-codex.ps1" -Slot main -AccountHome "$env:USERPROFILE\.codex"
+hotpl8 enroll -Slot main -AccountHome "$env:USERPROFILE\.codex"
 hotpl8 refresh
+hotpl8
+# When you want to launch Codex in this account:
 hotpl8 codex -Slot main
 ```
 
-This runs a quota read to validate native subscription authentication. Do not copy auth.json between homes. Additional independently signed-in homes can be enrolled explicitly. Automatic model routing requires a verified `codex.modelMeters` mapping. A second account is not required for monitoring or explicit-slot launching.
+The `enroll` shortcut is in the current source; the v0.1.0-rc.1 ZIP uses [its versioned enrollment instructions](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md#enroll-codex).
 
-Hooks are optional: enrollment supports `-InstallHook`, then native Codex requires reviewing/trusting the handler in `/hooks`. Unrelated handlers are preserved. The general installer already supplies the command; do not use legacy `-InstallCommand` for an installed app.
+Enrollment runs a quota read to validate native subscription authentication. Do not copy auth.json between homes. Additional independently signed-in homes can be enrolled explicitly. Automatic model routing requires a verified `codex.modelMeters` mapping. A second account is not required for monitoring or explicit-slot launching.
+
+Hooks are optional: `setup-codex.ps1` supports `-InstallHook`, then native Codex requires reviewing/trusting the handler in `/hooks`. Unrelated handlers are preserved. The general installer already supplies the command; do not use legacy `-InstallCommand` for an installed app.
 
 ## Enroll Claude
 
 Use native Claude login and `cswap add` as documented upstream. Put the chosen numeric slot IDs into state/policy.json's `prefer` array and add non-sensitive display labels. Keep `mode: monitor` while verifying readings. The [configuration guide](configuration.md) explains reserves and experimental automation. HotPl8 does not provide a third-party sign-in flow.
 
+On refresh, supported cswap installations automatically detect Claude plan names using Anthropic profile metadata. No plan questionnaire is required. See [plan discovery and capacity conversions](capacity.md); an unavailable profile never blocks quota collection.
+
 ## Background collection
 
-Rerun the installer from the extracted release with `-Schedule`. It registers one hidden, unelevated task every five minutes for the signed-in user; repeated installation updates the owned task. It does not run while the user is signed out. Monitoring policy remains observation-only.
+Rerun the installer from the extracted release with `-Schedule`. It registers one hidden, unelevated task that wakes every minute for the signed-in user. Claude's adapter is observed on every healthy wake and manages its own API polling cadence. Codex normally collects every five minutes and can shorten in critical mode. Provider failures retain bounded backoff. Repeated installation updates the owned task. It does not run while the user is signed out. Monitoring policy remains observation-only.
 
 A source checkout is also portable: run `powershell -NoProfile -ExecutionPolicy Bypass -File .\hotpl8.ps1 init`, enroll accounts, then use the same command with `refresh` in place of `init`. Source checkout state defaults to that directory. An explicit `-StateDirectory` overrides `HOTPL8_STATE_DIRECTORY`, which overrides the installed binding or portable default.
+
+## First screen
+
+![A fresh HotPl8 installation explains how to enroll an account and refresh](assets/first-run.png)
+
+After enrollment, `hotpl8 refresh` collects readings. Opening `hotpl8` only displays the cache. If an account needs sign-in, use its native login flow and refresh again. `hotpl8 doctor` gives offline next steps.
+
+## Guided setup in the 0.2 source candidate
+
+Run `hotpl8 setup -Interactive` after installation for native account enrollment without editing JSON. `hotpl8 setup` prints equivalent noninteractive commands. Existing native sign-in is required; setup does not enable automatic actions. [Account controls and readiness](operations.md). macOS implementation continues from the [Mac handoff](plans/macos-handoff.md).
