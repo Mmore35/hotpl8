@@ -40,7 +40,7 @@ function Invoke-AgentTestCli([string]$Json,[string]$Command='agent') {
     try{
         $process.StandardInput.Write($Json);$process.StandardInput.Close()
         $out=$process.StandardOutput.ReadToEndAsync();$err=$process.StandardError.ReadToEndAsync()
-        Assert ($process.WaitForExit(20000)) 'CLI timed out'
+        Assert ($process.WaitForExit(90000)) 'CLI timed out after 90 seconds'
         [pscustomobject]@{exit=$process.ExitCode;output=$out.Result;error=$err.Result}
     }finally{if(-not $process.HasExited){$process.Kill()};$process.Dispose()}
 }
@@ -92,8 +92,10 @@ try{
         Assert ((Request status @()).error.code -eq 'invalid_arguments')
     }
     Check 'real JSON CLI has one JSON response correct exit code and clean stderr' {
+        $bomRequest=[string][char]0xfeff+'{"apiVersion":1,"operation":"status","arguments":{}}'
+        Assert (Invoke-Hotpl8AgentJson $bomRequest $dir).ok 'UTF-8 preamble must not be treated as JSON content'
         $r=Invoke-AgentTestCli '{"apiVersion":1,"operation":"status","arguments":{}}'
-        Assert ($r.exit -eq 0 -and -not $r.error) $r.error
+        Assert ($r.exit -eq 0 -and -not $r.error) ($r|ConvertTo-Json -Depth 5)
         Assert (($r.output.Trim() -split "`n").Count -eq 1)
         Assert ($r.output|ConvertFrom-Json).ok
         $r=Invoke-AgentTestCli '{bad';Assert ($r.exit -eq 1 -and -not $r.error);Assert (($r.output|ConvertFrom-Json).error.code -eq 'invalid_json')
@@ -132,6 +134,26 @@ try{
         Write-Hotpl8Text (Join-Path $dir 'hold.json') (@{until=$now.AddHours(-1).ToString('o')}|ConvertTo-Json)
         $policy|Add-Member NoteProperty claudeModels @('scoped-model') -Force;WriteFixture
         $r=Request readiness @{provider='claude'};Assert (-not $r.data.eligible -and $r.data.accounts[1].reason -eq 'model_quota_unknown')
+    }
+    Check 'legacy hold ambiguity agrees with production instead of blocking forever' {
+        SaveFixture;$policy.mode='automate';$policy.switchEnabled=$true;$snapshot.slots[0].used5h=100;WriteFixture
+        $holdPath=Join-Path $dir 'hold.json'
+        foreach($content in @('{broken','{}','{"until":"invalid"}','{"until":"2000-01-01T00:00:00Z"}')){
+            Write-Hotpl8Text $holdPath $content
+            Assert (-not (Get-Hold $dir)) 'fixture must fail open in production'
+            $r=Request readiness @{provider='claude'}
+            Assert ($r.ok -and -not $r.data.selectionHeld -and $r.data.switchingPermitted -and $r.data.selectedSlot -eq '2')
+        }
+        Write-Hotpl8Text $holdPath (@{until=$now.AddHours(1).ToString('o')}|ConvertTo-Json)
+        Assert (Get-Hold $dir)
+        Assert (Request readiness @{provider='claude'}).data.selectionHeld
+        $handle=[IO.File]::Open($holdPath,'Open','ReadWrite','None')
+        try{
+            Assert (-not (Get-Hold $dir))
+            $r=Request readiness @{provider='claude'}
+            Assert ($r.ok -and -not $r.data.selectionHeld -and $r.data.selectedSlot -eq '2')
+        }finally{$handle.Dispose()}
+        Write-Hotpl8Text $holdPath (@{until=$now.AddHours(-1).ToString('o')}|ConvertTo-Json)
     }
     Check 'Claude current-time freshness and zero floors do not permit exhausted quota' {
         SaveFixture;$policy.margin5h=0;$policy.margin7d=0;$policy.margin7dWork=0

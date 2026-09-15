@@ -40,12 +40,20 @@ function Start-TestMcp([switch]$AllowPause, [switch]$RealCli) {
     $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
     $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
     $psi.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
-    $proc = [Diagnostics.Process]::Start($psi)
-    $proc.StandardInput.AutoFlush = $true
+    # Reuse the UTF-8 JSON-lines process helper: .NET can flush a console BOM
+    # during Process.Start, before any request is written.
+    $proc = Start-CodexQuotaProcess $psi
     return $proc
 }
+function Send-McpLine($Proc, [string]$Line) {
+    # MCP clients send UTF-8 without a preamble. The .NET Framework default
+    # stdin writer inherits the console encoding and may inject a BOM in CI.
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Line + "`n")
+    $Proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $Proc.StandardInput.BaseStream.Flush()
+}
 function Send-Mcp($Proc, $Message) {
-    $Proc.StandardInput.WriteLine((ConvertTo-Json -InputObject $Message -Compress -Depth 20))
+    Send-McpLine $Proc (ConvertTo-Json -InputObject $Message -Compress -Depth 20)
 }
 function Read-Mcp($Proc) {
     $pending = $Proc.StandardOutput.ReadLineAsync()
@@ -63,7 +71,7 @@ function Initialize-Mcp($Proc, [string]$Version = '2025-11-25') {
     return $r
 }
 function Stop-TestMcp($Proc) {
-    $Proc.StandardInput.Close()
+    $Proc.StandardInput.BaseStream.Close()
     if (-not $Proc.WaitForExit(45000)) { $Proc.Kill(); throw 'MCP did not exit on EOF' }
     $extra = $Proc.StandardOutput.ReadToEnd(); $errorText = $Proc.StandardError.ReadToEnd()
     Assert ($Proc.ExitCode -eq 0 -and -not $extra -and -not $errorText)
@@ -115,9 +123,9 @@ try {
         Assert ((Request-Mcp $proc 'ping' @{} 88).id -eq 88)
     }
     Check 'malformed JSON, batches, invalid IDs, params and unknown methods recover' {
-        $proc.StandardInput.WriteLine('{')
+        Send-McpLine $proc '{'
         Assert ((Read-Mcp $proc).error.code -eq -32700)
-        $proc.StandardInput.WriteLine('[{"jsonrpc":"2.0","id":1,"method":"ping"}]')
+        Send-McpLine $proc '[{"jsonrpc":"2.0","id":1,"method":"ping"}]'
         Assert ((Read-Mcp $proc).error.code -eq -32600)
         Send-Mcp $proc @{ jsonrpc = '2.0'; id = $true; method = 'ping' }
         Assert ((Read-Mcp $proc).error.code -eq -32600)
@@ -135,7 +143,7 @@ try {
         Assert ((Request-Mcp $proc 'ping' @{} 99).id -eq 99)
     }
     Check 'oversized lines and multibyte UTF-8 recover without extra output' {
-        $proc.StandardInput.WriteLine(('x' * 65537))
+        Send-McpLine $proc ('x' * 65537)
         Assert ((Read-Mcp $proc).error.code -eq -32700)
         # Write raw UTF-8 because Windows PowerShell's redirected input writer
         # otherwise uses the console OEM encoding.

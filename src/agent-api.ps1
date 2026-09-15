@@ -147,7 +147,9 @@ function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$
         $proposed=if($null -ne $selection.target){[string]$selection.target}elseif($selection.activeOk){$active}else{$null}
         # Read the current hold file; a published snapshot can predate a hold change.
         $holdPath=Join-Path $Directory 'hold.json';$hold=Read-Hotpl8Json $holdPath
-        $held=(Test-Path -LiteralPath $holdPath) -and (-not (ConvertTo-Hotpl8AgentTime $hold.until) -or (Test-Hotpl8FutureReset $hold.until $Now))
+        # Match production Get-Hold: corrupt legacy holds expire rather than hold forever.
+        # Automation pauses/agent leases have a separate, intentionally fail-closed contract.
+        $held=Test-Hotpl8FutureReset $hold.until $Now
         $switching=(Get-Hotpl8Actions $Policy $false).switching -and -not $pause.active -and -not $held
         $selected=if($switching){$proposed}elseif($selection.activeOk){$active}else{$null}
     }else{
@@ -220,6 +222,9 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
 }
 function Invoke-Hotpl8AgentJson([string]$Json,[string]$Directory) {
     if([Text.Encoding]::UTF8.GetByteCount($Json) -gt 65536){return New-Hotpl8AgentEnvelope '' $null 'request_too_large'}
+    # Windows .NET stdin writers may emit a UTF-8 preamble when the console uses UTF-8.
+    # Treat it as an encoding marker, preserving strict validation of the JSON itself.
+    $Json=$Json.TrimStart([char]0xfeff)
     try{$request=ConvertFrom-Json -InputObject $Json -ErrorAction Stop}catch{return New-Hotpl8AgentEnvelope '' $null 'invalid_json'}
     return Invoke-Hotpl8AgentRequest $request $Directory
 }

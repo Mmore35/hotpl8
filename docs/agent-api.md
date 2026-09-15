@@ -10,7 +10,7 @@ Pass one request through stdin (close stdin after the request):
 '{"apiVersion":1,"operation":"readiness","arguments":{"provider":"codex"}}' | hotpl8 agent
 ```
 
-PowerShell callers can also use `hotpl8 agent -RequestJson $json`. Each process accepts one request, writes one compact JSON response and exits. All requests require an `arguments` object, including `{}` for no arguments. Requests are limited to 64 KiB of UTF-8 JSON. Unknown fields, operations, versions and incorrectly typed arguments are rejected. `-StateDirectory PATH` binds the process to one local installation; requests cannot override it.
+PowerShell callers can also use `hotpl8 agent -RequestJson $json`. Each process accepts one request, writes one compact JSON response and exits. All requests require an `arguments` object, including `{}` for no arguments. Requests are limited to 64 KiB of UTF-8 JSON; the JSON CLI accepts a leading UTF-8 byte-order mark from Windows pipe writers. Unknown fields, operations, versions and incorrectly typed arguments are rejected. `-StateDirectory PATH` binds the process to one local installation; requests cannot override it.
 
 ```json
 {

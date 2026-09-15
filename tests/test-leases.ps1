@@ -156,7 +156,12 @@ exit 3
                 $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true
                 $processes+=@([Diagnostics.Process]::Start($psi))
             }
-            foreach ($proc in $processes) { Assert ($proc.WaitForExit(30000));Assert ($proc.ExitCode -eq 0) }
+            # Hosted Windows runners can spend over 30 seconds initializing
+            # fresh PowerShell processes; keep startup separate from lock retries.
+            foreach ($proc in $processes) {
+                if (-not $proc.WaitForExit(90000)) { throw 'Lease worker startup/completion timed out after 90 seconds.' }
+                if ($proc.ExitCode -ne 0) { throw ('Lease worker exited with code ' + $proc.ExitCode) }
+            }
             Assert ((Get-Hotpl8LeasePause $parallel).leaseCount -eq 4)
         } finally { foreach ($proc in $processes) { if (-not $proc.HasExited) { $proc.Kill() };$proc.Dispose() } }
     }

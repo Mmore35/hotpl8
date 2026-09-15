@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased ? local agent interface
+## Unreleased — local agent interface
 
 - Add a versioned JSON agent command and local MCP read tools with explicit cached readiness.
 - Add opt-in independent pause leases, retry-safe acquisition/release and active-lease rollback protection.
