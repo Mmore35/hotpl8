@@ -50,3 +50,13 @@ artifacts/
 __pycache__/
 .claude/
 .codex/
+collector.json
+claude-plans.json
+activity.json
+warm-outcomes.json
+attempt-budget.json
+automation-pause.json
+usage-history.json
+notification-state.json
+update-state.json
+policy.previous.json

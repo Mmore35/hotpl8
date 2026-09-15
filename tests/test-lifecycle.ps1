@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-. (Join-Path $root 'common.ps1')
-. (Join-Path $root 'lifecycle.ps1')
+. (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/lifecycle.ps1')
 $script:passed=0;$script:failed=0
 function Assert($Value){if(-not $Value){throw 'assertion failed'}}
 function Check([string]$Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
@@ -76,6 +76,24 @@ try{
         finally{[IO.File]::WriteAllText($path,$original)}
         Assert $threw
         Assert ((Get-Content (Join-Path $install 'app/VERSION') -Raw).Trim() -ne '99.0.0')
+    }
+    Check 'held collector lock prevents update without changing app or policy' {
+        $appBefore=(Get-FileHash (Join-Path $install 'app/VERSION')).Hash
+        $policyBefore=(Get-FileHash (Join-Path $state 'policy.json')).Hash
+        $lock=[IO.File]::Open((Join-Path $state 'tick.lock'),'OpenOrCreate','ReadWrite','None')
+        $rejected=$false
+        try{try{& (Join-Path $source 'install.ps1') -InstallDirectory $install -NoPath|Out-Null}catch{$rejected=$true}}finally{$lock.Dispose()}
+        Assert ($rejected -and (Get-FileHash (Join-Path $install 'app/VERSION')).Hash -eq $appBefore)
+        Assert ((Get-FileHash (Join-Path $state 'policy.json')).Hash -eq $policyBefore)
+    }
+    Check 'incompatible previous reader blocks rollback before removing current app' {
+        $reader=Join-Path $install 'previous/src/config.ps1';$original=[IO.File]::ReadAllText($reader)
+        $before=(Get-FileHash (Join-Path $install 'app/VERSION')).Hash
+        [IO.File]::WriteAllText($reader,'function Assert-Hotpl8Policy($Policy) { if($Policy.schemaVersion -gt 1){throw "unsupported schema"} }')
+        $rejected=$false
+        try{try{& (Join-Path $source 'rollback.ps1') -InstallDirectory $install|Out-Null}catch{$rejected=$true}}finally{[IO.File]::WriteAllText($reader,$original)}
+        Assert ($rejected -and (Get-FileHash (Join-Path $install 'app/VERSION')).Hash -eq $before)
+        Assert (Test-Path -LiteralPath (Join-Path $install 'previous/VERSION'))
     }
     Check 'rollback restores previous code and preserves state' {
         $before=(Get-FileHash (Join-Path $state 'policy.json')).Hash
