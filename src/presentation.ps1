@@ -141,74 +141,86 @@ function Get-Hotpl8NyanData {
     if(-not $script:Hotpl8Nyan){$script:Hotpl8Nyan=Get-Content (Join-Path (Split-Path $PSScriptRoot -Parent) 'data/nyan-frames.json') -Raw|ConvertFrom-Json}
     return $script:Hotpl8Nyan
 }
-function Get-Hotpl8NyanScene([int]$Index,[int]$Width) {
+function Get-Hotpl8NyanSize([int]$Width,[int]$Height=40,[int]$SummaryRows=4) {
+    # Switch between two purpose-drawn pixel grids; fractional scaling destroys
+    # the facial features. Reserve at least four rows for account details.
+    $budget=$Height-7-$SummaryRows-4
+    if($budget -lt 5){return 0}
+    if($Width -ge 82 -and $Height -ge 36 -and $budget -ge 9){return 9}
+    return 5
+}
+function Get-Hotpl8NyanScene([int]$Index,[int]$Width,[ValidateSet(5,9)][int]$Rows=9) {
     # Runs of identical cells for one sprite frame at one width. The bundled
     # sprite is the rainbow's first wave period followed by the cat; the wave
     # tiles leftward so the rainbow streams across the whole frame.
     if(-not $script:Hotpl8NyanScenes){$script:Hotpl8NyanScenes=@{}}
-    $key=[string]$Index+'|'+$Width
+    $key=[string]$Index+'|'+$Width+'|'+$Rows
     if($script:Hotpl8NyanScenes.ContainsKey($key)){return $script:Hotpl8NyanScenes[$key]}
-    $data=Get-Hotpl8NyanData;$frame=$data.frames[$Index];$sprite=$frame[0].Length
-    $period=if($data.period){[int]$data.period}else{8}
+    $data=Get-Hotpl8NyanData
+    $art=if($Rows -lt 9){$data.compact}else{$data}
+    $frame=$art.frames[$Index];$Rows=$frame.Count/2
+    $sprite=$frame[0].Length;$period=[int]$art.period
     $catX=[math]::Max(0,$Width-$sprite-[math]::Max(3,[int][math]::Floor($Width*0.2)))
-    $rows=@()
-    for($row=0;$row -lt $frame.Count;$row+=2){
+    $sceneRows=@()
+    for($row=0;$row -lt $Rows*2;$row+=2){
         $runs=New-Object Collections.ArrayList;$last=$null
         for($x=0;$x -lt $Width;$x++){
             $col=$x-$catX
-            if($col -ge $sprite){$top=',';$bottom=','}
-            elseif($col -ge 0){$top=[string]$frame[$row][$col];$bottom=[string]$frame[$row+1][$col]}
-            else{$i=(($col%$period)+$period)%$period;$top=[string]$frame[$row][$i];$bottom=[string]$frame[$row+1][$i]}
-            if($top -eq ',' -and $bottom -eq ','){$glyph=' ';$fg='';$bg=''}
-            else{$glyph='▀';$fg=[string]$data.palette.$top;$bg=[string]$data.palette.$bottom}
+            if($col -ge $sprite){$fg=$script:Hotpl8Background;$bg=$script:Hotpl8Background}
+            else{
+                $i=if($col -ge 0){$col}else{(($col%$period)+$period)%$period}
+                $fg=[string]$data.palette.([string]$frame[$row][$i]);$bg=[string]$data.palette.([string]$frame[$row+1][$i])
+            }
+            if($fg -eq $script:Hotpl8Background -and $bg -eq $script:Hotpl8Background){$glyph=' ';$fg='';$bg=''}
+            else{$glyph='▀'}
             if($last -and $last.glyph -eq $glyph -and $last.tone -eq $fg -and $last.background -eq $bg){$last.length++}
             else{$last=[pscustomobject]@{start=$x;length=1;glyph=$glyph;tone=$fg;background=$bg};[void]$runs.Add($last)}
         }
-        $rows+=,@($runs.ToArray())
+        $sceneRows+=,@($runs.ToArray())
     }
     if($script:Hotpl8NyanScenes.Count -gt 48){$script:Hotpl8NyanScenes=@{}}
-    $script:Hotpl8NyanScenes[$key]=$rows
-    return $rows
+    $script:Hotpl8NyanScenes[$key]=$sceneRows
+    return $sceneRows
 }
-function Get-Hotpl8NyanStars([double]$Seconds,[int]$Inner) {
+function Get-Hotpl8NyanStars([double]$Seconds,[int]$Inner,[ValidateSet(5,9)][int]$Rows=9) {
     # Pixel stars drifting left through open sky: row, seed column, cells per
     # second, twinkle phase. Each one is a half block so it matches the sprite.
     $seeds=@(@(0,7,4.0,0),@(0,53,3.0,2),@(1,29,3.5,1),@(2,71,4.5,3),@(3,17,3.0,2),@(4,47,4.0,0),@(5,3,3.5,1),@(6,61,3.0,3),@(7,35,4.5,2),@(8,23,3.5,0),@(8,79,4.0,1))
     $i=0
     foreach($seed in $seeds){
         $twinkle=[int][math]::Floor($Seconds*1.25+$seed[3])%4
-        [pscustomobject]@{row=$seed[0];x=[int](((([math]::Floor($seed[1]-$Seconds*$seed[2]))%$Inner)+$Inner)%$Inner);glyph=$(if($i%2){'▄'}else{'▀'});tone=@('muted','text','muted','border')[$twinkle]}
+        [pscustomobject]@{row=[math]::Min($Rows-1,[int][math]::Floor($seed[0]*$Rows/9));x=[int](((([math]::Floor($seed[1]-$Seconds*$seed[2]*3))%$Inner)+$Inner)%$Inner);glyph=$(if($i%2){'▄'}else{'▀'});tone=@('muted','text','muted','border')[$twinkle]}
         $i++
     }
 }
-function Get-Hotpl8NyanAnsiScene([int]$Index,[int]$Width,$Palette) {
+function Get-Hotpl8NyanAnsiScene([int]$Index,[int]$Width,$Palette,[ValidateSet(5,9)][int]$Rows=9) {
     # One sprite frame as ready-made ANSI chunks; sky chunks stay editable for stars.
     if(-not $script:Hotpl8NyanAnsiScenes){$script:Hotpl8NyanAnsiScenes=@{}}
-    $key=[string]$Index+'|'+$Width
+    $key=[string]$Index+'|'+$Width+'|'+$Rows
     if($script:Hotpl8NyanAnsiScenes.ContainsKey($key)){return $script:Hotpl8NyanAnsiScenes[$key]}
     $esc=[string][char]27;$bg=$esc+'[48;2;'+$script:Hotpl8Background+'m'
-    $scene=Get-Hotpl8NyanScene $Index $Width;$rows=@()
+    $scene=Get-Hotpl8NyanScene $Index $Width $Rows;$sceneRows=@()
     for($r=0;$r -lt $scene.Count;$r++){
         $chunks=@()
         foreach($run in @($scene[$r])){
             if($run.glyph -eq ' '){$chunks+=@{start=$run.start;length=$run.length;sky=$true;text=($bg+(' '*$run.length))}}
             else{$chunks+=@{start=$run.start;length=$run.length;sky=$false;text=($esc+'[38;2;'+(Get-Hotpl8Color $run.tone $Palette)+'m'+$esc+'[48;2;'+(Get-Hotpl8Color $run.background $Palette)+'m'+($run.glyph*$run.length))}}
         }
-        $rows+=,@($chunks)
+        $sceneRows+=,@($chunks)
     }
     if($script:Hotpl8NyanAnsiScenes.Count -gt 48){$script:Hotpl8NyanAnsiScenes=@{}}
-    $script:Hotpl8NyanAnsiScenes[$key]=$rows
-    return $rows
+    $script:Hotpl8NyanAnsiScenes[$key]=$sceneRows
+    return $sceneRows
 }
-function Get-Hotpl8NyanAnsiRows([double]$AnimationSeconds,[int]$Width,$Palette) {
+function Get-Hotpl8NyanAnsiRows([double]$AnimationSeconds,[int]$Width,$Palette,[ValidateSet(5,9)][int]$Rows=9) {
     # Interactive fast path: bordered terminal lines assembled from cached chunks
     # with stars spliced in as string edits. Uses the same frame, scene and star
     # math as Get-Hotpl8NyanRows so layout passes and live ticks agree.
     $data=Get-Hotpl8NyanData
-    $index=[int][math]::Floor($AnimationSeconds*8)%$data.frames.Count
+    $index=[int][math]::Floor($AnimationSeconds*12)%$data.frames.Count
     $inner=[math]::Max(26,$Width-2)
-    $scene=Get-Hotpl8NyanAnsiScene $index $inner $Palette
-    $stars=@(Get-Hotpl8NyanStars $AnimationSeconds $inner)
+    $scene=Get-Hotpl8NyanAnsiScene $index $inner $Palette $Rows
+    $stars=@(Get-Hotpl8NyanStars $AnimationSeconds $inner $Rows)
     $esc=[string][char]27;$bg=$esc+'[48;2;'+$script:Hotpl8Background+'m'
     $edge=$esc+'[38;2;'+$Palette.border+'m'+$bg+'│'
     $pad=' '*[math]::Max(0,$Width-1-$inner)
@@ -230,17 +242,17 @@ function Get-Hotpl8NyanAnsiRows([double]$AnimationSeconds,[int]$Width,$Palette) 
         [pscustomobject]@{text='';tone='text';ansi=($line+$pad+$edge+$bg+$esc+'[K')}
     }
 }
-function Get-Hotpl8NyanRows([double]$AnimationSeconds,[switch]$ReducedMotion,[switch]$Plain,[int]$Width=0) {
+function Get-Hotpl8NyanRows([double]$AnimationSeconds,[switch]$ReducedMotion,[switch]$Plain,[int]$Width=0,[ValidateSet(5,9)][int]$Rows=9) {
     if($Plain){
         foreach($line in @('  ~~~~~~[::::] /\_/\','  ~~~~~~[::::]( o.o )  hotpl8 / nyan','         "  "  " "')){New-Hotpl8StyledRow @(New-Hotpl8Span $line)}
         return
     }
     $data=Get-Hotpl8NyanData;$t=if($ReducedMotion){0}else{$AnimationSeconds}
-    $index=[int][math]::Floor($t*8)%$data.frames.Count
+    $index=[int][math]::Floor($t*12)%$data.frames.Count
     $inner=if($Width -gt 0){[math]::Max(26,$Width-2)}else{$data.frames[0][0].Length+2}
-    $scene=Get-Hotpl8NyanScene $index $inner
-    $stars=@(Get-Hotpl8NyanStars $t $inner)
-    $rows=@()
+    $scene=Get-Hotpl8NyanScene $index $inner $Rows
+    $stars=@(Get-Hotpl8NyanStars $t $inner $Rows)
+    $sceneRows=@()
     for($r=0;$r -lt $scene.Count;$r++){
         $runs=@($scene[$r]|ForEach-Object {[pscustomobject]@{start=$_.start;length=$_.length;glyph=$_.glyph;tone=$_.tone;background=$_.background}})
         foreach($star in $stars){
@@ -262,7 +274,7 @@ function Get-Hotpl8NyanRows([double]$AnimationSeconds,[switch]$ReducedMotion,[sw
         }
         $spans=@(New-Hotpl8Span ' ')
         foreach($run in $runs){$spans+=New-Hotpl8Span ($run.glyph*$run.length) $(if($run.tone){$run.tone}else{'text'}) $run.background}
-        $rows+=New-Hotpl8StyledRow $spans
+        $sceneRows+=New-Hotpl8StyledRow $spans
     }
-    return $rows
+    return $sceneRows
 }
