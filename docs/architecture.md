@@ -1,6 +1,6 @@
 # How HotPl8 works
 
-HotPl8 collects quota readings, chooses accounts according to policy, and renders a cached terminal dashboard. Displaying the dashboard never launches a provider process. There is no HotPl8 server.
+HotPl8 collects quota readings, chooses accounts according to policy, and renders a cached terminal dashboard. Displaying the dashboard never launches a provider process. The optional local MCP subprocess uses stdio; there is no HotPl8 network listener.
 
 `status.json` is the authoritative published snapshot and includes the collector's completion record. `collector.json` can supply a newer in-progress marker; an older marker cannot override an already completed snapshot. The legacy `status.js` and `status.txt` mirrors, usage history and activity log are best-effort outputs: their write failures are logged without invalidating the JSON observation. Required action receipts and safety state still fail closed.
 
@@ -110,3 +110,7 @@ Provider summaries are additive `providerOverview` fields on snapshots and statu
 ## Capacity and emergency selection
 
 `src/capacity.ps1` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `src/critical.ps1` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. `src/presentation.ps1` provides sanitized styled spans and clock-driven mascots shared by terminal and screenshot rendering. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).
+
+## Local agent boundary
+
+`src/agent-api.ps1` owns the v1 request dispatcher and bounded explicit cached projections. The `agent` CLI and `src/mcp.ps1` call it directly; MCP adds protocol framing and a startup pause-write allowlist. `src/leases.ps1` persists cooperative pauses under the existing collector lock. `Get-Hotpl8Pause` combines lease state with the independent manual pause. Read operations never run a provider or write state. Selection uses production functions and requires native validation at launch. See [agent API](agent-api.md).

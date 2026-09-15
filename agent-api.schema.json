@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HotPl8 agent API v1",
+  "description": "Request/response envelope. Operation data fields and freshness semantics are specified in docs/agent-api.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response"
+    }
+  ],
+  "$defs": {
+    "request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "status"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {},
+              "required": []
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "explain"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {},
+              "required": []
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "capabilities"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {},
+              "required": []
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "doctor"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {},
+              "required": []
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "accounts"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {},
+              "required": []
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "readiness"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "provider": {
+                  "enum": [
+                    "claude",
+                    "codex"
+                  ]
+                },
+                "model": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_.-]{1,100}$",
+                  "maxLength": 100
+                }
+              },
+              "required": [
+                "provider"
+              ]
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "pause.acquire"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "leaseId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                  "not": {
+                    "const": "00000000-0000-0000-0000-000000000000"
+                  }
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+                },
+                "minutes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1440
+                }
+              },
+              "required": [
+                "leaseId",
+                "owner",
+                "minutes"
+              ]
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "pause.release"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "leaseId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                  "not": {
+                    "const": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
+              },
+              "required": [
+                "leaseId"
+              ]
+            }
+          },
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ]
+        }
+      ]
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "const": 1
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "operation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "error": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "code",
+                "message",
+                "retryable"
+              ]
+            }
+          ]
+        },
+        "computedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "ok",
+        "operation",
+        "data",
+        "error",
+        "computedAt"
+      ]
+    }
+  }
+}

@@ -60,3 +60,6 @@ usage-history.json
 notification-state.json
 update-state.json
 policy.previous.json
+
+# Cooperative agent pause capabilities
+automation-leases.json

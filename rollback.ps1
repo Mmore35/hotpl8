@@ -3,6 +3,7 @@ param([Parameter(Mandatory=$true)][string]$InstallDirectory)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/common.ps1')
 . (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
+. (Join-Path $PSScriptRoot 'src/leases.ps1')
 $root=Assert-Hotpl8Path $InstallDirectory
 $installation=Read-Hotpl8Json (Join-Path $root 'installation.json')
 if(-not $installation -or $installation.product -ne 'hotpl8'){throw 'Not an owned installation.'}
@@ -11,6 +12,9 @@ $null=@(Get-Hotpl8ReleaseFiles $previous)
 $state=Assert-Hotpl8Path $installation.stateDirectory
 $lock=[IO.File]::Open((Join-Path $state 'tick.lock'),'OpenOrCreate','ReadWrite','None')
 try{
+    # Conservatively refuse while lease protection is needed, even for a newer previous build.
+    # Expired/released ledgers are safe for old collectors and do not block rollback.
+    if(Get-Hotpl8LeasePause $state){throw 'Agent pauses are active or their state is invalid. Release or allow pauses to expire, or repair invalid state before rollback. Installation was preserved.'}
     # The previous reader must understand today's policy before replacing working code.
     try{
         & {

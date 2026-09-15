@@ -49,3 +49,7 @@ PowerShell, local snapshots, and offline regression tests. [Architecture and sou
 [Report a bug](https://github.com/Mmore35/hotpl8/issues) · [Privacy](PRIVACY.md) · [Report a vulnerability](SECURITY.md) · [MIT license](LICENSE)
 
 Independent project; not affiliated with Anthropic or OpenAI. [Third-party notices](THIRD_PARTY_NOTICES.md).
+
+## Agent integration
+
+Use `hotpl8 agent` for a versioned JSON request, or `hotpl8 mcp` for local MCP read tools. Optional cooperative pause leases let jobs pause automation independently. See the [agent API guide](docs/agent-api.md) for contracts, configuration and examples. Existing CLI output formats are preserved.
