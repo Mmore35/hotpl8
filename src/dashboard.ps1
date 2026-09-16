@@ -256,10 +256,15 @@ function New-DashboardOverviewBarRow($Overview,[datetimeoffset]$Now,[int]$Width,
     $estimate=$c.metric -eq 'plan-weighted-quota-headroom'
     $percent=if($c.complete){$(if($estimate){'~'}else{''})+('{0:0}% now' -f $c.usableNowPercent)}else{'? now'}
     $refill=''
+    # A refill beyond 24h is text only: it never hatches or shimmers the bar.
+    $laterGain=if($c.complete -and $null -ne $c.laterRefillGainPercent -and $c.laterRefillAt){[double]$c.laterRefillGainPercent}else{0}
     if($gain -ge 0.5){$refill='+{0:0}% in {1}' -f $gain,(Format-DashboardAge ([datetimeoffset]::Parse($c.nextResetAt)-$Now).TotalSeconds)}
+    elseif($laterGain -ge 0.5){$refill='+{0:0}% in {1}' -f $laterGain,(Format-DashboardAge ([datetimeoffset]::Parse($c.laterRefillAt)-$Now).TotalSeconds)}
     elseif($c.complete -and $c.nextResetAt){$refill='reset '+(Format-DashboardAge ([datetimeoffset]::Parse($c.nextResetAt)-$Now).TotalSeconds)}
     elseif($c.complete -and -not $c.projectionComplete){$refill='refill unconfirmed'}
-    $weekly=if($null -ne $p.remainingPercent -and ($estimate -or [math]::Abs([double]$p.remainingPercent-$value) -ge 0.5)){'7d {0:0}%' -f $p.remainingPercent}else{''}
+    # Weekly-only accounts have no separate weekly figure: the estimate is the weekly figure.
+    $weeklyOnly=@($c.accounts).Count -gt 0 -and @($c.accounts|Where-Object {@($_.windows|Where-Object name -NE '10080').Count -gt 0}).Count -eq 0
+    $weekly=if($null -ne $p.remainingPercent -and (($estimate -and -not $weeklyOnly) -or [math]::Abs([double]$p.remainingPercent-$value) -ge 0.5)){'7d {0:0}%' -f $p.remainingPercent}else{''}
     $text=$percent+$(if($refill){'  '+$refill})
     $size=[math]::Min(40,$Width-8-$text.Length-$(if($weekly){3+$weekly.Length}else{0}))
     if($size -lt 12 -and $weekly){$weekly='';$size=[math]::Min(40,$Width-8-$text.Length)}
