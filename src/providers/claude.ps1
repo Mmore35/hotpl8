@@ -3,12 +3,18 @@
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'forecast.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
 . (Join-Path $PSScriptRoot 'claude-plans.ps1')
-function Get-ClaudeModelBlock($Scopes,$Policy,[int]$Slot,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+function Get-ClaudeModelBlock($Scopes,$Policy,[int]$Slot,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,$ObservedAt=$null) {
     foreach($model in @($Policy.claudeModels|Where-Object {$_})){
         $scope=@($Scopes|Where-Object name -EQ $model)
         if($scope.Count -ne 1 -or -not (Test-Hotpl8Number $scope[0].pct) -or $scope[0].pct -lt 0 -or $scope[0].pct -gt 100){return 'model_quota_unknown'}
-        try{if([datetimeoffset]::Parse($scope[0].resetsAt) -le $Now){throw 'expired'}}catch{return 'model_reset_unconfirmed'}
-        if(100-[double]$scope[0].pct -lt (Get-Margin7dFor $Policy $Slot) -or $scope[0].pct -ge 100){return 'model_below_margin'}
+        $at=$null
+        try{$at=[datetimeoffset]::Parse($scope[0].resetsAt)}catch{}
+        # A scoped window we read before its own reset, whose reset has now
+        # passed, refilled and stops blocking the slot; an unreadable or
+        # already-expired-on-arrival anchor still does (Resolve-Hotpl8Window).
+        $resolved=Resolve-Hotpl8Window $scope[0].pct $scope[0].resetsAt $ObservedAt $Now
+        if($null -eq $at -or ($at -le $Now -and -not $resolved.rolledOver)){return 'model_reset_unconfirmed'}
+        if(100-[double]$resolved.used -lt (Get-Margin7dFor $Policy $Slot) -or $resolved.used -ge 100){return 'model_below_margin'}
     }
     return $null
 }
@@ -632,7 +638,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $entry=$acc[[int]$a.number]
         $entry.identity=Get-Hotpl8Hash ([string]$a.email)
         $entry.observedAt=if($valid -and (Test-Hotpl8Number $a.usageAgeSeconds) -and $a.usageAgeSeconds -ge 0){[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.usageAgeSeconds).ToString('o')}else{$null}
-        $entry.modelReason=Get-ClaudeModelBlock $a.usage.scoped $policy ([int]$a.number)
+        $entry.modelReason=Get-ClaudeModelBlock $a.usage.scoped $policy ([int]$a.number) ([datetimeoffset]::UtcNow) $entry.observedAt
         $entry.modelBlocked=[bool]$entry.modelReason
     }
 

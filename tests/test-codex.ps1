@@ -75,6 +75,7 @@ try {
     Check 'reserve kept after work slots' { $p=Copy-Value $policy; $p.reserve=@('b'); $a=Make-Slot a; $b=Make-Slot b 10 ($now.ToUnixTimeSeconds()+1000); Assert ((Select-CodexSlot @($a,$b) $p codex '' $null $now) -eq 'a') }
     Check 'reserve weekly margin and work margin differ' { $p=Copy-Value $policy; $p.reserve=@('b'); Assert ((Get-CodexEligibility (Make-Slot a 90) $p codex $now) -eq 'eligible'); Assert ((Get-CodexEligibility (Make-Slot b 90) $p codex $now) -eq 'below_margin') }
     Check 'expired observation cannot grant refill' { Assert ((Get-CodexEligibility (Make-Slot a 0 ($now.ToUnixTimeSeconds()-1)) $policy codex $now) -eq 'reset_unconfirmed') }
+    Check 'a reset that elapsed after the read refills the window' { $s=Make-Slot a 100 ($now.ToUnixTimeSeconds()-1); $s.buckets.codex.windows.'10080'.observedAt=$now.AddMinutes(-5).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'eligible') }
     Check 'stale data ineligible' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(-901).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'stale') }
     Check 'freshness exact boundary valid' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(-900).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'eligible') }
     Check 'future timestamp rejected' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(60).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'stale') }

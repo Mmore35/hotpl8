@@ -109,16 +109,20 @@ function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$
             else{
                 if($slot.streamKey){$identities[[string]$slot.streamKey]=$true}
                 if($Provider -eq 'claude'){
-                    $week=(Test-Hotpl8OverviewPercent $slot.used7d) -and (Test-Hotpl8FutureReset $slot.reset7d $Now)
-                    $short=(Test-Hotpl8OverviewPercent $slot.used5h) -and ((Test-Hotpl8FutureReset $slot.reset5h $Now) -or ($slot.cold -eq $true -and $slot.used5h -eq 0 -and -not $slot.reset5h))
-                    $modelBlock=Get-ClaudeModelBlock $slot.scoped $Policy ([int]$id) $Now
-                    $entry=@{h5=$(if($short){100-[double]$slot.used5h}else{$null});h7=$(if($week){100-[double]$slot.used7d}else{$null});fresh=($slot.fresh -eq $true -and $short -and $week);modelBlocked=[bool]$modelBlock;obj=@{usage=@{fiveHour=@{resetsAt=$slot.reset5h};sevenDay=@{resetsAt=$slot.reset7d};scoped=$slot.scoped}}}
+                    # Same rollover rule as the dashboard and the overview, so the
+                    # API never reports an unmeasured window the UI calls refilled.
+                    $w7=Resolve-Hotpl8Window $slot.used7d $slot.reset7d $slot.observedAt $Now
+                    $w5=Resolve-Hotpl8Window $slot.used5h $slot.reset5h $slot.observedAt $Now
+                    $week=(Test-Hotpl8OverviewPercent $w7.used) -and ($w7.rolledOver -or (Test-Hotpl8FutureReset $w7.resetAt $Now))
+                    $short=(Test-Hotpl8OverviewPercent $w5.used) -and ($w5.rolledOver -or (Test-Hotpl8FutureReset $w5.resetAt $Now) -or ($slot.cold -eq $true -and $slot.used5h -eq 0 -and -not $slot.reset5h))
+                    $modelBlock=Get-ClaudeModelBlock $slot.scoped $Policy ([int]$id) $Now $slot.observedAt
+                    $entry=@{h5=$(if($short){100-[double]$w5.used}else{$null});h7=$(if($week){100-[double]$w7.used}else{$null});fresh=($slot.fresh -eq $true -and $short -and $week);modelBlocked=[bool]$modelBlock;obj=@{usage=@{fiveHour=@{resetsAt=$w5.resetAt};sevenDay=@{resetsAt=$w7.resetAt};scoped=$slot.scoped}}}
                     # A zero floor is not permission to use an exhausted account, including in critical mode.
                     if($entry.h5 -eq 0 -or $entry.h7 -eq 0){$entry.fresh=$false}
                     $acc[[int]$id]=$entry
                     $eligible=Test-Ok $entry ([double]$Policy.margin5h) (Get-Margin7dFor $Policy ([int]$id))
                     $reason=if($modelBlock){$modelBlock}elseif(-not $slot.fresh){'stale'}elseif(-not $short -or -not $week){'window_unmeasured'}elseif($eligible){'eligible'}else{'below_margin'}
-                    foreach($w in @(@('300',$slot.used5h,$slot.reset5h),@('10080',$slot.used7d,$slot.reset7d))){
+                    foreach($w in @(@('300',$w5.used,$w5.resetAt),@('10080',$w7.used,$w7.resetAt))){
                         $windows+=@([pscustomobject]@{durationMinutes=[int]$w[0];remainingPercent=$(if(Test-Hotpl8OverviewPercent $w[1]){100-[double]$w[1]}else{$null});resetsAt=(ConvertTo-Hotpl8AgentTime $w[2])})
                     }
                 }else{

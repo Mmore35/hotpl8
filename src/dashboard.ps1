@@ -78,24 +78,36 @@ function Format-DashboardForecast($Forecast) {
     $hours=[math]::Round($Forecast.secondsToLimit/3600)
     return ('pace '+$Forecast.pace+'  ·  ~'+$hours+'h to limit  ·  '+$(if($Forecast.lastsToReset){'lasts to reset'}else{'may run out first'}))
 }
-function New-DashboardQuotaRow([string]$Label,$Used,$Reset,[datetimeoffset]$Now,[int]$Width,[switch]$Unix,[switch]$Unconfirmed,[switch]$Stale,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
+function New-DashboardQuotaRow([string]$Label,$Used,$Reset,[datetimeoffset]$Now,[int]$Width,[switch]$Unix,[switch]$Unconfirmed,[switch]$Stale,$ObservedAt=$null,[string]$TweenKey='',$TweenFrom=$null,$TweenStart=-1,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
     $size=if($Width -ge 80){20}else{12}
-    $known=(Test-Hotpl8Number $Used) -and $Used -ge 0 -and $Used -le 100
     $motion=-not $ReducedMotion
-    $left=if($known){100-[double]$Used}else{0}
+    # A window whose own reported reset has passed since we read it refilled.
+    # Draw the refilled window and say the confirming read has not landed yet,
+    # instead of stamping the pre-reset value 'reset due'. A stale reading is
+    # never rolled over: it already lost the right to speak for the account.
+    $window=if($Stale){@{used=$Used;resetAt=$Reset;rolledOver=$false}}else{Resolve-Hotpl8Window $Used $Reset $ObservedAt $Now -Unix:$Unix}
+    $value=$window.used
+    $known=(Test-Hotpl8Number $value) -and $value -ge 0 -and $value -le 100
+    $left=if($known){100-[double]$value}else{0}
     $low=$known -and -not $Stale -and $left -lt 10
     $health=if(-not $known -or $Stale){'muted'}else{Get-Hotpl8BudgetTone $left}
     $pulse=if($low -and $motion){Get-Hotpl8Pulse $AnimationSeconds}else{0}
     $fill=if($pulse){Get-Hotpl8ToneMix $health '255;255;255' (0.45*$pulse)}else{$health}
     $reveal=if($motion){Get-Hotpl8Reveal $AnimationSeconds}else{1}
-    $bar=if($known){@(New-Hotpl8BarSpans -Value $left -Size $size -Tone $fill -Reveal $reveal)}else{@(New-Hotpl8Span ('·'*$size) 'border')}
+    # The layout pass captures the glide; a live refresh is handed it and only reads it.
+    $tween=if($motion -and $known -and $TweenKey -and $AnimationSeconds -gt 0 -and -not $PSBoundParameters.ContainsKey('TweenFrom')){Get-Hotpl8TweenAnchor ('quota|'+$TweenKey) $left $AnimationSeconds}else{@{from=$TweenFrom;start=$TweenStart}}
+    $shown=if($motion -and $known){Get-Hotpl8Tween $left $tween.from $tween.start $AnimationSeconds}else{$left}
+    $bar=if($known){@(New-Hotpl8BarSpans -Value $shown -Size $size -Tone $fill -Reveal $reveal)}else{@(New-Hotpl8Span ('·'*$size) 'border')}
     $percent=if($known){('{0,3:0}%' -f $left)}else{'   ?'}
     $mark=if($low -and ($pulse -ge 0.5 -or -not $motion)){'!'}else{' '}
     # A full window with no reset time has not started; say so instead of 'reset ?'.
-    $resetText=if(-not $known){'no reading'}elseif($left -ge 100 -and ($null -eq $Reset -or [string]$Reset -eq '')){'idle'}else{Format-DashboardReset $Reset $Now -Unix:$Unix -Wide:($Width -ge 96) -Unconfirmed:$Unconfirmed}
+    $resetText=if(-not $known){'no reading'}elseif($window.rolledOver){$(if($Width -ge 80){'reset · awaiting read'}else{'awaiting read'})}elseif($left -ge 100 -and ($null -eq $window.resetAt -or [string]$window.resetAt -eq '')){'idle'}else{Format-DashboardReset $window.resetAt $Now -Unix:$Unix -Wide:($Width -ge 96) -Unconfirmed:$Unconfirmed}
     $spans=@(New-Hotpl8Span ('    '+$Label.PadRight(3)) 'muted';New-Hotpl8Span $mark 'red')+$bar+@(New-Hotpl8Span ('  '+$percent) $health;New-Hotpl8Span ('   '+$resetText) 'muted')
     $live=$null
-    if($motion -and $known){$live=New-Hotpl8Live 'New-DashboardQuotaRow' @{Label=$Label;Used=$Used;Reset=$Reset;Now=$Now;Width=$Width;Unix=[bool]$Unix;Unconfirmed=[bool]$Unconfirmed;Stale=[bool]$Stale} 0.9 -Loop:$low}
+    if($motion -and $known){
+        $until=[math]::Max(0.9,$(if($null -ne $tween.from -and $tween.start -ge 0){[double]$tween.start+0.5}else{0}))
+        $live=New-Hotpl8Live 'New-DashboardQuotaRow' @{Label=$Label;Used=$Used;Reset=$Reset;Now=$Now;Width=$Width;Unix=[bool]$Unix;Unconfirmed=[bool]$Unconfirmed;Stale=[bool]$Stale;ObservedAt=$ObservedAt;TweenKey=$TweenKey;TweenFrom=$tween.from;TweenStart=$tween.start} $until -Loop:$low
+    }
     New-Hotpl8StyledRow $spans $live
 }
 function New-DashboardAccountRow([string]$Name,[string]$Id,[string]$Badge,[string]$Accent,[switch]$Selected) {
@@ -138,8 +150,8 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         if(Test-Hotpl8DetectedPlan $slot.plan $Now){$badge+=' · '+$slot.plan.label}
         New-DashboardAccountRow $name ([string]$slot.slot) $badge peach -Selected:([bool]$slot.active -and -not $disabled)
         if($disabled){continue}
-        New-DashboardQuotaRow '5h' $slot.used5h $slot.reset5h $Now $Width -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
-        New-DashboardQuotaRow '7d' $slot.used7d $slot.reset7d $Now $Width -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+        New-DashboardQuotaRow '5h' $slot.used5h $slot.reset5h $Now $Width -Stale:$isStale -ObservedAt $slot.observedAt -TweenKey ('claude|'+$slot.slot+'|5h') -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+        New-DashboardQuotaRow '7d' $slot.used7d $slot.reset7d $Now $Width -Stale:$isStale -ObservedAt $slot.observedAt -TweenKey ('claude|'+$slot.slot+'|7d') -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
         if(-not $Compact){
             if($isStale){
                 $readingAge=Get-DashboardAge $slot.observedAt $Now
@@ -183,7 +195,7 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
             $windows=@($bucket.Value.windows.PSObject.Properties|Sort-Object {[int]$_.Name})
             foreach($window in $windows){
                 $label=if($window.Name -eq '300'){'5h'}elseif($window.Name -eq '10080'){'7d'}else{$window.Name+'m'}
-                New-DashboardQuotaRow $label $window.Value.usedPercent $window.Value.resetsAt $Now $Width -Unix -Unconfirmed:($window.Value.anchorState -eq 'unconfirmed') -Stale:$isStale -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+                New-DashboardQuotaRow $label $window.Value.usedPercent $window.Value.resetsAt $Now $Width -Unix -Unconfirmed:($window.Value.anchorState -eq 'unconfirmed') -Stale:$isStale -ObservedAt $window.Value.observedAt -TweenKey ('codex|'+$config.id+'|'+$bucket.Name+'|'+$window.Name) -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
             }
             if(-not $windows.Count){New-DashboardRow '    no quota yet' muted}
             if(-not $Compact){
@@ -248,7 +260,7 @@ function New-DashboardHeaderRow([string]$Title,[string]$Accent,$Chips,[int]$Widt
     }
     New-Hotpl8StyledRow $spans
 }
-function New-DashboardOverviewBarRow($Overview,[datetimeoffset]$Now,[int]$Width,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
+function New-DashboardOverviewBarRow($Overview,[datetimeoffset]$Now,[int]$Width,[string]$TweenKey='',$TweenFrom=$null,$TweenStart=-1,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
     $p=$Overview;$c=if($p.immediate){$p.immediate}else{$p.capacity};$motion=-not $ReducedMotion
     $value=[double]$c.knownUsablePercent
     $gain=if($c.complete -and $null -ne $c.projectedGainPercent -and $c.nextResetAt){[double]$c.projectedGainPercent}else{0}
@@ -271,12 +283,18 @@ function New-DashboardOverviewBarRow($Overview,[datetimeoffset]$Now,[int]$Width,
     $reveal=if($motion){Get-Hotpl8Reveal $AnimationSeconds}else{1}
     $shimmer=if($motion -and $gain -ge 0.5){($AnimationSeconds/3.2)%1}else{-1}
     $edge=if($low){Get-Hotpl8ToneMix 'red' 'border' (1-$pulse)}else{'border'}
-    $spans=@(New-Hotpl8Span '  ';New-Hotpl8Span '[' $edge)+@(New-Hotpl8BarSpans -Value $value -Gain $gain -Unknown $unknown -Size $size -Tone $fill -Reveal $reveal -Shimmer $shimmer)+@(New-Hotpl8Span ']' $edge)
+    # The same glide as the account bars: the fill moves, the printed number does not lie.
+    $tween=if($motion -and $TweenKey -and $AnimationSeconds -gt 0 -and -not $PSBoundParameters.ContainsKey('TweenFrom')){Get-Hotpl8TweenAnchor ('overview|'+$TweenKey) $value $AnimationSeconds}else{@{from=$TweenFrom;start=$TweenStart}}
+    $shown=if($motion){Get-Hotpl8Tween $value $tween.from $tween.start $AnimationSeconds}else{$value}
+    $spans=@(New-Hotpl8Span '  ';New-Hotpl8Span '[' $edge)+@(New-Hotpl8BarSpans -Value $shown -Gain $gain -Unknown $unknown -Size $size -Tone $fill -Reveal $reveal -Shimmer $shimmer)+@(New-Hotpl8Span ']' $edge)
     $spans+=New-Hotpl8Span ('  '+$percent) $(if($c.complete){$health}else{'muted'})
     if($refill){$spans+=New-Hotpl8Span ('  '+$refill) 'muted'}
     if($weekly){$spans+=New-Hotpl8Span ('   '+$weekly) 'muted'}
     $live=$null
-    if($motion -and ($c.complete -or $value -gt 0)){$live=New-Hotpl8Live 'New-DashboardOverviewBarRow' @{Overview=$Overview;Now=$Now;Width=$Width} 0.9 -Loop:($low -or $shimmer -ge 0)}
+    if($motion -and ($c.complete -or $value -gt 0)){
+        $until=[math]::Max(0.9,$(if($null -ne $tween.from -and $tween.start -ge 0){[double]$tween.start+0.5}else{0}))
+        $live=New-Hotpl8Live 'New-DashboardOverviewBarRow' @{Overview=$Overview;Now=$Now;Width=$Width;TweenKey=$TweenKey;TweenFrom=$tween.from;TweenStart=$tween.start} $until -Loop:($low -or $shimmer -ge 0)
+    }
     New-Hotpl8StyledRow $spans $live
 }
 function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width,[double]$AnimationSeconds=0,[switch]$ReducedMotion,$OverviewOverride=$null) {
@@ -284,7 +302,7 @@ function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width
     foreach($provider in @('claude','codex')){
         $p=$overview.$provider
         New-DashboardHeaderRow $provider.ToUpper() $(if($provider -eq 'claude'){'peach'}else{'cyan'}) (Get-DashboardChips $Status $p $provider $Now) $Width
-        New-DashboardOverviewBarRow $p $Now $Width -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+        New-DashboardOverviewBarRow $p $Now $Width -TweenKey $provider -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
     }
 }
 function Format-DashboardWarmOutcome([string]$Outcome) {

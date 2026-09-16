@@ -59,7 +59,9 @@ function Add-Hotpl8FrameBorder($Row,[int]$Width,[string]$RightGlyph='│',[strin
 function Get-Hotpl8BudgetTone([double]$Remaining) {
     # Interpolate between explicit color stops; health and provider accents are independent.
     $stops=@(@(0,222,48,65),@(10,239,65,67),@(25,255,148,63),@(40,244,214,70),@(100,91,220,135))
-    $value=[math]::Max(0,[math]::Min(100,$Remaining))
+    # Double literals: [math]::Min(100,$x) would bind the (int,int) overload
+    # and round the value away before clamping it.
+    $value=[math]::Max(0.0,[math]::Min(100.0,$Remaining))
     for($i=1;$i -lt $stops.Count;$i++){
         if($value -le $stops[$i][0]){
             $a=$stops[$i-1];$b=$stops[$i];$t=($value-$a[0])/($b[0]-$a[0])
@@ -75,11 +77,11 @@ function Get-Hotpl8ToneMix([string]$Tone,[string]$Target,[double]$Amount) {
     # Blend two tones; named tones resolve through the palette first.
     $palette=Get-Hotpl8DashboardPalette
     $a=(Get-Hotpl8Color $Tone $palette).Split(';');$b=(Get-Hotpl8Color $Target $palette).Split(';')
-    $k=[math]::Max(0,[math]::Min(1,$Amount))
+    $k=[math]::Max(0.0,[math]::Min(1.0,$Amount))
     return ((0..2|ForEach-Object {[string][int][math]::Round([int]$a[$_]+([int]$b[$_]-[int]$a[$_])*$k)})-join ';')
 }
 function Get-Hotpl8Ease([double]$Progress) {
-    $p=[math]::Max(0,[math]::Min(1,$Progress));return 1-[math]::Pow(1-$p,3)
+    $p=[math]::Max(0.0,[math]::Min(1.0,$Progress));return 1-[math]::Pow(1-$p,3)
 }
 function Get-Hotpl8Pulse([double]$Seconds,[double]$Period=1.6) {
     # 0..1 breathing curve; smooth, never a hard blink.
@@ -91,13 +93,38 @@ function Get-Hotpl8Reveal([double]$Seconds) {
     if($Seconds -le 0 -or $Seconds -ge 0.9){return 1}
     return Get-Hotpl8Ease ($Seconds/0.9)
 }
+function Get-Hotpl8Tween([double]$Target,$From,$Start,[double]$Seconds,[double]$Duration=0.5) {
+    # Bars glide to a new value instead of snapping. A pure function of the
+    # animation clock, so the layout runspace and the live-row loop agree.
+    if($null -eq $From -or $null -eq $Start -or [double]$Start -lt 0){return $Target}
+    $elapsed=$Seconds-[double]$Start
+    if($elapsed -le 0){return [double]$From}
+    if($elapsed -ge $Duration){return $Target}
+    return [double]$From+($Target-[double]$From)*(Get-Hotpl8Ease ($elapsed/$Duration))
+}
+function Get-Hotpl8TweenAnchor([string]$Key,[double]$Target,[double]$Seconds,[double]$Duration=0.5) {
+    # Only the layout pass records a bar's last target here; live refreshes are
+    # handed the captured anchor in their arguments and never touch this cache.
+    # A target that moves mid-glide restarts from whatever is on screen now.
+    if(-not $script:Hotpl8Tweens){$script:Hotpl8Tweens=@{}}
+    $previous=$script:Hotpl8Tweens[$Key]
+    $from=$null;$start=-1.0
+    if($previous){
+        $showing=Get-Hotpl8Tween $previous.target $previous.from $previous.start $Seconds $Duration
+        if([math]::Abs($showing-$Target) -ge 0.05){$from=$showing;$start=$Seconds}
+        elseif($null -ne $previous.from -and $previous.start -ge 0 -and $Seconds -lt [double]$previous.start+$Duration){$from=$previous.from;$start=$previous.start}
+    }
+    if($script:Hotpl8Tweens.Count -gt 64){$script:Hotpl8Tweens=@{}}
+    $script:Hotpl8Tweens[$Key]=@{target=$Target;from=$from;start=$start}
+    return @{from=$from;start=$start}
+}
 function New-Hotpl8BarSpans([double]$Value,[double]$Gain=0,[double]$Unknown=0,[int]$Size=20,[string]$Tone='mint',[string]$GainTone='',[string]$UnknownTone='amber',[double]$Reveal=1,[double]$Shimmer=-1) {
     # One bar vocabulary everywhere: █ usable now (eighth-cell precision),
     # ▒ projected refill, ╌ unmeasured allowance, · empty track.
-    $Size=[math]::Max(1,$Size);$r=[math]::Max(0,[math]::Min(1,$Reveal))
-    $solid=[math]::Max(0,[math]::Min(100,$Value))*$r
-    $withGain=[math]::Min(100,$solid+[math]::Max(0,$Gain)*$r)
-    $withUnknown=[math]::Min(100,$withGain+[math]::Max(0,$Unknown)*$r)
+    $Size=[math]::Max(1,$Size);$r=[math]::Max(0.0,[math]::Min(1.0,$Reveal))
+    $solid=[math]::Max(0.0,[math]::Min(100.0,$Value))*$r
+    $withGain=[math]::Min(100.0,$solid+[math]::Max(0.0,$Gain)*$r)
+    $withUnknown=[math]::Min(100.0,$withGain+[math]::Max(0.0,$Unknown)*$r)
     $cells=$solid*$Size/100
     $whole=[int][math]::Floor($cells+1e-9)
     $eighths=[int][math]::Floor(($cells-$whole)*8+1e-9)

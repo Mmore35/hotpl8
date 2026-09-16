@@ -100,6 +100,10 @@ function ConvertTo-CodexBuckets($Quota, $PreviousBuckets, [datetimeoffset]$Now) 
             try { if ($null -ne $w.resetsAt) { $null = [datetimeoffset]::FromUnixTimeSeconds([long]$w.resetsAt) } } catch { $valid = $false; break }
             $anchor = 'unconfirmed'
             $old = $PreviousBuckets.$id.windows.$duration
+            # Collection stamps observedAt with this same instant, so an elapsed
+            # reset here is always the payload-stale half of the rollover rule
+            # (Resolve-Hotpl8Window): expired, never refilled. The rollover half
+            # belongs to the readers below, which compare against an older read.
             if ($null -ne $w.resetsAt -and $w.resetsAt -le $Now.ToUnixTimeSeconds()) { $anchor = 'expired' }
             elseif ($old -and $null -ne $old.resetsAt -and $w.usedPercent -gt 0 -and $old.usedPercent -gt 0 -and [Math]::Abs($old.resetsAt - $w.resetsAt) -le 5) {
                 # A fast manual refresh must retain evidence already established by
@@ -139,6 +143,11 @@ function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$N
     $count = 0
     foreach ($w in $b.windows.PSObject.Properties) {
         $count++
+        # A window we read before its own reset, whose reset has now passed,
+        # refilled; only an anchor that was already expired when we read it
+        # stays unconfirmed.
+        $resolved = Resolve-Hotpl8Window $w.Value.usedPercent $w.Value.resetsAt $w.Value.observedAt $Now -Unix
+        if ($resolved.rolledOver) { continue }
         if ($null -ne $w.Value.resetsAt -and $w.Value.resetsAt -le $Now.ToUnixTimeSeconds()) { return 'reset_unconfirmed' }
         $margin=Get-CodexMargin $Policy $Slot.id $w.Name
         if($Emergency -and $Policy.critical.enabled -eq $true -and $Slot.id -notin @($Policy.reserve)){$margin=if($Policy.critical.drainToZero){0}else{Get-Hotpl8CriticalSetting $Policy 'floorPercent' 1}}

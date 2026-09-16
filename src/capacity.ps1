@@ -24,11 +24,16 @@ function Get-Hotpl8AccountCapacity($Part,[string]$Slot,[string]$Provider,[string
     $short=if($null -ne $c.fiveHour){$c.fiveHour}else{$profile.fiveHour}
     return [pscustomobject]@{weekly=$weekly;fiveHour=$short;scoped=$c.scoped;profile=$profileId;confidence=$(if($c.weekly -or $c.fiveHour){'user estimate'}elseif($profile){$profile.confidence}else{'capacity setup needed'})}
 }
-function New-Hotpl8CapacityWindow([string]$Name,$Remaining,$Full,$Reset,[datetimeoffset]$Now,[bool]$Confirmed=$true) {
+function New-Hotpl8CapacityWindow([string]$Name,$Remaining,$Full,$Reset,[datetimeoffset]$Now,[bool]$Confirmed=$true,$ObservedAt=$null) {
+    # A window whose own reported reset has passed since we observed it has
+    # refilled; it is full and has no pending reset. Anything else keeps the
+    # conservative handling (Resolve-Hotpl8Window, src/common.ps1).
+    $rolled=(Test-Hotpl8Number $Remaining) -and (Resolve-Hotpl8Window $null $Reset $ObservedAt $Now).rolledOver
+    if($rolled){$Remaining=100.0;$Reset=$null}
     $at=$null
     try{if($Reset){$at=[datetimeoffset]::Parse([string]$Reset)}}catch{}
     $valid=(Test-Hotpl8Number $Remaining) -and $Remaining -ge 0 -and $Remaining -le 100 -and ($null -eq $at -or $at -gt $Now)
-    return [pscustomobject]@{name=$Name;remaining=$Remaining;full=$Full;valid=$valid;resetAt=$(if($Confirmed -and $at){$at.ToString('o')}else{$null})}
+    return [pscustomobject]@{name=$Name;remaining=$Remaining;full=$Full;valid=$valid;resetAt=$(if($Confirmed -and $at){$at.ToString('o')}else{$null});rolledOver=[bool]$rolled}
 }
 function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeoffset]$Now,[string]$Meter='codex',[switch]$QuotaHeadroom) {
     $ids=if($Provider -eq 'claude'){@($Part.prefer)}else{@($Part.slots|ForEach-Object id)}
@@ -43,13 +48,13 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
         $windows=@();$blocked=$false;$reason=''
         if($Provider -eq 'claude'){
             $fresh=$fresh -and $s.fresh
-            $windows+=New-Hotpl8CapacityWindow '10080' $(if(Test-Hotpl8Number $s.used7d){100-$s.used7d}else{$null}) $c.weekly $s.reset7d $Now
-            $windows+=New-Hotpl8CapacityWindow '300' $(if(Test-Hotpl8Number $s.used5h){100-$s.used5h}else{$null}) $c.fiveHour $s.reset5h $Now
+            $windows+=New-Hotpl8CapacityWindow '10080' $(if(Test-Hotpl8Number $s.used7d){100-$s.used7d}else{$null}) $c.weekly $s.reset7d $Now -ObservedAt $s.observedAt
+            $windows+=New-Hotpl8CapacityWindow '300' $(if(Test-Hotpl8Number $s.used5h){100-$s.used5h}else{$null}) $c.fiveHour $s.reset5h $Now -ObservedAt $s.observedAt
             foreach($model in @($Part.claudeModels)){
                 if(-not $model){continue}
                 $scope=@($s.scoped|Where-Object name -EQ $model)
                 $w=if($scope.Count -eq 1){$scope[0]}else{$null}
-                $windows+=New-Hotpl8CapacityWindow $model $(if(Test-Hotpl8Number $w.pct){100-$w.pct}else{$null}) $c.scoped.$model $w.resetsAt $Now
+                $windows+=New-Hotpl8CapacityWindow $model $(if(Test-Hotpl8Number $w.pct){100-$w.pct}else{$null}) $c.scoped.$model $w.resetsAt $Now -ObservedAt $s.observedAt
             }
         }else{
             $b=$s.buckets.$Meter
@@ -60,7 +65,7 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
                 $full=if($entry.Name -eq '10080'){$c.weekly}else{$c.fiveHour}
                 # A single weekly-only subscription needs no cross-account conversion.
                 if($ids.Count -eq 1 -and $entry.Name -eq '10080' -and @($b.windows.PSObject.Properties).Count -eq 1 -and $null -eq $full){$full=1;$c.weekly=1;$c.confidence='single-account normalization'}
-                $windows+=New-Hotpl8CapacityWindow $entry.Name $w.remainingPercent $full $reset $Now ($w.anchorState -eq 'observed-active')
+                $windows+=New-Hotpl8CapacityWindow $entry.Name $w.remainingPercent $full $reset $Now ($w.anchorState -eq 'observed-active') $w.observedAt
             }
         }
         $basis='calibrated'
