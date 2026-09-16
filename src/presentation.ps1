@@ -105,13 +105,18 @@ function Get-Hotpl8Tween([double]$Target,$From,$Start,[double]$Seconds,[double]$
 function Get-Hotpl8TweenAnchor([string]$Key,[double]$Target,[double]$Seconds,[double]$Duration=0.5) {
     # Only the layout pass records a bar's last target here; live refreshes are
     # handed the captured anchor in their arguments and never touch this cache.
-    # A target that moves mid-glide restarts from whatever is on screen now.
+    # A target that moves restarts the glide from whatever is on screen now.
+    # A layout pass that repeats the same target leaves the glide in flight:
+    # testing the shown value instead would re-anchor on every ~1s pass and
+    # stretch each 0.5s glide for as long as the bar is still moving.
     if(-not $script:Hotpl8Tweens){$script:Hotpl8Tweens=@{}}
     $previous=$script:Hotpl8Tweens[$Key]
     $from=$null;$start=-1.0
     if($previous){
-        $showing=Get-Hotpl8Tween $previous.target $previous.from $previous.start $Seconds $Duration
-        if([math]::Abs($showing-$Target) -ge 0.05){$from=$showing;$start=$Seconds}
+        if([math]::Abs([double]$previous.target-$Target) -ge 0.05){
+            $from=Get-Hotpl8Tween $previous.target $previous.from $previous.start $Seconds $Duration
+            $start=$Seconds
+        }
         elseif($null -ne $previous.from -and $previous.start -ge 0 -and $Seconds -lt [double]$previous.start+$Duration){$from=$previous.from;$start=$previous.start}
     }
     if($script:Hotpl8Tweens.Count -gt 64){$script:Hotpl8Tweens=@{}}

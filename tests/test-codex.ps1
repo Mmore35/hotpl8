@@ -76,7 +76,21 @@ try {
     Check 'reserve weekly margin and work margin differ' { $p=Copy-Value $policy; $p.reserve=@('b'); Assert ((Get-CodexEligibility (Make-Slot a 90) $p codex $now) -eq 'eligible'); Assert ((Get-CodexEligibility (Make-Slot b 90) $p codex $now) -eq 'below_margin') }
     Check 'expired observation cannot grant refill' { Assert ((Get-CodexEligibility (Make-Slot a 0 ($now.ToUnixTimeSeconds()-1)) $policy codex $now) -eq 'reset_unconfirmed') }
     Check 'a reset that elapsed after the read refills the window' { $s=Make-Slot a 100 ($now.ToUnixTimeSeconds()-1); $s.buckets.codex.windows.'10080'.observedAt=$now.AddMinutes(-5).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'eligible') }
-    Check 'stale data ineligible' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(-901).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'stale') }
+    Check 'a refilled slot is ranked on the quota it regained, not its pre-reset snapshot' {
+        # 'a' is preferred but nearly out of weekly headroom; 'b' read a full
+        # window five minutes ago whose own reset has since elapsed, so it
+        # refilled. Ranking 'b' from the stale 0% flagged the fullest account
+        # degraded and sorted it behind the one the dashboard calls emptier.
+        $p=Copy-Value $policy; $p.order='prefer'
+        $a=Make-Slot a 85
+        $b=Make-Slot b 100 ($now.ToUnixTimeSeconds()-1)
+        $b.buckets.codex.windows.'10080'.observedAt=$now.AddMinutes(-5).ToString('o')
+        Assert ((Get-CodexEligibility $a $p codex $now) -eq 'eligible')
+        Assert ((Get-CodexEligibility $b $p codex $now) -eq 'eligible')
+        Assert ((Select-CodexSlot @($a,$b) $p codex '' $null $now) -eq 'b')
+    }
+    Check 'stale data ineligible' { $s=Make-Slot a;
+ $s.observedAt=$now.AddSeconds(-901).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'stale') }
     Check 'freshness exact boundary valid' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(-900).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'eligible') }
     Check 'future timestamp rejected' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(60).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'stale') }
     Check 'read failure does not use old success' { $s=Make-Slot a; $s.status='timeout'; Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'timeout') }

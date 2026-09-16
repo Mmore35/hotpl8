@@ -48,6 +48,17 @@ Check 'an observation stamped ahead of our clock never rolls over' {
     $c=Get-Hotpl8ProviderCapacity $s $p claude $now
     Assert (-not $c.complete -and $c.unknownPercent -gt 0)
 }
+Check 'an elapsed reset cannot refill a window we never managed to read' {
+    # Rolling over replaces the reading with a full window, so it must refuse
+    # a reading it would be inventing. No reading is not 100% free, and an
+    # out-of-range one has no more standing than a missing one.
+    foreach($used in @($null,101)){
+        $p=Policy;$s=Snapshot;$s.slots[0].observedAt=$now.AddMinutes(-5).ToString('o')
+        $s.slots[0].reset5h=$now.AddSeconds(-1).ToString('o');$s.slots[0].used5h=$used
+        $c=Get-Hotpl8ProviderCapacity $s $p claude $now
+        Assert (-not $c.complete -and $c.unknownPercent -gt 0)
+    }
+}
 Check 'unknown conversion cannot borrow another account weight' {
     $p=Policy;$p.capacity.'2'.PSObject.Properties.Remove('weekly')
     $c=Get-Hotpl8ProviderCapacity (Snapshot) $p claude $now

@@ -27,13 +27,15 @@ function Get-Hotpl8AccountCapacity($Part,[string]$Slot,[string]$Provider,[string
 function New-Hotpl8CapacityWindow([string]$Name,$Remaining,$Full,$Reset,[datetimeoffset]$Now,[bool]$Confirmed=$true,$ObservedAt=$null) {
     # A window whose own reported reset has passed since we observed it has
     # refilled; it is full and has no pending reset. Anything else keeps the
-    # conservative handling (Resolve-Hotpl8Window, src/common.ps1).
-    $rolled=(Test-Hotpl8Number $Remaining) -and (Resolve-Hotpl8Window $null $Reset $ObservedAt $Now).rolledOver
+    # conservative handling (Resolve-Hotpl8Window, src/common.ps1) -- including
+    # a reading we cannot use. Capacity measures the remaining half of the same
+    # percentage, so the shared rule's guard covers it unchanged.
+    $rolled=(Resolve-Hotpl8Window $Remaining $Reset $ObservedAt $Now).rolledOver
     if($rolled){$Remaining=100.0;$Reset=$null}
     $at=$null
     try{if($Reset){$at=[datetimeoffset]::Parse([string]$Reset)}}catch{}
     $valid=(Test-Hotpl8Number $Remaining) -and $Remaining -ge 0 -and $Remaining -le 100 -and ($null -eq $at -or $at -gt $Now)
-    return [pscustomobject]@{name=$Name;remaining=$Remaining;full=$Full;valid=$valid;resetAt=$(if($Confirmed -and $at){$at.ToString('o')}else{$null});rolledOver=[bool]$rolled}
+    return [pscustomobject]@{name=$Name;remaining=$Remaining;full=$Full;valid=$valid;resetAt=$(if($Confirmed -and $at){$at.ToString('o')}else{$null})}
 }
 function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeoffset]$Now,[string]$Meter='codex',[switch]$QuotaHeadroom) {
     $ids=if($Provider -eq 'claude'){@($Part.prefer)}else{@($Part.slots|ForEach-Object id)}

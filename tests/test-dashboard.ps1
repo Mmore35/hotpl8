@@ -70,6 +70,12 @@ Check 'a reset that elapsed after the reading refills the bar instead of breakin
     $expired=((Render (Elapsed expired)).text)-join "`n"
     Assert ($expired -match '5h\s+\S+\s+75%')
     Assert ($expired.Contains('reset due') -and $expired.Contains('? now'))
+    # A reading that never arrived is not refilled by an elapsed reset: the
+    # bar stays the dotted unknown rather than claiming a full window.
+    $unreadable=Elapsed rolled
+    foreach($a in $unreadable.slots){$a.used5h=$null}
+    $text=((Render $unreadable).text)-join "`n"
+    Assert ($text.Contains('no reading') -and $text -notmatch '5h\s+\S+\s+100%')
 }
 Check 'a changed bar glides to its new value while the printed number stays exact' {
     # Pure function of the animation clock, so the layout runspace and the
@@ -90,6 +96,17 @@ Check 'a changed bar glides to its new value while the printed number stays exac
     $bar=($row.text -split '\s+')[2]
     $later=@(@(Get-Hotpl8DashboardFrame $c $p $now 100 100 0 -AnimationSeconds 10.6)|Where-Object {$_.text -match '5h '})[0]
     Assert ((($later.text -split '\s+')[2]) -ne $bar)
+    # Only a target that actually moved restarts the glide. Layout passes run
+    # about every second and a glide lasts half of one, so re-anchoring on the
+    # currently-shown value instead would stretch every glide it landed in.
+    $key='fixture|anchor'
+    $null=Get-Hotpl8TweenAnchor $key 75 0
+    $moved=Get-Hotpl8TweenAnchor $key 25 1
+    Assert ($moved.start -eq 1 -and $moved.from -eq 75)
+    $repeat=Get-Hotpl8TweenAnchor $key 25 1.3
+    Assert ($repeat.start -eq 1 -and $repeat.from -eq 75)
+    # ...and it ends on time rather than being re-eased indefinitely.
+    Assert ((Get-Hotpl8TweenAnchor $key 25 1.6).start -lt 0)
 }
 Check 'narrow frames and a scrolled last page fit their viewport' {
     foreach($width in @(50,79,100,110)){

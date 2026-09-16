@@ -133,8 +133,11 @@ function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$
                         $eligible=$reason -eq 'eligible'
                         foreach($w in @($slot.buckets.$meter.windows.PSObject.Properties|Select-Object -First 8)){
                             if($w.Name -match '^[1-9][0-9]{0,5}$'){
-                                $reset=$null;try{if($null -ne $w.Value.resetsAt){$reset=[datetimeoffset]::FromUnixTimeSeconds([long]$w.Value.resetsAt).ToString('o')}}catch{}
-                                $windows+=@([pscustomobject]@{durationMinutes=[int]$w.Name;remainingPercent=$(if(Test-Hotpl8OverviewPercent $w.Value.remainingPercent){$w.Value.remainingPercent}else{$null});resetsAt=$reset})
+                                # The rollover rule Get-CodexEligibility just applied, so one
+                                # response never calls a window refilled and empty at once.
+                                $rolled=Test-CodexWindowRolledOver $w.Value $Now
+                                $reset=$null;if(-not $rolled){try{if($null -ne $w.Value.resetsAt){$reset=[datetimeoffset]::FromUnixTimeSeconds([long]$w.Value.resetsAt).ToString('o')}}catch{}}
+                                $windows+=@([pscustomobject]@{durationMinutes=[int]$w.Name;remainingPercent=$(if($rolled){100}elseif(Test-Hotpl8OverviewPercent $w.Value.remainingPercent){$w.Value.remainingPercent}else{$null});resetsAt=$reset})
                             }
                         }
                     }
