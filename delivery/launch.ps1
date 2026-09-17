@@ -15,7 +15,7 @@ do{
         $display=($Entry -eq 'hotpl8' -and (-not $Forward.Count -or $Forward[0] -in @('watch','nyan','codex','mcp','update','delivery','preview')))
         if(-not $display){
             try{$lease=[IO.File]::Open((Join-Path $root 'runtime.lock'),'OpenOrCreate','ReadWrite','ReadWrite')}
-            catch{if($Entry -eq 'tick'){exit 0};throw 'HotPl8 is updating; retry shortly.'}
+            catch{if($Entry -in @('tick','status-print')){exit 0};throw 'HotPl8 is updating; retry shortly.'}
         }
         $current=Get-Content -LiteralPath (Join-Path $root 'current.json') -Raw -Encoding UTF8|ConvertFrom-Json
         if($current.sha -notmatch '^[a-f0-9]{40}$' -or $current.release -cne ('releases/'+$current.sha)){throw 'Invalid installed release pointer.'}

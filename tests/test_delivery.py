@@ -34,6 +34,9 @@ class FakeGitHub:
             raise d.Deferred("CI has not passed")
         return {"sha": sha, "digest": d.digest(self.archive)}
 
+    def is_forward(self, previous, candidate):
+        return True
+
     def download(self, candidate, destination):
         self.downloads += 1
         shutil.copyfile(self.archive, destination)
@@ -95,6 +98,12 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(self.update()["state"], "pending")
         self.assertEqual(d.read(self.root / "current.json"), self.previous)
         self.assertEqual(self.calls, [])
+
+    def test_rewritten_main_never_automatically_downgrades(self):
+        self.github.is_forward = lambda previous, candidate: False
+        self.assertEqual(self.update()["state"], "pending")
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
+        self.assertEqual(self.github.downloads, 0)
 
     def test_busy_writer_defers_without_activation(self):
         with d.lock(self.state / "tick.lock"):

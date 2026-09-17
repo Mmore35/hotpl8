@@ -174,6 +174,9 @@ class GitHub:
         return {"sha": sha, "assetId": assets[0]["id"], "digest": assets[0]["digest"][7:],
                 "runId": eligible[0]["id"], "releaseId": release["id"]}
 
+    def is_forward(self, previous, candidate):
+        return self.api("compare/" + previous + "..." + candidate).get("status") in ("ahead", "identical")
+
     def download(self, candidate, path):
         # gh handles the authenticated asset redirect without putting tokens in
         # command lines or forwarding our own Authorization header to a CDN.
@@ -282,6 +285,8 @@ def update(root, github=None, adapter=invoke_adapter):
             if current and current["sha"] == sha:
                 status.update(state="current", reason=None)
                 return status
+            if current and not github.is_forward(current["sha"], sha):
+                raise Deferred("Main history was rewritten; automatic downgrade or divergence is not permitted")
             if read(root / "rejected.json", {}).get("sha") == sha:
                 raise Deferred("This revision failed activation; awaiting a newer main revision")
             candidate = github.candidate(sha, config)
