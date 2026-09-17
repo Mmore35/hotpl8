@@ -9,6 +9,7 @@ import tempfile
 import unittest
 import os
 import subprocess
+import time
 from unittest.mock import patch
 import zipfile
 
@@ -178,6 +179,16 @@ class DeliveryTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows launcher qualification")
     def test_real_launcher_enrollment_and_argument_forwarding(self):
+        def launch(arguments):
+            # This bounds hangs, not product latency. Fresh hosted Windows took
+            # over 20 seconds to start the two nested fixture PowerShell hosts;
+            # the same behavioral test completes in seconds on a warm machine.
+            # Keep the exit/output/state assertions and record the startup time.
+            started = time.monotonic()
+            try:
+                return subprocess.run(arguments, capture_output=True, timeout=60)
+            finally:
+                print("fixture launcher elapsed: %.1fs" % (time.monotonic() - started), flush=True)
         import setup
         source = Path(__file__).resolve().parents[1]
         release = self.root / "releases" / B
@@ -196,17 +207,17 @@ class DeliveryTests(unittest.TestCase):
             setup.setup(self.root, register=False)
             setup.setup(self.root, register=False)
         ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
-        result = subprocess.run([ps, "-NoProfile", "-File", str(self.root / "app/hotpl8.ps1"), "status", "-AsJson"], capture_output=True, timeout=20)
+        result = launch([ps, "-NoProfile", "-File", str(self.root / "app/hotpl8.ps1"), "status", "-AsJson"])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         self.assertEqual(json.loads(result.stdout), {"command": "status", "json": True, "state": str(self.state)})
-        result = subprocess.run([ps, "-NoProfile", "-File", str(self.root / "app/tick.ps1"), "-Scheduled"], capture_output=True, timeout=20)
+        result = launch([ps, "-NoProfile", "-File", str(self.root / "app/tick.ps1"), "-Scheduled"])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         legacy = self.root / "legacy.ps1"
         legacy.write_text("$parameters=@{Scheduled=$true}\n& (Join-Path $PSScriptRoot 'app/tick.ps1') @parameters\nexit $LASTEXITCODE\n")
-        result = subprocess.run([ps, "-NoProfile", "-File", str(legacy)], capture_output=True, timeout=20)
+        result = launch([ps, "-NoProfile", "-File", str(legacy)])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         legacy.write_text("$parameters=@{Command='status';AsJson=$true}\n& (Join-Path $PSScriptRoot 'app/hotpl8.ps1') @parameters\nexit $LASTEXITCODE\n")
-        result = subprocess.run([ps, "-NoProfile", "-File", str(legacy)], capture_output=True, timeout=20)
+        result = launch([ps, "-NoProfile", "-File", str(legacy)])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         self.assertEqual(json.loads(result.stdout)["command"], "status")
         backups = list(self.root.glob("legacy-app-*"))
@@ -220,7 +231,7 @@ class DeliveryTests(unittest.TestCase):
         (next_release / "hotpl8.ps1").write_text("param([string]$Command)\nWrite-Output ('new:'+ $Command)\n")
         (release / "hotpl8.ps1").write_text(
             "@{sha='" + C + "';release='releases/" + C + "'}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_INSTALL_DIRECTORY 'current.json')\nexit 75\n")
-        result = subprocess.run([ps, "-NoProfile", "-File", str(self.root / "app/hotpl8.ps1"), "watch"], capture_output=True, timeout=20)
+        result = launch([ps, "-NoProfile", "-File", str(self.root / "app/hotpl8.ps1"), "watch"])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         self.assertEqual(result.stdout.strip(), b"new:watch")
 
