@@ -102,9 +102,14 @@ jobs:
         shell: powershell
         run: |
           $tag = 'main-' + $env:GITHUB_SHA
-          $existingText = gh api ('repos/' + $env:GITHUB_REPOSITORY + '/releases/tags/' + $tag) 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            $existing = $existingText | ConvertFrom-Json
+          # Listing succeeds for an empty release set. An expected 404 written
+          # to stderr becomes a terminating NativeCommandError in PowerShell 5.1.
+          $releaseText = gh api ('repos/' + $env:GITHUB_REPOSITORY + '/releases?per_page=100')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing releases' }
+          $releases = $releaseText | ConvertFrom-Json
+          $existing = @($releases | Where-Object tag_name -EQ $tag)
+          if ($existing.Count -gt 0) {
+            $existing = $existing[0]
             $assets = @($existing.assets | Where-Object name -EQ 'hotpl8-main.zip')
             $expected = 'sha256:' + (Get-FileHash hotpl8-main.zip -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($existing.draft -or $assets.Count -ne 1 -or $assets[0].digest -cne $expected) { throw 'Existing release differs; refusing replacement.' }
