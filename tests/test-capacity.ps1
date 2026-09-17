@@ -367,6 +367,94 @@ Check 'blocked zero account cannot hide a known refill from another Codex subscr
     $blocked.observedAt=$now.AddHours(-1).ToString('o')
     Assert ($null -eq (Get-Hotpl8ProviderCapacity $s $p.codex codex $now).projectedGainPercent)
 }
+function Exhausted-Codex([string]$Reason='quota_exhausted') {
+    $s=Snapshot
+    $s.providers.codex.slots[0].buckets.codex.windows.PSObject.Properties.Remove('300')
+    $empty=$s.providers.codex.slots[1];$empty.buckets.codex.status='blocked'
+    if($Reason){$empty.buckets.codex|Add-Member NoteProperty blockReason $Reason -Force}
+    $empty.buckets.codex.windows.'10080'.usedPercent=100;$empty.buckets.codex.windows.'10080'.remainingPercent=0
+    return $s
+}
+Check 'confirmed quota exhaustion resetting inside 24h is projected as a refill' {
+    $p=Policy;$s=Exhausted-Codex
+    $c=Get-Hotpl8ProviderCapacity $s $p.codex codex $now
+    Assert ($c.complete -and $c.projectionComplete)
+    Near $c.usableNowPercent (100*2.95/6)
+    Near $c.projectedGainPercent (100/6)
+    Assert ([datetimeoffset]::Parse($c.nextResetAt) -eq $now.AddHours(18))
+    Assert ($null -eq $c.laterRefillAt -and $null -eq $c.laterRefillGainPercent)
+}
+Check 'a confirmed refill beyond 24h is reported as later text without a projection' {
+    $p=Policy;$s=Exhausted-Codex
+    $s.providers.codex.slots[1].buckets.codex.windows.'10080'.resetsAt=$now.AddHours(30).ToUnixTimeSeconds()
+    $c=Get-Hotpl8ProviderCapacity $s $p.codex codex $now
+    Assert ($c.complete -and $c.projectionComplete)
+    Assert ($null -eq $c.nextResetAt -and $null -eq $c.projectedGainPercent)
+    Assert ([datetimeoffset]::Parse($c.laterRefillAt) -eq $now.AddHours(30))
+    Near $c.laterRefillGainPercent (100/6)
+}
+Check 'a restricted block keeps the projection incomplete and the later fields empty' {
+    $p=Policy;$s=Snapshot
+    $blocked=$s.providers.codex.slots[1];$blocked.buckets.codex.status='blocked'
+    $blocked.buckets.codex|Add-Member NoteProperty blockReason 'restricted' -Force
+    $blocked.buckets.codex.windows.'10080'.usedPercent=100;$blocked.buckets.codex.windows.'10080'.remainingPercent=0
+    $c=Get-Hotpl8ProviderCapacity $s $p.codex codex $now
+    Assert ($c.complete -and -not $c.projectionComplete)
+    Near $c.projectedGainPercent 6.5
+    Assert ([datetimeoffset]::Parse($c.nextResetAt) -eq $now.AddHours(2))
+    Assert ($null -eq $c.laterRefillAt -and $null -eq $c.laterRefillGainPercent)
+}
+Check 'an unconfirmed reset never grants a quota refill' {
+    $p=Policy;$s=Snapshot
+    $blocked=$s.providers.codex.slots[1];$blocked.buckets.codex.status='blocked'
+    $blocked.buckets.codex|Add-Member NoteProperty blockReason 'quota_exhausted' -Force
+    $blocked.buckets.codex.windows.'10080'.usedPercent=100;$blocked.buckets.codex.windows.'10080'.remainingPercent=0
+    $blocked.buckets.codex.windows.'10080'.anchorState='unconfirmed'
+    $c=Get-Hotpl8ProviderCapacity $s $p.codex codex $now
+    Assert ($c.complete -and -not $c.projectionComplete)
+    Near $c.projectedGainPercent 6.5
+    Assert ($null -eq $c.laterRefillAt -and $null -eq $c.laterRefillGainPercent)
+}
+Check 'a stale quota exhaustion is never projected as a refill' {
+    $p=Policy;$s=Exhausted-Codex
+    $s.providers.codex.slots[1].observedAt=$now.AddHours(-1).ToString('o')
+    $c=Get-Hotpl8ProviderCapacity $s $p.codex codex $now
+    Assert (-not $c.complete -and -not $c.projectionComplete)
+    Assert ($null -eq $c.projectedGainPercent -and $null -eq $c.nextResetAt)
+    Assert ($null -eq $c.laterRefillAt -and $null -eq $c.laterRefillGainPercent)
+}
+Check 'a quota exhausted account adds nothing usable now and stays out of the critical choice' {
+    $p=Policy;$plain=Get-Hotpl8ProviderCapacity (Exhausted-Codex $null) $p.codex codex $now
+    $c=Get-Hotpl8ProviderCapacity (Exhausted-Codex) $p.codex codex $now
+    Near $c.usableNowPercent $plain.usableNowPercent
+    Near $c.knownUsablePercent $plain.knownUsablePercent
+    Near $c.unknownPercent $plain.unknownPercent
+    Assert ((ConvertTo-Json $c.critical -Depth 8) -eq (ConvertTo-Json $plain.critical -Depth 8))
+    $account=@($c.accounts|Where-Object {$_.slot -eq 'personal'})[0]
+    Assert ($account.blocked -and $account.knownZero -and $account.refillExpected -and $account.blockReason -eq 'quota_exhausted')
+    Assert ($null -eq (Get-Hotpl8CapacityAmount $account $p.codex $now $false))
+}
+Check 'a weekly-only Codex pair shows one estimate, a later refill and no duplicate weekly figure' {
+    $p=Policy;$s=Snapshot
+    foreach($id in @('work','personal')){$p.codex.capacity.$id.weekly=1;$p.codex.capacity.$id.fiveHour=0.3}
+    $work=$s.providers.codex.slots[0];$work.buckets.codex.windows.PSObject.Properties.Remove('300')
+    $work.buckets.codex.windows.'10080'.usedPercent=52;$work.buckets.codex.windows.'10080'.remainingPercent=48
+    $work.buckets.codex.windows.'10080'.resetsAt=$now.AddDays(6).ToUnixTimeSeconds()
+    $empty=$s.providers.codex.slots[1];$empty.buckets.codex.status='blocked'
+    $empty.buckets.codex|Add-Member NoteProperty blockReason 'quota_exhausted' -Force
+    $empty.buckets.codex.windows.'10080'.usedPercent=100;$empty.buckets.codex.windows.'10080'.remainingPercent=0
+    $empty.buckets.codex.windows.'10080'.resetsAt=$now.AddDays(3.6).ToUnixTimeSeconds()
+    foreach($width in @(48,79,110)){
+        $rows=@(Get-Hotpl8OverviewRows $s $p $now $width)
+        $codex=$rows[3].text
+        Assert ($codex.Contains('~24% now')) $codex
+        Assert ($codex.Contains('+50% in ')) $codex
+        Assert (-not $codex.Contains('7d') -and $codex -notmatch '[░▒]') $codex
+        Assert ((Get-DashboardCells $codex) -le $width) $codex
+        # Claude still carries its distinct weekly figure wherever there is room for it.
+        if($width -ge 79){Assert ($rows[1].text -match '7d\s+\d') $rows[1].text}
+    }
+}
 Check 'three equal plans show 91.7 now and refill to 100 despite unequal weekly percentages' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity');$p.prefer=@(1,2,3)
     $third=Clone $s.slots[0];$third.slot=3;$s.slots+=@($third)

@@ -118,7 +118,15 @@ function ConvertTo-CodexBuckets($Quota, $PreviousBuckets, [datetimeoffset]$Now) 
         if ($null -eq $row.spendControlReached) { $state = 'constraint_unknown' }
         if (($null -ne $row.spendControlReached -and $row.spendControlReached -isnot [bool]) -or ($row.PSObject.Properties['allowed'] -and $row.allowed -isnot [bool])) { $state = 'unsupported' }
         if ($row.PSObject.Properties['allowed'] -and $row.allowed -eq $false) { $state = 'blocked' }
-        $result[$id] = [pscustomobject]@{ meter = $id; status = $state; windows = [pscustomobject]$windows; warm = $(if ($windows.Contains('300')) { 'unmeasured' } else { 'not applicable: no five-hour window' }) }
+        # Keep why a block exists: plain quota exhaustion with a pending reset is
+        # the only block a reset is known to clear. Status itself is unchanged.
+        $reason = $null
+        if ($state -eq 'blocked') {
+            $reason = 'restricted'
+            $exhausted = @($windows.Values | Where-Object { $_.usedPercent -eq 100 -and $null -ne $_.resetsAt -and $_.resetsAt -gt $Now.ToUnixTimeSeconds() }).Count -gt 0
+            if ($row.rateLimitReachedType -eq 'rate_limit_reached' -and $row.spendControlReached -eq $false -and -not ($row.PSObject.Properties['allowed'] -and $row.allowed -eq $false) -and $exhausted) { $reason = 'quota_exhausted' }
+        }
+        $result[$id] = [pscustomobject]@{ meter = $id; status = $state; blockReason = $reason; windows = [pscustomobject]$windows; warm = $(if ($windows.Contains('300')) { 'unmeasured' } else { 'not applicable: no five-hour window' }) }
     }
     return [pscustomobject]$result
 }
