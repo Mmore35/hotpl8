@@ -366,8 +366,21 @@ def preview(root, number, gh=None):
     # These are inert CI renderings. No candidate scripts, HTML or native code
     # are launched on the host, even for a PR from a fork.
     runs = gh.api("actions/workflows/" + config["previewWorkflow"] + "/runs?event=pull_request&per_page=100")
+    def belongs_to_pr(run):
+        if any(p.get("number") == number for p in run.get("pull_requests", [])):
+            return True
+        # GitHub can clear the run's PR association after merge. Retained inert
+        # renders remain attributable through the exact head repository, branch
+        # and SHA from the merged PR. Never infer this from branch name alone.
+        head = pr.get("head", {})
+        repository_id = head.get("repo", {}).get("id")
+        return (pr.get("merged") is True and not run.get("pull_requests")
+                and repository_id is not None
+                and run.get("head_repository", {}).get("id") == repository_id
+                and run.get("head_branch") == head.get("ref"))
     matches = [r for r in runs.get("workflow_runs", []) if r.get("conclusion") == "success"
-               and r.get("head_sha") == sha and any(p.get("number") == number for p in r.get("pull_requests", []))]
+               and r.get("event") == "pull_request" and r.get("status") == "completed"
+               and r.get("head_sha") == sha and belongs_to_pr(r)]
     if not matches:
         raise Deferred("No completed preview for this PR revision yet")
     target = root / "previews" / ("pr-" + str(number)) / sha

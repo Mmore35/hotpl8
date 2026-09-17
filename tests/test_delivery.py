@@ -261,7 +261,7 @@ class DeliveryTests(unittest.TestCase):
             if endpoint.startswith("pulls/"):
                 return {"head": {"sha": B}}
             if endpoint.startswith("actions/workflows/"):
-                return {"workflow_runs": [{"id": 12, "head_sha": B, "conclusion": "success", "pull_requests": [{"number": 7}]}]}
+                return {"workflow_runs": [{"id": 12, "head_sha": B, "event": "pull_request", "status": "completed", "conclusion": "success", "pull_requests": [{"number": 7}]}]}
             return {"artifacts": [{"id": 13, "name": "preview-images", "expired": False}]}
         gh.api = api
         def download(arguments, **kwargs):
@@ -288,7 +288,7 @@ class DeliveryTests(unittest.TestCase):
             if endpoint.startswith("pulls/"):
                 return {"head": {"sha": B}}
             if endpoint.startswith("actions/workflows/"):
-                return {"workflow_runs": [{"id": 12, "head_sha": B, "conclusion": "success", "pull_requests": [{"number": 7}]}]}
+                return {"workflow_runs": [{"id": 12, "head_sha": B, "event": "pull_request", "status": "completed", "conclusion": "success", "pull_requests": [{"number": 7}]}]}
             return {"artifacts": [{"id": 13, "name": "preview-images", "expired": False}]}
         gh.api = api
         for unsafe in ("../escape.png", "script.ps1", "DASHBOARD.png"):
@@ -304,6 +304,35 @@ class DeliveryTests(unittest.TestCase):
                 self.assertFalse((self.root / "previews").exists())
                 self.assertEqual(d.read(self.root / "current.json"), self.previous)
                 self.assertEqual(d.read(self.state / "ledger.json"), {"request": 42})
+
+    def test_merged_preview_retains_exact_source_binding_without_pr_association(self):
+        self.config["previewWorkflow"] = "ci.yml"
+        d.write(self.root / "delivery.json", self.config)
+        gh = d.GitHub("example/hotpl8", "fixture-gh")
+        pr = {"merged": True, "head": {"sha": B, "ref": "feature", "repo": {"id": 9}}}
+        workflow = {"id": 12, "head_sha": B, "head_branch": "feature", "head_repository": {"id": 9},
+                    "event": "pull_request", "status": "completed", "conclusion": "success", "pull_requests": []}
+        def api(endpoint):
+            if endpoint.startswith("pulls/"): return pr
+            if endpoint.startswith("actions/workflows/"): return {"workflow_runs": [workflow]}
+            return {"artifacts": [{"id": 13, "name": "preview-images", "expired": False}]}
+        gh.api = api
+        def download(arguments, **kwargs):
+            with zipfile.ZipFile(kwargs["stdout"], "w") as archive:
+                archive.writestr("dashboard.png", b"\x89PNG\r\n\x1a\nfixture")
+            return subprocess.CompletedProcess(arguments, 0)
+        with patch.object(d.subprocess, "run", side_effect=download) as command:
+            self.assertEqual(d.preview(self.root, 7, gh)["sha"], B)
+            for key, value in (("head_sha", A), ("head_branch", "other"), ("head_repository", {"id": 99}), ("event", "push"), ("status", "in_progress")):
+                with self.subTest(key=key):
+                    previous = workflow[key]
+                    workflow[key] = value
+                    with self.assertRaises(d.Deferred): d.preview(self.root, 7, gh)
+                    workflow[key] = previous
+            pr["merged"] = False
+            with self.assertRaises(d.Deferred): d.preview(self.root, 7, gh)
+            self.assertEqual(command.call_count, 1)
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
 
     def test_github_checks_exact_main_workflow_and_digest(self):
         gh = d.GitHub("example/hotpl8")
