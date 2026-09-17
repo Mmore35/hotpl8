@@ -2,7 +2,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp')]
+    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
     [string]$Command = 'watch',
     [string]$Slot,
     [string]$Model,
@@ -66,7 +66,10 @@ try {
 
     # These commands do not need an existing policy or a provider observation.
     if ($Command -eq 'version') {
-        (Get-Content (Join-Path $PSScriptRoot 'VERSION') -Raw).Trim()
+        $version=(Get-Content (Join-Path $PSScriptRoot 'VERSION') -Raw).Trim()
+        $build=Read-Hotpl8Json (Join-Path $PSScriptRoot 'build-info.json')
+        if($AsJson){[pscustomobject]@{version=$version;build=$build}|ConvertTo-Json -Depth 4}
+        elseif($build.sha){$version+' main '+$build.sha.Substring(0,12)}else{$version}
         exit 0
     }
     if ($Command -eq 'help') {
@@ -90,6 +93,8 @@ try {
         'tray [-Once]: optional Windows tray; -Once prints its view model without opening a window.'
         'update-check [-Channel preview] [-Operation dismiss] / update -InstallDirectory PATH'
         'agent [-RequestJson JSON]: versioned local agent request; stdin JSON is also accepted.'
+        'delivery: installed, desired and previous commit; update: follow tested main when enrolled.'
+        'preview pr NUMBER: download inert CI dashboard images for an exact PR revision.'
         'mcp [-AllowAgentPause]: local stdio MCP; read tools only unless pause writes are enabled.'
         exit 0
     }
@@ -98,6 +103,20 @@ try {
         $report=Get-Hotpl8Capabilities $StateDirectory
         if($AsJson){$report|ConvertTo-Json -Depth 8}else{$report|ConvertTo-Json -Depth 8}
         exit 0
+    }
+    if($Command -in @('delivery','preview') -or ($Command -eq 'update' -and $env:HOTPL8_INSTALL_DIRECTORY)){
+        $managed=if($InstallDirectory){$InstallDirectory}else{$env:HOTPL8_INSTALL_DIRECTORY}
+        if(-not $managed){throw 'This command requires a Local Delivery installation. See docs/delivery.md.'}
+        $registration=Read-Hotpl8Json (Join-Path $managed 'delivery.json')
+        $runner=Join-Path $managed 'delivery.py'
+        $verb=if($Command -eq 'delivery'){'status'}else{$Command}
+        $forward=@($runner,$verb)
+        if($Command -eq 'preview'){
+            if($CodexArguments.Count -ne 2 -or $CodexArguments[0] -ne 'pr' -or $CodexArguments[1] -notmatch '^[1-9][0-9]*$'){throw 'Use hotpl8 preview pr NUMBER.'}
+            $forward+=@($CodexArguments[1])
+        }
+        & $registration.python @forward
+        exit $LASTEXITCODE
     }
     if($Command -in @('update-check','update')){
         . (Join-Path $PSScriptRoot 'src/updates.ps1')

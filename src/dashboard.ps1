@@ -510,6 +510,8 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
     $oldEncoding=[Console]::OutputEncoding; $oldCtrl=[Console]::TreatControlCAsInput; $oldCursor=[Console]::CursorVisible
     $offset=0; $paused=$false; $quit=$false; $last=''; $next=0; $clock=[Diagnostics.Stopwatch]::StartNew()
     $worker=$null;$pending=$null
+    $build=Read-Hotpl8Json (Join-Path (Split-Path $PSScriptRoot -Parent) 'build-info.json')
+    $deliveryAt=-1000;$handoff=$false;$oldTitle=[Console]::Title
     try {
         [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
         [Console]::TreatControlCAsInput=$true; [Console]::CursorVisible=$false
@@ -518,6 +520,13 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
         $policy=$null; $frameTime=0
         $layoutAt=-1000; $layoutWidth=0; $layoutHeight=0; $frame=@(); $lastLines=@(); $lines=@()
         while(-not $quit){
+            if($env:HOTPL8_INSTALL_DIRECTORY -and $clock.ElapsedMilliseconds-$deliveryAt -ge 1000){
+                $deliveryAt=$clock.ElapsedMilliseconds
+                $installed=Read-Hotpl8Json (Join-Path $env:HOTPL8_INSTALL_DIRECTORY 'current.json')
+                $delivery=Read-Hotpl8Json (Join-Path $env:HOTPL8_INSTALL_DIRECTORY 'delivery-status.json')
+                if($build.sha -and $installed.sha -and $installed.sha -ne $build.sha){$handoff=$true;break}
+                if($build.sha){[Console]::Title='HotPl8 main '+$build.sha.Substring(0,12)+' | '+$delivery.state}
+            }
             if($clock.ElapsedMilliseconds -ge $next){
                 $renderStarted=$clock.ElapsedMilliseconds
                 if(-not $paused){$frameTime=$clock.Elapsed.TotalSeconds}
@@ -578,6 +587,8 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
         if($worker){try{if($pending){$worker.Stop()}}finally{$worker.Dispose()}}
         if($ansi){[Console]::Write($esc+'[0m'+$esc+'[?25h'+$esc+'[?1049l')}
         if($terminal.handle){[void][HotPl8Console]::SetConsoleMode($terminal.handle,$terminal.mode)}
+        [Console]::Title=$oldTitle
         [Console]::TreatControlCAsInput=$oldCtrl;[Console]::CursorVisible=$oldCursor;[Console]::OutputEncoding=$oldEncoding
     }
+    if($handoff){exit 75}
 }

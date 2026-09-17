@@ -80,6 +80,8 @@ try {
         $payload|Add-Member NoteProperty providers ([pscustomobject]@{codex=$codex}) -Force
         $lines+=@(Format-CodexStatus $codex $policy.codex)
     }else{$payload.PSObject.Properties.Remove('providers')}
+    $build=Read-Hotpl8Json (Join-Path $PSScriptRoot 'build-info.json')
+    if($build.sha){$collector|Add-Member NoteProperty runningSha $build.sha -Force}
     $collector|Add-Member NoteProperty completedAt ([datetimeoffset]::UtcNow.ToString('o')) -Force
     $collector|Add-Member NoteProperty status $(if($failed){'incomplete'}else{'ok'}) -Force
     $collector|Add-Member NoteProperty incompleteRuns $(if($failed){1+[int]$collector.incompleteRuns}else{0}) -Force
