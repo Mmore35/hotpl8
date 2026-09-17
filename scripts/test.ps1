@@ -36,6 +36,10 @@ foreach($suite in @('tests/test-codex.ps1','tests/test-dashboard.ps1','tests/tes
     $code=Invoke-IsolatedSuite $ps @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root $suite))
     if($code -ne 0){$failures+=$suite}
 }
+if(Get-Command python -ErrorAction SilentlyContinue){
+    $code=Invoke-IsolatedSuite (Get-Command python).Source @((Join-Path $root 'tests/test_delivery.py'))
+    if($code -ne 0){$failures+='tests/test_delivery.py'}
+}
 if(-not $SkipClaude){
     $code=Invoke-IsolatedSuite (Get-Command python).Source @((Join-Path $root 'tests/test_claude_plan.py'))
     if($code -ne 0){$failures+='tests/test_claude_plan.py'}

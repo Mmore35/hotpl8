@@ -12,6 +12,7 @@ $destination=Assert-Hotpl8Path $InstallDirectory
 $source=Assert-Hotpl8Path $PSScriptRoot
 if($destination -eq $source -or $source.StartsWith($destination+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Run installation from a separate extracted release.'}
 $old=Read-Hotpl8Json (Join-Path $destination 'installation.json')
+if($old.managedBy -eq 'local-delivery'){throw 'This installation follows main through Local Delivery. Run hotpl8 update instead.'}
 if((Test-Path -LiteralPath $destination) -and -not $old -and @(Get-ChildItem -LiteralPath $destination -Force).Count){throw 'Destination is not an owned HotPl8 installation.'}
 if($old -and ($old.product -ne 'hotpl8' -or $old.id -notmatch '^[a-f0-9]{12}$')){throw 'Invalid installation ownership.'}
 if(-not $StateDirectory){$StateDirectory=if($old){$old.stateDirectory}else{Join-Path $destination 'state'}}

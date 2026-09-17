@@ -3,7 +3,7 @@ function Get-Hotpl8Release([string]$Channel='stable', [string]$Version, [scriptb
     $url='https://api.github.com/repos/Mmore35/hotpl8/releases'
     if($Version){$url+='/tags/'+$(if($Version.StartsWith('v')){$Version}else{'v'+$Version})}
     if($Fetch){$releases=& $Fetch $url}else{$releases=Invoke-RestMethod -Uri $url -Headers @{'User-Agent'='HotPl8';Accept='application/vnd.github+json'} -TimeoutSec 20}
-    $release=@($releases|Where-Object {-not $_.draft -and ($Channel -eq 'preview' -or -not $_.prerelease)}|Sort-Object published_at -Descending|Select-Object -First 1)
+    $release=@($releases|Where-Object {-not $_.draft -and $_.tag_name -match '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$' -and ($Channel -eq 'preview' -or -not $_.prerelease)}|Sort-Object published_at -Descending|Select-Object -First 1)
     if(-not $release.Count){return $null}
     $r=$release[0]
     if($r.tag_name -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'){throw 'Invalid remote release tag.'}

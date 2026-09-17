@@ -54,3 +54,62 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
+      - name: Render fictional PR preview
+        if: github.event_name == 'pull_request'
+        shell: powershell
+        run: ./scripts/screenshots.ps1
+      - name: Store inert preview images
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preview-images
+          path: docs/assets/*.png
+          retention-days: 30
+  publish-main:
+    needs: windows
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Download the tested package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: gh run download $env:GITHUB_RUN_ID --name hotpl8-windows-candidate --dir tested
+      - name: Add exact source identity
+        shell: powershell
+        run: |
+          $package = @(Get-ChildItem tested -Filter '*.zip')
+          if ($package.Count -ne 1) { throw 'Expected one tested archive' }
+          python delivery/package.py $package[0].FullName hotpl8-main.zip --sha $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Delivery packaging failed' }
+      - name: Attest tested main package
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: hotpl8-main.zip
+      - name: Publish retained main package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $tag = 'main-' + $env:GITHUB_SHA
+          $existingText = gh api ('repos/' + $env:GITHUB_REPOSITORY + '/releases/tags/' + $tag) 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $existing = $existingText | ConvertFrom-Json
+            $assets = @($existing.assets | Where-Object name -EQ 'hotpl8-main.zip')
+            $expected = 'sha256:' + (Get-FileHash hotpl8-main.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($existing.draft -or $assets.Count -ne 1 -or $assets[0].digest -cne $expected) { throw 'Existing release differs; refusing replacement.' }
+            Write-Output 'Identical immutable release already published.'
+            exit 0
+          }
+          gh release create $tag hotpl8-main.zip --target $env:GITHUB_SHA --prerelease --title ('Tested main ' + $env:GITHUB_SHA.Substring(0,12)) --notes ('Automatic main-channel package for commit ' + $env:GITHUB_SHA + '. Ordinary stable installations are unchanged.')
+          if ($LASTEXITCODE -ne 0) { throw 'Main publication failed' }
