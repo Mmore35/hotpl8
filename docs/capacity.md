@@ -1,6 +1,6 @@
 # Capacity, critical mode and motion
 
-HotPl8 has one **Available now** bar per provider. Its solid foreground is estimated usable allowance under current limits and routing policy. The patterned extension is additional allowance at the first confirmed reset that increases availability within 24 hours, assuming no further consumption. Resets still blocked by other limits are skipped. With no positive refill in that horizon, no pattern appears. The clock reaching zero never turns a projection into measured capacity.
+HotPl8 has one **Available now** bar per provider. Its solid foreground is estimated usable allowance under current limits and routing policy. The patterned extension is additional allowance at the first confirmed reset that increases availability within 24 hours, assuming no further consumption. Resets still blocked by other limits are skipped. With no positive refill in that horizon, no pattern appears; a useful refill further out is named in text beside the bar instead. The clock reaching zero never turns a projection into measured capacity.
 
 The main bar measures the currently usable window: five-hour allowance when present, otherwise the actual weekly-only allowance. Three equal plans at 100%, 100% and 75% show **91.7% now**, with **+8.3%** when the depleted session resets. Weekly remaining is supporting text, not the denominator of that bar.
 
@@ -8,7 +8,9 @@ Weekly and model limits reduce session capacity only after conversion into the s
 
 Missing readings or multi-account plan weights remain unknown. Calibrated account weights and plan multipliers are not mixed without a common basis. A paused/held/manual Claude configuration can leave allowance on other accounts outside the solid routed amount. The Codex summary always uses main Codex, excluding Spark; existing sessions retain their native account.
 
-A fresh, explicitly blocked Codex account with a measured zero contributes zero usable allowance and keeps its weight in the total. Forecasts keep that account at zero until a later observation clears the block: a quota reset does not necessarily remove a spend or account restriction. A known refill from another healthy account can still appear, with `projectionComplete: false` indicating that blocked-account recovery is excluded. Stale readings and unknown provider constraints remain unknown.
+A fresh, explicitly blocked Codex account with a measured zero contributes zero usable allowance now and keeps its weight in the total. Its refill is projected only when the collector recorded a plain quota exhaustion: a reached rate limit, no spend or account restriction, a window at 100% and a confirmed future reset (`blockReason: quota_exhausted`). Every other block — spend control, a workspace-owner limit, a denied account, an unconfirmed reset anchor, or a block whose reason the native client did not state — stays at zero until a later observation clears it, and keeps `projectionComplete: false` to mark the excluded recovery: a quota reset does not necessarily remove a spend or account restriction. A known refill from another healthy account can still appear either way. Stale readings and unknown provider constraints remain unknown.
+
+`laterRefillAt` and `laterRefillGainPercent` name the first useful refill beyond the 24-hour horizon, up to eight days out. They are text only: no pattern, no shimmer, no change to the solid bar, and `nextResetAt`/`projectedGainPercent` keep their existing 24-hour meaning. A provider whose whole week refills the day after tomorrow therefore says so instead of showing an unexplained empty bar.
 
 ## Set subscription capacity
 

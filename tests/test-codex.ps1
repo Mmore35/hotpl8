@@ -64,6 +64,22 @@ try {
     Check 'blocked despite quota headroom' { $q=Fixture; $q.rateLimits.spendControlReached=$true; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'blocked') }
     Check 'unknown spend constraint not ignored' { $q=Fixture; $q.rateLimits.spendControlReached=$null; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'constraint_unknown') }
     Check 'server reached type blocks' { $q=Fixture; $q.rateLimits.rateLimitReachedType='workspace_owner_usage_limit_reached'; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'blocked') }
+    Check 'observed bucket carries no block reason' { Assert ($null -eq (ConvertTo-CodexBuckets (Fixture) $null $now).codex.blockReason) }
+    Check 'exhausted quota with future reset is quota_exhausted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'quota_exhausted') }
+    Check 'spend control block is restricted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $q.rateLimits.spendControlReached=$true; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
+    Check 'workspace owner limit is restricted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='workspace_owner_usage_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
+    Check 'allowed=false is restricted even when exhausted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $q.rateLimits | Add-Member NoteProperty allowed $false; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
+    Check 'reached type without a full window is restricted' { $q=Fixture 90; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
+    Check 'reached type with a past reset is restricted' { $q=Fixture 100 10080 ($now.ToUnixTimeSeconds()-1); $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
+    Check 'reached type with a null reset is restricted' { $q=Fixture 100 10080 $null; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
+    Check 'quota_exhausted slot is never eligible or selected' {
+        $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'
+        $b=ConvertTo-CodexBuckets $q $null $now; $b.codex.windows.'10080'.anchorState='observed-active'
+        $s=[pscustomobject]@{ id='a'; label='a'; status='ok'; observedAt=$now.ToString('o'); buckets=$b; defaultModel='fixture-model'; modelProvider='openai' }
+        Assert ((Get-CodexEligibility $s $policy codex $now) -ne 'eligible')
+        Assert ((Select-CodexSlot @($s,(Make-Slot b)) $policy codex a $null $now) -eq 'b')
+        Assert ($null -eq (Select-CodexSlot @($s) $policy codex a @{until=$now.AddHours(1)} $now))
+    }
     Check 'missing reset differs from explicit null' { $q=Fixture; $q.rateLimits.primary.PSObject.Properties.Remove('resetsAt'); Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported'); $q=Fixture; $q.rateLimits.primary.resetsAt=$null; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'observed') }
     Check 'fractional reset rejected' { $q=Fixture; $q.rateLimits.primary.resetsAt=12.5; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
     Check 'unrelated bucket never borrowed' { $q=Fixture; $q | Add-Member NoteProperty rateLimitsByLimitId ([pscustomobject]@{}); Assert ($null -eq (ConvertTo-CodexBuckets $q $null $now).codex) }

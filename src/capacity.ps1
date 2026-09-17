@@ -47,7 +47,7 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
         if($s.streamKey -and $s.status -in @('ok','duplicate_subscription')){if($seen.ContainsKey($s.streamKey)){continue};$seen[$s.streamKey]=$true}
         $c=Get-Hotpl8AccountCapacity $Part ([string]$id) $Provider $Meter $s.plan $Now
         $fresh=$s -and $s.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
-        $windows=@();$blocked=$false;$reason=''
+        $windows=@();$blocked=$false;$reason='';$blockReason=$null
         if($Provider -eq 'claude'){
             $fresh=$fresh -and $s.fresh
             $windows+=New-Hotpl8CapacityWindow '10080' $(if(Test-Hotpl8Number $s.used7d){100-$s.used7d}else{$null}) $c.weekly $s.reset7d $Now -ObservedAt $s.observedAt
@@ -61,6 +61,7 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
         }else{
             $b=$s.buckets.$Meter
             $blocked=$b.status -ne 'observed';$reason=if($b){$b.status}else{'meter_unknown'}
+            if($blocked -and $b.blockReason){$blockReason=[string]$b.blockReason}
             foreach($entry in $b.windows.PSObject.Properties){
                 $w=$entry.Value;$reset=$null
                 try{if($w.resetsAt){$reset=[datetimeoffset]::FromUnixTimeSeconds([long]$w.resetsAt).ToString('o')}}catch{}
@@ -98,11 +99,16 @@ function Get-Hotpl8CapacityAccounts($Snapshot,$Part,[string]$Provider,[datetimeo
         if($known){$percent=($windows|Measure-Object remaining -Minimum).Minimum}
         if($scaled){$gross=($windows|Where-Object {$null -ne $_.full}|ForEach-Object {$_.full*$_.remaining/100}|Measure-Object -Minimum).Minimum}
         $knownZero=$known -and $blocked -and $reason -eq 'blocked' -and $percent -eq 0
-        [pscustomobject]@{slot=[string]$id;profile=$c.profile;fresh=[bool]$known;scaled=[bool]$scaled;knownZero=[bool]$knownZero;weekly=$c.weekly;weightBasis=$basis;unconvertedConstraints=@($windows|Where-Object {$null -eq $_.full}|ForEach-Object name);windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
+        # Only a collector-recorded quota exhaustion whose empty windows all carry a
+        # confirmed reset is expected to refill; any other block survives a reset.
+        $refillExpected=$knownZero -and $blockReason -eq 'quota_exhausted' -and @($windows|Where-Object {$_.remaining -le 0 -and -not $_.resetAt}).Count -eq 0
+        [pscustomobject]@{slot=[string]$id;profile=$c.profile;fresh=[bool]$known;scaled=[bool]$scaled;knownZero=[bool]$knownZero;refillExpected=[bool]$refillExpected;weekly=$c.weekly;weightBasis=$basis;unconvertedConstraints=@($windows|Where-Object {$null -eq $_.full}|ForEach-Object name);windows=$windows;gross=$gross;bindingRemaining=$percent;blocked=$blocked;reason=$reason;blockReason=$blockReason;reserve=($id -in @($Part.reserve));confidence=$c.confidence}
     }
 }
-function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Project,[bool]$Emergency=$false) {
-    if(-not $Account.scaled -or $Account.blocked){return $null}
+function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Project,[bool]$Emergency=$false,[bool]$AssumeRefill=$false) {
+    # A blocked account yields nothing now; a projection may look past a quota
+    # block, and its empty windows still cap the amount until they have reset.
+    if(-not $Account.scaled -or ($Account.blocked -and -not ($Project -and $AssumeRefill))){return $null}
     $units=[double]::MaxValue
     foreach($w in $Account.windows){
         $left=[double]$w.remaining
@@ -120,7 +126,8 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     $total=if($denominatorKnown){($accounts|Measure-Object weekly -Sum).Sum}else{$null}
     $complete=$denominatorKnown -and @($accounts|Where-Object {-not $_.scaled -or ($_.blocked -and -not $_.knownZero)}).Count -eq 0
     # A measured zero is known now, but a generic native block may survive reset.
-    $projectionComplete=$complete -and @($accounts|Where-Object blocked).Count -eq 0
+    # Only a recorded quota exhaustion with a confirmed reset is projected to refill.
+    $projectionComplete=$complete -and @($accounts|Where-Object {$_.blocked -and -not $_.refillExpected}).Count -eq 0
     $hold=if($Provider -eq 'claude'){$Snapshot.hold}else{$Snapshot.providers.codex.hold}
     $selected=if($Provider -eq 'claude'){[string]$Snapshot.active}else{[string]$Snapshot.providers.codex.recommendedSlot}
     if($hold){try{if([datetimeoffset]::Parse($hold.until) -le $Now){$hold=$null}}catch{}}
@@ -139,18 +146,23 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     }
     # Show the earliest useful refill in the next 24h, not a zero-gain reset
     # that masks a later recovery. Each candidate applies all prior resets.
+    # Beyond 24h the first useful refill is reported as text only, up to 8 days.
+    $later=$null;$laterFuture=0.0
     if($complete){
         foreach($reset in $resets){
             $at=[datetimeoffset]::Parse($reset.resetAt)
-            if($at -gt $Now.AddHours(24)){break}
-            $future=0.0
+            if($at -gt $Now.AddDays(8)){break}
+            $candidate=0.0
             foreach($a in $accounts){
-                if($a.blocked -or ($restricted -and $a.slot -ne $selected)){continue}
-                $future+=Get-Hotpl8CapacityAmount $a $Part $at $true $critical.active
+                if(($a.blocked -and -not $a.refillExpected) -or ($restricted -and $a.slot -ne $selected)){continue}
+                $candidate+=Get-Hotpl8CapacityAmount $a $Part $at $true $critical.active $a.refillExpected
             }
-            if($future -gt $solid+0.0000001){$next=$at;break}
+            if($candidate -le $solid+0.0000001){continue}
+            if($at -le $Now.AddHours(24)){$next=$at;$future=$candidate}else{$later=$at;$laterFuture=$candidate}
+            break
         }
     }
     $gain=if($next){[math]::Max(0.0,$future-$solid)}else{$null}
-    [pscustomobject]@{metric=$(if($QuotaHeadroom){'plan-weighted-quota-headroom'}else{'weighted-weekly-capacity'});unit=$(if($QuotaHeadroom){'relative session headroom'}else{'relative weekly allowance'});totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectionHorizonHours=24;projectionComplete=[bool]$projectionComplete;projectedGainPercent=$(if($complete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});projectionAssumption='First positive gain within 24h; no further consumption; blocked accounts stay blocked; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($QuotaHeadroom){'quota headroom estimate; not a token budget'}elseif($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
+    $laterGain=if($later){[math]::Max(0.0,$laterFuture-$solid)}else{$null}
+    [pscustomobject]@{metric=$(if($QuotaHeadroom){'plan-weighted-quota-headroom'}else{'weighted-weekly-capacity'});unit=$(if($QuotaHeadroom){'relative session headroom'}else{'relative weekly allowance'});totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectionHorizonHours=24;projectionComplete=[bool]$projectionComplete;projectedGainPercent=$(if($complete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});laterRefillAt=$(if($later){$later.ToString('o')}else{$null});laterRefillGainPercent=$(if($complete -and $later){[math]::Min(100-100*$solid/$total,100*$laterGain/$total)}else{$null});projectionAssumption='First positive gain within 24h, else the first within 8 days as text; no further consumption; blocked accounts stay blocked unless the block is a quota exhaustion with a confirmed reset; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($QuotaHeadroom){'quota headroom estimate; not a token budget'}elseif($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
 }

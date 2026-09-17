@@ -9,6 +9,8 @@
 
 ## Unreleased
 
+- Record why a Codex account is blocked, so a plain quota exhaustion with a confirmed reset projects its refill while spend and account restrictions stay conservative. Name the first useful refill beyond 24 hours as text, and stop repeating a weekly-only account's own figure as separate weekly text.
+
 - Preserve the renovated dashboard, full-resolution Nyan animation and updated fictional screenshots. Retry Windows replacement error 1175, release read handles before parsing JSON, distinguish storage recovery from provider backoff, isolate provider health, and keep legacy output failures from invalidating the primary snapshot.
 
 - Report low-balance Claude rotation consistently in status and selection explanations. Add a collector regression covering exhausted-account escape, highest-balance rotation, dwell, stale readings, refills, holds and observation-only previews; document matching critical entry to the normal margin.
