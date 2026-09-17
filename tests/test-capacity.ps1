@@ -27,9 +27,37 @@ Check 'zero-gain short reset is skipped for a later useful refill' {
     Assert ([datetimeoffset]::Parse($c.nextResetAt) -eq [datetimeoffset]::Parse($s.slots[1].reset5h))
 }
 Check 'expired reset awaits evidence and never becomes full' {
-    $p=Policy;$s=Snapshot;$s.slots[0].reset5h=$now.AddSeconds(-1).ToString('o')
+    # The payload handed us an anchor that had already expired when we read
+    # it: suspect, so it stays unknown rather than refilling.
+    $p=Policy;$s=Snapshot;$s.slots[0].observedAt=$now.AddSeconds(-20).ToString('o')
+    $s.slots[0].reset5h=$now.AddSeconds(-30).ToString('o')
     $c=Get-Hotpl8ProviderCapacity $s $p claude $now
     Assert (-not $c.complete -and $null -eq $c.usableNowPercent -and $c.unknownPercent -gt 0)
+}
+Check 'a reset that elapsed after we read the window refills it' {
+    $p=Policy;$s=Snapshot;$s.slots[0].reset5h=$now.AddSeconds(-1).ToString('o')
+    $c=Get-Hotpl8ProviderCapacity $s $p claude $now
+    Assert ($c.complete -and $c.unknownPercent -eq 0)
+    Assert ($c.usableNowPercent -gt (Get-Hotpl8ProviderCapacity (Snapshot) $p claude $now).usableNowPercent)
+    # The elapsed reset drops out of the schedule instead of anchoring it.
+    Assert ([datetimeoffset]::Parse($c.nextResetAt) -gt $now)
+}
+Check 'an observation stamped ahead of our clock never rolls over' {
+    $p=Policy;$s=Snapshot;$s.slots[0].observedAt=$now.AddMinutes(1).ToString('o')
+    $s.slots[0].reset5h=$now.AddSeconds(-1).ToString('o')
+    $c=Get-Hotpl8ProviderCapacity $s $p claude $now
+    Assert (-not $c.complete -and $c.unknownPercent -gt 0)
+}
+Check 'an elapsed reset cannot refill a window we never managed to read' {
+    # Rolling over replaces the reading with a full window, so it must refuse
+    # a reading it would be inventing. No reading is not 100% free, and an
+    # out-of-range one has no more standing than a missing one.
+    foreach($used in @($null,101)){
+        $p=Policy;$s=Snapshot;$s.slots[0].observedAt=$now.AddMinutes(-5).ToString('o')
+        $s.slots[0].reset5h=$now.AddSeconds(-1).ToString('o');$s.slots[0].used5h=$used
+        $c=Get-Hotpl8ProviderCapacity $s $p claude $now
+        Assert (-not $c.complete -and $c.unknownPercent -gt 0)
+    }
 }
 Check 'unknown conversion cannot borrow another account weight' {
     $p=Policy;$p.capacity.'2'.PSObject.Properties.Remove('weekly')
@@ -321,7 +349,9 @@ Check 'weekly allowance cannot fill the main bar while short windows are exhaust
     foreach($slot in $s.slots){$slot.used7d=100}
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
     Near $d.value 0;Assert ($null -eq $d.gain -and $null -eq $d.nextResetAt)
-    $s.slots[0].reset7d=$now.AddSeconds(-1).ToString('o')
+    # Already expired on arrival, so it cannot refill the exhausted fleet.
+    $s.slots[0].observedAt=$now.AddSeconds(-20).ToString('o')
+    $s.slots[0].reset7d=$now.AddSeconds(-30).ToString('o')
     $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
     Assert ($null -eq $d.gain -and $d.state.Contains('total unavailable'))
 }

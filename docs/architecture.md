@@ -62,7 +62,7 @@ The experimental Claude adapter includes legacy credential cleanup around `cswap
 | Lock collection and replace status atomically | Readers should not see a partially written snapshot; failed collection must not look fresh | [Collector](../tick.ps1), [atomic writes](../src/common.ps1); [collection/lock regressions](../tests/test-codex.ps1) |
 | Keep native account homes separate | A launch or resume must not accidentally use another account's authentication or conversation | [Codex adapter](../src/providers/codex.ps1); [home binding and resume tests](../tests/test-codex.ps1) |
 
-For example, an elapsed reset does not prove that quota refilled. The dashboard says it awaits observation, and stale accounts lose their NEXT LAUNCH badge. [Regression coverage](../tests/test-dashboard.ps1) exercises both cases with a controlled clock.
+For example, an elapsed reset is read against the observation that reported it. A window we read before its own reset, whose reset has since passed, refilled: the dashboard draws it full and labels it `reset · awaiting read` until the next collector read confirms it. An anchor that was already expired in the payload that delivered it proves nothing, so it stays `reset due`, and stale accounts still lose their NEXT LAUNCH badge. A window whose percentage never arrived is not refilled by its reset either: no reading stays `no reading`. Eligibility, Codex slot ranking and the agent API resolve the same rule, so none of them can call a window empty that the dashboard draws full. [Regression coverage](../tests/test-dashboard.ps1) exercises every case with a controlled clock.
 
 ## Source map
 

@@ -100,6 +100,10 @@ function ConvertTo-CodexBuckets($Quota, $PreviousBuckets, [datetimeoffset]$Now) 
             try { if ($null -ne $w.resetsAt) { $null = [datetimeoffset]::FromUnixTimeSeconds([long]$w.resetsAt) } } catch { $valid = $false; break }
             $anchor = 'unconfirmed'
             $old = $PreviousBuckets.$id.windows.$duration
+            # Collection stamps observedAt with this same instant, so an elapsed
+            # reset here is always the payload-stale half of the rollover rule
+            # (Resolve-Hotpl8Window): expired, never refilled. The rollover half
+            # belongs to the readers below, which compare against an older read.
             if ($null -ne $w.resetsAt -and $w.resetsAt -le $Now.ToUnixTimeSeconds()) { $anchor = 'expired' }
             elseif ($old -and $null -ne $old.resetsAt -and $w.usedPercent -gt 0 -and $old.usedPercent -gt 0 -and [Math]::Abs($old.resetsAt - $w.resetsAt) -le 5) {
                 # A fast manual refresh must retain evidence already established by
@@ -136,6 +140,12 @@ function Get-CodexMargin($Policy, [string]$SlotId, [string]$Duration) {
     if ($null -ne $Policy.margin7d) { return [double]$Policy.margin7d }
     return 20.0
 }
+function Test-CodexWindowRolledOver($Window, [datetimeoffset]$Now) {
+    # One answer to 'did this window's own reset elapse after we read it',
+    # so eligibility, ranking and the agent API cannot disagree about it.
+    if (-not $Window) { return $false }
+    return (Resolve-Hotpl8Window $Window.usedPercent $Window.resetsAt $Window.observedAt $Now -Unix).rolledOver
+}
 function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$Now, [bool]$Emergency=$false) {
     if($Slot.id -in @($Policy.disabled)){return 'disabled'}
     if ($Slot.status -ne 'ok') { return [string]$Slot.status }
@@ -147,6 +157,10 @@ function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$N
     $count = 0
     foreach ($w in $b.windows.PSObject.Properties) {
         $count++
+        # A window we read before its own reset, whose reset has now passed,
+        # refilled; only an anchor that was already expired when we read it
+        # stays unconfirmed.
+        if (Test-CodexWindowRolledOver $w.Value $Now) { continue }
         if ($null -ne $w.Value.resetsAt -and $w.Value.resetsAt -le $Now.ToUnixTimeSeconds()) { return 'reset_unconfirmed' }
         $margin=Get-CodexMargin $Policy $Slot.id $w.Name
         if($Emergency -and $Policy.critical.enabled -eq $true -and $Slot.id -notin @($Policy.reserve)){$margin=if($Policy.critical.drainToZero){0}else{Get-Hotpl8CriticalSetting $Policy 'floorPercent' 1}}
@@ -168,17 +182,25 @@ function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, 
         if ($idx -lt 0) { $idx = $preferred.Count + $index }; $index++
         $tier = if (@($Policy.reserve) -contains $slot.id) { 1 } else { 0 }
         $week = $slot.buckets.$Meter.windows.'10080'
+        # Rank from the numbers the eligibility check above just accepted. A
+        # rolled-over window is full and has no known next reset, so reading
+        # its pre-reset snapshot here would flag the fullest account degraded
+        # and sort it behind every ordinary one right after it refilled.
+        $weekRolled = Test-CodexWindowRolledOver $week $Now
+        $weekLeft = if ($weekRolled) { 100.0 } else { $week.remainingPercent }
         $degraded = 0; $key = [double]$idx; $reset = $null
         $window = $slot.buckets.$Meter.windows.'300'
+        $rolled = if ($window) { Test-CodexWindowRolledOver $window $Now } else { $weekRolled }
+        $shortLeft = if (-not $window) { $null } elseif ($rolled) { 100.0 } else { $window.remainingPercent }
         if (-not $window) { $window = $week }
-        if ($window -and $window.anchorState -eq 'observed-active') { $reset = $window.resetsAt }
+        if ($window -and -not $rolled -and $window.anchorState -eq 'observed-active') { $reset = $window.resetsAt }
         if ($Policy.order -eq 'soonest-reset') { $key = [double]::MaxValue; if ($null -ne $reset) { $key = [double]$reset } }
         if($Policy.order -in @('weekly-expiry','balanced')){
-            $weekReset=if($week -and $week.anchorState -eq 'observed-active' -and $week.resetsAt){[datetimeoffset]::FromUnixTimeSeconds($week.resetsAt).ToString('o')}else{$null}
-            $key=Get-Hotpl8SelectionKey $Policy.order $slot.buckets.$Meter.windows.'300'.remainingPercent $week.remainingPercent $weekReset $Now
+            $weekReset=if($week -and -not $weekRolled -and $week.anchorState -eq 'observed-active' -and $week.resetsAt){[datetimeoffset]::FromUnixTimeSeconds($week.resetsAt).ToString('o')}else{$null}
+            $key=Get-Hotpl8SelectionKey $Policy.order $shortLeft $weekLeft $weekReset $Now
         }
         $preferredWeek = if ($null -ne $Policy.margin7d) { [double]$Policy.margin7d } else { 20 }
-        if ($week -and $week.remainingPercent -lt $preferredWeek) { $degraded = 1; $key = -$week.remainingPercent }
+        if ($week -and $weekLeft -lt $preferredWeek) { $degraded = 1; $key = -$weekLeft }
         $rows += [pscustomobject]@{ id = $slot.id; tier = $tier; degraded = $degraded; key = $key; idx = $idx; reset = $reset; slot = $slot }
     }
     $ordered = @($rows | Sort-Object tier,degraded,key,idx)
@@ -194,7 +216,8 @@ function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, 
         if ($Policy.order -ne 'soonest-reset') {
             $band = if ($null -ne $Policy.hysteresis) { [double]$Policy.hysteresis } else { 10 }
             $short = $best.slot.buckets.$Meter.windows.'300'
-            if ($short -and $short.remainingPercent -lt ((Get-CodexMargin $Policy $best.id '300') + $band)) { return $PreviousId }
+            $shortLeft = if (Test-CodexWindowRolledOver $short $Now) { 100.0 } else { $short.remainingPercent }
+            if ($short -and $shortLeft -lt ((Get-CodexMargin $Policy $best.id '300') + $band)) { return $PreviousId }
         }
     }
     return $best.id

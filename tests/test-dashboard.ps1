@@ -45,6 +45,69 @@ Check 'elapsed resets await observation and unconfirmed resets are not countdown
     Assert ((Format-DashboardReset $now.AddHours(1).ToUnixTimeSeconds() $now -Unix -Unconfirmed) -eq 'reset unconfirmed')
     Assert ((Format-DashboardDuration 3599) -eq '59m 59s')
 }
+Check 'a reset that elapsed after the reading refills the bar instead of breaking it' {
+    # Both variants are a fully calibrated fleet with an elapsed 5h reset.
+    # They differ only in whether the anchor was already expired when it
+    # arrived, which is the whole rule.
+    function Elapsed([string]$Mode){
+        $c=Copy-Value $s
+        foreach($a in $c.slots){
+            $a|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
+            $observed=if($Mode -eq 'rolled'){$now.AddMinutes(-5)}else{$now.AddSeconds(-20)}
+            $a|Add-Member NoteProperty observedAt $observed.ToString('o') -Force
+            $a.reset5h=$(if($Mode -eq 'rolled'){$now.AddSeconds(-1)}else{$now.AddSeconds(-30)}).ToString('o')
+        }
+        return $c
+    }
+    $rolled=((Render (Elapsed rolled)).text)-join "`n"
+    Assert ($rolled -match '5h\s+\S+\s+100%')
+    Assert ($rolled.Contains('reset · awaiting read') -and -not $rolled.Contains('reset due'))
+    # The fleet stays measured, so the headline keeps a real percentage
+    # instead of the dotted unknown segment.
+    Assert (-not $rolled.Contains('? now'))
+    $narrow=((Render (Elapsed rolled) 79).text)-join "`n"
+    Assert ($narrow.Contains('awaiting read') -and -not $narrow.Contains('reset · awaiting read'))
+    $expired=((Render (Elapsed expired)).text)-join "`n"
+    Assert ($expired -match '5h\s+\S+\s+75%')
+    Assert ($expired.Contains('reset due') -and $expired.Contains('? now'))
+    # A reading that never arrived is not refilled by an elapsed reset: the
+    # bar stays the dotted unknown rather than claiming a full window.
+    $unreadable=Elapsed rolled
+    foreach($a in $unreadable.slots){$a.used5h=$null}
+    $text=((Render $unreadable).text)-join "`n"
+    Assert ($text.Contains('no reading') -and $text -notmatch '5h\s+\S+\s+100%')
+}
+Check 'a changed bar glides to its new value while the printed number stays exact' {
+    # Pure function of the animation clock, so the layout runspace and the
+    # live-row loop draw the same frame from the same captured anchor.
+    Assert ((Get-Hotpl8Tween 80 20 10 10) -eq 20)
+    Assert ((Get-Hotpl8Tween 80 20 10 10.5) -eq 80)
+    $mid=Get-Hotpl8Tween 80 20 10 10.25
+    Assert ($mid -gt 20 -and $mid -lt 80)
+    # No anchor means no glide: the first frame of a bar is its real value.
+    Assert ((Get-Hotpl8Tween 80 $null -1 10) -eq 80)
+    $c=Copy-Value $s
+    $null=@(Get-Hotpl8DashboardFrame $c $p $now 100 100 0 -AnimationSeconds 10)
+    $c.slots[0].used5h=75
+    $row=@(@(Get-Hotpl8DashboardFrame $c $p $now 100 100 0 -AnimationSeconds 10)|Where-Object {$_.text -match '5h '})[0]
+    # 25% remains, drawn part way down from the 75% still on screen.
+    Assert ($row.text -match '5h\s+\S+\s+25%')
+    Assert ($row.live.until -gt 10)
+    $bar=($row.text -split '\s+')[2]
+    $later=@(@(Get-Hotpl8DashboardFrame $c $p $now 100 100 0 -AnimationSeconds 10.6)|Where-Object {$_.text -match '5h '})[0]
+    Assert ((($later.text -split '\s+')[2]) -ne $bar)
+    # Only a target that actually moved restarts the glide. Layout passes run
+    # about every second and a glide lasts half of one, so re-anchoring on the
+    # currently-shown value instead would stretch every glide it landed in.
+    $key='fixture|anchor'
+    $null=Get-Hotpl8TweenAnchor $key 75 0
+    $moved=Get-Hotpl8TweenAnchor $key 25 1
+    Assert ($moved.start -eq 1 -and $moved.from -eq 75)
+    $repeat=Get-Hotpl8TweenAnchor $key 25 1.3
+    Assert ($repeat.start -eq 1 -and $repeat.from -eq 75)
+    # ...and it ends on time rather than being re-eased indefinitely.
+    Assert ((Get-Hotpl8TweenAnchor $key 25 1.6).start -lt 0)
+}
 Check 'narrow frames and a scrolled last page fit their viewport' {
     foreach($width in @(50,79,100,110)){
         foreach($offset in @(0,999)){

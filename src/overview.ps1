@@ -35,19 +35,25 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
             if($s){$reason=if(-not $fresh){if($s.status -ne 'ok'){[string]$s.status}else{'stale'}}else{'weekly_unmeasured'}}
             if($provider -eq 'claude'){
                 $fresh=$fresh -and $s.fresh
-                $weekly=$fresh -and (Test-Hotpl8OverviewPercent $s.used7d) -and (Test-Hotpl8FutureReset $s.reset7d $Now)
-                if($weekly){$remaining=100-[double]$s.used7d;$weeklyReset=[datetimeoffset]::Parse($s.reset7d).ToString('o')}
-                $short=$fresh -and (Test-Hotpl8OverviewPercent $s.used5h) -and ((Test-Hotpl8FutureReset $s.reset5h $Now) -or ($s.cold -and $s.used5h -eq 0 -and -not $s.reset5h))
-                $modelBlock=Get-ClaudeModelBlock $s.scoped $Policy ([int]$id) $Now
-                $e=@{h5=$(if($short){100-[double]$s.used5h}else{$null});h7=$remaining;fresh=[bool]($short -and $weekly);modelBlocked=[bool]$modelBlock;obj=@{usage=@{fiveHour=@{resetsAt=$s.reset5h};sevenDay=@{resetsAt=$s.reset7d}}}}
+                # An elapsed reset we were told about before it happened is a
+                # refill, not a broken reading. A cold window reaches the same
+                # state by the other route and keeps its own exemption.
+                $w7=Resolve-Hotpl8Window $s.used7d $s.reset7d $s.observedAt $Now
+                $w5=Resolve-Hotpl8Window $s.used5h $s.reset5h $s.observedAt $Now
+                $weekly=$fresh -and (Test-Hotpl8OverviewPercent $w7.used) -and ($w7.rolledOver -or (Test-Hotpl8FutureReset $w7.resetAt $Now))
+                if($weekly){$remaining=100-[double]$w7.used;$weeklyReset=$(if($w7.resetAt){[datetimeoffset]::Parse($w7.resetAt).ToString('o')}else{$null})}
+                $short=$fresh -and (Test-Hotpl8OverviewPercent $w5.used) -and ($w5.rolledOver -or (Test-Hotpl8FutureReset $w5.resetAt $Now) -or ($s.cold -and $s.used5h -eq 0 -and -not $s.reset5h))
+                $modelBlock=Get-ClaudeModelBlock $s.scoped $Policy ([int]$id) $Now $s.observedAt
+                $e=@{h5=$(if($short){100-[double]$w5.used}else{$null});h7=$remaining;fresh=[bool]($short -and $weekly);modelBlocked=[bool]$modelBlock;obj=@{usage=@{fiveHour=@{resetsAt=$w5.resetAt};sevenDay=@{resetsAt=$w7.resetAt}}}}
                 $claudeAccounts[[int]$id]=$e
                 $eligible=(Test-Ok $e ([double]$Policy.margin5h) (Get-Margin7dFor $Policy $id)) -and $e.h5 -gt 0 -and $remaining -gt 0
                 if($fresh){$reason=if($modelBlock){$modelBlock}elseif($eligible){'eligible'}elseif(-not $weekly -or -not $short){'window_unmeasured'}else{'below_margin'}}elseif($s -and $s.status -eq 'ok'){$reason='stale'}
             }else{
                 $b=$s.buckets.$meter;$w=$b.windows.'10080'
-                if($fresh -and ($b.status -eq 'observed' -or ($b.status -eq 'blocked' -and $w.usedPercent -eq 100)) -and (Test-Hotpl8OverviewPercent $w.usedPercent) -and (Test-Hotpl8FutureReset $w.resetsAt $Now -Unix)){
-                    $remaining=100-[double]$w.usedPercent
-                    if($w.anchorState -eq 'observed-active'){$weeklyReset=[datetimeoffset]::FromUnixTimeSeconds([long]$w.resetsAt).ToString('o')}
+                $rolledWeekly=Resolve-Hotpl8Window $w.usedPercent $w.resetsAt $w.observedAt $Now -Unix
+                if($fresh -and ($b.status -eq 'observed' -or ($b.status -eq 'blocked' -and $w.usedPercent -eq 100)) -and (Test-Hotpl8OverviewPercent $rolledWeekly.used) -and ($rolledWeekly.rolledOver -or (Test-Hotpl8FutureReset $rolledWeekly.resetAt $Now -Unix))){
+                    $remaining=100-[double]$rolledWeekly.used
+                    if($w.anchorState -eq 'observed-active' -and $null -ne $rolledWeekly.resetAt){$weeklyReset=[datetimeoffset]::FromUnixTimeSeconds([long]$rolledWeekly.resetAt).ToString('o')}
                 }
                 if($s){$reason=Get-CodexEligibility $s $part $meter $Now;$eligible=$reason -eq 'eligible';$codexAccounts+=@($s)}
             }

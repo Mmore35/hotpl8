@@ -37,6 +37,35 @@ Check 'stale and elapsed windows never refill or imply readiness' {
     $c.providers.codex.slots[0].buckets.codex.windows.'10080'.anchorState='unconfirmed'
     Assert ((Get-Hotpl8ProviderOverview $c $p $now).codex.measured -eq 1)
 }
+Check 'a reset that elapsed after the reading refills the window and keeps it measured' {
+    $c=Copy-Value $s
+    foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.used5h=90;$a.reset5h=$now.AddSeconds(-1).ToString('o')}
+    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
+    Assert ($o.measured -eq 3 -and $o.unknownPercent -eq 0 -and $o.availability -notlike 'Unavailable*')
+    $c=Copy-Value $s
+    foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.reset7d=$now.AddSeconds(-1).ToString('o')}
+    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
+    Assert ($o.measured -eq 3 -and $o.remainingPercent -eq 100)
+    $c=Copy-Value $s;$slot=$c.providers.codex.slots[0]
+    $slot.observedAt=$now.AddMinutes(-5).ToString('o')
+    $slot.buckets.codex.windows.'10080'|Add-Member NoteProperty observedAt $now.AddMinutes(-5).ToString('o') -Force
+    $slot.buckets.codex.windows.'10080'.resetsAt=$now.AddSeconds(-1).ToUnixTimeSeconds()
+    Assert ((Get-Hotpl8ProviderOverview $c $p $now).codex.remainingPercent -eq 100)
+}
+Check 'an elapsed reset cannot refill a reading that never arrived' {
+    # The rollover is the provider's own reported outcome arriving early, not
+    # a licence to publish a percentage nothing measured.
+    foreach($used in @($null,101)){
+        $c=Copy-Value $s
+        foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.used7d=$used;$a.reset7d=$now.AddSeconds(-1).ToString('o')}
+        $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
+        Assert ($o.measured -eq 0 -and $o.unknownPercent -gt 0 -and $null -eq $o.remainingPercent)
+        $c=Copy-Value $s
+        foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.used5h=$used;$a.reset5h=$now.AddSeconds(-1).ToString('o')}
+        $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
+        Assert (@($o.members|Where-Object reason -EQ 'window_unmeasured').Count -eq 3 -and -not @($o.members|Where-Object eligible).Count)
+    }
+}
 Check 'all missing, malformed percentages and unconfigured accounts are unknown' {
     $o=Get-Hotpl8ProviderOverview $null $p $now
     Assert ($o.claude.accounts -eq 3 -and $o.claude.measured -eq 0)

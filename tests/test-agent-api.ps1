@@ -121,6 +121,30 @@ try{
         SaveFixture;$snapshot.providers.codex.slots[0].buckets.codex.windows.'10080'.resetsAt=$now.AddSeconds(-1).ToUnixTimeSeconds();WriteFixture
         Assert (-not (Request readiness @{provider='codex'}).data.eligible)
     }
+    Check 'a refilled window reads the same to an agent as it is drawn, and no reading still means none' {
+        # The Codex branch must answer like Get-CodexEligibility and the
+        # dashboard: refilled, with no elapsed reset published beside it.
+        SaveFixture
+        $w=$snapshot.providers.codex.slots[0].buckets.codex.windows.'10080'
+        $w.resetsAt=$now.AddSeconds(-1).ToUnixTimeSeconds()
+        $w|Add-Member NoteProperty observedAt $now.AddMinutes(-5).ToString('o') -Force
+        WriteFixture
+        $r=Request readiness @{provider='codex'}
+        Assert ($r.ok -and $r.data.eligible -and $r.data.accounts[0].reason -eq 'eligible')
+        $window=@($r.data.accounts[0].windows|Where-Object durationMinutes -EQ 10080)[0]
+        Assert ($window.remainingPercent -eq 100 -and $null -eq $window.resetsAt)
+        # A Claude window whose reading never arrived is not refilled by its
+        # elapsed reset -- unmeasured, not 100% free and certainly not eligible.
+        SaveFixture
+        $snapshot.slots[0].observedAt=$now.AddMinutes(-5).ToString('o')
+        $snapshot.slots[0].reset5h=$now.AddSeconds(-1).ToString('o')
+        $snapshot.slots[0].used5h=$null
+        WriteFixture
+        $r=Request readiness @{provider='claude'}
+        Assert ($r.data.accounts[0].reason -eq 'window_unmeasured')
+        $five=@($r.data.accounts[0].windows|Where-Object durationMinutes -EQ 300)[0]
+        Assert ($null -eq $five.remainingPercent)
+    }
     Check 'Claude current and proposed accounts respect pause hold monitor and scope' {
         SaveFixture;$snapshot.slots[0].used5h=100;WriteFixture
         $r=Request readiness @{provider='claude'}

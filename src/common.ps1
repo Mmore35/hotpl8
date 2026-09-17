@@ -183,3 +183,39 @@ function Stop-Hotpl8Process($Process) {
 function Test-Hotpl8FreshTimestamp($Timestamp,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     try{$age=($Now-[datetimeoffset]::Parse([string]$Timestamp)).TotalSeconds;return ($age -ge -5 -and $age -le 900)}catch{return $false}
 }
+function Resolve-Hotpl8Window($Used,$ResetAt,$ObservedAt,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,[switch]$Unix) {
+    # One rule for every elapsed reset, shared by both providers.
+    #
+    # observedAt < resetAt <= now: the provider itself told us this window ends
+    # at a time that has since passed, so the window rolled over. cswap reports
+    # exactly that state once it can be read again (pct=0 with an empty
+    # resetsAt; verified 2026-08-09, see providers/claude.ps1) -- the refill is
+    # the reported outcome arriving ahead of the next collector read, not a guess.
+    #
+    # resetAt <= observedAt: the payload handed us an anchor that was already
+    # expired when we read it. That is genuinely suspect and keeps the
+    # conservative unconfirmed handling.
+    #
+    # A missing or unreadable observation time leaves the reading alone too:
+    # over-promising quota is worse than waiting one collector cycle. The
+    # ordering test subsumes the dashboard's -5s clock-skew allowance -- an
+    # observation stamped ahead of our clock can never satisfy
+    # observedAt < resetAt <= now, so it never rolls over. A clock running
+    # fast is bounded instead by the freshness ceiling, which expires the
+    # reading and hands the account to the existing stale path.
+    #
+    # The same caution covers the reading itself. Rolling over replaces $Used
+    # with a full window, so a missing or out-of-range percentage must never
+    # be promoted to '100% free': callers gate on the returned used value, and
+    # a literal would pass that gate on data the rest of hotpl8 calls unusable.
+    $result=@{used=$Used;resetAt=$ResetAt;rolledOver=$false}
+    if($null -eq $ResetAt -or [string]$ResetAt -eq ''){return $result}
+    $at=$null
+    try{$at=if($Unix){[datetimeoffset]::FromUnixTimeSeconds([long]$ResetAt)}else{[datetimeoffset]::Parse([string]$ResetAt)}}catch{return $result}
+    if($at -gt $Now){return $result}
+    if(-not (Test-Hotpl8Number $Used) -or [double]$Used -lt 0 -or [double]$Used -gt 100){return $result}
+    $observed=$null
+    try{if($ObservedAt){$observed=[datetimeoffset]::Parse([string]$ObservedAt)}}catch{}
+    if($null -eq $observed -or $observed -ge $at){return $result}
+    return @{used=0.0;resetAt=$null;rolledOver=$true}
+}
