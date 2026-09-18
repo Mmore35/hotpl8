@@ -45,18 +45,26 @@ function Set-Hotpl8UserPath([string]$Directory,[bool]$Add) {
     if($Add){$parts+=@($Directory)}
     [Environment]::SetEnvironmentVariable('Path',($parts -join ';'),'User')
 }
+# Separated from registration so the command line that actually collects unattended can be
+# asserted and run by a test without creating, editing or deleting a real scheduled task.
+function Get-Hotpl8TaskDefinition($Installation,[string]$Directory) {
+    [pscustomobject]@{
+        name='HotPl8-'+$Installation.id
+        description='HotPl8 owned installation '+$Installation.id
+        execute=(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
+        arguments='-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File '+(ConvertTo-NativeArgument (Join-Path $Directory 'app/tick.ps1'))+' -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $Installation.stateDirectory)
+        workingDirectory=$Directory
+    }
+}
 function Register-Hotpl8Task($Installation,[string]$Directory) {
-    $name='HotPl8-'+$Installation.id
-    $description='HotPl8 owned installation '+$Installation.id
-    $existing=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-    if($existing -and $existing.Description -ne $description){throw 'Scheduled task ownership mismatch.'}
-    $hostExe=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    $arguments='-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File '+(ConvertTo-NativeArgument (Join-Path $Directory 'app/tick.ps1'))+' -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $Installation.stateDirectory)
-    $action=New-ScheduledTaskAction -Execute $hostExe -Argument $arguments -WorkingDirectory $Directory
+    $definition=Get-Hotpl8TaskDefinition $Installation $Directory
+    $existing=Get-ScheduledTask -TaskName $definition.name -ErrorAction SilentlyContinue
+    if($existing -and $existing.Description -ne $definition.description){throw 'Scheduled task ownership mismatch.'}
+    $action=New-ScheduledTaskAction -Execute $definition.execute -Argument $definition.arguments -WorkingDirectory $definition.workingDirectory
     $trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
     $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     $user=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
-    $task=New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $description
-    Register-ScheduledTask -TaskName $name -InputObject $task -Force|Out-Null
+    $task=New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $definition.description
+    Register-ScheduledTask -TaskName $definition.name -InputObject $task -Force|Out-Null
 }

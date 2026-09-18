@@ -6,6 +6,8 @@ Use Windows PowerShell 5.1, Git Bash, and Python 3 for the complete offline suit
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
 ```
 
+Suites run concurrently, so each one's output is printed whole when it finishes rather than streamed. Add `-Parallel 1` to run them one at a time with live output when reading a single suite's progress matters.
+
 Tests use temporary fixture accounts and a compiled fake Codex executable. They must not log into accounts, send prompts, mutate native credential homes, or change your installed scheduler/PATH. The complete Windows suite needs permission to execute temporary test binaries. A restricted sandbox can report transport failures before product code reaches the fake provider.
 
 Run [static checks](scripts/check.ps1), then relevant focused suites during development. CI runs the complete suite. Keep fixes small, describe observable behavior, and include regression coverage for meaningful bugs. Preserve the existing eligibility, quota-freshness, isolation, and failure tests. Do not weaken checks simply to obtain a green count.
