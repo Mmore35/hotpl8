@@ -248,8 +248,6 @@ export class CodexBridge {
 }
 
 export async function main(config, args) {
-  assertEnvironment(process.env);
-  assertSharedHome(config.sharedHome, process.env.CODEX_HOME);
   const broker = createBroker(config);
   const verb = args[0];
   if (verb === '--version' || verb === '-V') {
@@ -258,6 +256,8 @@ export async function main(config, args) {
     await new Promise((done, fail) => { child.on('error', fail); child.on('exit', code => { process.exitCode = code ?? 1; done(); }); });
     return;
   }
+  assertEnvironment(process.env);
+  assertSharedHome(config.sharedHome, process.env.CODEX_HOME);
   if (verb === 'exec') {
     const { model } = validateArgs(args.slice(1), true);
     if (!model) throw error('routing_model_unknown');
