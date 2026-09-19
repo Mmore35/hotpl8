@@ -65,6 +65,9 @@ instance need their provider changed back to the original Codex instance.
    holds, model-to-meter mapping, freshness checks and canonical identity bindings.
    It validates the selected home through native account/quota reads. A newly
    exhausted candidate is excluded and another fresh eligible candidate can win.
+   Concurrent title helpers and chat sessions may briefly contend for the same
+   native account lock. Admission waits up to 2.5 seconds per candidate, within
+   a shared validation deadline, before reporting prolonged contention.
 4. Only the access token and account ID travel through private pipes to Codex's
    external-token login. Refresh tokens stay in their native homes. Neither
    tokens nor raw provider errors appear in HotPl8 status, logs or diagnostics.
@@ -99,6 +102,11 @@ Errors have fixed `routing_*` codes. `routing_stale` means refresh the collector
 `routing_binding_changed` requires rechecking enrollment;
 `routing_refresh_failed` requires native authentication inspection;
 `routing_busy` means wait for the current parent/child turn to finish.
+`routing_account_busy` means another validator held the account lock beyond the
+bounded wait; `routing_validation_timeout` means the admission deadline expired.
+These failures occur before inference. The broker records only the time and
+fixed failure code in HotPl8's bounded `events.jsonl`, never credentials or paths.
+See the [concurrent admission repair](plans/t3-concurrent-admission.md).
 
 An account can run out after admission. The original failure is shown once;
 the bridge never replays a partially executed prompt or duplicates tool effects.
