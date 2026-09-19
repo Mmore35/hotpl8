@@ -185,9 +185,12 @@ class DeliveryTests(unittest.TestCase):
             # the original 20-second bound for the nested PowerShell fixture.
             # Record elapsed time to distinguish slow startup from a real hang.
             # Keep the exit/output/state assertions and record the startup time.
+            # Raised again once the suites began running concurrently: the same
+            # nested cold start measured 1.5-2.4s on a 16-CPU machine and 75s on
+            # a 4-vCPU hosted runner sharing it with every other suite.
             started = time.monotonic()
             try:
-                return subprocess.run(arguments, capture_output=True, timeout=60)
+                return subprocess.run(arguments, capture_output=True, timeout=180)
             finally:
                 print("fixture launcher elapsed: %.1fs" % (time.monotonic() - started), flush=True)
         import setup

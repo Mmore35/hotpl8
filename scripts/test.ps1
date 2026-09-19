@@ -1,5 +1,11 @@
 ﻿# Run offline suites in separate Windows PowerShell processes with isolated user directories.
-param([switch]$SkipClaude,[int]$Parallel=[Environment]::ProcessorCount)
+# The default width is capped deliberately. A concurrent run can never finish sooner
+# than its longest suite (the 235 s bash tick regression), and every other suite
+# together is about as long again, so four at a time already hides all of them --
+# while 16 at a time on a 16-core machine oversubscribes the CPU enough to break the
+# Codex suite's real-time budgets (a 401 fixture that cannot start inside 3 s is
+# classified as a timeout). Raise -Parallel only if you also accept that risk.
+param([switch]$SkipClaude,[int]$Parallel=[Math]::Min(4,[Environment]::ProcessorCount))
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
@@ -29,7 +35,9 @@ function Start-IsolatedSuite([string]$Name,[string]$Executable,[string[]]$Argume
     $psi.EnvironmentVariables['PSModuleAnalysisCachePath']=Join-Path $homeDir 'ModuleAnalysisCache'
     foreach($key in @('HOTPL8_STATE_DIRECTORY','OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CLAUDE_CODE_OAUTH_TOKEN','ANTHROPIC_API_KEY')){$psi.EnvironmentVariables.Remove($key)}
     $psi.RedirectStandardOutput=$Capture;$psi.RedirectStandardError=$Capture
-    $proc=[Diagnostics.Process]::Start($psi)
+    # Nothing owns this suite's temp home until it is handed back, so a failure to
+    # start has to remove it here.
+    try{$proc=[Diagnostics.Process]::Start($psi)}catch{Remove-Item -LiteralPath $homeDir -Recurse -Force -ErrorAction SilentlyContinue;throw}
     # Start draining both pipes BEFORE anything waits on the process: a suite that
     # fills the pipe buffer with nobody reading it blocks until the run times out.
     $out=$null;$err=$null
@@ -72,17 +80,25 @@ if(-not $SkipClaude){
 $capture=$Parallel -gt 1
 # Serial runs keep the declaration order they have always reported in.
 if($capture){$work=@($work|Sort-Object -Property weight -Descending)}
-$started=@()
-for($i=0;$i -lt $work.Count;$i++){
-    # In flight = started - completed, so start ahead of the completion cursor
-    # only up to the requested width.
-    while($started.Count -lt $work.Count -and ($started.Count - $i) -lt $Parallel){
-        $item=$work[$started.Count]
-        $started+=Start-IsolatedSuite $item.name $item.executable $item.arguments $capture
+$started=@();$handled=0
+try{
+    for($i=0;$i -lt $work.Count;$i++){
+        # In flight = started - completed, so start ahead of the completion cursor
+        # only up to the requested width.
+        while($started.Count -lt $work.Count -and ($started.Count - $i) -lt $Parallel){
+            $item=$work[$started.Count]
+            $started+=Start-IsolatedSuite $item.name $item.executable $item.arguments $capture
+        }
+        '[{0}/{1}] {2}' -f ($i+1),$work.Count,$started[$i].name
+        # From here this suite cleans up after itself, whether or not it exits well.
+        $handled=$i+1
+        $code=Complete-IsolatedSuite $started[$i]
+        if($code -ne 0){$failures+=$started[$i].name}
     }
-    '[{0}/{1}] {2}' -f ($i+1),$work.Count,$started[$i].name
-    $code=Complete-IsolatedSuite $started[$i]
-    if($code -ne 0){$failures+=$started[$i].name}
+}finally{
+    # Anything still in flight owns a temp home that only completion removes. Errors
+    # here would replace whatever is already unwinding, so they are dropped.
+    for($j=$handled;$j -lt $started.Count;$j++){try{[void](Complete-IsolatedSuite $started[$j])}catch{}}
 }
 if($failures){throw ('Failed suites: '+($failures -join ', '))}
 'All requested offline suites passed.'
