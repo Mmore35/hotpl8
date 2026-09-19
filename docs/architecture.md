@@ -114,3 +114,10 @@ Provider summaries are additive `providerOverview` fields on snapshots and statu
 ## Local agent boundary
 
 `src/agent-api.ps1` owns the v1 request dispatcher and bounded explicit cached projections. The `agent` CLI and `src/mcp.ps1` call it directly; MCP adds protocol framing and a startup pause-write allowlist. `src/leases.ps1` persists cooperative pauses under the existing collector lock. `Get-Hotpl8Pause` combines lease state with the independent manual pause. Read operations never run a provider or write state. Selection uses production functions and requires native validation at launch. See [agent API](agent-api.md).
+
+## Optional T3 adapter
+
+The [T3 integration](t3-integration.md) is a separate opt-in launch boundary. It
+uses native external-token login with ephemeral credential storage in the shared
+conversation home. Native Codex alone refreshes the canonical enrolled homes.
+The collector and public agent API never return authentication material.

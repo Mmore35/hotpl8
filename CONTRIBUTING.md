@@ -1,6 +1,6 @@
 # Contributing
 
-Use Windows PowerShell 5.1, Git Bash, and Python 3 for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository and run:
+Use Windows PowerShell 5.1, Git Bash, Python 3 and Node 22+ for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository and run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
@@ -35,3 +35,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\screenshots.ps1
 Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do not infer weekly or short-window capacity from price ratios, weaken unknown-state checks, or count a skipped retry as a failed provider attempt. Preserve third-party animation notices in source and release packages.
 
 Claude plan discovery is isolated in `src/providers/claude_plan.py` and `claude-plans.ps1`. Run `python tests/test_claude_plan.py` and `tests/test-claude-plans.ps1` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
+
+T3 integration changes require `node --test tests/test-t3-codex.mjs` and
+`tests/test-t3-routing.ps1`. Fixtures use synthetic credentials and a fake native
+executable. Never print the private broker response: it contains an access token.

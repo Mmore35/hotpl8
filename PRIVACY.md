@@ -19,3 +19,11 @@ Claude collection also detects subscription plans through read-only requests to 
 ## Agent interface
 
 Agent JSON and MCP reads use explicit projections that omit labels, account homes, native identities, credentials and lease capabilities. Slot IDs, quota observations and availability remain local account data; an MCP client can send returned data to its model. Acquire/release replies return only the supplied job capability. The private `automation-leases.json` ledger stores UUID capabilities, caller owner labels and expiry/tombstone times. It is gitignored and never part of a release. Anyone with the same filesystem permissions can inspect it; cooperative ownership is not a security boundary. No network service is started. [Agent API](docs/agent-api.md).
+
+## Optional T3 integration
+
+The opt-in T3 adapter reads an enrolled home's access token after native account
+validation and sends it to native Codex over private subprocess pipes. It does not
+copy or store refresh tokens or replace shared auth files. Its setup receipt stores
+local paths and the original default model selection. Native conversation state
+remains governed by Codex and T3. See [integration details](docs/t3-integration.md).

@@ -1,4 +1,4 @@
-﻿# Native Codex quota observations. No token copying, token refresh, or inference.
+﻿# Native Codex owns login and refresh. Ordinary collection never exports tokens.
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
 function Invoke-CodexRpc($Process, $Clock, [int]$TimeoutMs, [int]$Id, [string]$Method, $Params) {
     $request = @{ id = $Id; method = $Method }
@@ -30,7 +30,7 @@ function Invoke-CodexRpc($Process, $Clock, [int]$TimeoutMs, [int]$Id, [string]$M
     }
     throw 'timeout'
 }
-function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$TimeoutMs = 5000, [string]$WorkingDirectory) {
+function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$TimeoutMs = 5000, [string]$WorkingDirectory, [switch]$IncludeAccessToken, [switch]$RefreshToken) {
     $homeLock = $null
     $proc = $null; $clock = [Diagnostics.Stopwatch]::StartNew()
     try {
@@ -48,7 +48,7 @@ function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$Timeou
         [void]$proc.StandardError.ReadToEndAsync()
         $null = Invoke-CodexRpc $proc $clock $TimeoutMs 1 'initialize' @{ clientInfo = @{ name = 'hotpl8'; version = '0.1' }; capabilities = @{ experimentalApi = $true } }
         $proc.StandardInput.WriteLine('{"method":"initialized"}'); $proc.StandardInput.Flush()
-        $account = Invoke-CodexRpc $proc $clock $TimeoutMs 2 'account/read' @{ refreshToken = $false }
+        $account = Invoke-CodexRpc $proc $clock $TimeoutMs 2 'account/read' @{ refreshToken = [bool]$RefreshToken }
         if ($account.account.type -ne 'chatgpt') { throw 'subscription_login_required' }
         $quota = Invoke-CodexRpc $proc $clock $TimeoutMs 3 'account/rateLimits/read' $null
         $config = Invoke-CodexRpc $proc $clock $TimeoutMs 4 'config/read' @{ includeLayers = $false; cwd = $WorkingDirectory }
@@ -56,14 +56,20 @@ function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$Timeou
         # if the normal native login changes; it is omitted from public status.
         $workspace = [string]$config.config.forced_chatgpt_workspace_id
         # Native account/read omits workspace identity. Read only that identity from
-        # the native auth file when present; never return or persist its token fields.
+        # the native auth file when present. Only the opt-in T3 broker receives an
+        # access token over its private pipe, while this home's lock is still held.
         $nativeAuth = Read-Hotpl8Json (Join-Path $AccountHome 'auth.json')
         if ($nativeAuth.tokens.account_id) { $workspace += '|' + [string]$nativeAuth.tokens.account_id }
-        $nativeAuth = $null
         $identity = Get-Hotpl8Hash ([string]$account.account.email + '|' + $workspace)
         $standardTransport = -not $config.config.model_providers.openai.base_url
         if ($config.config.chatgpt_base_url -and [string]$config.config.chatgpt_base_url -notmatch '^https://chatgpt\.com/backend-api/?$') { $standardTransport = $false }
-        return [pscustomobject]@{ status = 'ok'; quota = $quota; identityKey = $identity; planType = $(if([string]$account.account.planType -in @('free','plus','pro','team','business','enterprise','edu')){[string]$account.account.planType}else{'unknown'}); model = [string]$config.config.model; modelProvider = [string]$config.config.model_provider; standardTransport = $standardTransport; elapsedMs = $clock.ElapsedMilliseconds }
+        $result = [pscustomobject]@{ status = 'ok'; quota = $quota; identityKey = $identity; planType = $(if([string]$account.account.planType -in @('free','plus','pro','team','business','enterprise','edu')){[string]$account.account.planType}else{'unknown'}); model = [string]$config.config.model; modelProvider = [string]$config.config.model_provider; standardTransport = $standardTransport; elapsedMs = $clock.ElapsedMilliseconds }
+        if($IncludeAccessToken){
+            if(-not $nativeAuth.tokens.access_token -or -not $nativeAuth.tokens.account_id){throw 'subscription_login_required'}
+            $result|Add-Member NoteProperty auth ([pscustomobject]@{accessToken=[string]$nativeAuth.tokens.access_token;chatgptAccountId=[string]$nativeAuth.tokens.account_id})
+        }
+        $nativeAuth=$null
+        return $result
     } catch {
         $known = @('home_busy','timeout','home_missing','codex_missing','native_codex_required','process_exited','response_too_large','invalid_json','invalid_response','authentication_required','access_denied','rate_limited','rpc_failed','subscription_login_required')
         $reason = [string]$_.Exception.Message
