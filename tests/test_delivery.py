@@ -10,6 +10,7 @@ import unittest
 import os
 import subprocess
 import time
+import uuid
 from unittest.mock import patch
 import zipfile
 
@@ -184,9 +185,12 @@ class DeliveryTests(unittest.TestCase):
             # the original 20-second bound for the nested PowerShell fixture.
             # Record elapsed time to distinguish slow startup from a real hang.
             # Keep the exit/output/state assertions and record the startup time.
+            # Raised again once the suites began running concurrently: the same
+            # nested cold start measured 1.5-2.4s on a 16-CPU machine and 75s on
+            # a 4-vCPU hosted runner sharing it with every other suite.
             started = time.monotonic()
             try:
-                return subprocess.run(arguments, capture_output=True, timeout=60)
+                return subprocess.run(arguments, capture_output=True, timeout=180)
             finally:
                 print("fixture launcher elapsed: %.1fs" % (time.monotonic() - started), flush=True)
         import setup
@@ -234,6 +238,34 @@ class DeliveryTests(unittest.TestCase):
         result = launch([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(self.root / "app/hotpl8.ps1"), "watch"])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         self.assertEqual(result.stdout.strip(), b"new:watch")
+
+    @unittest.skipUnless(os.name == "nt", "Windows updater launcher qualification")
+    def test_updater_launcher_survives_quoting_and_reaches_the_updater(self):
+        # Nothing else executes the VBS the updater task launches, and its Python path
+        # is quoted by hand. Plan the registration -- which writes the launcher and
+        # creates no task -- then run that launcher and check what it invoked.
+        source = Path(__file__).resolve().parents[1]
+        # A unique product cannot collide with a real LocalDelivery task on this machine.
+        product = "hotpl8-fixture-" + uuid.uuid4().hex
+        d.write(self.root / "delivery.json", dict(self.config, product=product))
+        # A space in the interpreter path is the case the hand-written quoting exists for.
+        stub = self.root / "stub python.cmd"
+        stub.write_text('@echo off\r\n>"%~dp0invoked.txt" echo %1\r\n>>"%~dp0invoked.txt" echo %2\r\n')
+        ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+        result = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+                                 str(source / "delivery/register.ps1"), "-InstallDirectory", str(self.root),
+                                 "-Python", str(stub), "-PlanOnly"], capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        plan = json.loads(result.stdout)
+        self.assertEqual(plan["name"], "LocalDelivery-" + product)
+        self.assertEqual(plan["description"], "Local Delivery owned installation " + str(self.root))
+        self.assertEqual(Path(plan["launcher"]), self.root / "update-launcher.vbs")
+        result = subprocess.run(["wscript.exe", plan["launcher"]], capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        invoked = (self.root / "invoked.txt").read_text().splitlines()
+        # A dropped quote would truncate either path at its first space.
+        self.assertEqual(invoked[0].strip().strip('"'), str(self.root / "delivery.py"))
+        self.assertEqual(invoked[1].strip(), "update")
 
     @unittest.skipUnless(os.name == "nt", "Windows product adapter")
     def test_real_product_package_preflight_and_readiness(self):

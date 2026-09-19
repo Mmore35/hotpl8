@@ -56,8 +56,11 @@ function Send-Mcp($Proc, $Message) {
     Send-McpLine $Proc (ConvertTo-Json -InputObject $Message -Compress -Depth 20)
 }
 function Read-Mcp($Proc) {
+    # Bounds a hang, not response latency: a server cold start on a loaded hosted
+    # runner measured 75s once the suites began running concurrently, and the
+    # abandoned read then poisons the stream for every later request.
     $pending = $Proc.StandardOutput.ReadLineAsync()
-    if (-not $pending.Wait(45000)) { throw 'MCP response timed out' }
+    if (-not $pending.Wait(180000)) { throw 'MCP response timed out' }
     if ($null -eq $pending.Result) { throw ('Unexpected MCP EOF: ' + $Proc.StandardError.ReadToEnd()) }
     return (ConvertFrom-Json -InputObject $pending.Result)
 }
@@ -72,7 +75,7 @@ function Initialize-Mcp($Proc, [string]$Version = '2025-11-25') {
 }
 function Stop-TestMcp($Proc) {
     $Proc.StandardInput.BaseStream.Close()
-    if (-not $Proc.WaitForExit(45000)) { $Proc.Kill(); throw 'MCP did not exit on EOF' }
+    if (-not $Proc.WaitForExit(180000)) { $Proc.Kill(); throw 'MCP did not exit on EOF' }
     $extra = $Proc.StandardOutput.ReadToEnd(); $errorText = $Proc.StandardError.ReadToEnd()
     Assert ($Proc.ExitCode -eq 0 -and -not $extra -and -not $errorText)
     $Proc.Dispose()

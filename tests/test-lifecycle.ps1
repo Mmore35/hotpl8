@@ -68,6 +68,37 @@ try{
         Assert $d.policyValid
         Assert (-not (Test-Path -LiteralPath (Join-Path $install 'app/policy.json')))
     }
+    Check 'the scheduled collector command line runs the installed tick' {
+        # Unattended collection happens only through this command line, and
+        # `powershell.exe -File` exits 0 on an unknown parameter, so a broken one is
+        # silent. Assert the definition, then run it and require the output it exists
+        # to produce. Nothing here registers, edits or deletes a scheduled task.
+        $installation=Read-Hotpl8Json (Join-Path $install 'installation.json')
+        $definition=Get-Hotpl8TaskDefinition $installation $install
+        Assert ($definition.name -ceq ('HotPl8-'+$installation.id))
+        Assert ($definition.description -ceq ('HotPl8 owned installation '+$installation.id))
+        Assert ((Test-Path -LiteralPath $definition.execute -PathType Leaf) -and $definition.workingDirectory -ceq $install)
+        # The installed path carries a space, so its quoting is part of the assertion.
+        Assert ($definition.arguments.Contains(' -File "'+(Join-Path $install 'app/tick.ps1')+'" -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $state)))
+        $policyPath=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllBytes($policyPath)
+        try{
+            # A preferred slot makes the tick collect. The backoff marker keeps that
+            # collection away from cswap, so no account or credential home is touched.
+            $p=Read-Hotpl8Json $policyPath;$p.prefer=@(1)
+            Write-Hotpl8Text $policyPath ($p|ConvertTo-Json -Depth 12)
+            $now=[datetimeoffset]::UtcNow
+            Write-Hotpl8Text (Join-Path $state 'collector.json') (@{schemaVersion=1;providers=@{claude=@{lastAttemptAt=$now.ToString('o');failures=1;nextAttemptAt=$now.AddMinutes(30).ToString('o');status='unavailable'}}}|ConvertTo-Json -Depth 8)
+            Remove-Item -LiteralPath (Join-Path $state 'status.txt') -Force -ErrorAction SilentlyContinue
+            $proc=Start-Process -FilePath $definition.execute -ArgumentList $definition.arguments -WorkingDirectory $definition.workingDirectory -WindowStyle Hidden -Wait -PassThru
+            Assert ($proc.ExitCode -eq 0)
+            Assert (Test-Path -LiteralPath (Join-Path $state 'status.txt'))
+            $status=Read-Hotpl8Json (Join-Path $state 'status.json')
+            Assert ($status.collector.scheduled -eq $true -and $status.claudeError -eq 'backoff')
+        }finally{
+            [IO.File]::WriteAllBytes($policyPath,$original)
+            foreach($name in @('status.txt','status.js','status.json','collector.json')){Remove-Item -LiteralPath (Join-Path $state $name) -Force -ErrorAction SilentlyContinue}
+        }
+    }
     Check 'one installed dashboard update reaches watch and nyan through the same launcher' {
         $renderer=Join-Path $source 'src/dashboard.ps1';$checksums=Join-Path $source 'checksums.json'
         $original=[IO.File]::ReadAllBytes($renderer);$originalHashes=[IO.File]::ReadAllBytes($checksums)

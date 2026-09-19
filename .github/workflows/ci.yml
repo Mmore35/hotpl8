@@ -8,7 +8,10 @@ permissions:
   contents: read
 concurrency:
   group: verify-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede a branch's own earlier pushes, but let every commit that reaches a
+  # release branch finish: a cancelled push run leaves that commit with no verdict
+  # and no main-<sha> package.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   windows:
     runs-on: windows-latest

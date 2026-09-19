@@ -5,6 +5,8 @@
 - Add a versioned JSON agent command and local MCP read tools with explicit cached readiness.
 - Add opt-in independent pause leases, retry-safe acquisition/release and active-lease rollback protection.
 - Preserve legacy CLI JSON formats; agent reads omit labels, native paths and identities.
+- Run the offline suites concurrently, longest first, so a full verification takes a little over half the wall time; `scripts/test.ps1 -Parallel 1` still runs them one at a time.
+- Cover the two paths that make an installation run unattended: the scheduled collector command line and the updater launcher. Remove an unused launcher script.
 
 
 ## Unreleased
