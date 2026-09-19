@@ -47,7 +47,7 @@ provider; the original native provider remains available for deliberate manageme
 | Failure after work began | Surface once; never replay input/tools automatically | Protocol tests |
 | External token refresh | Refresh canonical pinned identity only; do not switch on 401 | Broker/protocol tests; long native soak pending |
 | T3 account/model probes | Authenticate using eligible subscription and return native protocol | Native 0.155.1 probe qualification |
-| T3 stateless exec helper | Eligible canonical home, exact argv/stdin/output/exit | Compiled Windows integration test |
+| T3 stateless exec helper | Eligible canonical home, exact argv/stdin/output/exit; configure T3's independent helper default | Compiled Windows integration test and native structured-output exec |
 | Shared auth/config and refresh secrets | No copying or writes by bridge; no secrets in diagnostics | Offline sentinel checks and native before/after hashes |
 | Settings install/remove | Original instance and unrelated edits survive; no active provider replacement | Windows setup fixture and installed T3 lifecycle inspection |
 | Regression | Static, complete offline, packaging and CI checks | PR validation record |
@@ -58,7 +58,9 @@ provider; the original native provider remains available for deliberate manageme
 2. Install as a separate provider; keep existing sessions on their original
    provider until explicitly switched. Default only new Codex chats when requested.
 3. Record native successful routing across two healthy independent accounts,
-   including the same conversation after an account change and exec helpers.
+   including the same conversation after an account change. A seeded exhausted
+   native account switching to an eligible account and native exec have passed;
+   this does not substitute for two healthy accounts alternating inference.
 4. Observe at least 72 hours, including a native external-token refresh, exhausted
    account recovery, sleep/resume, T3 restart and collector recovery. Redact all
    identities, prompts and tokens in published evidence.

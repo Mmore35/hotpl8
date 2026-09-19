@@ -70,6 +70,8 @@ try{
     Assert ($installed.providerInstances.codex.config.binaryPath -eq 'codex') 'active original provider not replaced'
     Assert ($installed.defaultModelSelection.instanceId -eq 'hotpl8-codex' -and $installed.defaultModelSelection.model -eq 'fixture-model') 'default routes new chats while preserving model'
     Assert ($installed.providerInstances.'hotpl8-codex'.config.homePath -eq $shared) 'new provider shares conversation home'
+    Assert ($installed.textGenerationModelSelection.instanceId -eq 'hotpl8-codex' -and $installed.textGenerationModelSelection.model -eq 'fixture-model') 'implicit T3 helper default routes through a verified model'
+    Assert ($installed.textGenerationModelSelection.options[0].value -eq 'low') 'helper default uses low reasoning'
     $launcher=Join-Path $integration 'hotpl8-codex.exe'
     Assert ((& $launcher --version) -eq 'codex-cli fixture') 'native launcher version/stdio passthrough'
     $psi=New-CodexProcessInfo $launcher $shared @('app-server') $dir
@@ -97,6 +99,7 @@ try{
     $restored=Read-Hotpl8Json $settingsPath
     Assert ($restored.providerInstances.codex.config.binaryPath -eq 'codex' -and $restored.unrelated -eq 'preserve') 'original provider restored, unrelated settings preserved'
     Assert ($restored.defaultModelSelection.instanceId -eq 'codex' -and -not $restored.providerInstances.PSObject.Properties['hotpl8-codex']) 'rollback removes only added instance and restores matching default'
+    Assert (-not $restored.PSObject.Properties['textGenerationModelSelection']) 'rollback restores absent helper setting instead of leaving a removed provider reference'
     Write-Output ($passed.ToString()+' T3 broker/Windows integration checks passed.')
 }finally{
     Stop-Hotpl8Process $proc

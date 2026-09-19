@@ -1,7 +1,7 @@
 # Explicit, reversible T3 binary integration. Never copies native credentials.
 [CmdletBinding()]
 param(
-    [ValidateSet('install','doctor','remove')][string]$Operation='doctor',
+    [ValidateSet('install','doctor','defaults','remove')][string]$Operation='doctor',
     [string]$StateDirectory,
     [string]$SettingsPath=(Join-Path $env:USERPROFILE '.t3/userdata/settings.json'),
     [string]$IntegrationDirectory=(Join-Path $env:LOCALAPPDATA 'HotPl8/integrations/t3-codex'),
@@ -9,7 +9,8 @@ param(
     [string]$NodeExecutable,
     [string]$ProviderId='codex',
     [string]$TargetProviderId='hotpl8-codex',
-    [switch]$MakeDefault
+    [switch]$MakeDefault,
+    [string]$TextGenerationModel
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/common.ps1')
@@ -25,6 +26,23 @@ $settings=$settingsText|ConvertFrom-Json
 $instance=$settings.providerInstances.$ProviderId
 if(-not $instance -or $instance.driver -ne 'codex'){throw 'Choose an existing T3 Codex provider instance.'}
 if($TargetProviderId -notmatch '^[a-z][a-z0-9-]{0,63}$' -or $TargetProviderId -eq $ProviderId){throw 'Use a distinct valid target provider ID.'}
+function Set-T3HelperDefaults($Settings,$Policy,[string]$Source,[string]$Target,[string]$Model){
+    $changes=@()
+    foreach($key in @('textGenerationModelSelection','sourceControlWriterModelSelection')){
+        $present=[bool]$Settings.PSObject.Properties[$key]
+        $old=$Settings.$key
+        # A null source-control override inherits textGenerationModelSelection.
+        if($key -eq 'sourceControlWriterModelSelection' -and -not $old){continue}
+        if($old -and $old.instanceId -ne $Source){continue}
+        $selectedModel=if($Model){$Model}elseif($old.model){[string]$old.model}else{[string]$Settings.defaultModelSelection.model}
+        if(-not $selectedModel -or -not $Policy.codex.modelMeters.$selectedModel){throw 'Choose -TextGenerationModel with a verified codex.modelMeters mapping for T3 helper requests.'}
+        $next=if($old){$old|ConvertTo-Json -Depth 20|ConvertFrom-Json}else{[pscustomobject]@{instanceId=$Target;model=$selectedModel;options=@([pscustomobject]@{id='reasoningEffort';value='low'})}}
+        $next.instanceId=$Target;$next.model=$selectedModel
+        $changes+=[pscustomobject]@{key=$key;present=$present;original=$old;installed=$next}
+        $Settings|Add-Member NoteProperty $key $next -Force
+    }
+    return $changes
+}
 if($Operation -eq 'doctor'){
     $config=Read-Hotpl8Json (Join-Path $IntegrationDirectory 'bridge-config.json')
     [pscustomobject]@{
@@ -38,6 +56,18 @@ if($Operation -eq 'doctor'){
     }|ConvertTo-Json
     exit 0
 }
+if($Operation -eq 'defaults'){
+    if(-not $receipt -or $receipt.settingsPath -ne $SettingsPath -or $receipt.targetProviderId -ne $TargetProviderId -or $settings.providerInstances.$TargetProviderId.config.binaryPath -ne $launcher){throw 'No matching installed integration.'}
+    $policy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json');Assert-Hotpl8Policy $policy
+    $changes=@(Set-T3HelperDefaults $settings $policy $ProviderId $TargetProviderId $TextGenerationModel)
+    $priorChanges=if($receipt.helperChanges){@($receipt.helperChanges)}else{@()}
+    $receipt|Add-Member NoteProperty helperChanges @(@($priorChanges|Where-Object {$_.key -notin @($changes.key)})+$changes) -Force
+    Write-Hotpl8Text $receiptPath ($receipt|ConvertTo-Json -Depth 40) -NoBom
+    if([IO.File]::ReadAllText($SettingsPath) -cne $settingsText){throw 'T3 settings changed concurrently; configuration was not applied.'}
+    Write-Hotpl8Text $SettingsPath ($settings|ConvertTo-Json -Depth 50) -NoBom
+    'T3 helper defaults now use HotPl8 where they previously used the source Codex provider.'
+    exit 0
+}
 if($Operation -eq 'remove'){
     if(-not $receipt -or $receipt.settingsPath -ne $SettingsPath -or $receipt.providerId -ne $ProviderId -or $receipt.targetProviderId -ne $TargetProviderId){throw 'No matching integration receipt.'}
     if(($settings.providerInstances.$TargetProviderId|ConvertTo-Json -Depth 30 -Compress) -cne ($receipt.installedInstance|ConvertTo-Json -Depth 30 -Compress)){throw 'T3 provider settings changed since install; preserve them and reconcile manually.'}
@@ -47,6 +77,12 @@ if($Operation -eq 'remove'){
     $settings.providerInstances.PSObject.Properties.Remove($TargetProviderId)
     if($receipt.changedDefault -and ($settings.defaultModelSelection|ConvertTo-Json -Depth 20 -Compress) -ceq ($receipt.installedDefault|ConvertTo-Json -Depth 20 -Compress)){
         $settings.defaultModelSelection=$receipt.originalDefault
+    }
+    foreach($change in @($receipt.helperChanges)){
+        if(-not $change){continue}
+        if(($settings.($change.key)|ConvertTo-Json -Depth 20 -Compress) -ceq ($change.installed|ConvertTo-Json -Depth 20 -Compress)){
+            if($change.present){$settings.($change.key)=$change.original}else{$settings.PSObject.Properties.Remove([string]$change.key)}
+        }
     }
     if([IO.File]::ReadAllText($SettingsPath) -cne $settingsText){throw 'T3 settings changed concurrently; retry.'}
     Write-Hotpl8Text $SettingsPath ($settings|ConvertTo-Json -Depth 50) -NoBom
@@ -96,7 +132,8 @@ try{
     $settings.providerInstances|Add-Member NoteProperty $TargetProviderId $instance
     $changedDefault=$MakeDefault -and $settings.defaultModelSelection.instanceId -eq $ProviderId
     if($changedDefault){$settings.defaultModelSelection.instanceId=$TargetProviderId}
-    $receipt=[pscustomobject]@{schemaVersion=1;settingsPath=$SettingsPath;providerId=$ProviderId;targetProviderId=$TargetProviderId;sourceDigest=(Get-Hotpl8Hash ($inventory -join "`n"));installedInstance=$instance;changedDefault=[bool]$changedDefault;originalDefault=$originalDefault;installedDefault=$settings.defaultModelSelection;installedAt=[datetimeoffset]::UtcNow.ToString('o')}
+    $helperChanges=if($MakeDefault){@(Set-T3HelperDefaults $settings $policy $ProviderId $TargetProviderId $TextGenerationModel)}else{@()}
+    $receipt=[pscustomobject]@{schemaVersion=1;settingsPath=$SettingsPath;providerId=$ProviderId;targetProviderId=$TargetProviderId;sourceDigest=(Get-Hotpl8Hash ($inventory -join "`n"));installedInstance=$instance;changedDefault=[bool]$changedDefault;originalDefault=$originalDefault;installedDefault=$settings.defaultModelSelection;helperChanges=@($helperChanges);installedAt=[datetimeoffset]::UtcNow.ToString('o')}
     Write-Hotpl8Text $receiptPath ($receipt|ConvertTo-Json -Depth 40) -NoBom
     if([IO.File]::ReadAllText($SettingsPath) -cne $settingsText){throw 'T3 settings changed concurrently; configuration was not applied. Inspect the receipt before retrying.'}
     Write-Hotpl8Text $SettingsPath ($settings|ConvertTo-Json -Depth 50) -NoBom

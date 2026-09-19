@@ -17,7 +17,12 @@ From a reviewed source checkout or extracted release:
 
 Setup clones the existing `codex` provider into a new `hotpl8-codex` instance named
 **HotPl8 Codex**. `-MakeDefault` changes the default only if it currently selects
-the source provider; it preserves model and reasoning options. Existing project
+the source provider; it preserves model and reasoning options. It also routes
+title/branch/commit helpers previously assigned to that Codex provider through
+HotPl8. An absent helper selection uses the chosen chat model with low reasoning;
+an explicit helper model is preserved. Every helper model must have a verified
+quota mapping; supply `-TextGenerationModel` to choose a mapped model explicitly.
+Selections belonging to other providers are preserved. Existing project
 defaults and threads keep their existing selections. Select **HotPl8 Codex** in
 those threads to opt in. T3 identifies continuation by the shared home, so the
 native conversation remains in the same location.
@@ -28,6 +33,9 @@ Setup does not restart T3 or enable the collector's Claude automation.
 
 Optional parameters: `-SettingsPath`, `-IntegrationDirectory`, `-CodexExecutable`,
 `-NodeExecutable`, `-ProviderId` (source) and `-TargetProviderId` (new instance).
+For an existing integration, `-Operation defaults` applies helper routing without
+rebuilding the provider or interrupting chats. Removal restores the recorded
+helper defaults only if they remain unchanged, including originally absent fields.
 Custom launch arguments and shadow homes require manual reconciliation before
 installation. No Developer Mode, symlink or administrator privilege is needed.
 
@@ -114,7 +122,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-routing.ps1
 
 Native qualification on 2026-09-19 used T3 0.0.42's installed launch contract and
 Codex CLI 0.155.1. External login, account/quota/model reads, a minimal read-only
-turn and a resumed turn succeeded. The shared authentication file remained
+turn, a resumed turn, structured-output exec and a forced canonical-account
+refresh succeeded. A live test seeded an idle app-server with the exhausted
+account, then used the production broker for turn admission: the native account
+changed and the turn succeeded. The shared authentication file remained
 unchanged. This does not establish a multi-day refresh soak, two healthy accounts
 alternating successful inference, all future T3/Codex versions or other platforms.
 Quota exhaustion/fallback, active-turn pinning and refresh failures have offline
