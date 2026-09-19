@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { CodexBridge, validateArgs, assertConfig, assertEnvironment, readLines } from '../src/t3-codex.mjs';
+import { CodexBridge, validateArgs, assertConfig, assertEnvironment, assertSharedHome, readLines } from '../src/t3-codex.mjs';
 
 function harness() {
   const native = [], client = [], requests = [];
@@ -140,4 +140,8 @@ test('explicit compaction receives the same quota admission and account pinning'
 });
 test('T3 MCP launch arguments preserve its callback and environment reference', () => {
   assert.doesNotThrow(() => validateArgs(['-c', 'mcp_servers.t3-code.url=http://127.0.0.1:1234/mcp', '-c', 'mcp_servers.t3-code.bearer_token_env_var="T3_MCP_BEARER_TOKEN"']));
+});
+test('editing a managed provider home cannot silently resume a different conversation store', () => {
+  assert.doesNotThrow(() => assertSharedHome('fixture/shared', 'fixture/shared/'));
+  assert.throws(() => assertSharedHome('fixture/shared', 'fixture/another'), /routing_home_conflict/);
 });

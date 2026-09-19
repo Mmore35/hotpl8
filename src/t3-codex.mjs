@@ -23,6 +23,11 @@ export function assertEnvironment(env) {
   if (blockedEnv.some(k => env[k])) throw error('routing_environment_conflict');
 }
 
+export function assertSharedHome(configured, inherited) {
+  const normalize = value => process.platform === 'win32' ? resolve(value).toLowerCase() : resolve(value);
+  if (inherited && normalize(configured) !== normalize(inherited)) throw error('routing_home_conflict');
+}
+
 export function assertConfig(config = {}) {
   if ((config.model_provider && config.model_provider !== 'openai') ||
       config.model_providers?.openai?.base_url ||
@@ -244,6 +249,7 @@ export class CodexBridge {
 
 export async function main(config, args) {
   assertEnvironment(process.env);
+  assertSharedHome(config.sharedHome, process.env.CODEX_HOME);
   const broker = createBroker(config);
   const verb = args[0];
   if (verb === '--version' || verb === '-V') {
