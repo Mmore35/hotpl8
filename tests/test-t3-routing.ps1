@@ -112,6 +112,21 @@ try{
     Assert ($installed.textGenerationModelSelection.options[0].value -eq 'low') 'helper default uses low reasoning'
     $launcher=Join-Path $integration 'hotpl8-codex.exe'
     Assert ((& $launcher --version) -eq 'codex-cli fixture') 'native launcher version/stdio passthrough'
+    # Instrument only this disposable installed reader to signal actual lock
+    # contention. Delegation still calls the unchanged native reader; waiting on
+    # process startup alone can miss the race on a cold or loaded Windows runner.
+    $fixtureConfig=Read-Hotpl8Json (Join-Path $integration 'bridge-config.json')
+    $readerPath=Join-Path (Split-Path $fixtureConfig.script -Parent) 'providers/codex.ps1'
+    $readerProbe=@'
+
+$script:FixtureNativeReader=${function:Read-CodexQuota}
+function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutMs=5000,[string]$WorkingDirectory,[switch]$IncludeAccessToken,[switch]$RefreshToken){
+    $read=& $script:FixtureNativeReader @PSBoundParameters
+    if($read.status -eq 'home_busy'){[IO.File]::WriteAllText((Join-Path $AccountHome 'quota-contended'),'fixture')}
+    return $read
+}
+'@
+    [IO.File]::AppendAllText($readerPath,$readerProbe)
     # Hold the title helper's native quota read while a new app-server validates
     # the same healthy home. This is T3's concurrent first-message launch shape.
     $gate=Join-Path $dir 'b/quota-gate';[IO.File]::WriteAllText($gate,'fixture')
@@ -130,8 +145,10 @@ try{
     $null=$proc.StandardError.ReadToEndAsync()
     $proc.StandardInput.WriteLine('{"id":1,"method":"initialize","params":{"clientInfo":{"name":"fixture","version":"1"}}}');$proc.StandardInput.Flush()
     $initialization=$proc.StandardOutput.ReadLineAsync()
-    $null=$initialization.Wait(1500)
+    $contentionClock=[Diagnostics.Stopwatch]::StartNew()
+    while(-not (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) -and -not $initialization.IsCompleted -and $contentionClock.ElapsedMilliseconds -lt 5000){Start-Sleep -Milliseconds 10}
     [IO.File]::Delete($gate)
+    Assert (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) 'chat native validation encounters the title helper lock'
     Assert ($initialization.Wait(15000)) 'concurrent chat startup responds within its deadline'
     $initialized=$initialization.Result|ConvertFrom-Json
     Assert ($initialized.id -eq 1 -and -not $initialized.error) 'chat startup survives concurrent title admission'
