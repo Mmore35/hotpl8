@@ -64,6 +64,10 @@ try{
     $settingsPath=Join-Path $dir 'settings.json';$integration=Join-Path $dir 'integration space'
     $ps=(Get-Command powershell).Source
     $setup=Join-Path $root 'setup-t3.ps1'
+    $beforeSettings=[IO.File]::ReadAllText($settingsPath)
+    $rejected=Invoke-Hotpl8Process $ps @('-NoProfile','-ExecutionPolicy','Bypass','-File',$setup,'-Operation','install','-StateDirectory',$dir,'-SettingsPath',$settingsPath,'-IntegrationDirectory',$integration,'-CodexExecutable',$exe,'-MakeDefault','-TextGenerationModel','unmapped') 20000
+    Assert ($rejected.exitCode -ne 0 -and -not (Test-Path -LiteralPath $integration)) 'unknown helper model rejects setup before creating files'
+    Assert ([IO.File]::ReadAllText($settingsPath) -ceq $beforeSettings) 'rejected helper configuration preserves all T3 settings'
     & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation install -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $integration -CodexExecutable $exe -MakeDefault
     Assert ($LASTEXITCODE -eq 0) 'setup succeeds in isolated fixture'
     $installed=Read-Hotpl8Json $settingsPath

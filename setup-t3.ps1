@@ -108,6 +108,15 @@ Assert-Hotpl8Policy $policy
 if(-not $policy.codex.slots){throw 'Enroll Codex accounts and refresh HotPl8 first.'}
 $instance=$instance|ConvertTo-Json -Depth 30|ConvertFrom-Json
 $originalDefault=$settings.defaultModelSelection|ConvertTo-Json -Depth 20|ConvertFrom-Json
+# Validate every proposed setting before creating binaries or a receipt. A missing
+# helper model mapping must leave an installation that can be retried cleanly.
+$instance.config.binaryPath=$launcher
+$instance|Add-Member NoteProperty displayName 'HotPl8 Codex' -Force
+$settings.providerInstances|Add-Member NoteProperty $TargetProviderId $instance
+$changedDefault=$MakeDefault -and $settings.defaultModelSelection.instanceId -eq $ProviderId
+if($changedDefault){$settings.defaultModelSelection.instanceId=$TargetProviderId}
+$helperChanges=@()
+if($MakeDefault){$helperChanges=@(Set-T3HelperDefaults $settings $policy $ProviderId $TargetProviderId $TextGenerationModel)}
 [void][IO.Directory]::CreateDirectory($IntegrationDirectory)
 $lock=$null
 try{
@@ -127,12 +136,6 @@ try{
     $config=[pscustomobject]@{schemaVersion=1;node=$NodeExecutable;script=(Join-Path $code 'src/t3-codex.mjs');powershell=(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe');codex=$native;stateDirectory=$StateDirectory;sharedHome=[IO.Path]::GetFullPath($shared)}
     Write-Hotpl8Text (Join-Path $IntegrationDirectory 'bridge-config.json') ($config|ConvertTo-Json) -NoBom
     Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src/t3-launcher.cs'))) -ReferencedAssemblies System.Web.Extensions -OutputAssembly $launcher -OutputType ConsoleApplication
-    $instance.config.binaryPath=$launcher
-    $instance|Add-Member NoteProperty displayName 'HotPl8 Codex' -Force
-    $settings.providerInstances|Add-Member NoteProperty $TargetProviderId $instance
-    $changedDefault=$MakeDefault -and $settings.defaultModelSelection.instanceId -eq $ProviderId
-    if($changedDefault){$settings.defaultModelSelection.instanceId=$TargetProviderId}
-    $helperChanges=if($MakeDefault){@(Set-T3HelperDefaults $settings $policy $ProviderId $TargetProviderId $TextGenerationModel)}else{@()}
     $receipt=[pscustomobject]@{schemaVersion=1;settingsPath=$SettingsPath;providerId=$ProviderId;targetProviderId=$TargetProviderId;sourceDigest=(Get-Hotpl8Hash ($inventory -join "`n"));installedInstance=$instance;changedDefault=[bool]$changedDefault;originalDefault=$originalDefault;installedDefault=$settings.defaultModelSelection;helperChanges=@($helperChanges);installedAt=[datetimeoffset]::UtcNow.ToString('o')}
     Write-Hotpl8Text $receiptPath ($receipt|ConvertTo-Json -Depth 40) -NoBom
     if([IO.File]::ReadAllText($SettingsPath) -cne $settingsText){throw 'T3 settings changed concurrently; configuration was not applied. Inspect the receipt before retrying.'}
