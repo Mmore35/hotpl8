@@ -53,3 +53,11 @@ Independent project; not affiliated with Anthropic or OpenAI. [Third-party notic
 ## Agent integration
 
 Use `hotpl8 agent` for a versioned JSON request, or `hotpl8 mcp` for local MCP read tools. Optional cooperative pause leases let jobs pause automation independently. See the [agent API guide](docs/agent-api.md) for contracts, configuration and examples. Existing CLI output formats are preserved.
+
+## T3 Code integration
+
+The optional [HotPl8 Codex provider for T3](docs/t3-integration.md) routes new
+turns and auxiliary commands through enrolled subscriptions while keeping T3
+conversation state in its existing home. Setup is reversible and does not replace
+active provider instances. Windows and Node 22+ are required; native long-running
+refresh and multi-account promotion gates remain documented.

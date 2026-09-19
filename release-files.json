@@ -112,6 +112,16 @@
     "delivery/register.ps1",
     "delivery/hotpl8-adapter.ps1",
     "tests/test_delivery.py",
-    "docs/delivery.md"
+    "docs/delivery.md",
+    "setup-t3.ps1",
+    "src/t3-codex.mjs",
+    "src/t3-launcher.cs",
+    "src/codex-route.ps1",
+    "src/codex-routing.ps1",
+    "tests/test-t3-codex.mjs",
+    "tests/test-t3-routing.ps1",
+    "tests/t3-fake-codex.cs",
+    "docs/t3-integration.md",
+    "docs/plans/t3-codex-integration.md"
   ]
 }
