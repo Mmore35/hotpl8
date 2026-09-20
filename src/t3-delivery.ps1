@@ -5,6 +5,12 @@ function Get-Hotpl8T3LauncherDigest([string]$Path){
     # Compare decoded source, retaining every difference except newline encoding.
     Get-Hotpl8Hash ([IO.File]::ReadAllText($Path).Replace("`r`n","`n"))
 }
+function Test-Hotpl8T3Path([string]$Left,[string]$Right){
+    if(-not $Left -or -not $Right){return $false}
+    # Windows persisted settings can contain 8.3 aliases while Get-ChildItem
+    # returns long names. String comparison would silently omit an owned bridge.
+    return [IO.Path]::GetFullPath($Left) -eq [IO.Path]::GetFullPath($Right)
+}
 function Get-Hotpl8T3Integrations([string]$InstallDirectory,[string]$StateDirectory){
     $parent=Join-Path $InstallDirectory 'integrations'
     $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
@@ -14,7 +20,11 @@ function Get-Hotpl8T3Integrations([string]$InstallDirectory,[string]$StateDirect
         $expected=Join-Path $parent $known.name
         $settings=Read-Hotpl8Json $known.settingsPath
         if(-not $settings){throw 'Registered T3 settings are unreadable.'}
-        if($settings.providerInstances.($known.providerId).config.binaryPath -eq (Join-Path $expected 'hotpl8-codex.exe') -and -not (Test-Path -LiteralPath (Join-Path $expected 'receipt.json'))){throw 'Registered T3 integration is missing.'}
+        $binary=$settings.providerInstances.($known.providerId).config.binaryPath
+        # Keep the original spelling as well: after deletion Windows may no
+        # longer be able to expand a short alias for the missing directory.
+        $matches=($binary -and $binary -eq $known.binaryPath) -or (Test-Hotpl8T3Path $binary (Join-Path $expected 'hotpl8-codex.exe'))
+        if($matches -and -not (Test-Path -LiteralPath (Join-Path $expected 'receipt.json'))){throw 'Registered T3 integration is missing.'}
     }
     if(-not (Test-Path -LiteralPath $parent)){return}
     foreach($directory in @(Get-ChildItem -LiteralPath $parent -Directory)){
@@ -30,7 +40,7 @@ function Get-Hotpl8T3Integrations([string]$InstallDirectory,[string]$StateDirect
         $instance=$settings.providerInstances.($receipt.targetProviderId)
         if(-not $instance){continue}
         $launcher=Join-Path $directory.FullName 'hotpl8-codex.exe'
-        if($instance.config.binaryPath -ne $launcher){continue}
+        if(-not (Test-Hotpl8T3Path $instance.config.binaryPath $launcher)){continue}
         if(($instance|ConvertTo-Json -Depth 30 -Compress) -cne ($receipt.installedInstance|ConvertTo-Json -Depth 30 -Compress)){throw 'T3 provider ownership changed; reconcile before delivery.'}
         $configPath=Join-Path $directory.FullName 'bridge-config.json'
         $config=Read-Hotpl8Json $configPath
@@ -52,7 +62,7 @@ function Sync-Hotpl8T3Delivery([string]$Operation,[string]$InstallDirectory,[str
             foreach($item in $items){
                 $name=Split-Path $item.directory -Leaf
                 if($name -notmatch '^[a-zA-Z0-9_-]+$'){throw 'Use a simple directory name for a managed T3 integration.'}
-                $known=@($known|Where-Object {$_.name -ne $name})+@([pscustomobject]@{name=$name;settingsPath=$item.receipt.settingsPath;providerId=$item.receipt.targetProviderId})
+                $known=@($known|Where-Object {$_.name -ne $name})+@([pscustomobject]@{name=$name;settingsPath=$item.receipt.settingsPath;providerId=$item.receipt.targetProviderId;binaryPath=$item.receipt.installedInstance.config.binaryPath})
             }
             $registration|Add-Member NoteProperty t3Integrations @($known) -Force
             $registration|Add-Member NoteProperty componentHealth $true -Force

@@ -44,6 +44,8 @@ boundary in [T3 operations](../t3-integration.md#existing-two-provider-installat
   restores A; modified release bytes fail closed.
 - Missing registered integrations and unreadable receipts fail readiness; removed
   providers stay removed. Unchanged-main checks still validate components.
+- Windows short-path aliases and long names identify the same owned integration;
+  tests retain original path spelling so deletion cannot hide a registered bridge.
 - In-place setup produces one provider and restores original settings on removal.
 - Run full offline suites, static checks, package verification and CI. Native
   rollout is the reviewed main-package delivery after merge; tests do not claim

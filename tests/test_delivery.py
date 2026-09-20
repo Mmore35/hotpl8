@@ -11,6 +11,7 @@ import os
 import subprocess
 import time
 import uuid
+import ctypes
 from unittest.mock import patch
 import zipfile
 
@@ -107,6 +108,14 @@ class DeliveryTests(unittest.TestCase):
 
     def t3_fixture(self):
         """Real adapter/launcher/bootstrap; fake bridge does no provider work."""
+        # Hosted Windows runners often expose TEMP through an 8.3 alias. The
+        # PowerShell directory provider expands it; persisted paths may not.
+        short_path = ctypes.windll.kernel32.GetShortPathNameW
+        short_path.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+        short_path.restype = ctypes.c_uint32
+        buffer = ctypes.create_unicode_buffer(32768)
+        if short_path(str(self.root), buffer, len(buffer)):
+            self.root = Path(buffer.value)
         source = Path(__file__).resolve().parents[1]
         self.config["adapter"] = "delivery/hotpl8-adapter.ps1"
         d.write(self.root / "delivery.json", self.config)
