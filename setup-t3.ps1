@@ -8,24 +8,27 @@ param(
     [string]$CodexExecutable,
     [string]$NodeExecutable,
     [string]$ProviderId='codex',
-    [string]$TargetProviderId='hotpl8-codex',
+    [string]$TargetProviderId,
     [switch]$MakeDefault,
     [string]$TextGenerationModel
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/common.ps1')
 . (Join-Path $PSScriptRoot 'src/config.ps1')
+. (Join-Path $PSScriptRoot 'src/t3-delivery.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
 $SettingsPath=[IO.Path]::GetFullPath($SettingsPath)
 $IntegrationDirectory=[IO.Path]::GetFullPath($IntegrationDirectory)
 $receiptPath=Join-Path $IntegrationDirectory 'receipt.json'
 $launcher=Join-Path $IntegrationDirectory 'hotpl8-codex.exe'
 $receipt=Read-Hotpl8Json $receiptPath
+if(-not $TargetProviderId){$TargetProviderId=if($receipt){[string]$receipt.targetProviderId}else{$ProviderId}}
 $settingsText=[IO.File]::ReadAllText($SettingsPath)
 $settings=$settingsText|ConvertFrom-Json
 $instance=$settings.providerInstances.$ProviderId
 if(-not $instance -or $instance.driver -ne 'codex'){throw 'Choose an existing T3 Codex provider instance.'}
-if($TargetProviderId -notmatch '^[a-z][a-z0-9-]{0,63}$' -or $TargetProviderId -eq $ProviderId){throw 'Use a distinct valid target provider ID.'}
+if($TargetProviderId -notmatch '^[a-z][a-z0-9-]{0,63}$'){throw 'Use a valid target provider ID.'}
+$inPlace=$TargetProviderId -eq $ProviderId
 function Set-T3HelperDefaults($Settings,$Policy,[string]$Source,[string]$Target,[string]$Model){
     $changes=@()
     foreach($key in @('textGenerationModelSelection','sourceControlWriterModelSelection')){
@@ -45,6 +48,7 @@ function Set-T3HelperDefaults($Settings,$Policy,[string]$Source,[string]$Target,
 }
 if($Operation -eq 'doctor'){
     $config=Read-Hotpl8Json (Join-Path $IntegrationDirectory 'bridge-config.json')
+    $deliveryStatus=if($config.deliveryRoot){@(Get-Hotpl8T3DeliveryStatus $config.deliveryRoot $StateDirectory)|Where-Object {$_.providerId -eq $TargetProviderId}}else{[pscustomobject]@{state='unmanaged';nextLaunchSha=$receipt.sourceCommit;adoption='Pinned snapshot; ordinary updates do not adopt this copy'}}
     [pscustomobject]@{
         installed=[bool]$receipt
         connected=($settings.providerInstances.$TargetProviderId.config.binaryPath -eq $launcher -and (Test-Path -LiteralPath $launcher))
@@ -53,6 +57,7 @@ if($Operation -eq 'doctor'){
         codeAvailable=[bool]($config.script -and (Test-Path -LiteralPath $config.script))
         policyAvailable=(Test-Path -LiteralPath (Join-Path $StateDirectory 'policy.json'))
         scope='New T3 provider processes; existing sessions retain their current provider'
+        delivery=$deliveryStatus
     }|ConvertTo-Json
     exit 0
 }
@@ -74,7 +79,10 @@ if($Operation -eq 'remove'){
     # Removal closes this provider in T3. Refuse while the desktop is running;
     # callers using another T3 server must stop that server first as documented.
     if($SettingsPath -eq [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.t3/userdata/settings.json')) -and (Get-Process -Name 'T3 Code (Alpha)','T3 Code' -ErrorAction SilentlyContinue)){throw 'Close T3 before removal so active integration sessions are not interrupted.'}
-    $settings.providerInstances.PSObject.Properties.Remove($TargetProviderId)
+    if($receipt.inPlace){
+        if(-not $receipt.originalInstance){throw 'Missing original provider configuration; preserve settings and reconcile.'}
+        $settings.providerInstances|Add-Member NoteProperty $TargetProviderId $receipt.originalInstance -Force
+    }else{$settings.providerInstances.PSObject.Properties.Remove($TargetProviderId)}
     if($receipt.changedDefault -and ($settings.defaultModelSelection|ConvertTo-Json -Depth 20 -Compress) -ceq ($receipt.installedDefault|ConvertTo-Json -Depth 20 -Compress)){
         $settings.defaultModelSelection=$receipt.originalDefault
     }
@@ -91,7 +99,8 @@ if($Operation -eq 'remove'){
     exit 0
 }
 if($receipt){throw 'Integration already has a receipt. Remove it or choose a new integration directory for an upgrade.'}
-if($settings.providerInstances.PSObject.Properties[$TargetProviderId]){throw 'Target provider already exists; choose another target ID.'}
+if($inPlace -and $SettingsPath -eq [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.t3/userdata/settings.json')) -and (Get-Process -Name 'T3 Code (Alpha)','T3 Code' -ErrorAction SilentlyContinue)){throw 'Close T3 before first-time in-place setup; changing provider configuration can stop its sessions.'}
+if(-not $inPlace -and $settings.providerInstances.PSObject.Properties[$TargetProviderId]){throw 'Target provider already exists; choose another target ID.'}
 if($instance.config.shadowHomePath){throw 'Clear the T3 shadow home before installation; this integration uses the existing shared home.'}
 if($instance.config.launchArgs){throw 'Review and clear custom launch arguments before installation.'}
 $shared=if($instance.config.homePath){[Environment]::ExpandEnvironmentVariables([string]$instance.config.homePath)}else{Join-Path $env:USERPROFILE '.codex'}
@@ -107,19 +116,36 @@ $policy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
 Assert-Hotpl8Policy $policy
 if(-not $policy.codex.slots){throw 'Enroll Codex accounts and refresh HotPl8 first.'}
 $instance=$instance|ConvertTo-Json -Depth 30|ConvertFrom-Json
+$originalInstance=$instance|ConvertTo-Json -Depth 30|ConvertFrom-Json
 $originalDefault=$settings.defaultModelSelection|ConvertTo-Json -Depth 20|ConvertFrom-Json
 # Validate every proposed setting before creating binaries or a receipt. A missing
 # helper model mapping must leave an installation that can be retried cleanly.
 $instance.config.binaryPath=$launcher
-$instance|Add-Member NoteProperty displayName 'HotPl8 Codex' -Force
-$settings.providerInstances|Add-Member NoteProperty $TargetProviderId $instance
-$changedDefault=$MakeDefault -and $settings.defaultModelSelection.instanceId -eq $ProviderId
+if(-not $inPlace){$instance|Add-Member NoteProperty displayName 'HotPl8 Codex' -Force}
+$settings.providerInstances|Add-Member NoteProperty $TargetProviderId $instance -Force
+$changedDefault=-not $inPlace -and $MakeDefault -and $settings.defaultModelSelection.instanceId -eq $ProviderId
 if($changedDefault){$settings.defaultModelSelection.instanceId=$TargetProviderId}
 $helperChanges=@()
 if($MakeDefault){$helperChanges=@(Set-T3HelperDefaults $settings $policy $ProviderId $TargetProviderId $TextGenerationModel)}
 [void][IO.Directory]::CreateDirectory($IntegrationDirectory)
-$lock=$null
+$parent=Split-Path $IntegrationDirectory -Parent
+$managedRoot=Split-Path $parent -Parent
+$registration=Read-Hotpl8Json (Join-Path $managedRoot 'delivery.json')
+$managed=(Split-Path $parent -Leaf) -eq 'integrations' -and $registration.product -eq 'hotpl8' -and $registration.channel -eq 'main'
+$lock=$null;$deliveryLock=$null
 try{
+    if($managed){
+        $deadline=[datetimeoffset]::UtcNow.AddSeconds(30)
+        while(-not $deliveryLock){
+            try{$deliveryLock=[IO.File]::Open((Join-Path $managedRoot 'update.lock'),'OpenOrCreate','ReadWrite','None')}catch{
+                if([datetimeoffset]::UtcNow -ge $deadline){throw 'Delivery is busy; retry setup after its current update.'}
+                Start-Sleep -Milliseconds 100
+            }
+        }
+        if([IO.Path]::GetFullPath($registration.stateDirectory) -ne [IO.Path]::GetFullPath($StateDirectory)){throw 'Delivery state binding does not match this integration.'}
+        $current=Read-Hotpl8Json (Join-Path $managedRoot 'current.json')
+        if(-not $current -or -not (Test-Path -LiteralPath (Join-Path (Join-Path $managedRoot $current.release) 'src/t3-entry.mjs'))){throw 'Update the enrolled installation to a release supporting managed T3 setup first.'}
+    }
     $lock=[IO.File]::Open((Join-Path $IntegrationDirectory 'setup.lock'),'OpenOrCreate','ReadWrite','None')
     if(Test-Path -LiteralPath $receiptPath){throw 'Integration was installed concurrently.'}
     # Pin a complete source snapshot, independent of working tree edits and app updates.
@@ -137,8 +163,19 @@ try{
     Write-Hotpl8Text (Join-Path $IntegrationDirectory 'bridge-config.json') ($config|ConvertTo-Json) -NoBom
     Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src/t3-launcher.cs'))) -ReferencedAssemblies System.Web.Extensions -OutputAssembly $launcher -OutputType ConsoleApplication
     $receipt=[pscustomobject]@{schemaVersion=1;settingsPath=$SettingsPath;providerId=$ProviderId;targetProviderId=$TargetProviderId;sourceDigest=(Get-Hotpl8Hash ($inventory -join "`n"));installedInstance=$instance;changedDefault=[bool]$changedDefault;originalDefault=$originalDefault;installedDefault=$settings.defaultModelSelection;helperChanges=@($helperChanges);installedAt=[datetimeoffset]::UtcNow.ToString('o')}
+    $receipt|Add-Member NoteProperty inPlace ([bool]$inPlace)
+    $receipt|Add-Member NoteProperty originalInstance $originalInstance
     Write-Hotpl8Text $receiptPath ($receipt|ConvertTo-Json -Depth 40) -NoBom
     if([IO.File]::ReadAllText($SettingsPath) -cne $settingsText){throw 'T3 settings changed concurrently; configuration was not applied. Inspect the receipt before retrying.'}
     Write-Hotpl8Text $SettingsPath ($settings|ConvertTo-Json -Depth 50) -NoBom
-    'HotPl8 Codex added to T3. Select it for existing threads; the original provider is unchanged. Run setup-t3.ps1 -Operation doctor to inspect it.'
-}finally{if($lock){$lock.Dispose()}}
+    $lock.Dispose();$lock=$null
+    if($managed){
+        # Install under the enrolled installation to join its component inventory.
+        $current=Read-Hotpl8Json (Join-Path $managedRoot 'current.json')
+        $release=Join-Path $managedRoot $current.release
+        Sync-Hotpl8T3Delivery 'preflight' $managedRoot $PSScriptRoot $StateDirectory
+        Sync-Hotpl8T3Delivery 'activate' $managedRoot $PSScriptRoot $StateDirectory
+        Sync-Hotpl8T3Delivery 'health' $managedRoot $release $StateDirectory
+    }
+    'Codex routing installed. Run setup-t3.ps1 -Operation doctor to inspect delivery and process adoption.'
+}finally{if($lock){$lock.Dispose()};if($deliveryLock){$deliveryLock.Dispose()}}

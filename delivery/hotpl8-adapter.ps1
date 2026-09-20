@@ -1,13 +1,19 @@
 # Product operations for Local Delivery protocol 1. State is never rolled back.
 [CmdletBinding()]
 param(
-    [ValidateSet('preflight','drain','activate','health','recover')][string]$Operation,
+    [ValidateSet('preflight','drain','activate','health','recover','components')][string]$Operation,
     [string]$InstallDirectory, [string]$ReleaseDirectory, [string]$StateDirectory
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $ReleaseDirectory 'src/common.ps1')
 . (Join-Path $ReleaseDirectory 'src/config.ps1')
 . (Join-Path $ReleaseDirectory 'src/providers/codex.ps1')
+. (Join-Path $ReleaseDirectory 'src/t3-delivery.ps1')
+if($Operation -eq 'components'){
+    ConvertTo-Json -InputObject @(Get-Hotpl8T3DeliveryStatus $InstallDirectory $StateDirectory) -Depth 8
+    exit 0
+}
+Sync-Hotpl8T3Delivery $Operation $InstallDirectory $ReleaseDirectory $StateDirectory
 if($Operation -in @('preflight','health','recover')){
     $policy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
     Assert-Hotpl8Policy $policy
@@ -20,6 +26,11 @@ if($Operation -in @('preflight','health','recover')){
     if($result.exitCode -ne 0){throw 'Candidate policy/readiness validation failed.'}
 }
 if($Operation -in @('activate','recover')){
+    $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
+    if($registration){
+        $registration|Add-Member NoteProperty componentHealth $true -Force
+        Write-Hotpl8Text (Join-Path $InstallDirectory 'delivery.json') ($registration|ConvertTo-Json -Depth 10) -NoBom
+    }
     $owned=Read-Hotpl8Json (Join-Path $InstallDirectory 'installation.json')
     if($owned){
         $build=Read-Hotpl8Json (Join-Path $ReleaseDirectory 'build-info.json')

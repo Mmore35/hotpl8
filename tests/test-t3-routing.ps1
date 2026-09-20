@@ -99,10 +99,10 @@ try{
     # Hosted Windows needs ~23s for first-use PowerShell/module initialization in
     # an isolated profile (also covered by test-onboarding.ps1). This installer
     # harness allowance does not change any native quota or routing timeout.
-    $rejected=Invoke-Hotpl8Process $ps @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$setup,'-Operation','install','-StateDirectory',$dir,'-SettingsPath',$settingsPath,'-IntegrationDirectory',$integration,'-CodexExecutable',$exe,'-MakeDefault','-TextGenerationModel','unmapped') 45000
+    $rejected=Invoke-Hotpl8Process $ps @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$setup,'-Operation','install','-StateDirectory',$dir,'-SettingsPath',$settingsPath,'-IntegrationDirectory',$integration,'-CodexExecutable',$exe,'-TargetProviderId','hotpl8-codex','-MakeDefault','-TextGenerationModel','unmapped') 45000
     Assert ($rejected.exitCode -ne 0 -and -not (Test-Path -LiteralPath $integration)) 'unknown helper model rejects setup before creating files'
     Assert ([IO.File]::ReadAllText($settingsPath) -ceq $beforeSettings) 'rejected helper configuration preserves all T3 settings'
-    & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation install -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $integration -CodexExecutable $exe -MakeDefault
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation install -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $integration -CodexExecutable $exe -TargetProviderId hotpl8-codex -MakeDefault
     Assert ($LASTEXITCODE -eq 0) 'setup succeeds in isolated fixture'
     $installed=Read-Hotpl8Json $settingsPath
     Assert ($installed.providerInstances.codex.config.binaryPath -eq 'codex') 'active original provider not replaced'
@@ -192,6 +192,44 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     Assert ($restored.providerInstances.codex.config.binaryPath -eq 'codex' -and $restored.unrelated -eq 'preserve') 'original provider restored, unrelated settings preserved'
     Assert ($restored.defaultModelSelection.instanceId -eq 'codex' -and -not $restored.providerInstances.PSObject.Properties['hotpl8-codex']) 'rollback removes only added instance and restores matching default'
     Assert (-not $restored.PSObject.Properties['textGenerationModelSelection']) 'rollback restores absent helper setting instead of leaving a removed provider reference'
+    $single=Join-Path $dir 'single-provider'
+    $beforeSingle=[IO.File]::ReadAllText($settingsPath)|ConvertFrom-Json|ConvertTo-Json -Depth 50 -Compress
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation install -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $single -CodexExecutable $exe -MakeDefault
+    Assert ($LASTEXITCODE -eq 0) 'default installation uses the existing Codex provider'
+    $one=Read-Hotpl8Json $settingsPath
+    Assert (@($one.providerInstances.PSObject.Properties).Count -eq 1 -and -not $one.providerInstances.PSObject.Properties['hotpl8-codex']) 'no duplicate provider or model catalog'
+    Assert ($one.defaultModelSelection.instanceId -eq 'codex' -and $one.providerInstances.codex.config.homePath -eq $shared) 'existing conversation ID and home retained'
+    Assert ($one.providerInstances.codex.config.binaryPath -eq (Join-Path $single 'hotpl8-codex.exe')) 'ordinary Codex routes through the bridge'
+    Assert (-not $one.providerInstances.codex.displayName -and $one.textGenerationModelSelection.instanceId -eq 'codex' -and $one.textGenerationModelSelection.model -eq 'fixture-model') 'normal provider label and verified helper model retained'
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation remove -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $single
+    Assert ($LASTEXITCODE -eq 0) 'in-place removal succeeds'
+    Assert (((Read-Hotpl8Json $settingsPath)|ConvertTo-Json -Depth 50 -Compress) -ceq $beforeSingle) 'in-place removal restores original settings exactly'
+    # New installs join an enrolled release without a second provider or an
+    # updater race. Build a disposable verified package layout, not live state.
+    $managedRoot=Join-Path $dir 'managed-install'
+    $sha=('e'*40)
+    $release=Join-Path $managedRoot ('releases/'+$sha)
+    $hashes=@{}
+    foreach($name in (Read-Hotpl8Json (Join-Path $root 'release-files.json')).files){
+        $target=Join-Path $release $name
+        [void][IO.Directory]::CreateDirectory((Split-Path $target -Parent))
+        [IO.File]::Copy((Join-Path $root $name),$target,$false)
+        $hashes[$name]=(Get-FileHash $target).Hash.ToLowerInvariant()
+    }
+    Write-Hotpl8Text (Join-Path $release 'build-info.json') (@{protocol=1;product='hotpl8';sha=$sha}|ConvertTo-Json) -NoBom
+    $hashes['build-info.json']=(Get-FileHash (Join-Path $release 'build-info.json')).Hash.ToLowerInvariant()
+    Write-Hotpl8Text (Join-Path $release 'delivery-manifest.json') (@{protocol=1;product='hotpl8';sha=$sha;files=$hashes}|ConvertTo-Json -Depth 10) -NoBom
+    [void][IO.Directory]::CreateDirectory((Join-Path $managedRoot 'receipts'))
+    Write-Hotpl8Text (Join-Path $managedRoot ('receipts/'+$sha+'.json')) (@{manifestDigest=(Get-FileHash (Join-Path $release 'delivery-manifest.json')).Hash.ToLowerInvariant()}|ConvertTo-Json) -NoBom
+    Write-Hotpl8Text (Join-Path $managedRoot 'current.json') (@{protocol=1;sha=$sha;release=('releases/'+$sha)}|ConvertTo-Json) -NoBom
+    Write-Hotpl8Text (Join-Path $managedRoot 'delivery.json') (@{protocol=1;product='hotpl8';channel='main';stateDirectory=$dir}|ConvertTo-Json) -NoBom
+    $managedIntegration=Join-Path $managedRoot 'integrations/t3-codex'
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation install -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $managedIntegration -CodexExecutable $exe -MakeDefault
+    Assert ($LASTEXITCODE -eq 0) 'new managed setup enrolls without nested-lock deadlock'
+    Assert ((Read-Hotpl8Json (Join-Path $managedIntegration 'bridge-config.json')).deliveryRoot -eq $managedRoot) 'new setup uses delivery selection'
+    Assert ((Read-Hotpl8Json (Join-Path $managedRoot 'delivery.json')).componentHealth) 'new setup registers recurring component readiness'
+    $diagnostic=Invoke-Hotpl8Process $ps @('-NoProfile','-ExecutionPolicy','Bypass','-File',$setup,'-Operation','doctor','-StateDirectory',$dir,'-SettingsPath',$settingsPath,'-IntegrationDirectory',$managedIntegration) 30000
+    Assert ($diagnostic.exitCode -eq 0 -and ($diagnostic.output|ConvertFrom-Json).delivery.nextLaunchSha -eq $sha) 'doctor proves managed next-launch revision without provider actions'
     Write-Output ($passed.ToString()+' T3 broker/Windows integration checks passed.')
 }finally{
     if($gate -and (Test-Path -LiteralPath $gate)){[IO.File]::Delete($gate)}
