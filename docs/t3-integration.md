@@ -1,6 +1,6 @@
 # T3 Code and Codex account routing
 
-The optional **HotPl8 Codex** provider makes T3 consume HotPl8's account policy.
+The optional bridge makes T3's normal **Codex** provider consume HotPl8's account policy.
 It supports T3's stdio app-server sessions, account/model probes and stateless
 `codex exec` helpers. Windows, Node 22+, independently enrolled file-backed native
 Codex homes and a running HotPl8 collector are required. It is experimental;
@@ -8,42 +8,70 @@ the external-token API is an experimental Codex interface.
 
 ## Install and remove
 
-From a reviewed source checkout or extracted release:
+Close T3 (including a separately started server) before first-time setup. From a
+reviewed source checkout or extracted release:
 
 ```powershell
 .\setup-t3.ps1 -Operation install -StateDirectory C:\HotPl8State -MakeDefault
 .\setup-t3.ps1 -Operation doctor -StateDirectory C:\HotPl8State
 ```
 
-Setup clones the existing `codex` provider into a new `hotpl8-codex` instance named
-**HotPl8 Codex**. `-MakeDefault` changes the default only if it currently selects
-the source provider; it preserves model and reasoning options. It also routes
-title/branch/commit helpers previously assigned to that Codex provider through
-HotPl8. An absent helper selection uses the chosen chat model with low reasoning;
-an explicit helper model is preserved. Every helper model must have a verified
-quota mapping; supply `-TextGenerationModel` to choose a mapped model explicitly.
-Selections belonging to other providers are preserved. Existing project
-defaults and threads keep their existing selections. Select **HotPl8 Codex** in
-those threads to opt in. T3 identifies continuation by the shared home, so the
-native conversation remains in the same location.
+Setup replaces the binary path on the existing `codex` provider, preserving its
+ID, label, model choices, conversation home and helper selections. The model
+picker shows Codex once; models such as Astra are unchanged. Removal restores the
+recorded original provider configuration. First-time setup requires T3 to be
+closed because T3 can tear down sessions when provider configuration changes.
 
-The original provider is untouched: T3 tears down a provider's sessions when its
-configuration changes. Adding a distinct provider avoids that interruption.
-Setup does not restart T3 or enable the collector's Claude automation.
+`-MakeDefault` verifies helper model mappings and supplies an explicit mapped
+helper model when absent; `-TextGenerationModel` chooses that model. Existing
+helper models are preserved unless explicitly overridden. An explicit distinct
+`-TargetProviderId` still supports an opt-in provider for isolated qualification;
+in that mode `-MakeDefault` also moves matching default selections. Ordinary
+installations need no second provider. Setup does not enable Claude automation
+or restart T3.
 
 Optional parameters: `-SettingsPath`, `-IntegrationDirectory`, `-CodexExecutable`,
-`-NodeExecutable`, `-ProviderId` (source) and `-TargetProviderId` (new instance).
+`-NodeExecutable`, `-ProviderId` (source) and `-TargetProviderId` (defaults to source).
 For an existing integration, `-Operation defaults` applies helper routing without
 rebuilding the provider or interrupting chats. Removal restores the recorded
 helper defaults only if they remain unchanged, including originally absent fields.
 Custom launch arguments and shadow homes require manual reconciliation before
 installation. No Developer Mode, symlink or administrator privilege is needed.
 
-Setup pins a complete copy of the reviewed application files under the integration
-directory, compiles an argument-preserving native launcher and records a receipt.
-Working-tree edits and ordinary HotPl8 updates do not change that running adapter.
-Upgrade deliberately: close T3, remove the old instance, then install the reviewed
-new revision into a new integration directory. Retained code is not deleted.
+For a [Local Delivery](delivery.md) installation, keep the integration directly
+under `<installation>/integrations/<name>` (the default is `t3-codex`). Existing
+owned integrations there are enrolled when the next release activates. New
+installations enroll during setup. New provider processes resolve the same
+verified `current.json` release as HotPl8; active processes keep their loaded
+code until T3 closes them. No update kills a chat, swaps accounts mid-turn or
+rewrites T3 settings. The next ordinary title/helper process also adopts the
+current release. An idle but long-lived app-server may remain old until restarted.
+
+Standalone integrations outside that inventory retain a pinned snapshot and
+report `unmanaged`. They require deliberate installation upgrades. The native
+launcher is retained; an incompatible launcher change blocks automatic promotion
+until its migration is qualified. State, credentials and retained releases are
+never rolled back with code.
+
+`hotpl8 delivery` reports each registered bridge's desired, installed, next-launch
+and observed running SHAs. `restart-pending` means older processes are alive;
+`running-version-unknown` includes sessions launched before process receipts were
+introduced. Neither is evidence that a chat has loaded the fix. Health verifies
+the selected bridge module and package hashes without native login or inference.
+It continues on timer checks even when main has not advanced. Removed providers
+are not reinstalled; a missing registered integration cannot report healthy.
+
+### Existing two-provider installations
+
+Earlier setups created `hotpl8-codex`. Automatic delivery updates that bridge but
+preserves its provider ID because T3 stores it on conversations. Do not delete or
+disable it while conversations reference it. Consolidation requires routing the
+original Codex provider in place, moving the old selections through T3's supported
+model-selection operation while those threads are idle, and then removing the
+unused instance. Preserve model/options, projects, helpers and native resume
+identity; do not rewrite T3's event database. This release fixes new installations
+and automatic code delivery; it does not perform that separate conversation
+migration on existing two-provider installations.
 
 Close T3 (including any separately started T3 server) before removal:
 
@@ -52,9 +80,9 @@ Close T3 (including any separately started T3 server) before removal:
 ```
 
 Removal rejects edits to the installed provider rather than overwriting them. It
-preserves other provider settings and restores the prior default only if the
-installed default is still unchanged. Sessions previously selected on the removed
-instance need their provider changed back to the original Codex instance.
+restores the original provider for in-place installs. For a separately added
+instance, it removes that instance and restores only unchanged installed defaults;
+move its thread selections back before removal.
 
 ## Account lifecycle
 
@@ -126,6 +154,7 @@ installation/removal and token redaction. Run:
 ```powershell
 node --test tests/test-t3-codex.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-routing.ps1
+python tests/test_delivery.py
 ```
 
 Native qualification on 2026-09-19 used T3 0.0.42's installed launch contract and

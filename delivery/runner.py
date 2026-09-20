@@ -233,7 +233,7 @@ def unpack(archive, destination, config, sha):
 
 def invoke_adapter(config, release, operation, root):
     ps = config.get("powershell") or str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
-    run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+    return run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
          Path(release) / config["adapter"], "-Operation", operation,
          "-InstallDirectory", root, "-ReleaseDirectory", release,
          "-StateDirectory", config["stateDirectory"]], config.get("adapterTimeout", 120))
@@ -283,6 +283,10 @@ def update(root, github=None, adapter=invoke_adapter):
             sha = github.main()
             status.update(desiredSha=sha, installedSha=current.get("sha") if current else None)
             if current and current["sha"] == sha:
+                # Existing enrollments can gain components without a new main
+                # commit. Product readiness must still cover those components.
+                if config.get("componentHealth"):
+                    adapter(config, root / current["release"], "health", root)
                 status.update(state="current", reason=None)
                 return status
             if current and not github.is_forward(current["sha"], sha):
@@ -435,6 +439,9 @@ def main():
                 collector = read(Path(config["stateDirectory"]) / "collector.json", {})
                 result["running"] = {"collectorSha": collector.get("runningSha"), "completedAt": collector.get("completedAt"),
                                      "collectorStatus": collector.get("status")}
+                current = result["installed"]
+                if current and (root / current["release"] / "src/t3-delivery.ps1").is_file():
+                    result["components"] = json.loads(invoke_adapter(config, root / current["release"], "components", root))
         else:
             if not args.pr or args.pr < 1:
                 raise DeliveryError("Specify a positive PR number")

@@ -56,8 +56,11 @@ Use `hotpl8 agent` for a versioned JSON request, or `hotpl8 mcp` for local MCP r
 
 ## T3 Code integration
 
-The optional [HotPl8 Codex provider for T3](docs/t3-integration.md) routes new
+The optional [Codex account routing for T3](docs/t3-integration.md) routes new
 turns and auxiliary commands through enrolled subscriptions while keeping T3
-conversation state in its existing home. Setup is reversible and does not replace
-active provider instances. Windows and Node 22+ are required; native long-running
-refresh and multi-account promotion gates remain documented.
+conversation state in its existing home. First-time setup runs with T3 closed and
+reuses its normal Codex provider; removal restores the original configuration.
+Managed updates preserve active sessions and select the current release for new
+processes. Existing two-provider installations need a separate conversation
+migration to consolidate their picker. Windows and Node 22+ are required; native
+long-running refresh and multi-account promotion gates remain documented.

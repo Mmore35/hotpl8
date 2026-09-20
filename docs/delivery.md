@@ -43,6 +43,13 @@ code used by a completed collector pass; it is separate from installed source.
 An interactive dashboard's window title identifies its loaded main SHA and update
 state. When production changes it hands off to the new release in the same console.
 
+`delivery` also reports registered [T3 bridges](t3-integration.md): next-launch
+selection and observed running revisions. `current` at the release level means
+the code pointer/readiness passed, not that every long-lived session restarted.
+Read component adoption states before claiming a reported bug is fixed in an
+already-open session. Existing bridges without process receipts are explicitly
+unknown until those processes end.
+
 Updates prepare immutable `releases/<sha>` directories and change `current.json`
 only after preflight and writer drain. Existing short commands finish first. The
 collector's existing lock is also held during activation. Dashboards and native
@@ -96,3 +103,31 @@ Other applications can consume this protocol while keeping their own state,
 dependencies and lifecycle adapter. Private repositories can use authenticated
 GitHub asset digests and exact workflow evidence when their plan does not support
 artifact attestations. HotPl8 additionally requires provenance from its CI workflow.
+
+## Component lifecycle
+
+Every shipped runtime component needs an update owner and acceptance evidence.
+Extend the application's existing adapter and inventory before adding another
+updater. Packaged files alone are insufficient when setup copies them elsewhere.
+
+| Component | Selection and adoption | Evidence and recovery |
+|---|---|---|
+| CLI and scheduled collector | Stable launchers select current release; existing short writers drain | Installed SHA and completed collector SHA; pointer rollback |
+| Interactive dashboard | Existing handoff after pointer change | Loaded SHA in window title; retained release |
+| Managed T3 bridge | Bootstrap selects verified current release once per new provider process | Per-process SHA/start/heartbeat, read-only import probe; same pointer rollback, active sessions retained |
+| Standalone T3 bridge | Deliberately pinned setup copy | Doctor reports unmanaged; explicit reinstall |
+
+The HotPl8 adapter discovers owned T3 receipts under `integrations`, records their
+membership in `delivery.json`, and detects missing registered components. It
+validates unchanged T3 provider ownership and state binding before enrollment.
+Configuration is switched atomically to an immutable bootstrap; its protocol-1
+dispatch also works with the predecessor's exported bridge entrypoint. Therefore
+interrupted activation and an older adapter's recovery only need the existing
+release-pointer transaction. No additional code-selection pointer can get stuck
+on a rejected release.
+
+For component changes, test prior install -> verified package -> activation ->
+fresh process adoption, plus concurrent old work, missing components, failed
+readiness and interrupted rollback. New integrations should preserve native
+provider identities and labels where possible; exposing an internal router as a
+second model choice creates a separate conversation-migration obligation.
