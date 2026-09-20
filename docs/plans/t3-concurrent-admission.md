@@ -44,8 +44,8 @@ compiled integration fixture exercises overlapping title/chat admissions.
 - Run the T3 Windows/protocol suites, existing Codex regression, static checks
   and the full CI workflow before merging.
 
-No T3 settings or native credential migration is required. Installed adapters
-pin their source snapshot; deploy the reviewed revision using the integration
-upgrade procedure. Existing provider processes retain their loaded revision.
+No native credential migration is required. Initial installations pinned their
+source snapshot; the [managed delivery repair](t3-managed-delivery.md) supersedes
+that deployment path. Existing provider processes retain their loaded revision.
 Do not terminate active work to force adoption. Rollback uses the prior pinned
 revision without changing conversation or account homes.
