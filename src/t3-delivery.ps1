@@ -117,7 +117,8 @@ function Get-Hotpl8T3DeliveryStatus([string]$InstallDirectory,[string]$StateDire
     $delivery=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery-status.json')
     foreach($item in @(Get-Hotpl8T3Integrations $InstallDirectory $StateDirectory)){
         $running=@();$unknown=0
-        $processes=@(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction Stop | Where-Object {$_.CommandLine -and $_.CommandLine.Contains($item.configPath) -and $_.CommandLine.Contains('--bridge-config')})
+        $nodeName=[IO.Path]::GetFileName($item.config.node)
+        $processes=@(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {$_.Name -eq $nodeName -and $_.CommandLine -and $_.CommandLine.Contains($item.configPath) -and $_.CommandLine.Contains('--bridge-config')})
         foreach($proc in $processes){
             $record=Read-Hotpl8Json (Join-Path $item.directory ('processes/'+$proc.ProcessId+'.json'))
             $verified=$false
