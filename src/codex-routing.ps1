@@ -1,5 +1,10 @@
 # The T3 adapter's private broker. Never expose its token-bearing result via status/MCP.
 function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executable,[scriptblock]$Reader) {
+    # Includes lock waits and every fallback read. Leave room for pipe/process
+    # startup inside the bridge's 25s admission / 8.5s pinned-refresh deadlines.
+    $validationClock=[Diagnostics.Stopwatch]::StartNew()
+    $validationBudget=if($Request.operation -eq 'refresh'){6500}else{20000}
+    $sawBusy=$false
     $policy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
     Assert-Hotpl8Policy $policy
     Assert-CodexPolicy $policy.codex
@@ -38,13 +43,26 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
     if($hold){$previous=[string]$status.recommendations.$meter}
     for($attempt=0;$attempt -lt @($policy.codex.slots).Count;$attempt++){
         $selected=if($refresh){[string]$Request.previousSlot}else{Select-CodexSlot $rows $policy.codex $meter $previous $hold $now $status.critical.$meter}
-        if(-not $selected){throw 'routing_unavailable'}
+        if(-not $selected){if($sawBusy){throw 'routing_account_busy'};throw 'routing_unavailable'}
         $slot=@($policy.codex.slots|Where-Object id -EQ $selected)
         if($slot.Count -ne 1 -or $selected -in @($policy.codex.disabled)){throw 'routing_binding_changed'}
         $slot=$slot[0]
         $prior=$state.slots.$selected
         if(-not $prior.identityKey -or $prior.binding -ne (Get-Hotpl8Hash ([IO.Path]::GetFullPath([string]$slot.home)))){throw 'routing_binding_changed'}
-        $read=if($Reader){& $Reader $slot $refresh}else{Read-CodexQuota $slot.home $Executable 6500 $Request.cwd -IncludeAccessToken -RefreshToken:$refresh}
+        # A title helper, another T3 session or the collector may own this home's
+        # lock briefly. Retry only that pre-inference contention, never quota,
+        # authentication or transport failures and never a submitted user turn.
+        $accountClock=[Diagnostics.Stopwatch]::StartNew()
+        do{
+            $remaining=$validationBudget-[int]$validationClock.ElapsedMilliseconds
+            if($remaining -le 0){throw 'routing_validation_timeout'}
+            $readBudget=[Math]::Min(6500,$remaining)
+            $read=if($Reader){& $Reader $slot $refresh $readBudget}else{Read-CodexQuota $slot.home $Executable $readBudget $Request.cwd -IncludeAccessToken -RefreshToken:$refresh}
+            if($read.status -ne 'home_busy'){break}
+            if($accountClock.ElapsedMilliseconds -ge 2500){$sawBusy=$true;break}
+            Start-Sleep -Milliseconds 75
+        }while($true)
+        if($read.status -eq 'home_busy' -and $refresh){throw 'routing_account_busy'}
         $valid=$read.status -eq 'ok' -and $read.identityKey -eq $prior.identityKey -and $read.standardTransport -and (-not $read.modelProvider -or $read.modelProvider -eq 'openai')
         if($refresh){
             if(-not $valid -or $read.auth.chatgptAccountId -cne $Request.accountId){throw 'routing_refresh_failed'}
@@ -63,5 +81,6 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
         $rows=@($rows|Where-Object id -NE $selected)
         if($refresh){throw 'routing_refresh_failed'}
     }
+    if($sawBusy){throw 'routing_account_busy'}
     throw 'routing_unavailable'
 }

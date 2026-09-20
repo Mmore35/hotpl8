@@ -122,6 +122,7 @@
     "tests/test-t3-routing.ps1",
     "tests/t3-fake-codex.cs",
     "docs/t3-integration.md",
-    "docs/plans/t3-codex-integration.md"
+    "docs/plans/t3-codex-integration.md",
+    "docs/plans/t3-concurrent-admission.md"
   ]
 }

@@ -12,6 +12,7 @@ public class T3FakeCodex {
         string home = Environment.GetEnvironmentVariable("CODEX_HOME");
         if(args[0] == "exec") {
             File.WriteAllText(Environment.GetEnvironmentVariable("HOTPL8_TEST_LAUNCH"), json.Serialize(new {args=args,home=home,input=Console.In.ReadToEnd()}));
+            File.AppendAllText(Environment.GetEnvironmentVariable("HOTPL8_TEST_LAUNCH")+".runs","1\n");
             return 7;
         }
         string account = Path.GetFileName(home), line;
@@ -24,7 +25,14 @@ public class T3FakeCodex {
             if(method=="initialize") result=new {userAgent="codex/fixture"};
             if(method=="account/login/start") { account=(string)p["chatgptAccountId"]; result=new {type="chatgptAuthTokens"}; }
             if(method=="account/read") result=new {account=new {type="chatgpt",email=account+"@example.invalid",planType="plus"},requiresOpenaiAuth=true};
-            if(method=="account/rateLimits/read") result=new {rateLimits=new {limitId="codex",primary=new {usedPercent=File.Exists(Path.Combine(home,"exhausted"))?100:10,windowDurationMins=10080,resetsAt=DateTimeOffset.UtcNow.ToUnixTimeSeconds()+3600},secondary=(object)null,spendControlReached=false,rateLimitReachedType=(object)null}};
+            if(method=="account/rateLimits/read") {
+                string gate=Path.Combine(home,"quota-gate");
+                if(File.Exists(gate)) {
+                    File.WriteAllText(Path.Combine(home,"quota-entered"),"fixture");
+                    while(File.Exists(gate)) System.Threading.Thread.Sleep(10);
+                }
+                result=new {rateLimits=new {limitId="codex",primary=new {usedPercent=File.Exists(Path.Combine(home,"exhausted"))?100:10,windowDurationMins=10080,resetsAt=DateTimeOffset.UtcNow.ToUnixTimeSeconds()+3600},secondary=(object)null,spendControlReached=false,rateLimitReachedType=(object)null}};
+            }
             if(method=="config/read") result=new {config=new {model="fixture-model",model_provider="openai",cli_auth_credentials_store="ephemeral"}};
             if(method=="thread/start" || method=="thread/resume") result=new {thread=new {id="thread-fixture"}};
             if(method=="turn/start") {

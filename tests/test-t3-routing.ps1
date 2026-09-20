@@ -14,7 +14,7 @@ function Reject([scriptblock]$Body,[string]$Code){try{& $Body;throw 'accepted un
 function Save($Name,$Value){Write-Hotpl8Text (Join-Path $dir $Name) ($Value|ConvertTo-Json -Depth 30)}
 $savedEnv=@{}
 foreach($key in @('OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_SQLITE_HOME','OPENAI_BASE_URL','HOTPL8_TEST_LAUNCH')){$savedEnv[$key]=[Environment]::GetEnvironmentVariable($key);[Environment]::SetEnvironmentVariable($key,$null)}
-$proc=$null
+$proc=$null;$titleProc=$null;$accountLock=$null
 try{
     $exe=Join-Path $dir 'fake-codex.exe'
     Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 't3-fake-codex.cs'))) -ReferencedAssemblies System.Web.Extensions -OutputAssembly $exe -OutputType ConsoleApplication
@@ -39,8 +39,39 @@ try{
     [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
     $route=Get-Hotpl8CodexRoute $request $dir $exe
     Assert ($route.slot -eq 'b') 'fresh native exhaustion falls back before inference'
+    $script:busyReads=0
+    $contended={param($slot,$refresh)
+        if($slot.id -eq 'b' -and ++$script:busyReads -le 2){return [pscustomobject]@{status='home_busy'}}
+        Read-CodexQuota $slot.home $exe 5000 $dir -IncludeAccessToken -RefreshToken:$refresh
+    }
+    $route=Get-Hotpl8CodexRoute $request $dir $exe $contended
+    Assert ($route.slot -eq 'b' -and $script:busyReads -eq 3) 'temporary account lock is retried before chat admission'
+    $script:busyReads=0
+    $execRequest=[pscustomobject]@{operation='exec';model='fixture-model';cwd=$dir}
+    $route=Get-Hotpl8CodexRoute $execRequest $dir $exe $contended
+    Assert ($route.slot -eq 'b' -and $script:busyReads -eq 3 -and -not $route.auth) 'exec shares contention recovery without exporting authentication'
+    $script:failedReads=0
+    $authFailure={param($slot,$refresh);$script:failedReads++;[pscustomobject]@{status='authentication_required'}}
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $authFailure} 'routing_unavailable'
+    Assert ($script:failedReads -eq 2) 'non-lock failures are not retried'
+    $busyPreferred={param($slot,$isRefresh)
+        if($slot.id -eq 'a'){return [pscustomobject]@{status='home_busy'}}
+        Read-CodexQuota $slot.home $exe 5000 $dir -IncludeAccessToken
+    }
+    Assert ((Get-Hotpl8CodexRoute $request $dir $exe $busyPreferred).slot -eq 'b') 'persistently busy candidate can fall back to another validated account'
     $refresh=[pscustomobject]@{operation='refresh';previousSlot='a';accountId='a';model='fixture-model';cwd=$dir}
     Assert ((Get-Hotpl8CodexRoute $refresh $dir $exe).slot -eq 'a') 'refresh remains pinned even when quota exhausted'
+    $script:refreshReads=0
+    $refreshContention={param($slot,$isRefresh)
+        Assert ($slot.id -eq 'a' -and $isRefresh) 'refresh lock retry retains the exact pinned account'
+        if(++$script:refreshReads -eq 1){return [pscustomobject]@{status='home_busy'}}
+        Read-CodexQuota $slot.home $exe 5000 $dir -IncludeAccessToken -RefreshToken
+    }
+    Assert ((Get-Hotpl8CodexRoute $refresh $dir $exe $refreshContention).slot -eq 'a') 'pinned refresh recovers from temporary contention'
+    $busy={param($slot,$isRefresh);[pscustomobject]@{status='home_busy'}}
+    $busyClock=[Diagnostics.Stopwatch]::StartNew()
+    Reject {Get-Hotpl8CodexRoute $refresh $dir $exe $busy} 'routing_account_busy'
+    Assert ($busyClock.ElapsedMilliseconds -lt 6500) 'persistent refresh contention has a bounded wait below the bridge deadline'
     $refresh.accountId='b';Reject {Get-Hotpl8CodexRoute $refresh $dir $exe} 'routing_refresh_failed'
     $policy.codex.disabled=@('b');Save 'policy.json' $policy
     Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_unavailable'
@@ -81,12 +112,50 @@ try{
     Assert ($installed.textGenerationModelSelection.options[0].value -eq 'low') 'helper default uses low reasoning'
     $launcher=Join-Path $integration 'hotpl8-codex.exe'
     Assert ((& $launcher --version) -eq 'codex-cli fixture') 'native launcher version/stdio passthrough'
+    # Instrument only this disposable installed reader to signal actual lock
+    # contention. Delegation still calls the unchanged native reader; waiting on
+    # process startup alone can miss the race on a cold or loaded Windows runner.
+    $fixtureConfig=Read-Hotpl8Json (Join-Path $integration 'bridge-config.json')
+    $readerPath=Join-Path (Split-Path $fixtureConfig.script -Parent) 'providers/codex.ps1'
+    $readerProbe=@'
+
+$script:FixtureNativeReader=${function:Read-CodexQuota}
+function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutMs=5000,[string]$WorkingDirectory,[switch]$IncludeAccessToken,[switch]$RefreshToken){
+    $read=& $script:FixtureNativeReader @PSBoundParameters
+    if($read.status -eq 'home_busy'){[IO.File]::WriteAllText((Join-Path $AccountHome 'quota-contended'),'fixture')}
+    return $read
+}
+'@
+    [IO.File]::AppendAllText($readerPath,$readerProbe)
+    # Hold the title helper's native quota read while a new app-server validates
+    # the same healthy home. This is T3's concurrent first-message launch shape.
+    $gate=Join-Path $dir 'b/quota-gate';[IO.File]::WriteAllText($gate,'fixture')
+    $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'title.json'
+    $titlePsi=New-CodexProcessInfo $launcher $shared @('exec','--model','fixture-model','-s','read-only','-') $dir
+    $titlePsi.RedirectStandardInput=$true;$titlePsi.RedirectStandardOutput=$true;$titlePsi.RedirectStandardError=$true;$titlePsi.CreateNoWindow=$true
+    $titleProc=Start-CodexQuotaProcess $titlePsi
+    $null=$titleProc.StandardOutput.ReadToEndAsync();$null=$titleProc.StandardError.ReadToEndAsync()
+    $titleProc.StandardInput.Write('fixture title');$titleProc.StandardInput.Close()
+    $gateClock=[Diagnostics.Stopwatch]::StartNew()
+    while(-not (Test-Path -LiteralPath (Join-Path $dir 'b/quota-entered')) -and $gateClock.ElapsedMilliseconds -lt 15000){Start-Sleep -Milliseconds 20}
+    Assert (Test-Path -LiteralPath (Join-Path $dir 'b/quota-entered')) 'title broker owns the native home lock before chat startup'
     $psi=New-CodexProcessInfo $launcher $shared @('app-server') $dir
     $psi.RedirectStandardInput=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true;$psi.CreateNoWindow=$true
     $proc=Start-CodexQuotaProcess $psi
     $null=$proc.StandardError.ReadToEndAsync()
+    $proc.StandardInput.WriteLine('{"id":1,"method":"initialize","params":{"clientInfo":{"name":"fixture","version":"1"}}}');$proc.StandardInput.Flush()
+    $initialization=$proc.StandardOutput.ReadLineAsync()
+    $contentionClock=[Diagnostics.Stopwatch]::StartNew()
+    while(-not (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) -and -not $initialization.IsCompleted -and $contentionClock.ElapsedMilliseconds -lt 5000){Start-Sleep -Milliseconds 10}
+    [IO.File]::Delete($gate)
+    Assert (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) 'chat native validation encounters the title helper lock'
+    Assert ($initialization.Wait(15000)) 'concurrent chat startup responds within its deadline'
+    $initialized=$initialization.Result|ConvertFrom-Json
+    Assert ($initialized.id -eq 1 -and -not $initialized.error) 'chat startup survives concurrent title admission'
+    Assert ($titleProc.WaitForExit(15000) -and $titleProc.ExitCode -eq 7) 'concurrent title helper retains native exit status'
+    Assert ((Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH).input -eq 'fixture title' -and [IO.File]::ReadAllLines($env:HOTPL8_TEST_LAUNCH+'.runs').Count -eq 1) 'title input is submitted exactly once'
+    Stop-Hotpl8Process $titleProc;$titleProc=$null
     $clock=[Diagnostics.Stopwatch]::StartNew()
-    $null=Invoke-CodexRpc $proc $clock 20000 1 'initialize' @{clientInfo=@{name='fixture';version='1'}}
     $null=Invoke-CodexRpc $proc $clock 20000 2 'thread/start' @{model='fixture-model';cwd=$dir}
     $turn=Invoke-CodexRpc $proc $clock 20000 3 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
     Assert ($turn.account -eq 'b') 'real launcher/proxy/broker chooses healthy account for turn'
@@ -101,6 +170,22 @@ try{
     Stop-Hotpl8Process $proc;$proc=$null
     Assert ([IO.File]::ReadAllText((Join-Path $shared 'auth.json')) -eq 'original-auth-sentinel') 'shared native auth unchanged'
     Assert ([IO.File]::ReadAllText((Join-Path $shared 'config.toml')) -eq 'original-config-sentinel') 'shared native config unchanged'
+    # A lock that never clears is distinct from quota exhaustion and leaves only
+    # a fixed failure code in the existing bounded diagnostic log.
+    $lockPath=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-codex-'+(Get-Hotpl8Hash ([IO.Path]::GetFullPath((Join-Path $dir 'b')).ToLowerInvariant()))+'.lock')
+    $accountLock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')
+    $brokerPsi=New-CodexProcessInfo $ps $shared @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'src/codex-route.ps1'),'-StateDirectory',$dir,'-Executable',$exe) $dir
+    $brokerPsi.RedirectStandardInput=$true;$brokerPsi.RedirectStandardOutput=$true;$brokerPsi.RedirectStandardError=$true;$brokerPsi.CreateNoWindow=$true
+    $proc=Start-CodexQuotaProcess $brokerPsi
+    $brokerOutput=$proc.StandardOutput.ReadToEndAsync();$null=$proc.StandardError.ReadToEndAsync()
+    $proc.StandardInput.WriteLine(($request|ConvertTo-Json -Compress));$proc.StandardInput.Close()
+    Assert ($proc.WaitForExit(15000)) 'persistent contention returns a bounded broker failure'
+    Assert (($brokerOutput.Result|ConvertFrom-Json).error -eq 'routing_account_busy') 'pipe response distinguishes contention from no capacity'
+    $accountLock.Dispose();$accountLock=$null;Stop-Hotpl8Process $proc;$proc=$null
+    $events=[IO.File]::ReadAllText((Join-Path $dir 'events.jsonl'))
+    $event=($events.Trim()|ConvertFrom-Json)
+    Assert ($event.code -eq 'routing_account_busy' -and @($event.PSObject.Properties).Count -eq 2) 'diagnostic event contains only time and fixed failure code'
+    Assert ($events -notmatch 'FAKE-|NEVER_EXPORT|fixture-model|account_id' -and -not $events.Contains($dir)) 'contention diagnostics do not disclose credentials or account paths'
     & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation remove -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $integration
     Assert ($LASTEXITCODE -eq 0) 'rollback succeeds'
     $restored=Read-Hotpl8Json $settingsPath
@@ -109,6 +194,9 @@ try{
     Assert (-not $restored.PSObject.Properties['textGenerationModelSelection']) 'rollback restores absent helper setting instead of leaving a removed provider reference'
     Write-Output ($passed.ToString()+' T3 broker/Windows integration checks passed.')
 }finally{
+    if($gate -and (Test-Path -LiteralPath $gate)){[IO.File]::Delete($gate)}
+    if($accountLock){$accountLock.Dispose()}
+    Stop-Hotpl8Process $titleProc
     Stop-Hotpl8Process $proc
     foreach($key in $savedEnv.Keys){[Environment]::SetEnvironmentVariable($key,$savedEnv[$key])}
     if([IO.Path]::GetFullPath($dir).StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $dir -Leaf) -match '^hotpl8-t3-[a-f0-9]{32}$'){Remove-Item -LiteralPath $dir -Recurse -Force}

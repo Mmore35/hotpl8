@@ -6,6 +6,7 @@ $ErrorActionPreference='Stop'
 try{
     . (Join-Path $PSScriptRoot 'common.ps1')
     . (Join-Path $PSScriptRoot 'config.ps1')
+    . (Join-Path $PSScriptRoot 'diagnostics.ps1')
     . (Join-Path $PSScriptRoot 'providers/claude.ps1')
     . (Join-Path $PSScriptRoot 'providers/codex.ps1')
     . (Join-Path $PSScriptRoot 'codex-routing.ps1')
@@ -16,7 +17,10 @@ try{
     [Console]::WriteLine(($result|ConvertTo-Json -Depth 12 -Compress))
 }catch{
     $code=[string]$_.Exception.Message
-    if($code -notin @('routing_environment_conflict','routing_invalid_request','routing_model_unknown','routing_duplicate_identity','routing_stale','routing_unavailable','routing_binding_changed','routing_refresh_failed','routing_auth_unavailable')){$code='routing_failed'}
+    if($code -notin @('routing_environment_conflict','routing_invalid_request','routing_model_unknown','routing_duplicate_identity','routing_stale','routing_unavailable','routing_binding_changed','routing_refresh_failed','routing_auth_unavailable','routing_account_busy','routing_validation_timeout')){$code='routing_failed'}
+    # Fixed code and time only: never persist the request, slot/home, native
+    # exception or successful broker response (which carries an access token).
+    Write-Hotpl8Event $StateDirectory $code
     [Console]::WriteLine((@{error=$code}|ConvertTo-Json -Compress))
     exit 1
 }
