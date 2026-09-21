@@ -11,7 +11,7 @@ $taskName='Hotpl8-host-fixture-'+[guid]::NewGuid().ToString('N')
 $registered=$false;$owned=@();$passed=0
 function Assert($ok,[string]$message){if(-not $ok){throw $message};$script:passed++;'PASS '+$message}
 function Start-FixtureHost([int]$Seconds,[string]$Script){
-    $argv=@([string]$Seconds,(Join-Path $lab 'runs'),$lab,(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'),'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$Script)
+    $argv=if([IO.Path]::GetExtension($Script) -eq '.exe'){@([string]$Seconds,(Join-Path $lab 'runs'),$lab,$Script)}else{@([string]$Seconds,(Join-Path $lab 'runs'),$lab,(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'),'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$Script)}
     $psi=New-Object Diagnostics.ProcessStartInfo
     $psi.FileName=$script:hostExe;$psi.Arguments=(@($argv|ForEach-Object{ConvertTo-NativeArgument $_}) -join ' ')
     $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true
@@ -26,18 +26,25 @@ try{
     Assert ($p.ExitCode -eq 7) 'GUI host propagates exit 7'
     $receipt=Get-ChildItem (Join-Path $lab 'runs') -Filter run.json -Recurse|Select-Object -First 1|Get-Content -Raw|ConvertFrom-Json
     Assert ($receipt.status -eq 'failed' -and $receipt.exitCode -eq 7 -and $receipt.hostCreatedAt) 'completion identifies this host and failure'
-    @'
-$psi=New-Object Diagnostics.ProcessStartInfo
-$psi.FileName=(Get-Process -Id $PID).Path
-$psi.Arguments='-NoProfile -NonInteractive -Command Start-Sleep -Seconds 60'
-$psi.UseShellExecute=$false;$psi.CreateNoWindow=$true
-$child=[Diagnostics.Process]::Start($psi)
-@{pid=$child.Id;created=$child.StartTime.ToUniversalTime().ToString('o')}|ConvertTo-Json|Set-Content (Join-Path $PSScriptRoot 'child.json')
-Start-Sleep -Seconds 60
-'@|Set-Content -LiteralPath $worker
+    # Native fixture avoids charging two cold PowerShell startups to a four-second
+    # fault deadline on a loaded hosted runner. The production deadline is unchanged.
+    $treeWorker=Join-Path $lab 'tree-worker.exe'
+    Add-Type -TypeDefinition @'
+using System; using System.IO; using System.Diagnostics; using System.Threading;
+public static class TreeFixture {
+ public static int Main(string[] args) {
+  string exe=System.Reflection.Assembly.GetExecutingAssembly().Location;
+  if(args.Length==0) {
+   var p=Process.Start(new ProcessStartInfo(exe,"child"){UseShellExecute=false,CreateNoWindow=true});
+   File.WriteAllText(Path.Combine(Path.GetDirectoryName(exe),"child.json"),"{\"pid\":"+p.Id+",\"created\":\""+p.StartTime.ToUniversalTime().ToString("o")+"\"}");
+  }
+  Thread.Sleep(60000);return 0;
+ }
+}
+'@ -OutputAssembly $treeWorker -OutputType ConsoleApplication
     foreach($mode in @('timeout','abrupt')){
         Remove-Item -LiteralPath (Join-Path $lab 'child.json') -ErrorAction SilentlyContinue
-        $p=Start-FixtureHost $(if($mode -eq 'timeout'){4}else{30}) $worker
+        $p=Start-FixtureHost $(if($mode -eq 'timeout'){4}else{30}) $treeWorker
         $deadline=[DateTime]::UtcNow.AddSeconds(10)
         while(-not(Test-Path (Join-Path $lab 'child.json')) -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 100}
         $child=Get-Content (Join-Path $lab 'child.json') -Raw|ConvertFrom-Json
