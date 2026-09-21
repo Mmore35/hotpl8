@@ -405,8 +405,11 @@ export async function main(config, args) {
         product = "hotpl8-fixture-" + uuid.uuid4().hex
         d.write(self.root / "delivery.json", dict(self.config, product=product))
         # A space in the interpreter path is the case the hand-written quoting exists for.
-        stub = self.root / "stub python.cmd"
-        stub.write_text('@echo off\r\n>"%~dp0invoked.txt" echo %1\r\n>>"%~dp0invoked.txt" echo %2\r\n')
+        stub = Path(sys.executable)
+        (self.root / 'delivery.py').write_text(
+            'import json, sys\nfrom pathlib import Path\n'
+            'Path(__file__).with_name("invoked.txt").write_text(json.dumps(sys.argv))\n'
+            'raise SystemExit(7)\n')
         ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
         result = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                                  str(source / "delivery/register.ps1"), "-InstallDirectory", str(self.root),
@@ -415,13 +418,18 @@ export async function main(config, args) {
         plan = json.loads(result.stdout)
         self.assertEqual(plan["name"], "LocalDelivery-" + product)
         self.assertEqual(plan["description"], "Local Delivery owned installation " + str(self.root))
-        self.assertEqual(Path(plan["launcher"]), self.root / "update-launcher.vbs")
-        result = subprocess.run(["wscript.exe", plan["launcher"]], capture_output=True, timeout=60)
-        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
-        invoked = (self.root / "invoked.txt").read_text().splitlines()
+        self.assertTrue(Path(plan['execute']).is_file())
+        result = subprocess.run('"' + plan['execute'] + '" ' + plan['arguments'], capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 7, result.stderr.decode(errors="replace"))
+        invoked = json.loads((self.root / "invoked.txt").read_text())
         # A dropped quote would truncate either path at its first space.
         self.assertEqual(invoked[0].strip().strip('"'), str(self.root / "delivery.py"))
         self.assertEqual(invoked[1].strip(), "update")
+        receipts = list((self.root / 'job-runs/updater').glob('*/run.json'))
+        self.assertEqual(len(receipts), 1)
+        receipt = json.loads(receipts[0].read_text())
+        self.assertEqual(receipt['exitCode'], 7)
+        self.assertEqual(receipt['status'], 'failed')
 
     @unittest.skipUnless(os.name == "nt", "Windows product adapter")
     def test_real_product_package_preflight_and_readiness(self):

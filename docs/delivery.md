@@ -106,6 +106,47 @@ artifact attestations. HotPl8 additionally requires provenance from its CI workf
 
 ## Component lifecycle
 
+### Native scheduled launchers
+
+Windows collector and updater launches use a GUI host with an at-creation Job
+Object. It closes stdin, propagates exits, bounds output to 4 MiB per attempt,
+and contains descendants on timeout or launcher death. Collector and updater
+budgets are 225 and 540 seconds respectively. There is no additional retry loop.
+Collector `incomplete`/provider backoff remains in `collector.json`; a zero process
+exit is not evidence that every provider is fresh. Updater results remain in
+`delivery-status.json`. Per-attempt execution evidence lives in `job-runs`.
+
+The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
+against that repository/revision and replace the import plus normalized LF SHA256
+together; the installer rejects a mismatched import. Product host source is beside
+it. Full UA runner enrollment is not used for these native multi-trigger jobs.
+
+Ordinary installations receive the collector host through `install.ps1 -Schedule`.
+For an already-enrolled installation, explicitly migrate the native components
+from its verified current release:
+
+```powershell
+powershell -NoProfile -File <current-release>/delivery/register.ps1 -InstallDirectory <install> -Python <python.exe> -CollectorTaskName <existing-collector-name> -AdoptCollectorLauncher <exact-legacy-vbs>
+```
+
+The adoption path is needed only for a legacy collector whose description predates
+installation ownership. `-PlanOnly` stages the immutable host without changing any
+task. Migration preserves existing XML trigger, principal, enabled and battery
+settings, exports recovery XML, and records `scheduledJobs` in the delivery
+registration. Subsequent verified activation/recovery reconciles these enrolled
+components through the same registrar. Only Actions change: admitted updater work
+continues on its original immutable host. No loaded executable or stable dispatch
+file is overwritten. Next launches use the normal release-pointer dispatch, also
+compatible with the predecessor release. T3 sessions are untouched.
+
+For recovery, pause the affected task, let admitted work finish, restore its
+exported XML and intended enabled state, and remove the `scheduledJobs` enrollment
+only when deliberately undoing this component migration. Preserve current product
+state. Retain `launchers` versions while any task or running process references
+them. Execution records are private and may be archived after investigation.
+`tests/test-job-host.ps1 -Native` qualifies live action replacement with one unique
+fixture task; the default suite does not register tasks.
+
 Every shipped runtime component needs an update owner and acceptance evidence.
 Extend the application's existing adapter and inventory before adding another
 updater. Packaged files alone are insufficient when setup copies them elsewhere.
