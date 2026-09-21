@@ -19,6 +19,15 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
     if($Request.operation -notin @('select','refresh','exec')){throw 'routing_invalid_request'}
     $meter=if($Request.model){[string]$policy.codex.modelMeters.([string]$Request.model)}else{[string]$policy.codex.defaultMeter}
     if(-not $meter){throw 'routing_model_unknown'}
+    # One app-server auth owner serves all active threads. Reuse the same
+    # eligibility rules for their additional models before choosing an account.
+    $meters=@($meter)
+    foreach($model in @($Request.models)){
+        if(-not $model){continue}
+        $required=[string]$policy.codex.modelMeters.([string]$model)
+        if(-not $required){throw 'routing_model_unknown'}
+        if($required -notin $meters){$meters+= $required}
+    }
     $rows=@($status.slots)
     $identities=@{}
     foreach($slot in @($policy.codex.slots)){
@@ -40,7 +49,20 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
     }
     $hold=Get-Hold $StateDirectory
     $previous=if($Request.previousSlot){[string]$Request.previousSlot}else{[string]$status.recommendations.$meter}
-    if($hold){$previous=[string]$status.recommendations.$meter}
+    # A hold pins this process's actual selection, not a collector recommendation
+    # which may describe a different process or a later launch.
+    $emergency=@{}
+    foreach($required in $meters){
+        $accounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$status}}) $policy.codex 'codex' $now $required)
+        $emergency[$required]=(Get-Hotpl8CriticalDecision $accounts $policy.codex $previous $status.critical.$required $now).active
+    }
+    if(-not $refresh -and $meters.Count -gt 1){
+        $rows=@(foreach($row in $rows){
+            $eligible=$true
+            foreach($required in $meters){if((Get-CodexEligibility $row $policy.codex $required $now $emergency[$required]) -ne 'eligible'){$eligible=$false}}
+            if($eligible){$row}
+        })
+    }
     for($attempt=0;$attempt -lt @($policy.codex.slots).Count;$attempt++){
         $selected=if($refresh){[string]$Request.previousSlot}else{Select-CodexSlot $rows $policy.codex $meter $previous $hold $now $status.critical.$meter}
         if(-not $selected){if($sawBusy){throw 'routing_account_busy'};throw 'routing_unavailable'}
@@ -68,9 +90,9 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
             if(-not $valid -or $read.auth.chatgptAccountId -cne $Request.accountId){throw 'routing_refresh_failed'}
         }else{
             $current=[pscustomobject]@{id=$selected;status='ok';observedAt=$now.ToString('o');buckets=(ConvertTo-CodexBuckets $read.quota $null $now)}
-            $accounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$status}}) $policy.codex 'codex' $now $meter)
-            $critical=Get-Hotpl8CriticalDecision $accounts $policy.codex $selected $status.critical.$meter $now
-            $valid=$valid -and (Get-CodexEligibility $current $policy.codex $meter $now $critical.active) -eq 'eligible'
+            foreach($required in $meters){
+                $valid=$valid -and (Get-CodexEligibility $current $policy.codex $required $now $emergency[$required]) -eq 'eligible'
+            }
         }
         if($valid){
             $model=if($Request.model){[string]$Request.model}else{[string]$read.model}
