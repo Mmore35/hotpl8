@@ -263,3 +263,44 @@ test('late refresh cannot restore the account replaced by a rollover', async () 
   h.select('b'); await h.bridge.observe(); release(); await refresh;
   assert.equal(h.bridge.route.slot, 'b'); assert.match(h.native.at(-1).error.message, /routing_refresh_failed/); h.bridge.close();
 });
+
+test('completed latest-admitted model cannot block surviving work on another meter', async () => {
+  const h = harness(); await opened(h); started(h);
+  h.bridge.threads.set('finishing', { model: 'finished-model', cwd: 'fixture' });
+  await h.bridge.client({ id: 7, method: 'turn/start', params: { threadId: 'finishing' } });
+  h.bridge.native({ id: 7, result: { turn: { id: 'done' } } }); started(h, 'finishing', 'done');
+  assert.equal(h.bridge.route.model, 'finished-model');
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 'finishing', turn: { id: 'done' } } });
+  const broker = h.bridge.broker;
+  const meters = { 'fixture-model': 'codex', 'finished-model': 'codex_bengalfox' };
+  h.bridge.broker = request => {
+    if (request.models.some(model => meters[model] === 'codex_bengalfox')) throw Object.assign(new Error(), { code: 'routing_unavailable' });
+    return broker(request);
+  };
+  h.select('b'); await h.bridge.observe();
+  assert.equal(h.bridge.route.slot, 'b'); assert.equal(h.bridge.route.model, 'fixture-model');
+  assert.deepEqual(h.requests.at(-1).models, ['fixture-model']); h.bridge.close();
+});
+
+test('queued observation derives its models when execution starts and ignores completed work', async () => {
+  const h = harness(); await opened(h); started(h);
+  h.bridge.threads.set('finishing', { model: 'finished-model', cwd: 'fixture' }); started(h, 'finishing', 'done');
+  let release;
+  h.bridge.routing = new Promise(done => { release = done; });
+  const observation = h.bridge.observe();
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 'finishing', turn: { id: 'done' } } });
+  h.select('b'); release(); await observation;
+  assert.equal(h.bridge.route.slot, 'b'); assert.deepEqual(h.requests.at(-1).models, ['fixture-model']);
+  const before = h.requests.length;
+  h.bridge.routing = new Promise(done => { release = done; });
+  const idleObservation = h.bridge.observe();
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 't', turn: { id: 'one' } } });
+  release(); await idleObservation;
+  assert.equal(h.requests.length, before); h.bridge.close();
+});
+
+test('initialization still admits the native default when configuration omits model', async () => {
+  const h = harness(); h.config({ cli_auth_credentials_store: 'ephemeral' }); await opened(h);
+  assert.equal(h.bridge.route.slot, 'a');
+  assert.equal(h.native.filter(m => m.method === 'account/login/start').length, 1); h.bridge.close();
+});

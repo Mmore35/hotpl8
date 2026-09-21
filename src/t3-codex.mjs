@@ -150,12 +150,12 @@ export class CodexBridge {
     this.serial = this.serial.then(() => this.dispatch(message)).catch(err => this.fail(message, err.code || 'routing_failed'));
     return this.serial;
   }
-  select(model, cwd = this.cwd) {
-    const operation = this.routing.then(() => this.selectNow(model, cwd));
+  select(model, cwd = this.cwd, background = false) {
+    const operation = this.routing.then(() => this.selectNow(model, cwd, background));
     this.routing = operation.catch(() => {});
     return operation;
   }
-  async selectNow(model, cwd) {
+  async selectNow(model, cwd, background) {
     if (this.closed) throw error('routing_closed');
     // Authentication is process-wide, including native children. Unknown child
     // models need a native snapshot; role configurations can override the parent.
@@ -173,7 +173,11 @@ export class CodexBridge {
       ...[...this.reservations.keys()].map(key => this.pending.get(key)?.model)
     ].filter(Boolean))];
     const models = [...new Set([model, ...activeModels()].filter(Boolean))];
-    const route = await this.broker({ operation: 'select', model, models, cwd, previousSlot: this.route?.slot });
+    // Background observations have no new inference to admit. Select only for
+    // work still present when this serialized operation runs, not the model of
+    // whichever (possibly completed) thread last changed the selected account.
+    if (background && !models.length) return this.route;
+    const route = await this.broker({ operation: 'select', model: model || models[0], models, cwd, previousSlot: this.route?.slot });
     if (this.closed) throw error('routing_closed');
     if ([...this.active.keys()].some(id => !this.threads.get(id)?.model) || activeModels().some(m => !models.includes(m))) throw error('routing_model_changed');
     if (!route.auth?.accessToken || !route.auth?.chatgptAccountId) throw error('routing_auth_unavailable');
@@ -197,7 +201,7 @@ export class CodexBridge {
     this.observing = (async () => {
       while (this.observationPending && !this.closed) {
         this.observationPending = false;
-        try { await this.select(this.route.model); }
+        try { await this.select(undefined, this.cwd, true); }
         catch (err) { if (!this.closed) this.onRoutingError(/^routing_[a-z_]+$/.test(err.code) ? err.code : 'routing_failed'); }
       }
     })().finally(() => { this.observing = null; });
