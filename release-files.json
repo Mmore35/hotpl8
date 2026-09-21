@@ -129,6 +129,12 @@
     "docs/t3-integration.md",
     "docs/plans/t3-codex-integration.md",
     "docs/plans/t3-concurrent-admission.md",
-    "docs/plans/t3-active-turn-admission.md"
+    "docs/plans/t3-active-turn-admission.md",
+    "src/job-host.ps1",
+    "src/jobs/process.cs",
+    "src/jobs/finite-host.cs",
+    "src/jobs/provenance.json",
+    "tests/test-job-host.ps1",
+    "scripts/import-job-containment.ps1"
   ]
 }

@@ -9,8 +9,9 @@ $ErrorActionPreference='Stop'
 . (Join-Path $ReleaseDirectory 'src/config.ps1')
 . (Join-Path $ReleaseDirectory 'src/providers/codex.ps1')
 . (Join-Path $ReleaseDirectory 'src/t3-delivery.ps1')
+. (Join-Path $ReleaseDirectory 'src/job-host.ps1')
 if($Operation -eq 'components'){
-    ConvertTo-Json -InputObject @(Get-Hotpl8T3DeliveryStatus $InstallDirectory $StateDirectory) -Depth 8
+    ConvertTo-Json -InputObject @(@(Get-Hotpl8T3DeliveryStatus $InstallDirectory $StateDirectory)+@(Get-Hotpl8JobComponentStatus $InstallDirectory)) -Depth 8
     exit 0
 }
 Sync-Hotpl8T3Delivery $Operation $InstallDirectory $ReleaseDirectory $StateDirectory
@@ -27,6 +28,12 @@ if($Operation -in @('preflight','health','recover')){
 }
 if($Operation -in @('activate','recover')){
     $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
+    if($registration.scheduledJobs){
+        # Enrolled native components update through the same verified release.
+        # Hosts are immutable; updating Actions does not stop the admitted updater.
+        & (Join-Path $ReleaseDirectory 'delivery/register.ps1') -InstallDirectory $InstallDirectory -Python $registration.python|Out-Null
+        $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
+    }
     if($registration){
         $registration|Add-Member NoteProperty componentHealth $true -Force
         Write-Hotpl8Text (Join-Path $InstallDirectory 'delivery.json') ($registration|ConvertTo-Json -Depth 10) -NoBom
