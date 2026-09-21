@@ -48,11 +48,15 @@ function Set-Hotpl8UserPath([string]$Directory,[bool]$Add) {
 # Separated from registration so the command line that actually collects unattended can be
 # asserted and run by a test without creating, editing or deleting a real scheduled task.
 function Get-Hotpl8TaskDefinition($Installation,[string]$Directory) {
+    . (Join-Path $PSScriptRoot 'job-host.ps1')
+    $hostExe=Install-Hotpl8JobHost $Directory
+    $shell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $argv=@('225',(Join-Path $Directory 'job-runs/collector'),$Directory,$shell,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $Directory 'app/tick.ps1'),'-Scheduled','-StateDirectory',$Installation.stateDirectory)
     [pscustomobject]@{
         name='HotPl8-'+$Installation.id
         description='HotPl8 owned installation '+$Installation.id
-        execute=(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
-        arguments='-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File '+(ConvertTo-NativeArgument (Join-Path $Directory 'app/tick.ps1'))+' -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $Installation.stateDirectory)
+        execute=$hostExe
+        arguments=(@($argv|ForEach-Object{ConvertTo-NativeArgument $_}) -join ' ')
         workingDirectory=$Directory
     }
 }
