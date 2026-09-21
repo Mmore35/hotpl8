@@ -11,7 +11,7 @@
 | Codex model selection | Requires an explicitly verified modelMeters mapping. Explicit-slot launch is separate from a quota guarantee. |
 | Codex warming | Unavailable after the conditional native investigation; see the [evidence gate](plans/codex-warming.md). |
 | Multi-account live routing / native refresh contention | Offline mechanics covered; release acceptance still pending with independent native accounts. |
-| T3 Code | Optional Windows adapter; native Codex 0.155.1 probes and read-only first/resumed turns qualified. Multi-day refresh and multi-account inference promotion remain pending. [Scope and setup](t3-integration.md). |
+| T3 Code | Optional Windows adapter; native Codex 0.155.1 first/resumed turns and synthetic HTTP/WebSocket same-turn rollover with follow-ups qualified. Real multi-account billing, exhaustive child/retry races and multi-day refresh promotion remain pending. [Scope and setup](t3-integration.md). |
 | Other desktop / IDE clients | Not claimed. |
 
 The [official app-server contract](https://learn.chatgpt.com/docs/app-server) can evolve. Passing fixture tests is not proof of behavior on an untested native CLI or subscription plan. Never widen quota eligibility merely because a required field is missing. Provider permission review remains independent of technical compatibility.

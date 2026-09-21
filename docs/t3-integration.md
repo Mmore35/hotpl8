@@ -99,11 +99,15 @@ move its thread selections back before removal.
 4. Only the access token and account ID travel through private pipes to Codex's
    external-token login. Refresh tokens stay in their native homes. Neither
    tokens nor raw provider errors appear in HotPl8 status, logs or diagnostics.
-5. Before each new `turn/start`, the broker validates and selects again. The same
-   thread ID and conversation home are retained. A running turn, including an
-   observed child turn, pins the account. Concurrent starts are rejected as busy;
-   steering, interrupts, approvals and tool responses continue to pass through.
-6. An external-token refresh request is answered only for the pinned account.
+5. New turns validate and select again. Active follow-ups with unchanged model
+   and working directory pass directly to native Codex, retaining its turn ID.
+   Collector publications and native quota notifications also trigger validation
+   during ongoing work. A validated alternative can be adopted for later model
+   requests without replaying the turn. Existing native requests finish under
+   their original account; native owns WebSocket reconnection and continuation.
+   Account changes serialize independently of follow-ups, steering, interrupts,
+   approvals and tool replies. Observed active child models participate in selection.
+6. An external-token refresh request is answered only for the matching account.
    Native Codex refreshes that canonical home under HotPl8's per-home lock. A
    failed refresh or changed identity fails closed; it never refreshes another
    account into an active turn.
@@ -121,6 +125,8 @@ managed T3 provider are intentionally unavailable.
 Selecting a provider or sending a new turn is a deliberate launch, like
 `hotpl8 codex`. Monitor mode and automation pauses do not block these explicit
 launches. A selection hold still constrains which account can be selected.
+Enabling the bridge also enables these policy checks throughout admitted work;
+collector monitor mode does not pin an admitted task for its entire lifetime.
 
 ## Errors and recovery
 
@@ -129,14 +135,22 @@ Errors have fixed `routing_*` codes. `routing_stale` means refresh the collector
 `routing_unavailable` means no validated eligible account was found;
 `routing_binding_changed` requires rechecking enrollment;
 `routing_refresh_failed` requires native authentication inspection;
-`routing_busy` means wait for the current parent/child turn to finish.
+Older loaded bridges can still report `routing_busy` for active follow-ups.
+Check their running revision; this implementation removes that blanket rejection.
+`routing_model_changed` defers a switch when active models change during validation;
+`routing_observation_failed` means the collector subscription failed. Native quota
+notifications remain an additional wakeup. See the
+[rollover design and evidence](plans/t3-active-turn-admission.md).
 `routing_account_busy` means another validator held the account lock beyond the
 bounded wait; `routing_validation_timeout` means the admission deadline expired.
 These failures occur before inference. The broker records only the time and
 fixed failure code in HotPl8's bounded `events.jsonl`, never credentials or paths.
 See the [concurrent admission repair](plans/t3-concurrent-admission.md).
 
-An account can run out after admission. The original failure is shown once;
+An account can still run out after admission: reserve headroom cannot cover every
+in-flight request, observation delay, explicit hold or exhausted-all condition.
+Unsuccessful background selection reports a fixed diagnostic and preserves native
+work. The original native failure, if one occurs, is shown once;
 the bridge never replays a partially executed prompt or duplicates tool effects.
 The next user turn performs a fresh selection. Unknown/unsupported protocol or
 command options fail closed, including non-stdio app-server transports.
@@ -165,8 +179,12 @@ account, then used the production broker for turn admission: the native account
 changed and the turn succeeded. The shared authentication file remained
 unchanged. This does not establish a multi-day refresh soak, two healthy accounts
 alternating successful inference, all future T3/Codex versions or other platforms.
-Quota exhaustion/fallback, active-turn pinning and refresh failures have offline
-regression coverage; promotion requires corresponding native observations.
+On 2026-09-20, isolated native HTTP and WebSocket probes on 0.155.1 also passed
+same-turn A-to-B model-request adoption through the production dispatcher, with
+an active follow-up and one tool execution. WebSocket continuation state was
+cleared across accounts. These synthetic-account tests do not establish real
+billing or exhaustive child/retry races. The linked rollover design records
+reproduction steps and the remaining experimental promotion boundaries.
 
 See the [implementation plan](plans/t3-codex-integration.md),
 [compatibility](compatibility.md) and the

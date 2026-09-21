@@ -124,8 +124,11 @@
     "tests/test-t3-codex.mjs",
     "tests/test-t3-routing.ps1",
     "tests/t3-fake-codex.cs",
+    "tests/probe-codex-rollover.py",
+    "tests/t3-native-rollover.mjs",
     "docs/t3-integration.md",
     "docs/plans/t3-codex-integration.md",
-    "docs/plans/t3-concurrent-admission.md"
+    "docs/plans/t3-concurrent-admission.md",
+    "docs/plans/t3-active-turn-admission.md"
   ]
 }

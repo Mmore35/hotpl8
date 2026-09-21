@@ -36,6 +36,25 @@ try{
     $route=Get-Hotpl8CodexRoute $request $dir $exe
     Assert ($route.slot -eq 'a' -and $route.auth.accessToken -eq 'FAKE-a') 'preferred native account selected'
     Assert (($route|ConvertTo-Json -Depth 10) -notmatch 'NEVER_EXPORT') 'refresh token never exported'
+    # Same production margins as launch selection, measured on both sides before
+    # exhaustion. No separate rollover threshold or quota scheduler.
+    $ongoing=[pscustomobject]@{operation='select';model='fixture-model';models=@('fixture-model');previousSlot='a';cwd=$dir}
+    [IO.File]::WriteAllText((Join-Path $dir 'a/used-percent'),'94')
+    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'a') 'six percent retains work account above its five percent margin'
+    [IO.File]::WriteAllText((Join-Path $dir 'a/used-percent'),'96')
+    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'b') 'four percent rolls ongoing work before account exhaustion'
+    Save 'hold.json' @{until=$now.AddMinutes(5).ToString('o');reason='fixture'}
+    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_unavailable'
+    $ongoing.previousSlot='b'
+    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'b') 'hold preserves actual process account despite collector recommendation a'
+    [IO.File]::Delete((Join-Path $dir 'hold.json'))
+    [IO.File]::Delete((Join-Path $dir 'a/used-percent'))
+    $policy.codex.modelMeters['other-model']='codex_bengalfox';Save 'policy.json' $policy
+    $ongoing.models=@('fixture-model','other-model')
+    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_unavailable'
+    $ongoing.models=@('unmapped')
+    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_model_unknown'
+    $policy.codex.modelMeters.Remove('other-model');Save 'policy.json' $policy
     [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
     $route=Get-Hotpl8CodexRoute $request $dir $exe
     Assert ($route.slot -eq 'b') 'fresh native exhaustion falls back before inference'
@@ -157,8 +176,27 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     Stop-Hotpl8Process $titleProc;$titleProc=$null
     $clock=[Diagnostics.Stopwatch]::StartNew()
     $null=Invoke-CodexRpc $proc $clock 20000 2 'thread/start' @{model='fixture-model';cwd=$dir}
+    [IO.File]::WriteAllText((Join-Path $shared 'keep-active'),'fixture')
     $turn=Invoke-CodexRpc $proc $clock 20000 3 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
     Assert ($turn.account -eq 'b') 'real launcher/proxy/broker chooses healthy account for turn'
+    # Collector-style atomic publication wakes the installed bridge. Neither a
+    # user turn nor a new process is required for native login to change.
+    [IO.File]::Delete((Join-Path $dir 'a/exhausted'))
+    [IO.File]::WriteAllText((Join-Path $dir 'b/used-percent'),'96')
+    $status.recommendations.codex='a';Save 'status.json' @{providers=@{codex=$status}}
+    $rolled=$false;$rollClock=[Diagnostics.Stopwatch]::StartNew();$rpcId=40
+    while($rollClock.ElapsedMilliseconds -lt 20000){
+        $readClock=[Diagnostics.Stopwatch]::StartNew()
+        $current=Invoke-CodexRpc $proc $readClock 2000 (++$rpcId) 'account/read' @{}
+        if($current.account.email -eq 'a@example.invalid'){$rolled=$true;break}
+        Start-Sleep -Milliseconds 50
+    }
+    Assert $rolled 'collector publication rebinds ongoing installed native process'
+    $followClock=[Diagnostics.Stopwatch]::StartNew()
+    $follow=Invoke-CodexRpc $proc $followClock 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@(@{type='text';text='fixture followup'})}
+    Assert ($follow.account -eq 'a' -and $follow.turn.id -eq $turn.turn.id -and $follow.toolExecutions -eq 1) 'followup keeps active turn and executed effects after rollover'
+    [IO.File]::Delete((Join-Path $dir 'b/used-percent'))
+    [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
     Stop-Hotpl8Process $proc;$proc=$null
     $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'exec.json'
     $execPsi=New-CodexProcessInfo $launcher $shared @('exec','--model','fixture-model','-s','read-only','--output-last-message','space & % fixture.json','-') $dir

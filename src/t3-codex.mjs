@@ -1,6 +1,6 @@
 // Opt-in Codex binary adapter. Tokens exist only in private pipes and memory.
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, watch } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -31,6 +31,7 @@ export function assertSharedHome(configured, inherited) {
 export function assertConfig(config = {}) {
   if ((config.model_provider && config.model_provider !== 'openai') ||
       config.model_providers?.openai?.base_url ||
+      config.openai_base_url ||
       (config.chatgpt_base_url && !/^https:\/\/chatgpt\.com\/backend-api\/?$/.test(config.chatgpt_base_url)) ||
       (config.cli_auth_credentials_store && config.cli_auth_credentials_store !== 'ephemeral')) {
     throw error('routing_config_conflict');
@@ -116,11 +117,13 @@ export function createBroker(config) {
 
 // The dispatcher is transport-independent so tests drive the exact production state machine.
 export class CodexBridge {
-  constructor({ broker, toNative, toClient, cwd, onFatal = () => {}, timeoutMs = 30000 }) {
-    Object.assign(this, { broker, toNative, toClient, cwd, onFatal, timeoutMs });
+  constructor({ broker, toNative, toClient, cwd, onFatal = () => {}, onRoutingError = () => {}, timeoutMs = 30000 }) {
+    Object.assign(this, { broker, toNative, toClient, cwd, onFatal, onRoutingError, timeoutMs });
     this.internal = new Map(); this.pending = new Map(); this.threads = new Map();
-    this.active = new Set(); this.route = null; this.initialized = false; this.closed = false;
+    this.active = new Map(); this.reservations = new Map(); this.route = null; this.initialized = false; this.closed = false;
     this.counter = 0; this.serial = Promise.resolve();
+    this.routing = Promise.resolve(); this.observing = null; this.observationPending = false;
+    this.rebinding = null; this.executingModels = new Map();
   }
   rpc(method, params) {
     const id = `hotpl8-internal-${++this.counter}`;
@@ -137,17 +140,68 @@ export class CodexBridge {
     if (typeof message.id === 'string' && message.id.startsWith('hotpl8-internal-')) { this.fail(message, 'routing_reserved_id'); return Promise.resolve(); }
     // Approval responses must never wait behind a turn admission or token refresh.
     if (!message.method) { this.toNative(message); return Promise.resolve(); }
+    // Native input/control must remain responsive during private quota reads.
+    const thread = this.threads.get(message.params?.threadId);
+    const followup = message.method === 'turn/start' && this.active.has(message.params?.threadId) && thread &&
+      (!message.params.model || message.params.model === thread.model) && (!message.params.cwd || message.params.cwd === thread.cwd);
+    if (this.initialized && (followup || ['turn/steer', 'turn/interrupt'].includes(message.method))) {
+      return this.dispatch(message).catch(err => this.fail(message, err.code || 'routing_failed'));
+    }
     this.serial = this.serial.then(() => this.dispatch(message)).catch(err => this.fail(message, err.code || 'routing_failed'));
     return this.serial;
   }
-  async select(model, cwd = this.cwd) {
-    const route = await this.broker({ operation: 'select', model, cwd, previousSlot: this.route?.slot });
+  select(model, cwd = this.cwd) {
+    const operation = this.routing.then(() => this.selectNow(model, cwd));
+    this.routing = operation.catch(() => {});
+    return operation;
+  }
+  async selectNow(model, cwd) {
+    if (this.closed) throw error('routing_closed');
+    // Authentication is process-wide, including native children. Unknown child
+    // models need a native snapshot; role configurations can override the parent.
+    const ids = new Set([...this.active.keys(), ...this.reservations.values()]);
+    for (const id of ids) {
+      if (!this.threads.get(id)?.model) {
+        const snapshot = await this.rpc('thread/read', { threadId: id, includeTurns: false });
+        if (!snapshot.thread?.model || snapshot.thread.modelProvider !== 'openai') throw error('routing_model_unknown');
+        this.threads.set(id, { model: snapshot.thread.model, cwd: snapshot.thread.cwd || this.cwd });
+      }
+    }
+    const activeModels = () => [...new Set([
+      ...[...new Set([...this.active.keys(), ...this.reservations.values()])]
+        .flatMap(id => [this.threads.get(id)?.model, this.executingModels.get(id)]),
+      ...[...this.reservations.keys()].map(key => this.pending.get(key)?.model)
+    ].filter(Boolean))];
+    const models = [...new Set([model, ...activeModels()].filter(Boolean))];
+    const route = await this.broker({ operation: 'select', model, models, cwd, previousSlot: this.route?.slot });
+    if (this.closed) throw error('routing_closed');
+    if ([...this.active.keys()].some(id => !this.threads.get(id)?.model) || activeModels().some(m => !models.includes(m))) throw error('routing_model_changed');
     if (!route.auth?.accessToken || !route.auth?.chatgptAccountId) throw error('routing_auth_unavailable');
-    if (this.active.size) throw error('routing_busy');
-    await this.rpc('account/login/start', { type: 'chatgptAuthTokens', ...route.auth });
+    if (this.route?.accountId !== route.auth.chatgptAccountId || this.route?.slot !== route.slot) {
+      // Native adopts external auth for later requests and reconnects account-bound
+      // websockets. In-flight requests finish under their original identity.
+      this.rebinding = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId };
+      try { await this.rpc('account/login/start', { type: 'chatgptAuthTokens', ...route.auth }); }
+      catch (err) { if (err.code === 'routing_native_timeout') this.onFatal(err); throw err; }
+      finally { this.rebinding = null; }
+    }
+    if (this.closed) throw error('routing_closed');
     // Retain account identity, not a second access-token cache.
     this.route = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId };
     return route;
+  }
+  observe() {
+    if (this.closed || !this.initialized || !(this.active.size || this.reservations.size)) return Promise.resolve();
+    this.observationPending = true;
+    if (this.observing) return this.observing;
+    this.observing = (async () => {
+      while (this.observationPending && !this.closed) {
+        this.observationPending = false;
+        try { await this.select(this.route.model); }
+        catch (err) { if (!this.closed) this.onRoutingError(/^routing_[a-z_]+$/.test(err.code) ? err.code : 'routing_failed'); }
+      }
+    })().finally(() => { this.observing = null; });
+    return this.observing;
   }
   async checkConfig(cwd = this.cwd) {
     const result = await this.rpc('config/read', { includeLayers: false, cwd });
@@ -185,19 +239,20 @@ export class CodexBridge {
       this.pending.set(idKey(message.id), { method, model, cwd: params.cwd || this.cwd });
     }
     if (method === 'turn/start' || method === 'thread/compact/start') {
-      // Conservatively reject concurrent turns, including active child-agent turns.
-      // This allows account changes only at an unambiguous idle boundary.
-      if (this.active.size) throw error('routing_busy');
       const thread = this.threads.get(params.threadId);
       if (!thread) throw error('routing_thread_unknown');
+      if (method === 'turn/start' && this.active.has(params.threadId) &&
+          (!params.model || params.model === thread.model) && (!params.cwd || params.cwd === thread.cwd)) {
+        // Native turn/start is an input append while this thread is active. It
+        // retains the native TurnStartResponse, including the existing turn ID.
+        this.toNative(message);
+        return;
+      }
       const config = await this.checkConfig(params.cwd || thread.cwd);
       const model = params.model || thread.model || config.model;
       const route = await this.select(model, params.cwd || thread.cwd);
-      // A child turn may have started while native validation was in flight.
-      if (this.active.size) throw error('routing_busy');
-      this.active.add(params.threadId);
-      thread.model = route.model;
-      this.pending.set(idKey(message.id), { method, threadId: params.threadId });
+      this.reservations.set(idKey(message.id), params.threadId);
+      this.pending.set(idKey(message.id), { method, threadId: params.threadId, model: route.model });
       if (method === 'turn/start') message = { ...message, params: { ...params, model: route.model } };
     }
     this.toNative(message);
@@ -214,27 +269,42 @@ export class CodexBridge {
     if (own(message, 'id') && !message.method) {
       const pending = this.pending.get(idKey(message.id));
       this.pending.delete(idKey(message.id));
-      if (['turn/start', 'thread/compact/start'].includes(pending?.method) && message.error) this.active.delete(pending.threadId);
+      this.reservations.delete(idKey(message.id));
+      if (pending?.method === 'turn/start' && !message.error && this.threads.has(pending.threadId)) this.threads.get(pending.threadId).model = pending.model;
       if (pending && pending.method.startsWith('thread/') && !message.error && message.result?.thread?.id) {
-        this.threads.set(message.result.thread.id, { model: pending.model, cwd: pending.cwd });
+        this.threads.set(message.result.thread.id, { model: message.result.model || message.result.thread.model || pending.model, cwd: pending.cwd });
       }
     }
-    if (message.method === 'turn/started' && message.params?.threadId) this.active.add(message.params.threadId);
-    if (message.method === 'turn/completed' && message.params?.threadId) this.active.delete(message.params.threadId);
-    if (message.method === 'thread/status/changed' && message.params?.threadId) {
-      if (message.params.status?.type === 'active') this.active.add(message.params.threadId);
-      if (message.params.status?.type === 'idle') this.active.delete(message.params.threadId);
+    if (message.method === 'thread/started' && message.params?.thread?.id) {
+      const thread = message.params.thread;
+      this.threads.set(thread.id, { model: thread.model, cwd: thread.cwd || this.cwd });
     }
+    if (message.method === 'model/rerouted' && this.active.get(message.params?.threadId) === message.params?.turnId) {
+      this.executingModels.set(message.params.threadId, message.params.toModel);
+      void this.observe();
+    }
+    if (message.method === 'turn/started' && message.params?.threadId) this.active.set(message.params.threadId, message.params.turn?.id || null);
+    if (message.method === 'turn/completed' && message.params?.threadId &&
+        (!this.active.get(message.params.threadId) || this.active.get(message.params.threadId) === message.params.turn?.id)) {
+      this.active.delete(message.params.threadId); this.executingModels.delete(message.params.threadId);
+    }
+    if (message.method === 'thread/status/changed' && message.params?.threadId) {
+      if (message.params.status?.type === 'active' && !this.active.has(message.params.threadId)) this.active.set(message.params.threadId, null);
+      if (message.params.status?.type === 'idle' && !this.active.get(message.params.threadId)) this.active.delete(message.params.threadId);
+    }
+    // Treat notifications only as wakeups: their quota may belong to an old
+    // in-flight request. The broker verifies native account identity and quota.
+    if (message.method === 'account/rateLimits/updated') void this.observe();
     // Internal login notifications have no useful T3 request correlation.
     if (message.method === 'account/login/completed') return;
     this.toClient(message);
   }
   async refresh(message) {
-    const route = this.route;
+    const route = this.rebinding || this.route;
     try {
       if (!route || message.params?.previousAccountId !== route.accountId) throw error('routing_binding_changed');
       const fresh = await this.broker({ operation: 'refresh', previousSlot: route.slot, accountId: route.accountId, model: route.model, cwd: this.cwd });
-      if (fresh.auth?.chatgptAccountId !== route.accountId || this.route !== route) throw error('routing_binding_changed');
+      if (fresh.auth?.chatgptAccountId !== route.accountId || (this.rebinding || this.route)?.accountId !== route.accountId) throw error('routing_binding_changed');
       this.toNative({ id: message.id, result: fresh.auth });
     } catch {
       this.toNative({ id: message.id, error: { code: -32001, message: 'HotPl8: routing_refresh_failed' } });
@@ -243,7 +313,8 @@ export class CodexBridge {
   close() {
     this.closed = true;
     for (const pending of this.internal.values()) { clearTimeout(pending.timer); pending.reject(error('routing_closed')); }
-    this.internal.clear(); this.route = null;
+    this.internal.clear(); this.route = null; this.rebinding = null; this.executingModels.clear();
+    this.active.clear(); this.reservations.clear(); this.observationPending = false;
   }
 }
 
@@ -279,11 +350,20 @@ export async function main(config, args) {
   let stopped = false;
   const stop = failed => {
     if (stopped) return;
-    stopped = true; bridge.close(); child.stdin.end();
+    stopped = true; watcher?.close(); bridge.close(); child.stdin.end();
     const timer = setTimeout(() => killTree(child), 500); timer.unref();
     process.stdin.pause(); process.exitCode = failed ? 1 : 0;
   };
-  const bridge = new CodexBridge({ broker, cwd: process.cwd(), toNative: msg => write(child.stdin, msg), toClient: msg => write(process.stdout, msg) });
+  let watcher;
+  const diagnostic = code => process.stderr.write(`HotPl8: ${code}\n`);
+  const bridge = new CodexBridge({ broker, cwd: process.cwd(), toNative: msg => write(child.stdin, msg), toClient: msg => write(process.stdout, msg),
+    onFatal: () => stop(true), onRoutingError: diagnostic });
+  // Subscribe to the existing collector's atomic publications, including rename.
+  // No second quota collector or periodic account-switch scheduler is introduced.
+  watcher = watch(config.stateDirectory, (_event, filename) => {
+    if (!filename || ['status.json', 'policy.json', 'hold.json', 'codex-state.json'].includes(String(filename))) void bridge.observe();
+  });
+  watcher.on('error', () => diagnostic('routing_observation_failed'));
   child.on('error', () => stop(true));
   child.stdin.on('error', () => stop(true));
   process.stdout.on('error', () => stop(true));
