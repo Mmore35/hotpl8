@@ -144,6 +144,15 @@
     "docs/plans/shared-provider-core.md",
     "docs/plans/t3-provider-consolidation-contract.md",
     "data/providers/claude.json",
-    "data/providers/codex.json"
+    "data/providers/codex.json",
+    "src/provider-observation.ps1",
+    "src/provider-actions.ps1",
+    "src/provider-runtime.ps1",
+    "src/t3-migration.ps1",
+    "tests/test-t3-migration.ps1",
+    "tests/test-provider-actions.ps1",
+    "docs/adding-a-provider.md",
+    "src/delivery-policy.ps1",
+    "tests/test-delivery-policy.ps1"
   ]
 }

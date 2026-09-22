@@ -1,22 +1,29 @@
-﻿. (Join-Path $PSScriptRoot 'notifications.ps1')
-function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    $overview=Get-Hotpl8ProviderOverview $Snapshot $Policy $Now
-    $details=@(Format-Hotpl8Overview $overview)+@(Format-Hotpl8Explanation $Snapshot $Now | Where-Object {$_ -notmatch '^(CLAUDE:|CODEX:|  Includes reserve|Weekly headroom|  Capacity:|  Profiles:|  Membership:|  Next reset:)'})
+function Get-Hotpl8NativeTrayDetails($Snapshot,$Policy,[datetimeoffset]$Now) {
     foreach($s in @($Snapshot.slots)){if($s){
         $fresh=$s.fresh -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
-        $details+=('Claude '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))
-        $details+=('  5h used: '+$(if($null -eq $s.used5h){'unknown'}else{[string]$s.used5h+'%'})+'; weekly used: '+$(if($null -eq $s.used7d){'unknown'}else{[string]$s.used7d+'%'}))
-        if($fresh -and $s.forecast){$details+='  '+(Format-Hotpl8Forecast $s.forecast)}
-        if($s.warmOutcome){$details+='  warm: '+$s.warmOutcome.outcome}
-        if($s.actionBlock){$details+='  warming: '+$s.actionBlock}
+        ('Claude '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))
+        ('  5h used: '+$(if($null -eq $s.used5h){'unknown'}else{[string]$s.used5h+'%'})+'; weekly used: '+$(if($null -eq $s.used7d){'unknown'}else{[string]$s.used7d+'%'}))
+        if($fresh -and $s.forecast){'  '+(Format-Hotpl8Forecast $s.forecast)}
+        if($s.warmOutcome){'  warm: '+$s.warmOutcome.outcome}
+        if($s.actionBlock){'  warming: '+$s.actionBlock}
     }}
     foreach($s in @($Snapshot.providers.codex.slots)){
         $fresh=$s.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
-        $details+=('Codex '+$s.label+' ['+$s.id+']: '+(Get-Hotpl8CodexAccountState $s $Policy.codex $Snapshot.providers.codex $Now))
+        ('Codex '+$s.label+' ['+$s.id+']: '+(Get-Hotpl8CodexAccountState $s $Policy.codex $Snapshot.providers.codex $Now))
         foreach($b in @($s.buckets.PSObject.Properties|Where-Object Name -NE 'codex_bengalfox')){
-            foreach($w in $b.Value.windows.PSObject.Properties){$details+=('  '+$b.Name+' '+$w.Name+'m: '+$w.Value.usedPercent+'% used; reset '+$w.Value.anchorState)}
-            if($fresh -and $b.Value.forecast){$details+='  '+(Format-Hotpl8Forecast $b.Value.forecast)}
+            foreach($w in $b.Value.windows.PSObject.Properties){('  '+$b.Name+' '+$w.Name+'m: '+$w.Value.usedPercent+'% used; reset '+$w.Value.anchorState)}
+            if($fresh -and $b.Value.forecast){'  '+(Format-Hotpl8Forecast $b.Value.forecast)}
         }
+    }
+
+}
+. (Join-Path $PSScriptRoot 'notifications.ps1')
+function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    $overview=Get-Hotpl8ProviderOverview $Snapshot $Policy $Now
+    $details=@(Format-Hotpl8Overview $overview)+@(Format-Hotpl8Explanation $Snapshot $Now | Where-Object {$_ -notmatch '^(CLAUDE:|CODEX:|  Includes reserve|Weekly headroom|  Capacity:|  Profiles:|  Membership:|  Next reset:)'})
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
+        $v=Get-Hotpl8ProviderView $Snapshot $Policy $r.id
+        $details+=@(Get-Hotpl8NativeTrayDetails $v.snapshot $v.policy $Now|ForEach-Object {$_ -replace ('(?i)^'+[regex]::Escape($v.provider)+' '),($r.name+' ')})
     }
     $details=@($details|ForEach-Object {ConvertTo-Hotpl8SafeText $_})
     return [pscustomobject]@{providerOverview=$overview;title='HotPl8 - '+(Get-Hotpl8Health $Snapshot.collector $Now);details=($details -join [Environment]::NewLine);alerts=@(Get-Hotpl8Alerts $Snapshot $Policy $Now)}

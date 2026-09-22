@@ -179,6 +179,11 @@ Check 'recovery probe targets stale quarantined account without admitting it for
     $d=Decide @($a,(Account b)) (Policy) $c
     Assert ($d.actionPermitted -and $d.targetSlot -eq 'a' -and -not $d.accounts[0].eligible -and $d.proposedSlot -eq 'b')
 }
+Check 'warm authorization rechecks freshness even after an earlier candidate check' {
+    $a=Account;$a.windows[0].observedAt=$now.AddSeconds(-901).ToString('o')
+    $c=Context warm;$c|Add-Member NoteProperty actionEnabled $true;$c|Add-Member NoteProperty actionSlot 'a';$c|Add-Member NoteProperty actionEligible $true
+    $d=Decide @($a) (Policy) $c;Assert (-not $d.actionPermitted -and $d.suppressionReason -eq 'action_ineligible')
+}
 Check 'emergency request cannot relax floors without enabled critical policy' {
     $c=Context;$c|Add-Member NoteProperty emergency $true
     $p=Policy;$d=Decide @((Account a 10 10)) $p $c
@@ -221,6 +226,103 @@ Check 'decisions do not mutate supplied observations policy or state' {
     $a=Account;$p=Policy;$c=Context;$before=@($a,$p,$c)|ConvertTo-Json -Depth 30 -Compress
     $null=Decide @($a) $p $c
     Assert ($before -ceq (@($a,$p,$c)|ConvertTo-Json -Depth 30 -Compress))
+}
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'src/providers/claude.ps1')
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'src/providers/codex.ps1')
+function Native-Pair([int]$Id,[double]$Short=90,[double]$Week=90,[int]$ResetMinutes=120){
+    $shortReset=$now.AddMinutes($ResetMinutes);$weekReset=$now.AddDays(3)
+    $claude=Copy-Value @{slot=$Id;status='ok';fresh=$true;observedAt=$now.ToString('o');used5h=(100-$Short);used7d=(100-$Week);reset5h=$shortReset.ToString('o');reset7d=$weekReset.ToString('o')}
+    $codex=Copy-Value @{id=[string]$Id;status='ok';observedAt=$now.ToString('o');buckets=@{codex=@{status='observed';windows=@{'300'=@{usedPercent=(100-$Short);remainingPercent=$Short;resetsAt=$shortReset.ToUnixTimeSeconds();observedAt=$now.ToString('o');anchorState='observed-active'};'10080'=@{usedPercent=(100-$Week);remainingPercent=$Week;resetsAt=$weekReset.ToUnixTimeSeconds();observedAt=$now.ToString('o');anchorState='observed-active'}}}}}
+    [pscustomobject]@{claude=$claude;codex=$codex}
+}
+Check 'real Claude and Codex decoding plus production selectors share expected choices' {
+    $scenarios=@(
+        @{name='preference';short=@(90,90);week=@(90,90);reset=@(120,120);active=2;expected='1'},
+        @{name='degraded improvement';short=@(90,90);week=@(6,16);reset=@(60,120);active=1;order='soonest-reset';expected='2'},
+        @{name='reserve escape';short=@(90,30);week=@(90,90);reset=@(120,120);active=1;reserve=@('1');expected='2'},
+        @{name='healthy peer band';short=@(30,90);week=@(90,90);reset=@(120,120);active=2;expected='2'},
+        @{name='degraded tie';short=@(90,90);week=@(15,15);reset=@(120,120);active=2;expected='2'},
+        @{name='exhausted active';short=@(0,26);week=@(90,90);reset=@(120,120);active=1;expected='2'},
+        @{name='near resets';short=@(90,90);week=@(90,90);reset=@(115,120);active=2;order='soonest-reset';expected='2'},
+        @{name='reset lead boundary';short=@(90,90);week=@(90,90);reset=@(110,120);active=2;order='soonest-reset';expected='1'})
+    foreach($scenario in $scenarios){
+        $p=Policy;$p.prefer=@('1','2');$p.reserve=@($scenario.reserve);if($scenario.order){$p.order=$scenario.order}
+        $pairs=@(Native-Pair 1 $scenario.short[0] $scenario.week[0] $scenario.reset[0];Native-Pair 2 $scenario.short[1] $scenario.week[1] $scenario.reset[1])
+        $acc=@{}
+        foreach($pair in $pairs){$s=$pair.claude;$acc[[int]$s.slot]=@{h5=(100-$s.used5h);h7=(100-$s.used7d);fresh=$true;observedAt=$s.observedAt;observation=(ConvertTo-Hotpl8ClaudeObservation $s $p $now);obj=@{usage=@{fiveHour=@{resetsAt=$s.reset5h};sevenDay=@{resetsAt=$s.reset7d}}}}}
+        $claude=Get-ClaudeSelection $p @($p.prefer) $acc $scenario.active $now
+        $chosen=if($claude.target){[string]$claude.target}elseif($claude.activeOk){[string]$scenario.active}else{$null}
+        $codex=Select-CodexSlot @($pairs.codex) $p codex ([string]$scenario.active) $null $now
+        Assert ($chosen -eq $scenario.expected -and $codex -eq $scenario.expected) ('native parity: '+$scenario.name+' Claude='+$chosen+' Codex='+$codex)
+    }
+}
+Check 'native shape differences remain facts rather than alternative policy' {
+    $pair=Native-Pair 1;$p=Policy;$p.prefer=@('1')
+    $pair.codex.buckets.codex.windows.PSObject.Properties.Remove('300')
+    $pair.claude.used5h=$null
+    $codex=Get-CodexEligibility $pair.codex $p codex $now
+    $claude=Get-Hotpl8ProviderDecision @((ConvertTo-Hotpl8ClaudeObservation $pair.claude $p $now)) $p @{intent='observe'} $now
+    Assert ($codex -eq 'eligible' -and -not $claude.accounts[0].eligible)
+}
+Check 'production scalar eligibility cannot self-activate emergency policy' {
+    $pair=Native-Pair 1 10 10;$p=Policy;$p|Add-Member NoteProperty critical @{enabled=$true}
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now $false) -eq 'below_margin')
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now $true) -eq 'eligible')
+}
+Check 'native decoders preserve original window timestamps and reset evidence' {
+    $pair=Native-Pair 1 0;$p=Policy
+    $pair.claude.observedAt=$now.AddMinutes(-5).ToString('o');$pair.claude.reset5h=$now.AddSeconds(-1).ToString('o')
+    $pair.codex.buckets.codex.windows.'300'.observedAt=$pair.claude.observedAt;$pair.codex.buckets.codex.windows.'300'.resetsAt=$now.AddSeconds(-1).ToUnixTimeSeconds()
+    $cd=Get-Hotpl8ProviderDecision @((ConvertTo-Hotpl8ClaudeObservation $pair.claude $p $now)) $p @{intent='observe'} $now
+    $xd=Get-Hotpl8ProviderDecision @((ConvertTo-Hotpl8CodexObservation $pair.codex codex)) $p @{intent='observe'} $now
+    Assert ($cd.accounts[0].eligible -and $xd.accounts[0].eligible -and $cd.accounts[0].shortRemaining -eq 100 -and $xd.accounts[0].shortRemaining -eq 100)
+    Assert ($cd.accounts[0].windows[0].observedAt -eq $pair.claude.observedAt)
+    $pair.codex.buckets.codex.windows.'300'.observedAt=$now.AddHours(-1).ToString('o')
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'stale')
+}
+Check 'legacy missing window stamps inherit original account time but explicit null is unknown' {
+    $pair=Native-Pair 1;$p=Policy;$window=$pair.codex.buckets.codex.windows.'300'
+    $window.PSObject.Properties.Remove('observedAt')
+    $decoded=ConvertTo-Hotpl8CodexObservation $pair.codex codex
+    Assert ((@($decoded.windows|Where-Object name -EQ '300')[0]).observedAt -eq $pair.codex.observedAt)
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'eligible')
+    $window|Add-Member NoteProperty observedAt $null
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'stale')
+}
+Check 'missing meters empty windows and null native window values fail without throwing' {
+    $pair=Native-Pair 1;$p=Policy
+    Assert ((Get-CodexEligibility $pair.codex $p absent $now) -eq 'meter_unknown')
+    $pair.codex.buckets.codex.windows=[pscustomobject]@{}
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'unknown')
+    $pair.codex.buckets.codex.windows=[pscustomobject]@{'300'=$null}
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'window_malformed')
+}
+Check 'native quota mirrors cannot disagree to authorize a happier reading' {
+    $p=Policy
+    foreach($value in @(0,'90',101,$null)){$pair=Native-Pair 1;$pair.codex.buckets.codex.windows.'300'.remainingPercent=$value;Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'window_malformed')}
+}
+Check 'invalid native ages cannot overflow or acquire a fabricated fresh timestamp' {
+    $p=Policy
+    foreach($age in @(1e100,-1,'not-a-number',604801,[double]::NaN)){
+        $entry=@{fresh=$true;h5=90;h7=90;obj=@{usageAgeSeconds=$age;usage=@{fiveHour=@{resetsAt=$now.AddHours(1).ToString('o')};sevenDay=@{resetsAt=$now.AddDays(1).ToString('o')}}}}
+        $observation=ConvertTo-Hotpl8ClaudeEntryObservation 1 $entry $p $now
+        Assert (-not $observation.observedAt)
+        Assert (-not (ConvertTo-Hotpl8ProviderAccount $observation $p @() $now).valid)
+    }
+}
+Check 'cold warm decoding permits opening a window without changing admission evidence' {
+    $p=Policy;$p.prefer=@('1')
+    $entry=@{fresh=$true;cold=$true;h5=90;h7=90;observedAt=$now.ToString('o');obj=@{usage=@{fiveHour=@{pct=10;resetsAt=''};sevenDay=@{pct=10;resetsAt=$now.AddDays(1).ToString('o')}}}}
+    $entry.observation=ConvertTo-Hotpl8ClaudeEntryObservation 1 $entry $p $now
+    $before=$entry.observation|ConvertTo-Json -Depth 20 -Compress
+    $context=@{intent='warm';mode='automate';actionSlot='1';actionEnabled=$true;actionEligible=$true}
+    $warm=Get-ClaudeProviderDecision $p @(1) @{1=$entry} 0 $now $null $context
+    $admit=Get-ClaudeProviderDecision $p @(1) @{1=$entry} 0 $now $null @{intent='admit'}
+    Assert ($warm.actionPermitted -and $warm.targetSlot -eq '1')
+    Assert (-not $admit.actionPermitted -and $admit.accounts[0].reason -eq 'reset_unconfirmed')
+    Assert ($before -ceq ($entry.observation|ConvertTo-Json -Depth 20 -Compress))
+    $entry.observation.observedAt=$now.AddMinutes(-16).ToString('o')
+    Assert (-not (Get-ClaudeProviderDecision $p @(1) @{1=$entry} 0 $now $null $context).actionPermitted)
 }
 'Provider core: '+$script:passed+' passed, '+$script:failed+' failed'
 if($script:failed){exit 1}

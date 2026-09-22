@@ -3,9 +3,11 @@ param([Parameter(Mandatory=$true)][string]$InstallDirectory)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/common.ps1')
 . (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
+. (Join-Path $PSScriptRoot 'src/config.ps1')
 $root=Assert-Hotpl8Path $InstallDirectory
 $installation=Read-Hotpl8Json (Join-Path $root 'installation.json')
 if(-not $installation -or $installation.product -ne 'hotpl8' -or $installation.id -notmatch '^[a-f0-9]{12}$'){throw 'Not an owned installation.'}
+if($installation.managedBy -eq 'local-delivery'){throw 'Local Delivery owns this installation. Generic uninstall is unsupported; retain its registration and delivery ownership records.'}
 $state=Assert-Hotpl8Path $installation.stateDirectory
 $lock=[IO.File]::Open((Join-Path $state 'tick.lock'),'OpenOrCreate','ReadWrite','None')
 try{
@@ -13,24 +15,31 @@ try{
     Remove-Hotpl8App (Join-Path $root 'app') -ValidateOnly
     $policy=Read-Hotpl8Json (Join-Path $state 'policy.json')
     if(-not $policy){throw 'Cannot inspect installed hooks without a valid policy; restore policy before uninstalling.'}
+    Assert-Hotpl8Policy $policy
     $updates=@()
-    $command='powershell -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $root 'app/status-print.ps1')+'" -Provider codex -StateDirectory "'+$state+'"'
-    foreach($slot in @($policy.codex.slots)){
-        if(-not $slot){continue}
-        $hookPath=Join-Path $slot.home 'hooks.json'
-        if(-not (Test-Path -LiteralPath $hookPath)){continue}
-        $hook=Read-Hotpl8Json $hookPath
-        if(-not $hook){throw 'An enrolled home has invalid hooks.json; repair it before uninstalling.'}
-        $entries=@();$changed=$false
-        foreach($entry in @($hook.hooks.SessionStart)){
-            if(-not $entry){continue}
-            $kept=@($entry.hooks|Where-Object{$_.command -cne $command})
-            if($kept.Count -ne @($entry.hooks).Count){
-                $changed=$true
-                if($kept.Count){$entry.hooks=$kept;$entries+=@($entry)}
-            }else{$entries+=@($entry)}
+    foreach($provider in @(Get-Hotpl8ConfiguredProviders $policy)){
+        $driver=Get-Hotpl8ProviderDriver $provider.driver
+        if($driver.slotKind -ne 'native-home'){continue}
+        # Exact installation path, state path and registered ID prove ownership.
+        # The canonical command is unchanged by a v2-to-v3 policy migration.
+        $command='powershell -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $root 'app/status-print.ps1')+'" -Provider '+$provider.id+' -StateDirectory "'+$state+'"'
+        foreach($slot in @($provider.policy.slots)){
+            if(-not $slot){continue}
+            $hookPath=Join-Path $slot.home 'hooks.json'
+            if(-not (Test-Path -LiteralPath $hookPath)){continue}
+            $hook=Read-Hotpl8Json $hookPath
+            if(-not $hook){throw 'An enrolled home has invalid hooks.json; repair it before uninstalling.'}
+            $entries=@();$changed=$false
+            foreach($entry in @($hook.hooks.SessionStart)){
+                if(-not $entry){continue}
+                $kept=@($entry.hooks|Where-Object{$_.command -cne $command})
+                if($kept.Count -ne @($entry.hooks).Count){
+                    $changed=$true
+                    if($kept.Count){$entry.hooks=$kept;$entries+=@($entry)}
+                }else{$entries+=@($entry)}
+            }
+            if($changed){$hook.hooks.SessionStart=$entries;$updates+=@(@{path=$hookPath;value=$hook})}
         }
-        if($changed){$hook.hooks.SessionStart=$entries;$updates+=@(@{path=$hookPath;value=$hook})}
     }
     if($installation.scheduled){
         $task=Get-ScheduledTask -TaskName ('HotPl8-'+$installation.id) -ErrorAction SilentlyContinue

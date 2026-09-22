@@ -133,6 +133,9 @@ function Get-Hotpl8ProviderControls($Policy) {
 
 function Get-Hotpl8ConfiguredProviders($Policy,$Catalog=$null,[switch]$IncludeUnconfigured) {
     if($Policy -isnot [pscustomobject]){throw 'Provider configuration requires a policy object.'}
+    # In-memory callers may have nested dictionaries inside a policy object.
+    # Normalize their representation without mutating the supplied object.
+    $Policy=Copy-Hotpl8ProviderValue $Policy
     if($Policy.PSObject.Properties['schemaVersion'] -and (-not (Test-Hotpl8ProviderNumber $Policy.schemaVersion) -or $Policy.schemaVersion -notin @(1,2,3))){throw 'Unsupported provider policy version.'}
     if($null -eq $Catalog){$Catalog=@(Get-Hotpl8ProviderCatalog)}
     $seen=@{}
@@ -183,6 +186,68 @@ function Get-Hotpl8ConfiguredProviders($Policy,$Catalog=$null,[switch]$IncludeUn
             definition=(Copy-Hotpl8ProviderValue $definition);policy=$part
             controls=(Get-Hotpl8ProviderControls $Policy)
             configured=$configured.ContainsKey($definition.id);isLegacy=($Policy.schemaVersion -ne 3)
+        }
+    }
+}
+
+function Get-Hotpl8ConfiguredProvider($Policy,[string]$Provider,[switch]$IncludeUnconfigured) {
+    $null=Get-Hotpl8ProviderDefinition $Provider
+    $match=@(Get-Hotpl8ConfiguredProviders $Policy -IncludeUnconfigured:$IncludeUnconfigured|Where-Object id -CEQ $Provider)
+    if($match.Count -ne 1){throw 'Provider is not configured.'}
+    return $match[0]
+}
+
+function Get-Hotpl8ProviderStateDirectory([string]$Directory,[string]$Provider) {
+    $definition=Get-Hotpl8ProviderDefinition $Provider
+    $driver=Get-Hotpl8ProviderDriver $definition.driver
+    if($Provider -ceq $driver.provider){return $Directory}
+    # Pure path calculation; cached readers never create provider directories.
+    return (Join-Path (Join-Path $Directory 'providers') $Provider)
+}
+
+function Get-Hotpl8ProviderView($Snapshot,$Policy,[string]$Provider) {
+    $r=Get-Hotpl8ConfiguredProvider $Policy $Provider -IncludeUnconfigured
+    $driver=Get-Hotpl8ProviderDriver $r.driver
+    $part=if($r.policy){Copy-Hotpl8ProviderValue $r.policy}else{[pscustomobject]@{}}
+    $nativePolicy=Copy-Hotpl8ProviderValue $r.controls
+    # Native adapters retain their existing shapes behind this compatibility
+    # boundary. Provider IDs elsewhere remain the registered ID, never this key.
+    if($driver.provider -eq 'claude'){
+        foreach($p in $part.PSObject.Properties){$nativePolicy|Add-Member NoteProperty $p.Name (Copy-Hotpl8ProviderValue $p.Value) -Force}
+        $nativePolicy.PSObject.Properties.Remove('codex')
+    }else{$nativePolicy|Add-Member NoteProperty codex $part -Force}
+    if($Policy.schemaVersion -eq 3){$nativePolicy|Add-Member NoteProperty schemaVersion 2 -Force}
+    foreach($key in @('historyEnabled','notificationsEnabled','display')){
+        if($Policy.PSObject.Properties[$key]){$nativePolicy|Add-Member NoteProperty $key (Copy-Hotpl8ProviderValue $Policy.$key) -Force}
+    }
+    $nativeSnapshot=if($Snapshot){Copy-Hotpl8ProviderValue $Snapshot}else{[pscustomobject]@{}}
+    $payload=if($Provider -ceq 'claude' -and -not $Snapshot.providers.claude){$Snapshot}else{$Snapshot.providers.$Provider}
+    if($driver.provider -eq 'claude'){
+        foreach($key in @('slots','active','decision','hold','critical','verdict','proposedSlot')){
+            $nativeSnapshot|Add-Member NoteProperty $key (Copy-Hotpl8ProviderValue $payload.$key) -Force
+        }
+        $nativeSnapshot|Add-Member NoteProperty providers ([pscustomobject]@{}) -Force
+    }else{
+        $nativeSnapshot|Add-Member NoteProperty slots @() -Force
+        $nativeSnapshot|Add-Member NoteProperty providers ([pscustomobject]@{codex=(Copy-Hotpl8ProviderValue $payload)}) -Force
+    }
+    if($nativeSnapshot.collector){
+        $nativeSnapshot.collector|Add-Member NoteProperty providers ([pscustomobject]@{($driver.provider)=(Copy-Hotpl8ProviderValue $Snapshot.collector.providers.$Provider)}) -Force
+    }
+    [pscustomobject]@{providerId=$Provider;provider=$driver.provider;driver=$driver;registration=$r;policy=$nativePolicy;snapshot=$nativeSnapshot}
+}
+
+function Get-Hotpl8ProviderAccounts($Policy) {
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
+        $driver=Get-Hotpl8ProviderDriver $r.driver;$part=$r.policy
+        if($driver.slotKind -eq 'numeric'){
+            foreach($id in @($part.prefer)){
+                [pscustomobject]@{provider=$r.id;slot=[string]$id;label=$part.labels.([string]$id);capacity=$part.capacity.([string]$id);disabled=($id -in @($part.disabled));reserve=($id -in @($part.reserve))}
+            }
+        }else{
+            foreach($s in @($part.slots|Where-Object {$_})){
+                [pscustomobject]@{provider=$r.id;slot=[string]$s.id;label=$s.label;capacity=$part.capacity.([string]$s.id);disabled=($s.id -in @($part.disabled));reserve=($s.id -in @($part.reserve))}
+            }
         }
     }
 }

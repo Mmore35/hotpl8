@@ -94,7 +94,7 @@ def acct(n, p5, age, p7, status):
     if status not in ("ok", "none", None, ""):
         return {"number": n, "email": f"a{n}@x", "active": n == act,
                 "usageStatus": status, "usage": None}
-    u = {"fiveHour": {"pct": float(p5), "resetsAt": "2026-07-30T18:00:00+00:00"}}
+    u = {"fiveHour": {"pct": float(p5), "resetsAt": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()}}
     if p7 not in ("none", None, ""):
         u["sevenDay"] = {"pct": float(p7),
                          "resetsAt": (datetime.now(timezone.utc) + timedelta(days=6)).isoformat()}
@@ -219,7 +219,7 @@ from datetime import datetime, timezone, timedelta
 act = int(sys.argv[1]); v = sys.argv[2:]
 def acct(n, cold, p5, age, p7):
     five = {"pct": 0.0, "resetsAt": ""} if cold == "1" else \
-           {"pct": float(p5), "resetsAt": "2026-08-09T18:00:00+00:00"}
+           {"pct": float(p5), "resetsAt": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()}
     u = {"fiveHour": five}
     if p7 not in ("none", None, ""):
         u["sevenDay"] = {"pct": float(p7),
@@ -500,7 +500,7 @@ if age not in ("none", "", None):
     a1["lastGoodUsage"] = {"fiveHour": {"pct": 0.0, "resetsAt": ""},
                            "sevenDay": {"pct": 23.0, "resetsAt": ""}}
 a2 = {"number": 2, "email": "a2@x", "active": act == 2, "usageStatus": "ok",
-      "usage": {"fiveHour": {"pct": float(p5), "resetsAt": "2026-08-31T18:00:00+00:00"},
+      "usage": {"fiveHour": {"pct": float(p5), "resetsAt": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()},
                 "sevenDay": {"pct": float(p7),
                              "resetsAt": (now + timedelta(days=6)).isoformat()}},
       "usageAgeSeconds": 30.0}

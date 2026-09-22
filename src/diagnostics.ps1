@@ -1,4 +1,4 @@
-﻿# Diagnostic fields are allowlisted; native credentials and provider output are never exported.
+# Diagnostic fields are allowlisted; native credentials and provider output are never exported.
 function Write-Hotpl8Event([string]$Directory, [string]$Code, $Failure=$null) {
     try {
         $path = Join-Path $Directory 'events.jsonl'
@@ -37,7 +37,7 @@ function Format-Hotpl8Doctor($Report) {
         return
     }
     'Mode: ' + $Report.mode
-    if (-not $Report.claudeConfigured -and -not $Report.codexConfigured) {
+    if (-not $Report.claudeConfigured -and -not $Report.codexConfigured -and -not @($Report.providers.PSObject.Properties|Where-Object {$_.Value.configured}).Count) {
         'NO ACCOUNTS: sign into native Codex, then run:'
         '  hotpl8 enroll -Slot main -AccountHome PATH'
         'Use your signed-in Codex home as PATH. Claude setup: docs/install.md.'
@@ -57,6 +57,12 @@ function Format-Hotpl8Doctor($Report) {
             'CSWAP MISSING: follow the Claude prerequisites in docs/install.md.'
             $dependenciesReady = $false
         }
+    }
+    foreach($entry in $Report.providers.PSObject.Properties){
+        if($entry.Name -in @('claude','codex') -or -not $entry.Value.configured){continue}
+        $name=(Get-Hotpl8ProviderDefinition $entry.Name).name
+        if($entry.Value.installed){$name+': enrolled; native driver found.'}
+        else{$name+': enrolled; native driver unavailable. See docs/install.md.';$dependenciesReady=$false}
     }
     if ($Report.collectorBusy) {
         'COLLECTOR BUSY: wait for the current collection; do not delete its lock.'
@@ -89,14 +95,20 @@ function Get-Hotpl8Doctor([string]$StateDirectory) {
         catch { $locked=$true }
         finally { if($lock){$lock.Dispose()} }
     }
+    $registered=[ordered]@{}
+    if($valid){foreach($r in @(Get-Hotpl8ConfiguredProviders $policy -IncludeUnconfigured)){
+        $driver=Get-Hotpl8ProviderDriver $r.driver
+        $registered[$r.id]=[pscustomobject]@{driver=$r.driver;configured=(@(Get-Hotpl8ProviderAccounts $policy|Where-Object provider -CEQ $r.id).Count -gt 0);installed=$(if($driver.slotKind -eq 'numeric'){$cswapFound}else{$codexFound})}
+    }}
     return [pscustomobject]@{
+        providers=[pscustomobject]$registered
         version=(Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'VERSION') -Raw).Trim()
         runtime=$PSVersionTable.PSVersion.ToString()
         policyPresent=(Test-Path -LiteralPath (Join-Path $StateDirectory 'policy.json'))
         policyValid=$valid
         mode=$(if($policy.mode){$policy.mode}else{'legacy'})
-        claudeConfigured=[bool]$policy.prefer
-        codexConfigured=[bool]$policy.codex.slots
+        claudeConfigured=[bool]$registered.claude.configured
+        codexConfigured=[bool]$registered.codex.configured
         cswapFound=$cswapFound
         codexFound=$codexFound
         snapshotAgeSeconds=$age

@@ -16,6 +16,7 @@ function ConvertTo-Hotpl8ProviderWindow($Window,[datetimeoffset]$Now,[double]$Ma
         try{$age=($Now-[datetimeoffset]::Parse([string]$Window.observedAt)).TotalSeconds}catch{$age=$null}
         if($null -eq $age -or $age -lt -5 -or $age -gt $MaxAgeSeconds){$reason='window_stale'}
         if($Window.resetConfirmed -isnot [bool]){$reason='window_malformed'}
+        if($Window.resetRequired -eq $true -and -not $Window.resetAt){$reason='reset_unconfirmed'}
         $resolved=Resolve-Hotpl8Window $Window.usedPercent $Window.resetAt $Window.observedAt $Now
         $remaining=100-[double]$resolved.used;$rolled=[bool]$resolved.rolledOver
         if($Window.resetAt){

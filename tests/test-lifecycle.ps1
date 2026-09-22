@@ -41,8 +41,16 @@ try{
         & (Join-Path $source 'install.ps1') -InstallDirectory $retry -StateDirectory $retryState -NoPath|Out-Null
         Assert ((Read-Hotpl8Json (Join-Path $retry 'installation.json')).id -eq $identity)
         Assert (Test-Path -LiteralPath (Join-Path $retry 'app/hotpl8.ps1'))
+        $native=Join-Path $dir 'legacy native account';[void][IO.Directory]::CreateDirectory($native)
+        $p=Read-Hotpl8Json $retryPolicy;$p.codex.slots=@([pscustomobject]@{id='legacy';home=$native})
+        Write-Hotpl8Text $retryPolicy ($p|ConvertTo-Json -Depth 12)
+        $command='powershell -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $retry 'app/status-print.ps1')+'" -Provider codex -StateDirectory "'+$retryState+'"'
+        $hooks=@{hooks=@{SessionStart=@(@{hooks=@(@{type='command';command=$command},@{type='command';command='echo retained'})})}}
+        Write-Hotpl8Text (Join-Path $native 'hooks.json') ($hooks|ConvertTo-Json -Depth 8) -NoBom
         & (Join-Path $source 'uninstall.ps1') -InstallDirectory $retry|Out-Null
         Assert (Test-Path -LiteralPath $retryPolicy)
+        $hooks=Read-Hotpl8Json (Join-Path $native 'hooks.json')
+        Assert (@($hooks.hooks.SessionStart[0].hooks).Count -eq 1 -and $hooks.hooks.SessionStart[0].hooks[0].command -ceq 'echo retained')
     }
     Check 'fresh archive installs without editing PATH or native homes' {
         & (Join-Path $source 'install.ps1') -InstallDirectory $install -StateDirectory $state -NoPath|Out-Null
@@ -164,16 +172,52 @@ try{
         Assert $threw;Assert (Test-Path -LiteralPath (Join-Path $foreign 'keep.txt'))
         $threw=$false;try{$null=Assert-Hotpl8Path ([IO.Path]::GetPathRoot($dir))}catch{$threw=$true};Assert $threw
     }
-    Check 'uninstall keeps state and unrelated files' {
+    Check 'managed delivery uninstall refuses before any mutation' {
+        $marker=Join-Path $install 'installation.json';$original=[IO.File]::ReadAllText($marker)
+        $managed=Read-Hotpl8Json $marker;$managed|Add-Member NoteProperty managedBy 'local-delivery' -Force
+        Write-Hotpl8Text $marker ($managed|ConvertTo-Json -Depth 12)
+        Write-Hotpl8Text (Join-Path $state 'delivery-owner.json') '{"fixture":"OWNERSHIP_SENTINEL"}'
+        $before=@(Get-ChildItem -LiteralPath $install,$state -File -Recurse|Sort-Object FullName|ForEach-Object {$_.FullName+':'+(Get-FileHash -LiteralPath $_.FullName).Hash}) -join "`n"
+        $reason=''
+        try{
+            try{& (Join-Path $source 'uninstall.ps1') -InstallDirectory $install|Out-Null}catch{$reason=$_.Exception.Message}
+            $after=@(Get-ChildItem -LiteralPath $install,$state -File -Recurse|Sort-Object FullName|ForEach-Object {$_.FullName+':'+(Get-FileHash -LiteralPath $_.FullName).Hash}) -join "`n"
+            Assert ($reason -match 'Local Delivery' -and $before -ceq $after)
+        }finally{[IO.File]::WriteAllText($marker,$original)}
+    }
+    Check 'invalid policy prevents uninstall before hooks or installed files change' {
+        $path=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllText($path)
+        Write-Hotpl8Text $path '{"schemaVersion":99}'
+        $before=@(Get-ChildItem -LiteralPath $install,$state -File -Recurse|Sort-Object FullName|ForEach-Object {$_.FullName+':'+(Get-FileHash -LiteralPath $_.FullName).Hash}) -join "`n"
+        $rejected=$false
+        try{
+            try{& (Join-Path $source 'uninstall.ps1') -InstallDirectory $install|Out-Null}catch{$rejected=$true}
+            $after=@(Get-ChildItem -LiteralPath $install,$state -File -Recurse|Sort-Object FullName|ForEach-Object {$_.FullName+':'+(Get-FileHash -LiteralPath $_.FullName).Hash}) -join "`n"
+            Assert ($rejected -and $before -ceq $after)
+        }finally{[IO.File]::WriteAllText($path,$original)}
+    }
+    Check 'v3 uninstall removes owned canonical and registered hooks while preserving native data' {
         $native=Join-Path $dir 'native account'
         [void][IO.Directory]::CreateDirectory($native)
         [IO.File]::WriteAllText((Join-Path $native 'auth.json'),'NATIVE_AUTH_SENTINEL')
-        $p=Read-Hotpl8Json (Join-Path $state 'policy.json')
-        $p.codex.slots=@([pscustomobject]@{id='main';home=$native})
+        $aliasHome=Join-Path $dir 'registered native account';[void][IO.Directory]::CreateDirectory($aliasHome)
+        [IO.File]::WriteAllText((Join-Path $aliasHome 'auth.json'),'ALIAS_AUTH_SENTINEL')
+        [IO.File]::WriteAllText((Join-Path $aliasHome 'conversation.json'),'CONVERSATION_SENTINEL')
+        $definition=Read-Hotpl8Json (Join-Path $source 'data/providers/codex.json');$definition.id='fictional';$definition.name='Fictional'
+        foreach($package in @($source,(Join-Path $install 'app'))){
+            Write-Hotpl8Text (Join-Path $package 'data/providers/fictional.json') ($definition|ConvertTo-Json -Depth 12)
+            $manifest=Read-Hotpl8Json (Join-Path $package 'release-files.json');$manifest.files+=@('data/providers/fictional.json')
+            Write-Hotpl8Text (Join-Path $package 'release-files.json') ($manifest|ConvertTo-Json -Depth 4)
+        }
+        $p=[pscustomobject]@{schemaVersion=3;mode='monitor';providers=[pscustomobject]@{codex=[pscustomobject]@{slots=@([pscustomobject]@{id='main';home=$native})};fictional=[pscustomobject]@{slots=@([pscustomobject]@{id='alias';home=$aliasHome})}}}
         Write-Hotpl8Text (Join-Path $state 'policy.json') ($p|ConvertTo-Json -Depth 12)
         $command='powershell -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path (Join-Path $install 'app') 'status-print.ps1')+'" -Provider codex -StateDirectory "'+$state+'"'
         $hooks=@{hooks=@{SessionStart=@(@{matcher='startup';hooks=@(@{type='command';command=$command},@{type='command';command='echo unrelated'})});OtherEvent=@(@{command='keep'})}}
         Write-Hotpl8Text (Join-Path $native 'hooks.json') ($hooks|ConvertTo-Json -Depth 12) -NoBom
+        $aliasCommand=$command.Replace('-Provider codex ','-Provider fictional ')
+        $foreignCommand=$aliasCommand.Replace($install,(Join-Path $dir 'other installation'))
+        $aliasHooks=@{hooks=@{SessionStart=@(@{matcher='startup';hooks=@(@{type='command';command=$aliasCommand},@{type='command';command=$command},@{type='command';command=$foreignCommand},@{type='command';command='echo alias unrelated'})});OtherEvent=@(@{command='alias keep'})}}
+        Write-Hotpl8Text (Join-Path $aliasHome 'hooks.json') ($aliasHooks|ConvertTo-Json -Depth 12) -NoBom
         [IO.File]::WriteAllText((Join-Path $install 'keep.txt'),'keep')
         $before=(Get-FileHash (Join-Path $state 'policy.json')).Hash
         & (Join-Path $source 'uninstall.ps1') -InstallDirectory $install|Out-Null
@@ -186,6 +230,13 @@ try{
         Assert (@($after.hooks.SessionStart[0].hooks).Count -eq 1)
         Assert ($after.hooks.SessionStart[0].hooks[0].command -eq 'echo unrelated')
         Assert ($after.hooks.OtherEvent[0].command -eq 'keep')
+        Assert ([IO.File]::ReadAllText((Join-Path $aliasHome 'auth.json')) -ceq 'ALIAS_AUTH_SENTINEL')
+        Assert ([IO.File]::ReadAllText((Join-Path $aliasHome 'conversation.json')) -ceq 'CONVERSATION_SENTINEL')
+        $after=Read-Hotpl8Json (Join-Path $aliasHome 'hooks.json')
+        Assert (@($after.hooks.SessionStart[0].hooks).Count -eq 3)
+        Assert ($command -cin @($after.hooks.SessionStart[0].hooks.command) -and $foreignCommand -cin @($after.hooks.SessionStart[0].hooks.command))
+        Assert ($after.hooks.OtherEvent[0].command -eq 'alias keep')
+        Assert ((Read-Hotpl8Json (Join-Path $state 'delivery-owner.json')).fixture -ceq 'OWNERSHIP_SENTINEL')
     }
 }finally{
     $full=[IO.Path]::GetFullPath($dir)

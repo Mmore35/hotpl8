@@ -177,21 +177,32 @@ export class CodexBridge {
     // work still present when this serialized operation runs, not the model of
     // whichever (possibly completed) thread last changed the selected account.
     if (background && !models.length) return this.route;
-    const route = await this.broker({ operation: 'select', model: model || models[0], models, cwd, previousSlot: this.route?.slot });
+    const route = await this.broker({ operation: 'select', intent: background ? 'rebind' : 'admit',
+      model: model || models[0], models, cwd, previousSlot: this.route?.slot, criticalState: this.route?.criticalState });
     if (this.closed) throw error('routing_closed');
     if ([...this.active.keys()].some(id => !this.threads.get(id)?.model) || activeModels().some(m => !models.includes(m))) throw error('routing_model_changed');
     if (!route.auth?.accessToken || !route.auth?.chatgptAccountId) throw error('routing_auth_unavailable');
-    if (this.route?.accountId !== route.auth.chatgptAccountId || this.route?.slot !== route.slot) {
+    const changed = this.route?.accountId !== route.auth.chatgptAccountId || this.route?.slot !== route.slot;
+    if (changed) {
       // Native adopts external auth for later requests and reconnects account-bound
       // websockets. In-flight requests finish under their original identity.
       this.rebinding = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId };
       try { await this.rpc('account/login/start', { type: 'chatgptAuthTokens', ...route.auth }); }
-      catch (err) { if (err.code === 'routing_native_timeout') this.onFatal(err); throw err; }
+      catch (err) {
+        // Any failed apply has an unknown binding. Do not reuse the old receipt
+        // or replay a turn; a fresh explicit admission must validate again.
+        this.route = null;
+        if (err.code === 'routing_native_timeout') this.onFatal(err);
+        throw err;
+      }
       finally { this.rebinding = null; }
     }
     if (this.closed) throw error('routing_closed');
     // Retain account identity, not a second access-token cache.
-    this.route = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId };
+    const criticalState = route.criticalState && { ...route.criticalState, selected: route.slot,
+      selectedAt: changed ? new Date().toISOString() : (this.route?.criticalState?.selectedAt || route.criticalState.selectedAt) };
+    this.route = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId,
+      criticalState };
     return route;
   }
   observe() {
@@ -365,7 +376,7 @@ export async function main(config, args) {
   // Subscribe to the existing collector's atomic publications, including rename.
   // No second quota collector or periodic account-switch scheduler is introduced.
   watcher = watch(config.stateDirectory, (_event, filename) => {
-    if (!filename || ['status.json', 'policy.json', 'hold.json', 'codex-state.json'].includes(String(filename))) void bridge.observe();
+    if (!filename || ['status.json', 'policy.json', 'hold.json', 'codex-state.json', 'automation-pause.json', 'automation-leases.json'].includes(String(filename))) void bridge.observe();
   });
   watcher.on('error', () => diagnostic('routing_observation_failed'));
   child.on('error', () => stop(true));

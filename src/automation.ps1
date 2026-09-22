@@ -62,7 +62,13 @@ function Assert-Hotpl8AutomationPolicy($Policy) {
         if ($null -ne $a.dailyAttemptLimit -and (-not (Test-Hotpl8Number $a.dailyAttemptLimit) -or $a.dailyAttemptLimit -lt 1 -or $a.dailyAttemptLimit -gt 100 -or [math]::Floor($a.dailyAttemptLimit) -ne $a.dailyAttemptLimit)) { throw 'dailyAttemptLimit must be an integer from 1 to 100.' }
         if($null -ne $a.warmExcluded -and ($a.warmExcluded -isnot [array] -or @($a.warmExcluded|Select-Object -Unique).Count -ne @($a.warmExcluded).Count)){throw 'warmExcluded must be a unique array.'}
         if($null -ne $a.warmExcluded -and @($a.warmExcluded|Where-Object {$null -eq $_}).Count){throw 'Null warming exclusion.'}
-        foreach ($id in @($a.warmExcluded|Where-Object {$null -ne $_})) { if ($id -isnot [string] -or $id -notmatch '^(claude:[0-9]+|codex:[a-zA-Z0-9_-]{1,40})$') { throw 'Invalid warming exclusion.' } }
+        foreach ($id in @($a.warmExcluded|Where-Object {$null -ne $_})) {
+            if($id -isnot [string] -or $id -cnotmatch '^([a-z][a-z0-9-]{0,39}):([a-zA-Z0-9_-]{1,40})$'){throw 'Invalid warming exclusion.'}
+            $providerId=$Matches[1];$slotId=$Matches[2]
+            $definition=Get-Hotpl8ProviderDefinition $providerId
+            $driver=Get-Hotpl8ProviderDriver $definition.driver
+            if($driver.slotKind -eq 'numeric' -and $slotId -notmatch '^[0-9]+$'){throw 'Invalid warming exclusion.'}
+        }
         if ($a.schedule) {
             $s = $a.schedule
             if($s -isnot [pscustomobject]){throw 'schedule must be an object.'}

@@ -17,7 +17,8 @@ try{
     [Console]::WriteLine(($result|ConvertTo-Json -Depth 12 -Compress))
 }catch{
     $code=[string]$_.Exception.Message
-    if($code -notin @('routing_environment_conflict','routing_invalid_request','routing_model_unknown','routing_duplicate_identity','routing_stale','routing_unavailable','routing_binding_changed','routing_refresh_failed','routing_auth_unavailable','routing_account_busy','routing_validation_timeout')){$code='routing_failed'}
+    if($code -in @('action_control_busy','action_state_unavailable')){$code='routing_control_unavailable'}
+    if($code -notin @('routing_environment_conflict','routing_invalid_request','routing_model_unknown','routing_duplicate_identity','routing_stale','routing_unavailable','routing_binding_changed','routing_refresh_failed','routing_auth_unavailable','routing_account_busy','routing_validation_timeout','routing_monitor_only','routing_automation_paused','routing_switching_disabled','routing_selection_held','routing_binding_unknown','routing_state_changed','routing_control_unavailable')){$code='routing_failed'}
     # Fixed code and time only: never persist the request, slot/home, native
     # exception or successful broker response (which carries an access token).
     Write-Hotpl8Event $StateDirectory $code

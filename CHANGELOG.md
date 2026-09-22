@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — shared provider core
+
+- Use one normalized selection core for Claude, Codex launches and T3 routing, including reserves, degraded accounts, critical state, holds and pause controls. Better health/work tiers bypass ordinary churn protection consistently.
+- Distinguish explicit admission, autonomous rollover and pinned refresh. Validate current controls at the action boundary and record Codex binding/dwell only after native acknowledgement; never replay turns or tools after ambiguous login failure.
+- Discover providers through validated shipped-driver definitions across enrollment, collection and cached consumers. Add explicit schema-v3 migration while preserving legacy policy behavior and rejecting incompatible rollback readers before activation.
+- Add gradual T3 transition: manage ordinary Codex alongside the functional legacy alias, with settings locks, recovery journals and separate removal receipts. Existing conversation data is unchanged.
+- Qualify the real policy/broker/bridge/native rollover chain with synthetic HTTP and WebSocket accounts on Codex CLI 0.155.1. Real billing and long-running refresh qualification remain separate.
+
 ## Unreleased — local agent interface
 
 - Add a versioned JSON agent command and local MCP read tools with explicit cached readiness.

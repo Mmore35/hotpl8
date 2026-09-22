@@ -10,12 +10,17 @@ $ErrorActionPreference='Stop'
 . (Join-Path $ReleaseDirectory 'src/providers/codex.ps1')
 . (Join-Path $ReleaseDirectory 'src/t3-delivery.ps1')
 . (Join-Path $ReleaseDirectory 'src/job-host.ps1')
+. (Join-Path $ReleaseDirectory 'src/delivery-policy.ps1')
+if($Operation -eq 'drain'){
+    # Older runners also call drain under tick.lock before changing current.json.
+    # Retain this ownership state even if activation later rolls code back.
+    Set-Hotpl8DeliveryOwner $InstallDirectory $StateDirectory
+}
 if($Operation -eq 'components'){
     ConvertTo-Json -InputObject @(@(Get-Hotpl8T3DeliveryStatus $InstallDirectory $StateDirectory)+@(Get-Hotpl8JobComponentStatus $InstallDirectory)) -Depth 8
     exit 0
 }
-Sync-Hotpl8T3Delivery $Operation $InstallDirectory $ReleaseDirectory $StateDirectory
-if($Operation -in @('preflight','health','recover')){
+if($Operation -in @('preflight','activate','health','recover')){
     $policy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
     Assert-Hotpl8Policy $policy
     if($policy.codex){Assert-CodexPolicy $policy.codex}
@@ -26,6 +31,7 @@ if($Operation -in @('preflight','health','recover')){
     $result=Invoke-Hotpl8Process $exe @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $ReleaseDirectory 'hotpl8.ps1'),'doctor','-StateDirectory',$StateDirectory,'-AsJson') 30000
     if($result.exitCode -ne 0){throw 'Candidate policy/readiness validation failed.'}
 }
+Sync-Hotpl8T3Delivery $Operation $InstallDirectory $ReleaseDirectory $StateDirectory
 if($Operation -in @('activate','recover')){
     $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
     if($registration.scheduledJobs){

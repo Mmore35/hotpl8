@@ -114,7 +114,7 @@ function New-DashboardAccountRow([string]$Name,[string]$Id,[string]$Badge,[strin
     $marker=if($Selected){'● '}else{'○ '}
     New-Hotpl8StyledRow @(New-Hotpl8Span '  ';New-Hotpl8Span $marker $(if($Selected){$Accent}else{'border'});New-Hotpl8Span $Name $(if($Selected){'text'}else{'muted'});New-Hotpl8Span ('  ['+$Id+']  ·  ') 'border';New-Hotpl8Span $Badge (Get-DashboardBadgeTone $Badge))
 }
-function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
+function Get-Hotpl8NativeDashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact,[double]$AnimationSeconds=0,[switch]$ReducedMotion,[string]$Family,[string]$ProviderName,[string]$ProviderId,[switch]$SuppressGlobal,[switch]$SuppressRecent,$GlobalStatus=$null) {
     if (-not $Policy.prefer -and -not $Policy.codex.slots -and -not $Status) {
         New-DashboardRow '  No accounts yet.' text
         New-DashboardRow '  Codex   sign in with the native CLI, then' cyan
@@ -125,20 +125,24 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
     }
     $age=Get-DashboardAge $Status.generatedAt $Now
     $stale=($null -eq $age -or $age -gt 900 -or $age -lt -5)
-    if(-not $Status -or -not $Status.generatedAt){New-DashboardRow '  no reading yet  ·  hotpl8 refresh' amber}
+    if(-not $SuppressGlobal){
+    $globalSnapshot=if($GlobalStatus){$GlobalStatus}else{$Status}
+    if(-not $globalSnapshot -or -not $globalSnapshot.generatedAt){New-DashboardRow '  no reading yet  ·  hotpl8 refresh' amber}
     elseif($stale){New-DashboardRow '  ! readings stale  ·  hotpl8 refresh' amber}
-    $needsHelp = (@($Status.slots | Where-Object { $_.status -notin @('ok','disabled') }).Count -gt 0 -or
-        @($Status.providers.codex.slots | Where-Object { $_.status -notin @('ok','disabled') }).Count -gt 0)
+    $allSlots=@($globalSnapshot.slots)+@(foreach($entry in $globalSnapshot.providers.PSObject.Properties){$entry.Value.slots})
+    $needsHelp = @($allSlots | Where-Object { $_ -and $_.status -notin @('ok','disabled') }).Count -gt 0
     if ($needsHelp) { New-DashboardRow '  ! account unavailable  ·  hotpl8 doctor' amber }
-    if($Status.collector){
-        $health=Get-Hotpl8Health $Status.collector $Now
+    if($globalSnapshot.collector){
+        $health=Get-Hotpl8Health $globalSnapshot.collector $Now
         if($health -notin @('recent collection completed','collecting')){New-DashboardRow ('  ! '+$health) amber}
     }
+    }
+    if(-not $Family -or $Family -eq 'claude'){
     $claude=@($Status.slots|Where-Object {$null -ne $_})
     if(-not $claude.Count -and $Policy.labels){
         $claude=@($Policy.labels.PSObject.Properties|ForEach-Object{[pscustomobject]@{slot=$_.Name;label=$_.Value;status='no observation'}})
     }
-    New-DashboardRow ('  CLAUDE  /  '+$claude.Count+' subscription'+$(if($claude.Count -ne 1){'s'})) peach
+    New-DashboardRow ('  '+$(if($ProviderName){$ProviderName.ToUpper()}else{'CLAUDE'})+'  /  '+$claude.Count+' subscription'+$(if($claude.Count -ne 1){'s'})) peach
     if(-not $claude.Count){New-DashboardRow '    none in this snapshot' muted}
     foreach($slot in $claude){
         $isStale=($stale -or -not $slot.fresh -or ($slot.observedAt -and -not (Test-Hotpl8FreshTimestamp $slot.observedAt $Now)))
@@ -150,8 +154,8 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         if(Test-Hotpl8DetectedPlan $slot.plan $Now){$badge+=' · '+$slot.plan.label}
         New-DashboardAccountRow $name ([string]$slot.slot) $badge peach -Selected:([bool]$slot.active -and -not $disabled)
         if($disabled){continue}
-        New-DashboardQuotaRow '5h' $slot.used5h $slot.reset5h $Now $Width -Stale:$isStale -ObservedAt $slot.observedAt -TweenKey ('claude|'+$slot.slot+'|5h') -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
-        New-DashboardQuotaRow '7d' $slot.used7d $slot.reset7d $Now $Width -Stale:$isStale -ObservedAt $slot.observedAt -TweenKey ('claude|'+$slot.slot+'|7d') -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+        New-DashboardQuotaRow '5h' $slot.used5h $slot.reset5h $Now $Width -Stale:$isStale -ObservedAt $slot.observedAt -TweenKey ($(if($ProviderId){$ProviderId}else{'claude'})+'|'+$slot.slot+'|5h') -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+        New-DashboardQuotaRow '7d' $slot.used7d $slot.reset7d $Now $Width -Stale:$isStale -ObservedAt $slot.observedAt -TweenKey ($(if($ProviderId){$ProviderId}else{'claude'})+'|'+$slot.slot+'|7d') -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
         if(-not $Compact){
             if($isStale){
                 $readingAge=Get-DashboardAge $slot.observedAt $Now
@@ -169,10 +173,12 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
             New-DashboardRow ''
         }
     }
+    }
+    if(-not $Family -or $Family -eq 'codex'){
     $codex=$Status.providers.codex
     $configured=@($Policy.codex.slots|Where-Object {$null -ne $_})
     if(-not $configured.Count){$configured=@($codex.slots|Where-Object {$null -ne $_})}
-    New-DashboardRow ('  CODEX  /  '+$configured.Count+' subscription'+$(if($configured.Count -ne 1){'s'})) cyan
+    New-DashboardRow ('  '+$(if($ProviderName){$ProviderName.ToUpper()}else{'CODEX'})+'  /  '+$configured.Count+' subscription'+$(if($configured.Count -ne 1){'s'})) cyan
     if(-not $configured.Count){New-DashboardRow '    none enrolled yet' muted}
     if($codex.failureCode -eq 'state_io_failed'){New-DashboardRow '    ! local state write failed; retrying · last readings below' amber}
     elseif($codex.failureCode){New-DashboardRow ('    ! read failed  ·  '+$codex.failureCode+' / '+$codex.failureStage) amber}
@@ -195,7 +201,7 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
             $windows=@($bucket.Value.windows.PSObject.Properties|Sort-Object {[int]$_.Name})
             foreach($window in $windows){
                 $label=if($window.Name -eq '300'){'5h'}elseif($window.Name -eq '10080'){'7d'}else{$window.Name+'m'}
-                New-DashboardQuotaRow $label $window.Value.usedPercent $window.Value.resetsAt $Now $Width -Unix -Unconfirmed:($window.Value.anchorState -eq 'unconfirmed') -Stale:$isStale -ObservedAt $window.Value.observedAt -TweenKey ('codex|'+$config.id+'|'+$bucket.Name+'|'+$window.Name) -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+                New-DashboardQuotaRow $label $window.Value.usedPercent $window.Value.resetsAt $Now $Width -Unix -Unconfirmed:($window.Value.anchorState -eq 'unconfirmed') -Stale:$isStale -ObservedAt $window.Value.observedAt -TweenKey ($(if($ProviderId){$ProviderId}else{'codex'})+'|'+$config.id+'|'+$bucket.Name+'|'+$window.Name) -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
             }
             if(-not $windows.Count){New-DashboardRow '    no quota yet' muted}
             if(-not $Compact){
@@ -206,11 +212,32 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         }
         if(-not $Compact){New-DashboardRow ''}
     }
-    if(-not $Compact -and $Status.recentActions){
+    }
+    if(-not $SuppressRecent -and -not $Compact -and $Status.recentActions){
         New-DashboardRow '  RECENT' muted
         foreach($event in @($Status.recentActions|Select-Object -Last 3)){
             $note=Get-DashboardActivityNote $event $Policy $Now
             New-DashboardRow ('    '+$note.text+$(if($note.age){'  ·  '+$note.age+' ago'})) $(if($note.tone -eq 'amber'){'amber'}else{'muted'})
+        }
+    }
+}
+function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
+    if(-not $Policy){$Policy=[pscustomobject]@{}}
+    if(-not @(Get-Hotpl8ProviderAccounts $Policy).Count -and -not $Status){
+        Get-Hotpl8NativeDashboardRows $Status ([pscustomobject]@{}) $Now $Width -Compact:$Compact -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
+        return
+    }
+    $first=$true
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy -IncludeUnconfigured)){
+        $v=Get-Hotpl8ProviderView $Status $Policy $r.id
+        Get-Hotpl8NativeDashboardRows $v.snapshot $v.policy $Now $Width -Compact:$Compact -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion -Family $v.provider -ProviderName $r.name -ProviderId $r.id -SuppressGlobal:(-not $first) -SuppressRecent -GlobalStatus $Status
+        $first=$false
+    }
+    if(-not $Compact -and $Status.recentActions){
+        New-DashboardRow '  RECENT' muted
+        foreach($event in @($Status.recentActions|Select-Object -Last 3)){
+            $note=Get-DashboardActivityNote $event $Policy $Now
+            New-DashboardRow ('    '+$note.text+$(if($note.age){'  |  '+$note.age+' ago'})) $(if($note.tone -eq 'amber'){'amber'}else{'muted'})
         }
     }
 }
@@ -304,9 +331,9 @@ function New-DashboardOverviewBarRow($Overview,[datetimeoffset]$Now,[int]$Width,
 }
 function Get-Hotpl8OverviewRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width,[double]$AnimationSeconds=0,[switch]$ReducedMotion,$OverviewOverride=$null) {
     $overview=if($OverviewOverride){$OverviewOverride}else{Get-Hotpl8ProviderOverview $Status $Policy $Now}
-    foreach($provider in @('claude','codex')){
-        $p=$overview.$provider
-        New-DashboardHeaderRow $provider.ToUpper() $(if($provider -eq 'claude'){'peach'}else{'cyan'}) (Get-DashboardChips $Status $p $provider $Now) $Width
+    foreach($provider in @($overview.PSObject.Properties|ForEach-Object Name)){
+        $p=$overview.$provider;$v=Get-Hotpl8ProviderView $Status $Policy $provider
+        New-DashboardHeaderRow $(if($p.name){$p.name.ToUpper()}else{$provider.ToUpper()}) $(if($v.driver.slotKind -eq 'numeric'){'peach'}else{'cyan'}) (Get-DashboardChips $v.snapshot $p $v.provider $Now) $Width
         New-DashboardOverviewBarRow $p $Now $Width -TweenKey $provider -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
     }
 }
@@ -320,8 +347,7 @@ function Format-DashboardWarmOutcome([string]$Outcome) {
 function Get-DashboardActivityNote($Event,$Policy,[datetimeoffset]$Now) {
     # A few words per automation event, using the account labels people know.
     $slot=[string]$Event.slot;$label=$slot
-    if($Event.provider -eq 'codex'){$match=@($Policy.codex.slots|Where-Object {$_.id -eq $slot}|Select-Object -First 1);if($match.Count -and $match[0].label){$label=[string]$match[0].label}}
-    elseif($Policy.labels -and $Policy.labels.PSObject.Properties[$slot]){$label=[string]$Policy.labels.$slot}
+    try{$account=@(Get-Hotpl8ProviderAccounts $Policy|Where-Object {$_.provider -ceq $Event.provider -and $_.slot -ceq $slot});if($account.Count -eq 1 -and $account[0].label){$label=[string]$account[0].label}}catch{}
     $reason=[string]$Event.reason;$tone='muted'
     $text=switch([string]$Event.kind){
         'switch'{if($reason -eq 'native_switch_succeeded'){'switched → '+$label}else{$tone='amber';'switch failed → '+$label}}
@@ -329,7 +355,11 @@ function Get-DashboardActivityNote($Event,$Policy,[datetimeoffset]$Now) {
         'warm_attempt'{if($reason -eq 'sent'){'warm sent · '+$label}else{$tone='amber';'warm failed · '+$label}}
         'warm_outcome'{if($reason -in @('unconfirmed','failed','account_changed')){$tone='amber'};(Format-DashboardWarmOutcome $reason)+' · '+$label}
         'recovery_probe'{if($reason -eq 'sent'){'probe sent · '+$label}else{$tone='amber';'probe failed · '+$label}}
-        'recommendation'{'codex next → '+$label}
+        'recommendation'{
+            $providerName=[string]$Event.provider
+            try{$providerName=(Get-Hotpl8ProviderDefinition $Event.provider).name}catch{}
+            $providerName.ToLowerInvariant()+' next → '+$label
+        }
         default{([string]$Event.kind).Replace('_',' ')+' · '+$label}
     }
     $seconds=Get-DashboardAge $Event.at $Now

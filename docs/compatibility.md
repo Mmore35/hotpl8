@@ -6,7 +6,7 @@
 | PowerShell 7 / Mac / Linux | Not release-qualified. Source experimentation only; full native fake tests currently target .NET Framework/Windows. |
 | Claude inventory | Via separately installed claude-swap; package metadata floor in prior implementation was 0.25.0, with 0.26.0 documented during development. Revalidate upstream contracts before promotion. |
 | Claude switching/warming/probes | Experimental; off in new policy. Legacy configs preserve enabled behavior. No guarantee that prompts open a useful quota window. |
-| Codex | Native app-server API; prior live evidence used CLI 0.153.4. This candidate's offline fixture tests do not expand that live evidence. |
+| Codex | Native app-server API; prior live account evidence used CLI 0.153.4. Synthetic local HTTP/WebSocket rollover, including the real shared policy/broker chain, is qualified separately on CLI 0.155.1. |
 | Codex meters/windows | codex and codex_bengalfox; 300/10080-minute windows. Unknown shapes/constraints block automatic use. |
 | Codex model selection | Requires an explicitly verified modelMeters mapping. Explicit-slot launch is separate from a quota guarantee. |
 | Codex warming | Unavailable after the conditional native investigation; see the [evidence gate](plans/codex-warming.md). |

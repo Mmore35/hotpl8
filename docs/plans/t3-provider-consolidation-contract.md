@@ -1,8 +1,11 @@
 # T3 provider consolidation: host contract dependency
 
-Status: **blocked for existing legacy provider-ID consolidation**. Ordinary
-`codex` in-place enrollment is already supported. This record does not qualify
-automatic migration of existing `hotpl8-codex` conversations.
+Status: **bulk provider-ID consolidation deferred; gradual transition supported**.
+The approved scope enrolls ordinary `codex` in place and retains the functioning
+legacy alias. `setup-t3.ps1 -Operation transition -PlanOnly` inspects that change;
+the explicit transition applies it after full host shutdown. This record does
+not qualify automatic migration of existing `hotpl8-codex` conversations. The
+missing bulk-rebind API does not block the gradual transition release.
 
 ## Evidence boundary
 
@@ -116,7 +119,10 @@ credentials and a provider fixture that records native thread identity. Prove:
 - Supported rollback, uninstall and reinstall preserve migrated identities and
   do not resurrect invalid defaults or duplicate providers.
 
-Until this evidence exists, the safe intermediate result is managed ordinary
-`codex` plus a retained functioning legacy alias. Diagnostics must explicitly
-report pending consolidation. This is not acceptance of the final one-provider
-user experience; the host dependency remains open.
+Until this evidence exists, use managed ordinary `codex` plus a retained
+functioning legacy alias. Diagnostics report `ordinary-managed/legacy-retained`,
+never migrated. This supports gradual transition without bulk rebinding.
+Bulk rebinding and retirement remain a separate future operation. Users may
+change a compatible live-idle conversation's picker and verify continuation;
+leave stopped/archived conversations on their existing entry when resume
+preservation is not established. Do not send a prompt merely to force migration.

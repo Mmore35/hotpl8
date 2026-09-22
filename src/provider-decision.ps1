@@ -13,7 +13,7 @@ function Get-Hotpl8ProviderDecision($Accounts,$Policy,$Context,[datetimeoffset]$
     }
     $previous=if($Context.bindingKnown -eq $true){[string]$Context.previousId}else{$null}
     $capacity=@(foreach($r in $rows){[pscustomobject]@{slot=$r.id;reserve=$r.reserve;fresh=$r.valid;blocked=(-not $r.valid);bindingRemaining=$r.bindingRemaining;scaled=$r.scaled;gross=$r.gross}})
-    $critical=Get-Hotpl8CriticalDecision $capacity $Policy $previous $Context.criticalState $Now
+    $critical=if($Context.eligibilityOnly -eq $true){[pscustomobject]@{active=$false;selected=$previous;ranked=@();pollSeconds=300;selectedAt=$Context.criticalState.selectedAt;reason='eligibility only'}}else{Get-Hotpl8CriticalDecision $capacity $Policy $previous $Context.criticalState $Now}
     $eligible=@()
     foreach($r in $rows){
         $reason=$r.reason
@@ -64,6 +64,7 @@ function Get-Hotpl8ProviderDecision($Accounts,$Policy,$Context,[datetimeoffset]$
             $operationAccount=@($rows|Where-Object id -CEQ $target)
             if(-not $target -or $operationAccount.Count -ne 1){$suppression='action_target_unknown'}
             elseif($operationAccount[0].reason -in @('disabled','binding_changed','duplicate_observation','duplicate_subscription')){$suppression='binding_changed'}
+            elseif($intent -eq 'warm' -and -not $operationAccount[0].valid){$suppression='action_ineligible'}
             elseif($Context.actionEligible -ne $true){$suppression='action_ineligible'}
         }elseif($intent -eq 'admit' -and $Context.pin){
             $pinned=@($rows|Where-Object id -CEQ ([string]$Context.pin))
@@ -86,5 +87,5 @@ function Get-Hotpl8ProviderDecision($Accounts,$Policy,$Context,[datetimeoffset]$
         if($intent -eq 'observe'){$suppression=if($suppression){$suppression}else{'observe_only'}}
     }
     if($suppression){$permitted=$false}
-    [pscustomobject]@{accounts=$rows;ranked=@($ordered|ForEach-Object id);proposedSlot=$proposed;targetSlot=$target;actionPermitted=$permitted;suppressionReason=$suppression;manual=$manual;requiresNativeValidation=($permitted -and $intent -ne 'control');critical=$critical}
+    [pscustomobject]@{accounts=$rows;ranked=@($ordered|ForEach-Object id);allRanked=@($rows|Sort-Object reserve,degraded,rankKey,preference,id|ForEach-Object id);proposedSlot=$proposed;targetSlot=$target;actionPermitted=$permitted;suppressionReason=$suppression;manual=$manual;requiresNativeValidation=($permitted -and $intent -ne 'control');critical=$critical}
 }
