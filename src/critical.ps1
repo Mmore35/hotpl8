@@ -39,11 +39,5 @@ function Get-Hotpl8CriticalDecision($Accounts,$Part,[string]$PreviousId,$State,[
     [pscustomobject]@{active=[bool]$active;selected=$selected;selectedAt=$since;reason=$reason;basis=$basis;coverage=([string]$known.Count+'/'+$work.Count);pollSeconds=$(if($active){Get-Hotpl8CriticalSetting $Part 'pollSeconds' 60}else{300});ranked=@($ranking|ForEach-Object slot);floorPercent=$(if($Part.critical.drainToZero){0}else{Get-Hotpl8CriticalSetting $Part 'floorPercent' 1})}
 }
 function Get-Hotpl8ClaudeCritical($Policy,$Accounts,[int]$Active,$State,[datetimeoffset]$Now) {
-    if($Policy.critical.enabled -ne $true){return [pscustomobject]@{active=$false;selected=[string]$Active;selectedAt=$State.selectedAt;pollSeconds=300;ranked=@();reason='normal policy'}}
-    $slots=@(foreach($id in $Policy.prefer){
-        $e=$Accounts[[int]$id]
-        [pscustomobject]@{slot=$id;status=$(if($e.fresh -and -not $e.modelBlocked){'ok'}else{'unavailable'});fresh=[bool]$e.fresh;observedAt=$Now.ToString('o');used5h=$(if($null -ne $e.h5){100-$e.h5}else{$null});used7d=$(if($null -ne $e.h7){100-$e.h7}else{$null});reset5h=$e.obj.usage.fiveHour.resetsAt;reset7d=$e.obj.usage.sevenDay.resetsAt;scoped=$e.obj.usage.scoped}
-    })
-    $rows=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{slots=$slots}) $Policy 'claude' $Now)
-    Get-Hotpl8CriticalDecision $rows $Policy ([string]$Active) $State $Now
+    (Get-ClaudeProviderDecision $Policy @($Policy.prefer) $Accounts $Active $Now $State).critical
 }

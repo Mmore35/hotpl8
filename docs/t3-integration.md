@@ -33,7 +33,7 @@ or restart T3.
 Optional parameters: `-SettingsPath`, `-IntegrationDirectory`, `-CodexExecutable`,
 `-NodeExecutable`, `-ProviderId` (source) and `-TargetProviderId` (defaults to source).
 For an existing integration, `-Operation defaults` applies helper routing without
-rebuilding the provider or interrupting chats. Removal restores the recorded
+rebuilding the provider. Setup mutations require the host to be closed. Removal restores the recorded
 helper defaults only if they remain unchanged, including originally absent fields.
 Custom launch arguments and shadow homes require manual reconciliation before
 installation. No Developer Mode, symlink or administrator privilege is needed.
@@ -63,15 +63,41 @@ are not reinstalled; a missing registered integration cannot report healthy.
 
 ### Existing two-provider installations
 
-Earlier setups created `hotpl8-codex`. Automatic delivery updates that bridge but
-preserves its provider ID because T3 stores it on conversations. Do not delete or
-disable it while conversations reference it. Consolidation requires routing the
-original Codex provider in place, moving the old selections through T3's supported
-model-selection operation while those threads are idle, and then removing the
-unused instance. Preserve model/options, projects, helpers and native resume
-identity; do not rewrite T3's event database. This release fixes new installations
-and automatic code delivery; it does not perform that separate conversation
-migration on existing two-provider installations.
+Earlier setups created `hotpl8-codex`. Automatic delivery preserves that provider
+ID because conversations reference it. The gradual transition manages ordinary
+Codex while keeping the old entry operational:
+
+```powershell
+.\setup-t3.ps1 -Operation transition -StateDirectory C:\HotPl8State -PlanOnly
+# Close the complete T3 host, including a separately started server.
+.\setup-t3.ps1 -Operation transition -StateDirectory C:\HotPl8State
+```
+
+The dry run is read-only. When the specified integration directory belongs to
+the old alias, transition uses a distinct `-ordinary` sibling. Both retain their
+own receipt, launcher and delivery membership. Existing model/options, shared
+home, defaults and helper selections are preserved unless `-MakeDefault` is
+explicitly requested; defaults already using the old alias continue to work.
+Doctor reports `ordinary-managed/legacy-retained`, not migrated. New conversations
+can use ordinary Codex; the old entry continues serving existing conversations.
+
+There is no thread metadata/database write, automatic prompt or alias removal.
+For manual picker changes, verify continuation on a compatible live-idle thread.
+Leave stopped/archived threads on the old entry when native resume preservation
+is not established. Bulk retirement requires a separately qualified host
+operation; see [the pinned host contract evidence](plans/t3-provider-consolidation-contract.md).
+
+Setup checks the desktop and standalone server, including the data directory's
+runtime PID record, then rechecks before settings replacement. Keep the host
+closed until setup exits. Do not edit settings during setup: process snapshots
+and HotPl8's lock cannot stop an external editor or a newly launched T3 host.
+Settings operations use a shared lock keyed by the absolute settings path and exact
+before/after digests. Interrupted staging and a committed write with a lost
+acknowledgement are retryable by rerunning the same operation. Concurrent user
+edits cause a conflict instead of overwriting settings; preserve the receipt and
+reconcile that conflict. Removing the ordinary integration restores its original
+provider while leaving the old alias alone; reinstall can reuse its retained
+verified launcher. Uninstall never proves old conversation references are gone.
 
 Close T3 (including any separately started T3 server) before removal:
 
@@ -125,8 +151,12 @@ managed T3 provider are intentionally unavailable.
 Selecting a provider or sending a new turn is a deliberate launch, like
 `hotpl8 codex`. Monitor mode and automation pauses do not block these explicit
 launches. A selection hold still constrains which account can be selected.
-Enabling the bridge also enables these policy checks throughout admitted work;
-collector monitor mode does not pin an admitted task for its entire lifetime.
+Autonomous rollover during admitted work requires `mode: automate`,
+`switchEnabled: true`, no active pause and no selection hold. This matches Claude's
+shared controls. Same-account authentication refresh remains available while
+automation is paused. Before upgrading an existing bridge, review these global
+settings; enabling them also affects Claude actions. The upgrade does not silently
+change them.
 
 ## Errors and recovery
 
@@ -135,6 +165,10 @@ Errors have fixed `routing_*` codes. `routing_stale` means refresh the collector
 `routing_unavailable` means no validated eligible account was found;
 `routing_binding_changed` requires rechecking enrollment;
 `routing_refresh_failed` requires native authentication inspection;
+`routing_monitor_only`, `routing_switching_disabled`, `routing_automation_paused`
+and `routing_selection_held` explain suppressed autonomous rollover;
+`routing_state_changed` means controls changed during validation and selection must
+be prepared again. These codes never authorize replaying an admitted turn.
 Older loaded bridges can still report `routing_busy` for active follow-ups.
 Check their running revision; this implementation removes that blanket rejection.
 `routing_model_changed` defers a switch when active models change during validation;
@@ -168,6 +202,7 @@ installation/removal and token redaction. Run:
 ```powershell
 node --test tests/test-t3-codex.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-routing.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-migration.ps1
 python tests/test_delivery.py
 ```
 

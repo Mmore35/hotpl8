@@ -12,9 +12,9 @@ function Test-Hotpl8FutureReset($Reset,[datetimeoffset]$Now,[switch]$Unix) {
 function Test-Hotpl8OverviewPercent($Value) {
     return ((Test-Hotpl8Number $Value) -and $Value -ge 0 -and $Value -le 100)
 }
-function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+function Get-Hotpl8NativeOverview($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,[string]$Family) {
     $result=[ordered]@{}
-    foreach($provider in @('claude','codex')){
+    foreach($provider in @($Family)){
         $part=if($provider -eq 'claude'){$Policy}else{$Policy.codex}
         $configured=if($provider -eq 'claude'){@($Policy.prefer|Where-Object {$null -ne $_})}else{@($part.slots|Where-Object {$_}|ForEach-Object {$_.id})}
         $ids=@($configured|Where-Object {$_ -notin @($part.disabled)}|Select-Object -Unique)
@@ -45,6 +45,7 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
                 $short=$fresh -and (Test-Hotpl8OverviewPercent $w5.used) -and ($w5.rolledOver -or (Test-Hotpl8FutureReset $w5.resetAt $Now) -or ($s.cold -and $s.used5h -eq 0 -and -not $s.reset5h))
                 $modelBlock=Get-ClaudeModelBlock $s.scoped $Policy ([int]$id) $Now $s.observedAt
                 $e=@{h5=$(if($short){100-[double]$w5.used}else{$null});h7=$remaining;fresh=[bool]($short -and $weekly);modelBlocked=[bool]$modelBlock;obj=@{usage=@{fiveHour=@{resetsAt=$w5.resetAt};sevenDay=@{resetsAt=$w7.resetAt}}}}
+                $e.observation=ConvertTo-Hotpl8ClaudeObservation $s $Policy $Now
                 $claudeAccounts[[int]$id]=$e
                 $eligible=(Test-Ok $e ([double]$Policy.margin5h) (Get-Margin7dFor $Policy $id)) -and $e.h5 -gt 0 -and $remaining -gt 0
                 if($fresh){$reason=if($modelBlock){$modelBlock}elseif($eligible){'eligible'}elseif(-not $weekly -or -not $short){'window_unmeasured'}else{'below_margin'}}elseif($s -and $s.status -eq 'ok'){$reason='stale'}
@@ -81,7 +82,7 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
             if($hold -and -not (Test-Hotpl8FutureReset $hold.until $Now)){$hold=$null}
             if($total){$selected=Select-CodexSlot $codexAccounts $part $meter $Snapshot.providers.codex.recommendedSlot $hold $Now $Snapshot.providers.codex.critical.$meter}
             if($ready -and -not $selected){$availability='Account available - selection held'}
-            $automation='existing sessions keep their account'
+            $automation='native launches; managed sessions need adoption evidence'
         }
         $health=Get-Hotpl8Health $Snapshot.collector $Now $provider
         if($total -and @($members|Where-Object reason -EQ 'stale').Count -eq $total){$availability='Readings stale - refresh'}
@@ -93,6 +94,19 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
         if($capacity.critical.active){foreach($member in $members){if($member.slot -in $capacity.critical.ranked){$member.eligible=$true;$member.reason='critical_allowance'}}}
         if($capacity.critical.active -and $selected){$availability=if($provider -eq 'codex'){'Ready for next launch / critical'}else{'Ready / critical'}}
         $result[$provider]=[pscustomobject]@{schemaVersion=2;capacity=$capacity;immediate=$immediate;computedAt=$Now.ToString('o');metric='normalized-weekly-headroom';scope=$meter;accounts=$total;measured=$measured;disabled=($configured.Count-$ids.Count);duplicates=$duplicates;knownRemainingPercent=$known;unknownPercent=$unknown;remainingPercent=$(if($total -and $measured -eq $total){$known}else{$null});includesReserve=(@($members|Where-Object reserve).Count -gt 0);availability=$availability;automation=$automation;collectionHealth=$health;selected=$selected;members=$members}
+    }
+    return [pscustomobject]$result
+}
+function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    if(-not $Policy){$Policy=[pscustomobject]@{}}
+    $result=[ordered]@{}
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy -IncludeUnconfigured)){
+        $view=Get-Hotpl8ProviderView $Snapshot $Policy $r.id
+        $native=Get-Hotpl8NativeOverview $view.snapshot $view.policy $Now $view.provider
+        $value=$native.($view.provider)
+        $value|Add-Member NoteProperty name $r.name -Force
+        $value|Add-Member NoteProperty driver $r.driver -Force
+        $result[$r.id]=$value
     }
     return [pscustomobject]$result
 }
@@ -137,10 +151,10 @@ function Get-Hotpl8CapacityDisplay($ProviderOverview) {
     }
 }
 function Format-Hotpl8Overview($Overview) {
-    foreach($provider in @('claude','codex')){
+    foreach($provider in @($Overview.PSObject.Properties|ForEach-Object Name)){
         $p=$Overview.$provider
         $display=Get-Hotpl8CapacityDisplay $p
-        $provider.ToUpper()+': '+$display.state+'; '+$p.availability+'; '+$p.automation
+        $(if($p.name){$p.name.ToUpper()}else{$provider.ToUpper()})+': '+$display.state+'; '+$p.availability+'; '+$p.automation
         if($p.capacity){
             $c=$p.capacity
             $display=Get-Hotpl8CapacityDisplay $p
@@ -149,7 +163,7 @@ function Format-Hotpl8Overview($Overview) {
             if($null -ne $display.gain){'  Next reset: +{0:0.#}% {1} at {2}; assumes no further consumption.' -f $display.gain,$(if($display.weekly){'weekly'}else{'available'}),$display.nextResetAt}
         }
         if($p.includesReserve){'  Includes reserve allowance.'}
-        if($provider -eq 'claude' -and $p.capacity){
+        if($p.driver -eq 'claude-cswap' -and $p.capacity){
             $profiles=@($p.capacity.accounts|Where-Object profile|ForEach-Object {$_.slot+'='+$_.profile})
             if($profiles.Count){'  Profiles: '+($profiles -join ', ')}
         }

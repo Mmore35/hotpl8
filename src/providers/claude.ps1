@@ -1,82 +1,36 @@
 ﻿# Claude adapter. Historical incident comments and behavior retained from tick.ps1.
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'warming.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'forecast.ps1')
-. (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'provider-observation.ps1')
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'provider-actions.ps1')
 . (Join-Path $PSScriptRoot 'claude-plans.ps1')
 function Get-ClaudeModelBlock($Scopes,$Policy,[int]$Slot,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,$ObservedAt=$null) {
-    foreach($model in @($Policy.claudeModels|Where-Object {$_})){
-        $scope=@($Scopes|Where-Object name -EQ $model)
-        if($scope.Count -ne 1 -or -not (Test-Hotpl8Number $scope[0].pct) -or $scope[0].pct -lt 0 -or $scope[0].pct -gt 100){return 'model_quota_unknown'}
-        $at=$null
-        try{$at=[datetimeoffset]::Parse($scope[0].resetsAt)}catch{}
-        # A scoped window we read before its own reset, whose reset has now
-        # passed, refilled and stops blocking the slot; an unreadable or
-        # already-expired-on-arrival anchor still does (Resolve-Hotpl8Window).
-        $resolved=Resolve-Hotpl8Window $scope[0].pct $scope[0].resetsAt $ObservedAt $Now
-        if($null -eq $at -or ($at -le $Now -and -not $resolved.rolledOver)){return 'model_reset_unconfirmed'}
-        if(100-[double]$resolved.used -lt (Get-Margin7dFor $Policy $Slot) -or $resolved.used -ge 100){return 'model_below_margin'}
-    }
-    return $null
+    if(-not @($Policy.claudeModels|Where-Object {$_}).Count){return $null}
+    $stamp=if($ObservedAt){$ObservedAt}else{$Now.ToString('o')}
+    $windows=@(foreach($model in @($Policy.claudeModels|Where-Object {$_})){
+        $matches=@($Scopes|Where-Object name -CEQ $model);$scope=if($matches.Count -eq 1){$matches[0]}else{$null}
+        [pscustomobject]@{name=[string]$model;scope=[string]$model;role='scoped';state=$(if($scope){'observed'}else{'unknown'});required=$true;usedPercent=$scope.pct;resetAt=$scope.resetsAt;observedAt=$stamp;resetConfirmed=[bool]$scope.resetsAt;resetRequired=$true}
+    })
+    $decision=Get-Hotpl8ProviderDecision @(@{id=[string]$Slot;status='ok';observedAt=$stamp;windows=$windows}) $Policy @{intent='observe';eligibilityOnly=$true} $Now
+    $reason=$decision.accounts[0].reason
+    if($reason -eq 'eligible'){return $null}
+    if($reason -eq 'below_margin'){return 'model_below_margin'}
+    if($reason -eq 'reset_unconfirmed'){return 'model_reset_unconfirmed'}
+    return 'model_quota_unknown'
 }
 function Test-Ok($e, $m, $margin7d) {
-    if ($null -eq $e) { return $false }
-    if ($e.modelBlocked) { return $false }
-    if (-not $e.fresh) { return $false }          # stale/unknown usage is never eligible
-    if ($null -eq $e.h5) { return $false }
-    if ($e.h5 -lt $m) { return $false }
-    # 7d absent => UNKNOWN, and unknown is ineligible. THIS RULE FLIPPED ON 2026-08-20;
-    # read both halves before changing it back.
-    #
-    # Until then the opposite was correct: slot 2 genuinely had NO 7-day ceiling --
-    # confirmed by the owner 2026-08-14 against Claude's own UI, where slots 1 and 3
-    # showed theirs and slot 2 showed none anywhere -- so absent was a fact about the
-    # account, not a gap in our reading, and failing closed would have demoted the one
-    # account most worth draining. That was written up as a bug and reverted; see
-    # me/deep-dive/CSWAP-OPERATING-RULES.md, "SECOND BUG ... RESOLVED -- NOT A BUG".
-    #
-    # On 2026-08-20 the owner confirmed Anthropic patched that glitch and slot 2 gained a
-    # weekly window. Verified the same day against `cswap list --json`: all three accounts
-    # report a real sevenDay pct and resetsAt. Absent therefore no longer describes any
-    # account he owns -- it can only mean the reading failed -- and spending an unknown
-    # weekly budget optimistically is how the fleet lands on an exhausted account.
-    #
-    # The `fresh` check above does NOT already cover this: fresh means the usage blob is
-    # recent, not that both windows are present in it.
-    # Kept deliberately in step with ops-bot's slots.ps1 Test-SlotUsable, which made the
-    # same flip on the same day -- two engines, one rule.
-    if ($null -eq $e.h7) { return $false }
-    if ($e.h7 -lt $margin7d) { return $false }
-    return $true
+    # Compatibility for already-evaluated headroom. Raw native observations use
+    # ConvertTo-Hotpl8ClaudeObservation so original timestamps remain authoritative.
+    $now=[datetimeoffset]::UtcNow
+    $windows=@(foreach($shape in @(@('300','short','h5'),@('10080','weekly','h7'))){
+        [pscustomobject]@{name=$shape[0];scope='';role=$shape[1];state='observed';required=$true;usedPercent=$(if(Test-Hotpl8Number $e.($shape[2])){100-[double]$e.($shape[2])}else{$null});resetAt=$null;observedAt=$now.ToString('o');resetConfirmed=$false}
+    })
+    $account=@{id='headroom';status=$(if($e.fresh){'ok'}else{'stale'});observedAt=$now.ToString('o');windows=$windows;blockedReason=$(if($e.modelBlocked){'model_quota_unknown'}else{$null})}
+    $decision=Get-Hotpl8ProviderDecision @($account) @{margin5h=$m;margin7d=$margin7d} @{intent='observe';eligibilityOnly=$true} $now
+    return $decision.accounts[0].eligible
 }
-
 function Get-Margin7dFor($policy, $n) {
-    # The weekly buffer is RESERVE-ONLY as of 2026-08-28. Work slots drain to
-    # `margin7dWork` (5 => 95% used); the reserve keeps `margin7d` (20 => 80%).
-    #
-    # The buffer exists to leave capacity for coming back to. The fleet already
-    # holds that on ONE slot -- `reserve`, which is what the label means -- so
-    # applying the same 20% to every slot reserves the same thing three times.
-    # Measured 2026-08-27: slots 2 and 3 sat at 88%/84% weekly with 28% of the
-    # week's budget refused, slot 3 idle with 64% of its 5h window free, while
-    # slot 1 (reserve) had 78% of its week untouched. A 7d window is
-    # use-it-or-lose-it against a fixed calendar reset -- unspent quota
-    # evaporates, it does not bank -- so that 28% was pure loss.
-    #
-    # `margin7d` is the FALLBACK when `margin7dWork` is absent, deliberately: an
-    # older policy.json (or another machine's, this file is shared via
-    # personal-sync) then behaves exactly as it did before this change rather
-    # than silently inheriting a laxer ceiling it never opted into.
-    #
-    # NOT the same as burn-sweep's 80% ceiling, and that divergence is intended.
-    # burn-sweep spends while the owner is AWAY, where capacity-on-return is the
-    # whole question; the tick serves him at the keyboard, where a buffer he is
-    # sitting next to is dead weight. Two actors, two ceilings. burn-sweep never
-    # reads this file.
-    $base = if ($null -ne $policy.margin7d) { [double]$policy.margin7d } else { 20.0 }
-    $reserve = @(); if ($policy.reserve) { $reserve = @($policy.reserve | ForEach-Object { [int]$_ }) }
-    if ($reserve -contains [int]$n) { return $base }
-    if ($null -ne $policy.margin7dWork) { return [double]$policy.margin7dWork }
-    return $base
+    Get-Hotpl8ProviderMargin $policy @{reserve=([string]$n -in @($policy.reserve|ForEach-Object {[string]$_}))} @{role='weekly'}
 }
 
 function Get-WarmMin7dFor($policy, $n) {
@@ -439,54 +393,8 @@ function Get-ResetEpoch($a) {
 }
 
 function Get-RankedOrder($policy, $prefer, $acc, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    # Drain order. `prefer` is the fallback; `order: soonest-reset` re-sorts by which
-    # window PERISHES FIRST -- quota in a window that expires in 20 minutes is worth
-    # more right now than the same quota in one that expires in four hours, because
-    # only one of them is about to vanish. Classic shortest-expiry-first.
-    #
-    # A COLD slot sorts LAST, deliberately: it has no expiry at all, so its quota is
-    # not perishing and spending it now would waste a window that could have been
-    # started later.
-    #
-    # `reserve` slots are ALWAYS last regardless of ordering -- the personal sub stays
-    # the last resort no matter how attractive its reset time looks.
-    #
-    # DEGRADED slots -- those past the preferred weekly ceiling (`margin7d`, 80% used)
-    # but still eligible under the work margin -- sort after every healthy slot, and
-    # among themselves by MOST WEEKLY HEADROOM FIRST rather than by reset time.
-    # Deliberately a different key: down there the week is the binding constraint, not
-    # the 5h window, so "which of these has the most week left" is the only question
-    # that matters. Ranking two nearly-spent slots by 5h reset can hand you the one
-    # with 12% of its week over the one with 16%, which is backwards.
-    # Healthy fleets never reach this branch, so `soonest-reset` behaviour is unchanged.
-    $order   = if ($policy.order) { [string]$policy.order } else { 'prefer' }
-    $reserve = @(); if ($policy.reserve) { $reserve = @($policy.reserve | ForEach-Object { [int]$_ }) }
-    $pref7d  = if ($null -ne $policy.margin7d) { [double]$policy.margin7d } else { 20.0 }
-    $rows = @()
-    for ($i = 0; $i -lt @($prefer).Count; $i++) {
-        $n = [int]$prefer[$i]
-        $e = $acc[$n]
-        $key = [double]$i
-        if ($order -eq 'soonest-reset') {
-            $key = [double]::MaxValue
-            if ($e) { $r = Get-ResetEpoch $e.obj; if ($null -ne $r) { $key = [double]$r } }
-        }
-        # h7 null => not judged degraded. Test-Ok already rejects it outright, so
-        if($order -in @('weekly-expiry','balanced') -and $e){$key=Get-Hotpl8SelectionKey $order $e.h5 $e.h7 $e.obj.usage.sevenDay.resetsAt $Now}
-        # there is nothing to order and inventing a rank would only obscure that.
-        $deg = 0
-        if ($e -and $null -ne $e.h7 -and [double]$e.h7 -lt $pref7d) {
-            $deg = 1
-            # Negated so DESCENDING headroom falls out of the same ascending sort.
-            # Safe to overwrite $key: the `deg` column above keeps the two groups from
-            # ever interleaving, so the healthy ordering cannot be perturbed by this.
-            $key = -([double]$e.h7)
-        }
-        $rows += [pscustomobject]@{
-            n = $n; tier = $(if ($reserve -contains $n) { 1 } else { 0 })
-            deg = $deg; key = $key; idx = $i }
-    }
-    return @($rows | Sort-Object tier, deg, key, idx | ForEach-Object { $_.n })
+    $decision=Get-ClaudeProviderDecision $policy $prefer $acc 0 $Now
+    return @($decision.allRanked|ForEach-Object {[int]$_})
 }
 
 function Get-PhaseOffsetOf($a) {
@@ -524,66 +432,46 @@ function Resolve-CswapExecutable([string]$CswapExecutable) {
     }
     return $cswap
 }
+function Get-ClaudeProviderDecision($Policy,$Prefer,$Accounts,[int]$Active,[datetimeoffset]$Now,$CriticalState=$null,$Context=$null) {
+    # Legacy Claude omitted these fields as zero. Registered views already carry
+    # descriptor defaults; preserve explicit values without mutating either input.
+    $decisionPolicy=@{}
+    if($Policy -is [Collections.IDictionary]){foreach($key in $Policy.Keys){$decisionPolicy[$key]=$Policy[$key]}}
+    else{foreach($property in $Policy.PSObject.Properties){$decisionPolicy[$property.Name]=$property.Value}}
+    foreach($key in @('margin5h','hysteresis')){if($null -eq $decisionPolicy[$key]){$decisionPolicy[$key]=0}}
+    $observations=@(foreach($id in $Prefer){ConvertTo-Hotpl8ClaudeEntryObservation $id $Accounts[[int]$id] $Policy $Now -ForWarm:($Context.intent -eq 'warm' -and [string]$id -ceq [string]$Context.actionSlot)})
+    $slots=@(foreach($id in $Prefer){$e=$Accounts[[int]$id];[pscustomobject]@{slot=$id;status=$(if($e.fresh -and -not $e.modelBlocked){'ok'}else{'unavailable'});fresh=[bool]$e.fresh;observedAt=$(if($e.observedAt){$e.observedAt}else{$Now.ToString('o')});used5h=$(if(Test-Hotpl8Number $e.h5){100-$e.h5}else{$null});used7d=$(if(Test-Hotpl8Number $e.h7){100-$e.h7}else{$null});reset5h=$e.obj.usage.fiveHour.resetsAt;reset7d=$e.obj.usage.sevenDay.resetsAt;scoped=$e.obj.usage.scoped}})
+    $capacity=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{slots=$slots}) $Policy 'claude' $Now)
+    $observations=@(Add-Hotpl8ObservationCapacity $observations $capacity)
+    if(-not $Context){$Context=@{intent='observe';previousId=[string]$Active;bindingKnown=($Active -gt 0);criticalState=$CriticalState}}
+    Get-Hotpl8ProviderDecision $observations $decisionPolicy $Context $Now
+}
 function Get-ClaudeSelection($policy, $prefer, $acc, [int]$active, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, $CriticalState=$null) {
-    $critical=Get-Hotpl8ClaudeCritical $policy $acc $active $CriticalState $Now
-    if($critical.active -and $critical.ranked.Count){return @{target=$(if($critical.selected){[int]$critical.selected}else{$null});activeOk=([string]$active -in $critical.ranked);ranked=@($critical.ranked|ForEach-Object {[int]$_});critical=$critical}}
-    $orderMode=if($policy.order){$policy.order}else{'prefer'}
-    $m5=[double]$policy.margin5h; $hy=[double]$policy.hysteresis
-    $soonest   = ($orderMode -eq 'soonest-reset')
-    $leadMin   = if ($null -ne $policy.resetLeadMin) { [double]$policy.resetLeadMin } else { 10.0 }
-    $ranked   = Get-RankedOrder $policy $prefer $acc $Now
-    $activeOk = Test-Ok $acc[$active] $m5 (Get-Margin7dFor $policy $active)
-    $rankIdx  = [array]::IndexOf($ranked, $active)
-
-    if ($activeOk -and $rankIdx -ge 0) {
-        # Active is still serving. Only a BETTER-RANKED account may take over.
-        $candidates = if ($rankIdx -gt 0) { $ranked[0..($rankIdx - 1)] } else { @() }
-        # The hysteresis band exists because HEADROOM hovers near a margin and would
-        # flip-flop. Under a resetsAt ordering that failure mode cannot occur: a
-        # reset time is monotonic and two slots' relative order cannot change until
-        # one of them actually resets. So the band is not merely unnecessary there,
-        # it is HARMFUL -- it would block a takeover of a slot whose quota is about
-        # to expire, which is the entire point of the ordering. Replaced by a
-        # minimum lead time, which guards the only real risk (sub-second resetsAt
-        # jitter, W11, flapping two near-simultaneous slots).
-        $band = if ($soonest) { $m5 } else { $m5 + $hy }
-    } else {
-        # Active is spent (or unknown): take the first account that can serve at all.
-        $candidates = $ranked
-        $band = $m5
-    }
-
-    $target = $null
-    foreach ($n in $candidates) {
-        if (-not (Test-Ok $acc[$n] $band (Get-Margin7dFor $policy $n))) { continue }
-        if ($soonest -and $activeOk) {
-            # TIER ESCAPE. Leaving the reserve for a work sub is never subject to the
-            # lead requirement: the reserve exists to be abandoned as soon as anything
-            # else can serve. Without this, equal reset times would strand you on the
-            # personal sub indefinitely -- the exact outcome `reserve` exists to prevent.
-            $tierN = 0; $tierA = 0
-            if ($policy.reserve) {
-                $res = @($policy.reserve | ForEach-Object { [int]$_ })
-                if ($res -contains [int]$n)      { $tierN = 1 }
-                if ($res -contains [int]$active) { $tierA = 1 }
-            }
-            if ($tierN -ge $tierA) {
-                $rn = Get-ResetEpoch $acc[$n].obj
-                $ra = if ($acc[$active]) { Get-ResetEpoch $acc[$active].obj } else { $null }
-                # No lead is measurable (either side cold) => fall back to rank order.
-                if ($null -ne $rn -and $null -ne $ra -and (($ra - $rn) / 60.0) -lt $leadMin) { continue }
-            }
-        }
-        $target = $n; break
-    }
-
-    return @{ranked=@($ranked);target=$target;activeOk=$activeOk}
+    $decision=Get-ClaudeProviderDecision $policy $prefer $acc $active $Now $CriticalState
+    $target=if($decision.proposedSlot -and $decision.proposedSlot -ne [string]$active){[int]$decision.proposedSlot}else{$null}
+    return @{target=$target;activeOk=(@($decision.accounts|Where-Object {$_.id -eq [string]$active -and $_.eligible}).Count -eq 1);ranked=@($(if($decision.critical.active){$decision.ranked}else{$decision.allRanked})|ForEach-Object {[int]$_});critical=$decision.critical;decision=$decision}
 }
 
-function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecutable, [switch]$ObserveOnly) {
+function Test-Hotpl8ClaudeActionAuthorization($Policy,$Prefer,$Accounts,[int]$Active,$CriticalState,[string]$Intent,[string]$Target,[string]$Directory,[string]$Generation) {
+    try {
+        $decision=Invoke-Hotpl8ActionAuthorization $Directory $Generation {
+            $now=[datetimeoffset]::UtcNow
+            $context=[pscustomobject]@{intent=$Intent;previousId=[string]$Active;bindingKnown=($Active -gt 0);criticalState=$CriticalState;actionSlot=$Target;actionEligible=$true}
+            $context=Get-Hotpl8ProviderActionContext $Policy $Directory $context $now
+            Get-ClaudeProviderDecision $Policy $Prefer $Accounts $Active $now $CriticalState $context
+        }
+        return ($decision.actionPermitted -and $decision.targetSlot -ceq $Target)
+    } catch {
+        if($_.Exception.Message -in @('action_state_changed','action_control_busy','action_state_unavailable')){return $false}
+        throw
+    }
+}
+function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecutable, [switch]$ObserveOnly,[string]$ControlDirectory,[string]$ControlGeneration,[string]$ProviderId='claude') {
     if (-not $policy.prefer) { return $null }
+    if(-not $ControlDirectory){$ControlDirectory=$StateDirectory}
+    if(-not $ControlGeneration){$ControlGeneration=Get-Hotpl8ControlGeneration $ControlDirectory}
     $actions=Get-Hotpl8Actions $policy ([bool]$ObserveOnly)
-    if(Get-Hotpl8Pause $StateDirectory){$actions.switching=$false;$actions.warming=$false;$actions.probing=$false}
+    if(Get-Hotpl8Pause $ControlDirectory){$actions.switching=$false;$actions.warming=$false;$actions.probing=$false}
     $cswap=Resolve-CswapExecutable $CswapExecutable
     if (-not $cswap) { throw 'claude_missing' }
     $read=Invoke-Hotpl8Process $cswap @('list','--json') 20000
@@ -640,6 +528,13 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $entry.observedAt=if($valid -and (Test-Hotpl8Number $a.usageAgeSeconds) -and $a.usageAgeSeconds -ge 0){[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.usageAgeSeconds).ToString('o')}else{$null}
         $entry.modelReason=Get-ClaudeModelBlock $a.usage.scoped $policy ([int]$a.number) ([datetimeoffset]::UtcNow) $entry.observedAt
         $entry.modelBlocked=[bool]$entry.modelReason
+        $entry.observation=ConvertTo-Hotpl8ClaudeEntryObservation $a.number $entry $policy ([datetimeoffset]::UtcNow)
+        $warmObservation=ConvertTo-Hotpl8ClaudeEntryObservation $a.number $entry $policy ([datetimeoffset]::UtcNow) -ForWarm
+        $entry.warmFresh=$entry.fresh -and (ConvertTo-Hotpl8ProviderAccount $warmObservation $policy @() ([datetimeoffset]::UtcNow)).valid
+        $normalized=ConvertTo-Hotpl8ProviderAccount $entry.observation $policy @() ([datetimeoffset]::UtcNow)
+        $entry.h5=$normalized.shortRemaining;$entry.h7=$normalized.weeklyRemaining
+        $entry.fresh=$entry.fresh -and $normalized.valid
+
     }
 
     $outcomes=Read-Hotpl8WarmOutcomes $StateDirectory
@@ -649,7 +544,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             $priorOutcome=$outcomes.$key.outcome
             $updated=Update-Hotpl8WarmOutcome $outcomes.$key $e.identity $e.observedAt $e.obj.usage.fiveHour.resetsAt $e.fresh
             $outcomes|Add-Member NoteProperty $key $updated -Force
-            if($updated.outcome -ne $priorOutcome -and (Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue)){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$n) 'warm_outcome' $updated.outcome}
+            if($updated.outcome -ne $priorOutcome -and (Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue)){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'warm_outcome' $updated.outcome}
         }
     }
     if(@($outcomes.PSObject.Properties).Count){Save-Hotpl8WarmOutcomes $StateDirectory $outcomes}
@@ -670,15 +565,15 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     # Disabling the scheduled task would stop all of that instead, and would remove
     # the only component still running that could heal the state afterwards. Never
     # switch the watchdog off; teach it to stand down.
-    $hold       = Get-Hold $StateDirectory
+    $hold       = Get-Hold $ControlDirectory
     $heldSwitch = ($null -ne $hold) -and ($null -ne $target) -and ($target -ne $active)
 
     $switched = $false
-    if ($actions.switching -and $null -ne $target -and $target -ne $active -and $null -eq $hold) {
+    if ($actions.switching -and $null -ne $target -and $target -ne $active -and $null -eq $hold -and (Test-Hotpl8ClaudeActionAuthorization $policy $prefer $acc $active $criticalPrior 'rebind' ([string]$target) $ControlDirectory $controlGeneration)) {
         $switchResult=Invoke-Hotpl8Process $cswap @('switch',[string]$target) 20000
         if ($switchResult.exitCode -eq 0) {
             $switched = $true; $active = $target
-            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$target) 'switch' 'native_switch_succeeded'}
+            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$target) 'switch' 'native_switch_succeeded'}
         }
         else { throw 'claude_switch_failed' }
     }
@@ -742,7 +637,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         foreach ($n in $prefer) {
             $e = $acc[$n]
             if (-not $e)          { continue }
-            if (-not $e.fresh)    { continue }   # never act on stale usage (new-5)
+            if (-not $e.warmFresh){ continue }   # fresh cold facts, independent of admission reset evidence
             if (-not $e.cold)     { continue }   # window already live -- nothing to open
             # Do NOT add a "never warm the active slot" guard here. It was tried on
             # 2026-09-05 and is wrong twice over. The tick's normal flow is to switch
@@ -787,12 +682,13 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             # to wedge the timer (the task is registered IgnoreNew). Remaining cold
             # slots are picked up by the next tick 5 minutes later, which is far
             # inside the 5h window this is protecting.
-            if($e.modelBlocked -or (Get-Hotpl8ActionBlock $policy $StateDirectory 'claude' ([string]$n) 'warm')){continue}
+            if($e.modelBlocked -or (Get-Hotpl8ActionBlock $policy $StateDirectory $ProviderId ([string]$n) 'warm')){continue}
             $outcomeKey='claude:'+ $n
             if(Test-Hotpl8WarmPending $outcomes.$outcomeKey $e.identity){continue}
-            Add-Hotpl8Attempt $StateDirectory 'claude' ([string]$n)
+            if(-not (Test-Hotpl8ClaudeActionAuthorization $policy $prefer $acc $active $criticalPrior 'warm' ([string]$n) $ControlDirectory $controlGeneration)){continue}
+            Add-Hotpl8Attempt $StateDirectory $ProviderId ([string]$n)
             # Persist before dispatch. A crash cannot cause an immediate duplicate prompt.
-            $outcome=New-Hotpl8WarmOutcome 'claude' ([string]$n) $e.identity 'fiveHour' $true
+            $outcome=New-Hotpl8WarmOutcome $ProviderId ([string]$n) $e.identity 'fiveHour' $true
             $outcome.outcome='requested'
             $outcomes|Add-Member NoteProperty $outcomeKey $outcome -Force
             Save-Hotpl8WarmOutcomes $StateDirectory $outcomes
@@ -800,7 +696,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             $outcome.outcome=if($ok){'sent'}else{'failed'}
             $outcomes|Add-Member NoteProperty $outcomeKey $outcome -Force
             Save-Hotpl8WarmOutcomes $StateDirectory $outcomes
-            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$n) 'warm_attempt' $outcome.outcome}
+            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'warm_attempt' $outcome.outcome}
 
             # Stamped either way: a slot that fails to warm must back off to $wFloor,
             # not be retried every 5 minutes forever. But only a REAL ping counts as a
@@ -855,10 +751,11 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 if ((([datetimeoffset]::UtcNow - [datetimeoffset]::Parse($last)).TotalSeconds) -lt $staleS) { continue }
             } catch { }
         }
-        if(Get-Hotpl8ActionBlock $policy $StateDirectory 'claude' ([string]$n) 'probe'){continue}
-        Add-Hotpl8Attempt $StateDirectory 'claude' ([string]$n)
+        if(Get-Hotpl8ActionBlock $policy $StateDirectory $ProviderId ([string]$n) 'probe'){continue}
+        if(-not (Test-Hotpl8ClaudeActionAuthorization $policy $prefer $acc $active $criticalPrior 'probe' ([string]$n) $ControlDirectory $controlGeneration)){continue}
+        Add-Hotpl8Attempt $StateDirectory $ProviderId ([string]$n)
         $pok = Invoke-SlotPing $cswap $n ([string]$e.obj.email) $StateDirectory 'probe'
-        if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$n) 'recovery_probe' $(if($pok){'sent'}else{'failed'})}
+        if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'recovery_probe' $(if($pok){'sent'}else{'failed'})}
         $probed += $n
         if ($pok) { $revived += $n }
         $pstate["$n"] = [datetimeoffset]::UtcNow.ToString('o')
@@ -1045,7 +942,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 streamKey = Get-Hotpl8Hash ($StateDirectory+'|usage|'+$e.identity)
                 scoped = @($e.obj.usage.scoped)
                 warmOutcome = $outcomes.('claude:'+ $n) | Select-Object schemaVersion,id,provider,slot,meter,sentAt,expiresAt,outcome,observedAt,resetAt
-                actionBlock = Get-Hotpl8ActionBlock $policy $StateDirectory 'claude' ([string]$n) 'warm'
+                actionBlock = Get-Hotpl8ActionBlock $policy $StateDirectory $ProviderId ([string]$n) 'warm'
                 modelBlock = $e.modelReason
                 status     = [string]$e.obj.usageStatus
                 used5h     = $(if ($f -and $null -ne $f.pct) { [double]$f.pct } else { $null })

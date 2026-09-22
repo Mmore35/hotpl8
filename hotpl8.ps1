@@ -1,4 +1,4 @@
-﻿# refresh observes; tick applies policy. Authentication belongs to native provider tools.
+# refresh observes; tick applies policy. Authentication belongs to native provider tools.
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
@@ -17,8 +17,9 @@ param(
     [Nullable[double]]$FiveHourCapacity,
     [switch]$ReducedMotion,
     [switch]$NoColor,
-    [ValidateSet('claude','codex')][string]$Provider = 'codex',
-    [ValidateSet('list','rename','enable','disable','reserve','work','capacity','clear','dismiss')][string]$Operation = 'list',
+    [string]$Provider = 'codex',
+    [switch]$MigratePolicy,
+    [ValidateSet('list','rename','enable','disable','reserve','work','capacity','remove','clear','dismiss')][string]$Operation = 'list',
     [ValidateRange(1,10080)][int]$Minutes = 60,
     [switch]$Interactive,
     [switch]$Once,
@@ -86,7 +87,7 @@ try {
         'codex [-Slot ID] [-Model ID] [native arguments]; resume requires -Slot.'
         'All commands accept -StateDirectory PATH. See docs/usage.md.'
         'setup [-Interactive]: guided, monitoring-first enrollment for either provider.'
-        'accounts -Provider claude|codex [-Slot ID -Operation rename|enable|disable|reserve|work -Label NAME]'
+        'accounts -Provider REGISTERED_ID [-Slot ID -Operation rename|enable|disable|reserve|work -Label NAME]'
         'explain [-AsJson]: recorded selection reasons. capabilities [-AsJson]: offline readiness.'
         'pause [-Minutes 60] / resume: persistent automation pause; collection continues.'
         'history [-Operation clear]: inspect retention or delete local usage history.'
@@ -170,13 +171,10 @@ try {
     }
     if($Command -eq 'accounts'){
         if($Operation -eq 'list'){
-            $rows=@(
-                foreach($n in @($policy.prefer)){if($n){[pscustomobject]@{provider='claude';slot=$n;label=$policy.labels.([string]$n);capacity=$policy.capacity.([string]$n);disabled=($n -in @($policy.disabled));reserve=($n -in @($policy.reserve))}}}
-                foreach($s in @($policy.codex.slots)){if($s){[pscustomobject]@{provider='codex';slot=$s.id;label=$s.label;capacity=$policy.codex.capacity.([string]$s.id);disabled=($s.id -in @($policy.codex.disabled));reserve=($s.id -in @($policy.codex.reserve))}}}
-            )
+            $rows=@(Get-Hotpl8ProviderAccounts $policy)
             if($AsJson){ConvertTo-Json -InputObject $rows -Depth 6}else{$rows}
         }else{
-            if(-not $Slot -or $Operation -notin @('rename','enable','disable','reserve','work','capacity') -or ($Operation -eq 'rename' -and -not $Label)){throw 'Account changes require -Slot and a supported operation; rename also requires -Label.'}
+            if(-not $Slot -or $Operation -notin @('rename','enable','disable','reserve','work','capacity','remove') -or ($Operation -eq 'rename' -and -not $Label)){throw 'Account changes require -Slot and a supported operation; rename also requires -Label.'}
             $path=Join-Path $StateDirectory 'policy.json';$hash=(Get-FileHash $path -Algorithm SHA256).Hash
             # Read after hashing so concurrent edits are rejected when committing.
             $policy=Read-Hotpl8Json $path
@@ -190,9 +188,19 @@ try {
         if($Operation -notin @('list','clear')){throw 'History supports list or clear.'}
         if($Operation -eq 'clear'){
             $historyLock=$null
-            try{$historyLock=[IO.File]::Open((Join-Path $StateDirectory 'tick.lock'),'OpenOrCreate','ReadWrite','None');Write-Hotpl8Text (Join-Path $StateDirectory 'usage-history.json') '{"schemaVersion":1,"samples":[]}'}finally{if($historyLock){$historyLock.Dispose()}}
-            'Usage history cleared. Set historyEnabled to false to stop recording.'
-        }else{$h=Read-Hotpl8Json (Join-Path $StateDirectory 'usage-history.json');[pscustomobject]@{enabled=($policy.historyEnabled -eq $true);samples=@($h.samples|Where-Object {$_}).Count;retentionDays=14;maximumSamples=4096}|ConvertTo-Json}
+            try{
+                $historyLock=[IO.File]::Open((Join-Path $StateDirectory 'tick.lock'),'OpenOrCreate','ReadWrite','None')
+                $currentPolicy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json');Assert-Hotpl8Policy $currentPolicy
+                foreach($store in @(Get-Hotpl8HistoryStores $currentPolicy $StateDirectory)){
+                    $historyPath=Join-Path $store.directory 'usage-history.json'
+                    if(Test-Path -LiteralPath $historyPath){Write-Hotpl8Text $historyPath '{"schemaVersion":1,"samples":[]}'}
+                }
+            }finally{if($historyLock){$historyLock.Dispose()}}
+            'Usage history cleared for configured provider stores. Set historyEnabled to false to stop recording. Unregistered provider history is retained.'
+        }else{
+            $stores=@(Get-Hotpl8HistoryStores $policy $StateDirectory);$total=0;foreach($store in $stores){$total+=$store.samples}
+            [pscustomobject]@{enabled=($policy.historyEnabled -eq $true);samples=$total;retentionDays=14;maximumSamples=(4096*$stores.Count);maximumSamplesPerStore=4096;stores=@($stores|Select-Object providers,samples)}|ConvertTo-Json -Depth 5
+        }
         exit 0
     }
     if($Command -eq 'tray'){
@@ -202,17 +210,10 @@ try {
     }
 
     if ($Command -eq 'enroll') {
-        if($Provider -eq 'claude'){
-            if($AccountHome -or $CodexArguments){throw 'Claude enrollment uses an existing cswap slot, without a Codex home.'}
-            Add-Hotpl8ClaudeAccount $StateDirectory $Slot $Label;exit 0
-        }
-        if (-not $Slot -or -not $AccountHome) {
-            throw 'Use hotpl8 enroll -Slot main -AccountHome PATH. Sign into that home with native Codex first.'
-        }
-        if ($CodexArguments -or $Model -or $AsJson) {
-            throw 'Enrollment accepts -Slot, -AccountHome, and optional -Label; see hotpl8 help.'
-        }
-        & (Join-Path $PSScriptRoot 'setup-codex.ps1') -Slot $Slot -AccountHome $AccountHome -Label $Label -StateDirectory $StateDirectory -CodexExecutable $CodexExecutable
+        if(-not $Slot -or $CodexArguments -or $Model -or $AsJson){throw 'Enrollment requires -Slot, driver-specific -AccountHome, and optional -Label.'}
+        $enrollmentDriver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver
+        if($enrollmentDriver.slotKind -eq 'native-home' -and -not $AccountHome){throw 'Enrollment requires -Slot ID -AccountHome PATH for an existing native account home.'}
+        Add-Hotpl8RegisteredAccount $StateDirectory $Provider $Slot $AccountHome $Label $CodexExecutable -MigratePolicy:$MigratePolicy
         'Next: hotpl8 refresh, then hotpl8 to open the dashboard.'
         exit 0
     }
@@ -226,7 +227,7 @@ try {
         exit 0
     }
     if ($Command -in @('refresh', 'tick')) {
-        if (-not $policy.prefer -and -not $policy.codex.slots) {
+        if (-not @(Get-Hotpl8ProviderAccounts $policy).Count) {
             throw 'No accounts enrolled. Run hotpl8 enroll -Slot main -AccountHome PATH; Claude setup is in docs/install.md.'
         }
         & (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $StateDirectory -CodexExecutable $CodexExecutable -ObserveOnly:($Command -eq 'refresh') -Strict
@@ -253,25 +254,33 @@ try {
         if($pause){'AUTOMATION PAUSED: '+(ConvertTo-Hotpl8SafeText $pause.reason)}
         $age = ([datetimeoffset]::UtcNow - [datetimeoffset]::Parse($status.generatedAt)).TotalSeconds
         if ($age -gt 900 -or $age -lt -5) { 'STALE: refresh before relying on these readings.' }
-        ConvertTo-Hotpl8SafeText ('Claude: active slot ' + $status.active + ' | ' + $status.verdict)
-        foreach ($account in @($status.slots)) {
-            $fiveHour = if ($null -eq $account.used5h) { 'unknown' } else { [string](100 - $account.used5h) + '% remaining' }
-            $weekly = if ($null -eq $account.used7d) { 'unknown' } else { [string](100 - $account.used7d) + '% remaining' }
-            ConvertTo-Hotpl8SafeText ('  ' + $account.label + ' [' + $account.slot + '] 5h ' + $fiveHour + ' | 7d ' + $weekly + ' | ' + $account.status)
-            if($account.warmOutcome){'    warm: '+$account.warmOutcome.outcome}
-            if((Test-Hotpl8FreshTimestamp $account.observedAt) -and $account.forecast){'    '+(Format-Hotpl8Forecast $account.forecast)}
-        }
-        if ($status.providers.codex) {
-            Format-CodexStatus $status.providers.codex $policy.codex | ForEach-Object { ConvertTo-Hotpl8SafeText $_ }
-        } else {
-            'Codex: not configured or no observation yet.'
+        foreach($registration in @(Get-Hotpl8ConfiguredProviders $policy)){
+            $view=Get-Hotpl8ProviderView $status $policy $registration.id
+            if($view.provider -eq 'claude'){
+                ConvertTo-Hotpl8SafeText ($registration.name+': active slot '+$view.snapshot.active+' | '+$view.snapshot.verdict)
+                foreach($account in @($view.snapshot.slots)){
+                    $fiveHour=if($null -eq $account.used5h){'unknown'}else{[string](100-$account.used5h)+'% remaining'}
+                    $weekly=if($null -eq $account.used7d){'unknown'}else{[string](100-$account.used7d)+'% remaining'}
+                    ConvertTo-Hotpl8SafeText ('  '+$account.label+' ['+$account.slot+'] 5h '+$fiveHour+' | 7d '+$weekly+' | '+$account.status)
+                    if($account.warmOutcome){'    warm: '+$account.warmOutcome.outcome}
+                    if((Test-Hotpl8FreshTimestamp $account.observedAt) -and $account.forecast){'    '+(Format-Hotpl8Forecast $account.forecast)}
+                }
+            }elseif($view.snapshot.providers.codex){
+                Format-CodexStatus $view.snapshot.providers.codex $view.policy.codex|ForEach-Object {ConvertTo-Hotpl8SafeText ($_ -replace '^Codex', $registration.name)}
+            }else{$registration.name+': not configured or no observation yet.'}
         }
         exit 0
     }
 
-    if (-not $policy.codex) { throw 'No Codex slots configured.' }
-    $plan = Get-CodexLaunchPlan $policy.codex $status.providers.codex $Slot $Model $CodexArguments ([datetimeoffset]::UtcNow)
-    exit (Invoke-Hotpl8Codex $plan $StateDirectory $CodexExecutable (Get-Location).Path)
+    $launchControls=Get-Hotpl8ControlSnapshot $StateDirectory
+    $policy=$launchControls.policy;Assert-Hotpl8Policy $policy
+    $view=Get-Hotpl8ProviderView $status $policy $Provider
+    if(-not $view.registration.definition.capabilities.nativeLaunch -or $view.provider -ne 'codex'){throw 'Native launch is not supported by this registered driver.'}
+    if(-not $view.policy.codex.slots){throw 'No native account homes configured.'}
+    $context=Get-Hotpl8ProviderActionContext $policy $StateDirectory ([pscustomobject]@{intent='admit';bindingKnown=$false})
+    $plan=Get-CodexLaunchPlan $view.policy.codex $view.snapshot.providers.codex $Slot $Model $CodexArguments ([datetimeoffset]::UtcNow) $context
+    $launchState=Get-Hotpl8ProviderStateDirectory $StateDirectory $Provider
+    exit (Invoke-Hotpl8Codex $plan $launchState $CodexExecutable (Get-Location).Path -ControlDirectory $StateDirectory -ProviderId $Provider)
 } catch {
     [Console]::Error.WriteLine('HotPl8: ' + (ConvertTo-Hotpl8SafeText $_.Exception.Message))
     exit 1

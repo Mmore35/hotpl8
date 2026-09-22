@@ -89,6 +89,25 @@ history to roll code back. An operator recovery must hold the same update/runtim
 and application writer locks before changing the pointer. Retained immutable code
 does not make incompatible data/schema migrations reversible.
 
+Policy schema migration is allowed only after a compatible managed update commits.
+The candidate records `state/delivery-owner.json` during drain, before the code
+pointer changes; this ownership record survives code rollback. While holding the
+same writer lock as delivery, policy migration rejects any unfinished transaction
+and asks the committed release's own validators to read the proposed policy before
+changing policy or its backup. This also protects the first upgrade when the
+installed bootstrap still selects a previous runner without the newer recovery
+guard. Recovery refuses an incompatible previous reader before restoring its
+pointer or running component recovery, preserving the candidate and transaction
+for operator repair.
+
+For a custom installation created before ownership records existed, migrate policy
+through its installed `hotpl8` launcher, after its updater has adopted this release.
+Source commands with an arbitrary `-StateDirectory` cannot discover an undisclosed
+custom installation before adoption. Known installed-launcher and default-directory
+registrations are verified as a compatibility fallback; after adoption, the state
+ownership record also protects source commands without environment hints. Do not
+delete the ownership record to bypass a pending transaction or incompatible reader.
+
 ## Reusable protocol
 
 `delivery/runner.py` is Local Delivery protocol 1, a standalone standard-library
@@ -172,3 +191,18 @@ fresh process adoption, plus concurrent old work, missing components, failed
 readiness and interrupted rollback. New integrations should preserve native
 provider identities and labels where possible; exposing an internal router as a
 second model choice creates a separate conversation-migration obligation.
+
+For an existing two-provider T3 setup, the explicit gradual transition enrolls
+ordinary Codex in a distinct integration directory and retains the old alias.
+Both receipts join the existing inventory and follow the same verified pointer;
+neither an update nor rollback changes thread provider IDs or deletes the alias.
+Removing the ordinary integration restores its recorded original configuration
+while the retained alias continues receiving updates. A pending setup journal
+requires rerunning the explicit setup operation after host shutdown; automatic
+delivery does not resolve user settings conflicts or perform a conversation
+migration. See [T3 gradual transition](t3-integration.md#existing-two-provider-installations).
+
+Rollback and interrupted recovery validate the previous release against current
+state before restoring its pointer. State is never downgraded to satisfy an older
+reader. If that preflight fails, preserve the current pointer and transaction for
+an explicitly compatible recovery; no previous-release recovery side effects run.

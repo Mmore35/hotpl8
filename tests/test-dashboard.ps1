@@ -22,6 +22,11 @@ Check 'stale and failed readings offer a recovery action' {
     $text=((Render $c).text)-join "`n"
     Assert ($text.Contains('hotpl8 refresh') -and $text.Contains('hotpl8 doctor') -and $text.Contains('SIGN-IN NEEDED'))
 }
+Check 'healthy provider projections do not invent an unavailable account' {
+    Assert (-not (((Render).text)-join "`n").Contains('account unavailable'))
+    $c=Copy-Value $s;$c.providers.codex.slots[0].status='authentication_required'
+    Assert ((((Render $c).text)-join "`n").Contains('account unavailable'))
+}
 Check 'all accounts remain visible while Spark is excluded from the dashboard' {
     $t=((Render).text)-join "`n"
     Assert ($t.Contains('3 subscriptions') -and $t.Contains('1 subscription'))

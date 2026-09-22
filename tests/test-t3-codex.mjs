@@ -25,6 +25,44 @@ async function opened(h) {
   h.bridge.native({ id: 2, result: { thread: { id: 't' } } });
 }
 
+test('explicit admission and background rollover carry distinct intents and process dwell', async () => {
+  const h = harness();
+  const broker = h.bridge.broker;
+  const state = { active: true, selected: 'a', selectedAt: '2026-09-22T00:00:00Z' };
+  h.bridge.broker = async request => ({ ...await broker(request), criticalState: state });
+  await opened(h);
+  assert.equal(h.requests[0].intent, 'admit');
+  const confirmed = h.bridge.route.criticalState;
+  assert.equal(confirmed.active, true);
+  assert.equal(confirmed.selected, 'a');
+  assert.notEqual(confirmed.selectedAt, state.selectedAt);
+  h.bridge.native({ method: 'turn/started', params: { threadId: 't', turn: { id: 'turn' } } });
+  await h.bridge.observe();
+  assert.equal(h.requests.at(-1).intent, 'rebind');
+  assert.deepEqual(h.requests.at(-1).criticalState, confirmed);
+  assert.equal(h.bridge.route.criticalState.selectedAt, confirmed.selectedAt);
+  assert.equal(h.requests.at(-1).previousSlot, 'a');
+  h.bridge.close();
+});
+
+test('failed native apply invalidates the binding receipt without replaying work', async () => {
+  const h = harness(); await opened(h);
+  h.bridge.native({ method: 'turn/started', params: { threadId: 't', turn: { id: 'turn' } } });
+  const send = h.bridge.toNative;
+  h.bridge.toNative = message => {
+    if (message.method === 'account/login/start') {
+      h.native.push(message);
+      queueMicrotask(() => h.bridge.native({ id: message.id, error: { message: 'fixture failure' } }));
+    } else send(message);
+  };
+  const count = h.native.filter(m => m.method === 'turn/start').length;
+  h.select('b'); await h.bridge.observe();
+  assert.equal(h.bridge.route, null);
+  assert.equal(h.native.filter(m => m.method === 'turn/start').length, count);
+  assert.equal(h.bridge.active.get('t'), 'turn');
+  h.bridge.close();
+});
+
 test('initialization authenticates with ephemeral external tokens; no token reaches client', async () => {
   const h = harness(); await opened(h);
   assert.equal(h.bridge.initialized, true);

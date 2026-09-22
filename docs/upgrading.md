@@ -32,7 +32,9 @@ Uninstall from the extracted release:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1 -InstallDirectory "$env:LOCALAPPDATA\HotPl8"
 ```
 
-Owned scheduler/PATH/app files and this installation's exact optional HotPl8 hook commands are removed. State and native provider account homes, credentials, conversations, and unrelated hook handlers are retained. Invalid hook files or unknown files in an owned app directory stop deletion rather than being discarded.
+Owned scheduler/PATH/app files and this installation's exact optional HotPl8 hook commands are removed for every configured registration with native account homes. Hook ownership requires the matching installation path, state path and registered provider ID; canonical hooks remain removable after migration to policy v3. State and native provider account homes, credentials, conversations, and unrelated hook handlers are retained. Invalid policy, missing provider definitions, invalid hook files or unknown files in an owned app directory stop deletion rather than being discarded. Use an extracted release containing the definitions referenced by the installed policy.
+
+Generic uninstall refuses a Local Delivery installation before making changes. No generic delivery unenrollment is supported; retain its registration and `delivery-owner.json` ownership record.
 
 ## Existing private/source installation
 
@@ -43,3 +45,31 @@ Private development repositories may contain account data in older commits. Keep
 ## Agent pause compatibility
 
 The new collector reads `automation-leases.json` in addition to the manual pause file. Upgrade every collector and pause writer sharing that state before enabling MCP pause writes. Old binaries cannot honor leases. The new rollback command refuses rollback while live or invalid lease state exists; released and expired leases do not block it. Old rollback/install binaries cannot enforce this guard. See [agent API](agent-api.md).
+
+## Provider catalog and policy version 3
+
+Existing policy versions 1 and 2 load unchanged. A new registered provider may
+require explicit migration to the version-3 provider map; review the enrollment
+preview and retain `policy.previous.json`. Never remove a registration's definition
+from an update while the installed policy references it. The target package must
+validate the entire current policy before activation.
+
+An older reader that does not understand v3 is not a safe rollback target. Refuse
+the downgrade and retain the working code/state. Recovery checks reader
+compatibility before moving a managed code pointer; credentials, quota history and
+conversation data are never rolled back to make an incompatible reader work.
+
+For Local Delivery, finish the compatible update before accepting a policy schema
+migration. The shared policy writer holds the delivery writer lock, rejects any
+pending `transaction.json`, and validates the proposed policy with the committed
+release's reader before replacing policy or its backup. The candidate writes a
+`delivery-owner.json` state record during drain, before pointer activation. Keep
+that record after rollback: it protects source commands as well as the installed
+launcher, including recovery through an older bootstrap/runner.
+
+For a custom installation predating this ownership record, run migration through
+its installed launcher after the updater adopts this release. A source command
+with an arbitrary state directory cannot infer an undisclosed custom owner before
+adoption. The installed-launcher environment and verified default registration
+provide fallback discovery; neither is a substitute for ownership validation.
+See [delivery recovery](delivery.md#failure-and-recovery).

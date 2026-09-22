@@ -135,6 +135,24 @@
     "src/jobs/finite-host.cs",
     "src/jobs/provenance.json",
     "tests/test-job-host.ps1",
-    "scripts/import-job-containment.ps1"
+    "scripts/import-job-containment.ps1",
+    "src/provider-contract.ps1",
+    "src/provider-decision.ps1",
+    "src/provider-registry.ps1",
+    "tests/test-provider-core.ps1",
+    "tests/test-provider-registration.ps1",
+    "docs/plans/shared-provider-core.md",
+    "docs/plans/t3-provider-consolidation-contract.md",
+    "data/providers/claude.json",
+    "data/providers/codex.json",
+    "src/provider-observation.ps1",
+    "src/provider-actions.ps1",
+    "src/provider-runtime.ps1",
+    "src/t3-migration.ps1",
+    "tests/test-t3-migration.ps1",
+    "tests/test-provider-actions.ps1",
+    "docs/adding-a-provider.md",
+    "src/delivery-policy.ps1",
+    "tests/test-delivery-policy.ps1"
   ]
 }

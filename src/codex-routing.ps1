@@ -1,81 +1,85 @@
-# The T3 adapter's private broker. Never expose its token-bearing result via status/MCP.
-function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executable,[scriptblock]$Reader) {
-    # Includes lock waits and every fallback read. Leave room for pipe/process
-    # startup inside the bridge's 25s admission / 8.5s pinned-refresh deadlines.
-    $validationClock=[Diagnostics.Stopwatch]::StartNew()
-    $validationBudget=if($Request.operation -eq 'refresh'){6500}else{20000}
-    $sawBusy=$false
-    $policy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
-    Assert-Hotpl8Policy $policy
-    Assert-CodexPolicy $policy.codex
-    foreach($key in @('OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_SQLITE_HOME','OPENAI_BASE_URL')){
-        if([Environment]::GetEnvironmentVariable($key)){throw 'routing_environment_conflict'}
+# Private broker: its token-bearing result belongs only in the bridge pipe.
+. (Join-Path $PSScriptRoot 'provider-actions.ps1')
+. (Join-Path $PSScriptRoot 'provider-observation.ps1')
+. (Join-Path $PSScriptRoot 'provider-registry.ps1')
+function Get-Hotpl8CodexRoutingDecision($Rows,$Part,$Policy,$Meters,$Request,[string]$Directory,[datetimeoffset]$Now) {
+    $accounts=@(foreach($row in @($Rows)){
+        $account=$null;$windows=@()
+        foreach($meter in $Meters){
+            $decoded=ConvertTo-Hotpl8CodexObservation $row $meter
+            if(-not $account){$account=$decoded}
+            $windows+=@($decoded.windows)
+            if($decoded.blockedReason){$account|Add-Member NoteProperty blockedReason $decoded.blockedReason -Force}
+        }
+        if($account){$account|Add-Member NoteProperty windows $windows -Force;$account}
+    })
+    if(@($Meters).Count -eq 1){
+        $capacity=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=@{slots=$Rows}}}) $Part 'codex' $Now $Meters[0])
+        $accounts=@(Add-Hotpl8ObservationCapacity $accounts $capacity)
     }
-    $state=Read-Hotpl8Json (Join-Path $StateDirectory 'codex-state.json')
-    $snapshot=Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')
-    $status=$snapshot.providers.codex
-    $now=[datetimeoffset]::UtcNow
+    # Critical dwell belongs to this native process, never the collector.
+    $intent=if($Request.operation -eq 'refresh'){'refresh'}elseif($Request.intent){[string]$Request.intent}else{'admit'}
+    $context=[pscustomobject]@{intent=$intent;previousId=[string]$Request.previousSlot;bindingKnown=[bool]$Request.previousSlot;identityKnown=[bool]$Request.accountId;scopes=@($Meters);criticalState=$Request.criticalState}
+    $context=Get-Hotpl8ProviderActionContext $Policy $Directory $context $Now
+    Get-Hotpl8ProviderDecision $accounts $Part $context $Now
+}
+function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executable,[scriptblock]$Reader) {
+    $validationClock=[Diagnostics.Stopwatch]::StartNew()
     $refresh=$Request.operation -eq 'refresh'
-    if($Request.operation -notin @('select','refresh','exec')){throw 'routing_invalid_request'}
-    $meter=if($Request.model){[string]$policy.codex.modelMeters.([string]$Request.model)}else{[string]$policy.codex.defaultMeter}
+    $validationBudget=if($refresh){6500}else{20000};$sawBusy=$false
+    if($Request.operation -notin @('select','refresh','exec') -or ($Request.intent -and $Request.intent -notin @('admit','rebind')) -or ($Request.operation -ne 'select' -and $Request.intent -eq 'rebind')){throw 'routing_invalid_request'}
+    foreach($key in @('OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_SQLITE_HOME','OPENAI_BASE_URL')){if([Environment]::GetEnvironmentVariable($key)){throw 'routing_environment_conflict'}}
+    try{$admission=Get-Hotpl8ControlSnapshot $StateDirectory}catch{if($_.Exception.Message -eq 'action_state_changed'){throw 'routing_state_changed'};throw}
+    $policy=$admission.policy;Assert-Hotpl8Policy $policy
+    $registration=Get-Hotpl8ConfiguredProvider $policy 'codex'
+    $part=$registration.policy;Assert-CodexPolicy $part
+    $state=Read-Hotpl8Json (Join-Path $StateDirectory 'codex-state.json')
+    $status=(Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')).providers.codex
+    $now=[datetimeoffset]::UtcNow
+    $meter=if($Request.model){[string]$part.modelMeters.([string]$Request.model)}else{[string]$part.defaultMeter}
     if(-not $meter){throw 'routing_model_unknown'}
-    # One app-server auth owner serves all active threads. Reuse the same
-    # eligibility rules for their additional models before choosing an account.
     $meters=@($meter)
     foreach($model in @($Request.models)){
-        if(-not $model){continue}
-        $required=[string]$policy.codex.modelMeters.([string]$model)
+        if(-not $model){continue};$required=[string]$part.modelMeters.([string]$model)
         if(-not $required){throw 'routing_model_unknown'}
-        if($required -notin $meters){$meters+= $required}
+        if($required -notin $meters){$meters+=$required}
     }
-    $rows=@($status.slots)
     $identities=@{}
-    foreach($slot in @($policy.codex.slots)){
+    foreach($slot in @($part.slots)){
         $prior=$state.slots.([string]$slot.id)
-        if($prior.identityKey){
-            if($identities.ContainsKey([string]$prior.identityKey)){throw 'routing_duplicate_identity'}
-            $identities[[string]$prior.identityKey]=$true
-        }
+        if($prior.identityKey){if($identities.ContainsKey([string]$prior.identityKey)){throw 'routing_duplicate_identity'};$identities[[string]$prior.identityKey]=$true}
     }
-    # Duplicate, removed and rebound observations cannot authorize a launch.
-    $rows=@(foreach($slot in @($policy.codex.slots)){
-        $matches=@($rows|Where-Object id -EQ $slot.id)
-        $prior=$state.slots.([string]$slot.id)
-        if($matches.Count -eq 1 -and $prior.identityKey -and $prior.binding -eq (Get-Hotpl8Hash ([IO.Path]::GetFullPath([string]$slot.home))) -and $slot.id -notin @($Request.exclude)){$matches[0]}
+    $rows=@(foreach($slot in @($part.slots)){
+        $matches=@($status.slots|Where-Object id -EQ $slot.id);$prior=$state.slots.([string]$slot.id)
+        if($prior.identityKey -and $prior.binding -eq (Get-Hotpl8Hash ([IO.Path]::GetFullPath([string]$slot.home))) -and $slot.id -notin @($Request.exclude)){
+            if($matches.Count -eq 1){$matches[0]}
+            elseif($refresh -and $matches.Count -eq 0){[pscustomobject]@{id=$slot.id;status='unknown';observedAt=$null;buckets=$null}}
+        }
     })
     if(-not $refresh){
         try{$age=($now-[datetimeoffset]::Parse($status.observedAt)).TotalSeconds}catch{throw 'routing_stale'}
-        if($age -lt -5 -or $age -gt 900){throw 'routing_stale'}
+        if($age -lt -5 -or $age -gt (Get-Hotpl8ProviderSetting $part 'maxUsageAgeS' 900)){throw 'routing_stale'}
     }
-    $hold=Get-Hold $StateDirectory
-    $previous=if($Request.previousSlot){[string]$Request.previousSlot}else{[string]$status.recommendations.$meter}
-    # A hold pins this process's actual selection, not a collector recommendation
-    # which may describe a different process or a later launch.
-    $emergency=@{}
-    foreach($required in $meters){
-        $accounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$status}}) $policy.codex 'codex' $now $required)
-        $emergency[$required]=(Get-Hotpl8CriticalDecision $accounts $policy.codex $previous $status.critical.$required $now).active
-    }
-    if(-not $refresh -and $meters.Count -gt 1){
-        $rows=@(foreach($row in $rows){
-            $eligible=$true
-            foreach($required in $meters){if((Get-CodexEligibility $row $policy.codex $required $now $emergency[$required]) -ne 'eligible'){$eligible=$false}}
-            if($eligible){$row}
-        })
-    }
-    for($attempt=0;$attempt -lt @($policy.codex.slots).Count;$attempt++){
-        $selected=if($refresh){[string]$Request.previousSlot}else{Select-CodexSlot $rows $policy.codex $meter $previous $hold $now $status.critical.$meter}
-        if(-not $selected){if($sawBusy){throw 'routing_account_busy'};throw 'routing_unavailable'}
-        $slot=@($policy.codex.slots|Where-Object id -EQ $selected)
-        if($slot.Count -ne 1 -or $selected -in @($policy.codex.disabled)){throw 'routing_binding_changed'}
-        $slot=$slot[0]
-        $prior=$state.slots.$selected
+    # Keep successful reads private to this admission. A candidate that loses
+    # rank after fresh quota arrives can still serve if a better peer fails.
+    # Each home is validated once, plus one final pass to select a cached fallback.
+    $validated=@{}
+    for($attempt=0;$attempt -le @($part.slots).Count;$attempt++){
+        if($validationClock.ElapsedMilliseconds -ge $validationBudget){throw 'routing_validation_timeout'}
+        $decision=Get-Hotpl8CodexRoutingDecision $rows $part $policy $meters $Request $StateDirectory ([datetimeoffset]::UtcNow)
+        if(-not $decision.actionPermitted){
+            if($decision.suppressionReason -in @('monitor_only','automation_paused','switching_disabled','selection_held','binding_unknown')){throw ('routing_'+$decision.suppressionReason)}
+            if($sawBusy){throw 'routing_account_busy'};throw 'routing_unavailable'
+        }
+        $selected=[string]$decision.targetSlot;$slot=@($part.slots|Where-Object id -EQ $selected)
+        if($slot.Count -ne 1 -or $selected -in @($part.disabled)){throw 'routing_binding_changed'}
+        $slot=$slot[0];$prior=$state.slots.$selected
         if(-not $prior.identityKey -or $prior.binding -ne (Get-Hotpl8Hash ([IO.Path]::GetFullPath([string]$slot.home)))){throw 'routing_binding_changed'}
-        # A title helper, another T3 session or the collector may own this home's
-        # lock briefly. Retry only that pre-inference contention, never quota,
-        # authentication or transport failures and never a submitted user turn.
-        $accountClock=[Diagnostics.Stopwatch]::StartNew()
-        do{
+        $cached=$validated.ContainsKey($selected)
+        if($cached){$read=$validated[$selected]}
+        else{
+          $accountClock=[Diagnostics.Stopwatch]::StartNew()
+          do{
             $remaining=$validationBudget-[int]$validationClock.ElapsedMilliseconds
             if($remaining -le 0){throw 'routing_validation_timeout'}
             $readBudget=[Math]::Min(6500,$remaining)
@@ -83,22 +87,40 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
             if($read.status -ne 'home_busy'){break}
             if($accountClock.ElapsedMilliseconds -ge 2500){$sawBusy=$true;break}
             Start-Sleep -Milliseconds 75
-        }while($true)
+          }while($true)
+        }
         if($read.status -eq 'home_busy' -and $refresh){throw 'routing_account_busy'}
         $valid=$read.status -eq 'ok' -and $read.identityKey -eq $prior.identityKey -and $read.standardTransport -and (-not $read.modelProvider -or $read.modelProvider -eq 'openai')
-        if($refresh){
-            if(-not $valid -or $read.auth.chatgptAccountId -cne $Request.accountId){throw 'routing_refresh_failed'}
-        }else{
-            $current=[pscustomobject]@{id=$selected;status='ok';observedAt=$now.ToString('o');buckets=(ConvertTo-CodexBuckets $read.quota $null $now)}
-            foreach($required in $meters){
-                $valid=$valid -and (Get-CodexEligibility $current $policy.codex $required $now $emergency[$required]) -eq 'eligible'
+        if($refresh){if(-not $valid -or $read.auth.chatgptAccountId -cne $Request.accountId){throw 'routing_refresh_failed'}}
+        elseif($valid){
+            $readNow=[datetimeoffset]::UtcNow
+            if(-not $cached){
+                $validated[$selected]=$read
+                $oldRow=@($rows|Where-Object id -CEQ $selected)[0]
+                $current=[pscustomobject]@{id=$selected;status='ok';observedAt=$readNow.ToString('o');buckets=(ConvertTo-CodexBuckets $read.quota $oldRow.buckets $readNow)}
+                $rows=@($rows|Where-Object id -NE $selected)+@($current)
             }
+            $decision=Get-Hotpl8CodexRoutingDecision $rows $part $policy $meters $Request $StateDirectory $readNow
+            if($decision.actionPermitted -and $decision.targetSlot -cne $selected){continue}
+            $valid=$decision.actionPermitted -and $decision.targetSlot -ceq $selected
         }
         if($valid){
             $model=if($Request.model){[string]$Request.model}else{[string]$read.model}
-            if(-not $model -or [string]$policy.codex.modelMeters.$model -ne $meter){throw 'routing_model_unknown'}
+            if(-not $model -or [string]$part.modelMeters.$model -ne $meter){throw 'routing_model_unknown'}
             if(-not $read.auth.accessToken -or -not $read.auth.chatgptAccountId){throw 'routing_auth_unavailable'}
-            return [pscustomobject]@{slot=$selected;home=[string]$slot.home;model=$model;meter=$meter;auth=$(if($Request.operation -ne 'exec'){$read.auth}else{$null})}
+            # Native I/O is outside this short admission boundary. Changes after
+            # this authorization govern subsequent actions; never repeat a turn.
+            try{
+                $authorized=Invoke-Hotpl8ActionAuthorization $StateDirectory $admission.generation {
+                    $latest=Read-Hotpl8Json (Join-Path $StateDirectory 'codex-state.json')
+                    if($latest.slots.$selected.identityKey -cne $prior.identityKey -or $latest.slots.$selected.binding -cne $prior.binding){throw 'routing_binding_changed'}
+                    Get-Hotpl8CodexRoutingDecision $rows $part $policy $meters $Request $StateDirectory ([datetimeoffset]::UtcNow)
+                }
+            }catch{if($_.Exception.Message -eq 'action_state_changed'){throw 'routing_state_changed'};throw}
+            if(-not $authorized.actionPermitted -or $authorized.targetSlot -cne $selected){throw 'routing_state_changed'}
+            $critical=$authorized.critical;$critical.selected=$selected
+            if($selected -cne $Request.previousSlot -or -not $Request.criticalState.selectedAt){$critical.selectedAt=[datetimeoffset]::UtcNow.ToString('o')}else{$critical.selectedAt=$Request.criticalState.selectedAt}
+            return [pscustomobject]@{slot=$selected;home=[string]$slot.home;model=$model;meter=$meter;criticalState=$critical;authorizationGeneration=$admission.generation;auth=$(if($Request.operation -ne 'exec'){$read.auth}else{$null})}
         }
         $rows=@($rows|Where-Object id -NE $selected)
         if($refresh){throw 'routing_refresh_failed'}

@@ -4,7 +4,7 @@
 
 **Spend less time juggling AI subscriptions.**
 
-- **Pick the best available account.** Automatically switch Claude accounts using quota, reset times, and your reserve rules. Codex selects an account for your next launch.
+- **Pick the best available account.** Claude and Codex share quota, reset, reserve and account-selection rules. Codex selects a native home for standalone launches; the optional T3 integration also supports ongoing rollover.
 - **Warm idle Claude accounts.** Optional small requests aim to start usage windows earlier, so accounts are ready when you need them.
 - **See your subscriptions at a glance.** One layered bar for Claude and one for Codex: usable allowance now, projected refill, and full capacity. Individual accounts remain below.
 
@@ -44,7 +44,7 @@ Claude plan names are detected automatically on refresh. When window-capacity co
 
 ## Under the hood
 
-PowerShell, local snapshots, and offline regression tests. [Architecture and source map](docs/architecture.md) · [Contributing](CONTRIBUTING.md) · [Regenerate the screenshots](docs/screenshots.md).
+PowerShell, local snapshots, and offline regression tests. [Architecture and source map](docs/architecture.md) · [Contributing](CONTRIBUTING.md) · [Regenerate the screenshots](docs/screenshots.md). [Add a provider](docs/adding-a-provider.md) through a declarative definition and enrollment when a shipped native driver supports it.
 
 [Report a bug](https://github.com/Mmore35/hotpl8/issues) · [Privacy](PRIVACY.md) · [Report a vulnerability](SECURITY.md) · [MIT license](LICENSE)
 
@@ -61,6 +61,7 @@ turns and auxiliary commands through enrolled subscriptions while keeping T3
 conversation state in its existing home. First-time setup runs with T3 closed and
 reuses its normal Codex provider; removal restores the original configuration.
 Managed updates preserve active sessions and select the current release for new
-processes. Existing two-provider installations need a separate conversation
-migration to consolidate their picker. Windows and Node 22+ are required; native
+processes. Existing two-provider installations can transition the ordinary entry
+while retaining the legacy alias for existing conversations. The picker can be
+changed manually; setup never rewrites conversation data. Windows and Node 22+ are required; native
 long-running refresh and multi-account promotion gates remain documented.

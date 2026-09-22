@@ -119,6 +119,7 @@ class DeliveryTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[1]
         self.config["adapter"] = "delivery/hotpl8-adapter.ps1"
         d.write(self.root / "delivery.json", self.config)
+        d.write(self.root / "installation.json", {"product": "hotpl8", "id": "012345abcdef", "version": "fixture", "stateDirectory": str(self.state)})
         self.previous["protocol"] = 1
         d.write(self.root / "current.json", self.previous)
         shutil.copyfile(source / "policy.example.json", self.state / "policy.json")
@@ -182,7 +183,11 @@ export async function main(config, args) {
         self.t3_fixture()
         # Convert A using the real migration so its live process has a receipt.
         source = Path(__file__).resolve().parents[1]
-        d.invoke_adapter(self.config, source, "activate", self.root)
+        # Run today's component adapter against the verified packaged A release.
+        # A source checkout deliberately has no publishable build identity.
+        d.run([self.ps, "-NoProfile", "-NonInteractive", "-File", source / self.config["adapter"],
+               "-Operation", "activate", "-InstallDirectory", self.root,
+               "-ReleaseDirectory", self.root / self.previous["release"], "-StateDirectory", self.state])
         settings_before = self.settings_path.read_bytes()
         launcher_before = d.digest(self.launcher)
         proc = subprocess.Popen([self.launcher, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -251,6 +256,45 @@ export async function main(config, args) {
         self.assertEqual(self.bridge_config.read_bytes(), before)
         self.assertEqual(json.loads(d.invoke_adapter(self.config, self.root / "releases" / B, "components", self.root)), [])
 
+    @unittest.skipUnless(os.name == "nt", "Windows T3 delivery")
+    def test_t3_gradual_transition_delivers_both_receipts_and_preserves_retained_alias(self):
+        self.t3_fixture()
+        ordinary = self.root / "integrations" / "t3-codex-ordinary"
+        ordinary.mkdir()
+        launcher = ordinary / "hotpl8-codex.exe"
+        shutil.copyfile(self.launcher, launcher)
+        config = d.read(self.bridge_config)
+        d.write(ordinary / "bridge-config.json", config)
+        settings = d.read(self.settings_path)
+        instance = {"driver": "codex", "displayName": "Codex", "config": {"binaryPath": str(launcher)}}
+        settings["providerInstances"]["codex"] = instance
+        d.write(self.settings_path, settings)
+        d.write(ordinary / "receipt.json", {"settingsPath": str(self.settings_path), "targetProviderId": "codex",
+                                          "installedInstance": instance, "sourceCommit": A, "phase": "installed"})
+        before = self.settings_path.read_bytes()
+        self.assertEqual(d.update(self.root, self.github)["state"], "current")
+        self.assertEqual(d.run([launcher, "--version"]).decode().strip(), B)
+        self.assertEqual(self.t3_probe(), B)
+        components = json.loads(d.invoke_adapter(self.config, self.root / "releases" / B, "components", self.root))
+        self.assertEqual({row["providerId"] for row in components}, {"codex", "hotpl8-codex"})
+        self.assertEqual(self.settings_path.read_bytes(), before)
+        # Interrupted release activation rolls both launch paths back, never settings.
+        d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": B}})
+        self.assertEqual(d.update(self.root, self.github)["state"], "pending")
+        self.assertEqual(d.run([launcher, "--version"]).decode().strip(), A)
+        self.assertEqual(self.t3_probe(), A)
+        # Ordinary integration removal is an explicit settings restoration. Delivery
+        # neither resurrects it nor removes/renames the retained alias.
+        settings["providerInstances"]["codex"]["config"]["binaryPath"] = "codex"
+        d.write(self.settings_path, settings)
+        self.make_t3_package(C)
+        self.github.sha = C
+        self.assertEqual(d.update(self.root, self.github)["state"], "current")
+        components = json.loads(d.invoke_adapter(self.config, self.root / "releases" / C, "components", self.root))
+        self.assertEqual([row["providerId"] for row in components], ["hotpl8-codex"])
+        self.assertEqual(d.read(self.settings_path)["providerInstances"]["codex"]["config"]["binaryPath"], "codex")
+        self.assertEqual(self.t3_probe(), C)
+
     def test_failed_ci_never_changes_pointer(self):
         self.github.fail = True
         self.assertEqual(self.update()["state"], "pending")
@@ -293,6 +337,70 @@ export async function main(config, args) {
         self.assertEqual(result["state"], "pending")
         self.assertEqual(d.read(self.root / "current.json"), self.previous)
         self.assertIn("recover", self.calls)
+        self.assertEqual(self.calls[:2], ["preflight", "recover"])
+
+    def test_failed_activation_refuses_incompatible_rollback_before_pointer_or_recover(self):
+        calls = []
+        policy_path = self.state / "policy.json"
+        d.write(policy_path, {"schemaVersion": 2})
+        advanced = {"schemaVersion": 3, "providers": {"fixture": {"enabled": True}}}
+        captured = {}
+        side_effect = self.state / "previous-recover-ran"
+
+        def adapter(config, release, operation, root):
+            calls.append((release.name, operation, d.read(root / "current.json")["sha"]))
+            if release.name == A and operation == "preflight":
+                if d.read(policy_path)["schemaVersion"] == 3:
+                    raise d.DeliveryError("Previous reader cannot read policy version 3")
+            if release.name == B and operation == "activate":
+                # Model state changed after the new code became current. Reverting
+                # a pointer cannot revert that state or make the old reader safe.
+                d.write(policy_path, advanced)
+            if release.name == B and operation == "health":
+                captured["pointer"] = (root / "current.json").read_bytes()
+                captured["transaction"] = (root / "transaction.json").read_bytes()
+                raise d.DeliveryError("Candidate health failed")
+            if release.name == A and operation == "recover":
+                side_effect.write_text("must not run before compatibility is established")
+
+        result = d.update(self.root, self.github, adapter)
+        self.assertEqual(result["state"], "error")
+        self.assertEqual(result["installedSha"], B)
+        self.assertEqual((self.root / "current.json").read_bytes(), captured["pointer"])
+        self.assertEqual((self.root / "transaction.json").read_bytes(), captured["transaction"])
+        self.assertEqual(d.read(policy_path), advanced)
+        self.assertIn((A, "preflight", B), calls)
+        self.assertFalse(any(release == A and operation == "recover" for release, operation, _ in calls))
+        self.assertFalse(side_effect.exists())
+
+    def test_interrupted_recovery_refuses_incompatible_reader_before_pointer_or_recover(self):
+        candidate = {"protocol": 1, "sha": B, "release": "releases/" + B}
+        transaction = {"previous": self.previous, "candidate": candidate}
+        d.write(self.root / "current.json", candidate)
+        d.write(self.root / "transaction.json", transaction)
+        advanced = {"schemaVersion": 3, "providers": {"fixture": {"enabled": True}}}
+        d.write(self.state / "policy.json", advanced)
+        pointer_before = (self.root / "current.json").read_bytes()
+        transaction_before = (self.root / "transaction.json").read_bytes()
+        calls = []
+        side_effect = self.state / "previous-recover-ran"
+
+        def adapter(config, release, operation, root):
+            calls.append((release.name, operation, d.read(root / "current.json")["sha"]))
+            if release.name == A and operation == "preflight":
+                raise d.DeliveryError("Previous reader cannot read policy version 3")
+            if operation == "recover":
+                side_effect.write_text("must not run before compatibility is established")
+
+        result = d.update(self.root, self.github, adapter)
+        self.assertEqual(result["state"], "error")
+        self.assertEqual(result["installedSha"], B)
+        self.assertEqual((self.root / "current.json").read_bytes(), pointer_before)
+        self.assertEqual((self.root / "transaction.json").read_bytes(), transaction_before)
+        self.assertEqual(d.read(self.state / "policy.json"), advanced)
+        self.assertEqual(calls, [(A, "preflight", B)])
+        self.assertFalse(side_effect.exists())
+        self.assertEqual(self.github.downloads, 0)
 
     def test_superseded_candidate_never_activates(self):
         def adapter(config, release, operation, root):
@@ -430,6 +538,73 @@ export async function main(config, args) {
         receipt = json.loads(receipts[0].read_text())
         self.assertEqual(receipt['exitCode'], 7)
         self.assertEqual(receipt['status'], 'failed')
+
+    @unittest.skipUnless(os.name == "nt", "Windows product adapter")
+    def test_first_upgrade_owner_gate_protects_old_bootstrap_recovery(self):
+        """An older recovery algorithm must never receive a sanctioned v3 write."""
+        source = Path(__file__).resolve().parents[1]
+        self.config["adapter"] = "delivery/hotpl8-adapter.ps1"
+        d.write(self.root / "delivery.json", self.config)
+        d.write(self.root / "installation.json", {"product": "hotpl8", "id": "012345abcdef", "stateDirectory": str(self.state)})
+        self.previous["protocol"] = 1
+        d.write(self.root / "current.json", self.previous)
+        shutil.copyfile(source / "policy.example.json", self.state / "policy.json")
+        with zipfile.ZipFile(self.source, "w") as z:
+            for name in d.read(source / "release-files.json")["files"]:
+                z.write(source / name, name)
+        package(self.source, self.archive, "hotpl8", "example/hotpl8", B)
+        candidate = self.root / "releases" / B
+        d.unpack(self.archive, candidate, self.config, B)
+        old = self.root / "releases" / A
+        (old / "delivery").mkdir(parents=True)
+        # Model the predecessor's exact dangerous ordering: restore its pointer,
+        # then recover components, with no preflight before pointer restoration.
+        (old / "delivery/runner.py").write_text('''import json, sys
+from pathlib import Path
+root=Path(sys.argv[2])
+txn=json.loads((root/'transaction.json').read_text())
+(root/'current.json').write_text(json.dumps(txn['previous']))
+state=Path(json.loads((root/'delivery.json').read_text())['stateDirectory'])
+version=json.loads((state/'policy.json').read_text(encoding='utf-8-sig'))['schemaVersion']
+if version > 2: raise SystemExit('old reader received incompatible policy')
+(root/'old-recovery.json').write_text(json.dumps({'schemaVersion':version}))
+(root/'transaction.json').unlink()
+''')
+        shutil.copyfile(source / "delivery/bootstrap.py", self.root / "delivery.py")
+        selected = {"protocol": 1, "sha": B, "release": "releases/" + B}
+        with d.drained(self.root, self.config):
+            d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": selected})
+            d.invoke_adapter(self.config, candidate, "drain", self.root)
+            self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+            self.assertEqual(d.read(self.state / "delivery-owner.json")["installationId"], "012345abcdef")
+            d.write(self.root / "current.json", selected)
+        # Simulate a crash here: locks are gone, candidate is selected, and the
+        # bootstrap will still run A. A new source CLI must refuse migration.
+        ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+        script = Path(self.tmp.name) / "save-policy.ps1"
+        script.write_text('''param($Release,$State)
+$ErrorActionPreference='Stop'
+foreach($name in @('common','config','provider-actions','management')){. (Join-Path $Release ('src/'+$name+'.ps1'))}
+$policy=ConvertTo-Hotpl8PolicyV3 (Read-Hotpl8Json (Join-Path $State 'policy.json'))
+try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.Exception.Message);exit 2}
+''')
+        env = dict(os.environ, HOTPL8_INSTALL_DIRECTORY="", LOCALAPPDATA=str(Path(self.tmp.name) / "unused-default"))
+        before = (self.state / "policy.json").read_bytes()
+        result = subprocess.run([ps, "-NoProfile", "-File", str(script), str(candidate), str(self.state)], env=env, capture_output=True)
+        self.assertEqual(result.returncode, 2, result.stderr.decode(errors="replace"))
+        self.assertIn(b"unfinished", result.stderr)
+        self.assertEqual((self.state / "policy.json").read_bytes(), before)
+        self.assertFalse((self.state / "policy.previous.json").exists())
+        self.assertEqual(d.read(self.root / "current.json")["sha"], B)
+        d.run([sys.executable, self.root / "delivery.py", "update"])
+        self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+        self.assertEqual(d.read(self.root / "old-recovery.json"), {"schemaVersion": 2})
+        self.assertTrue((self.state / "delivery-owner.json").exists())
+        # Only a completed, compatible current release can accept the migration.
+        d.write(self.root / "current.json", selected)
+        result = subprocess.run([ps, "-NoProfile", "-File", str(script), str(candidate), str(self.state)], env=env, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        self.assertEqual(d.read(self.state / "policy.json")["schemaVersion"], 3)
 
     @unittest.skipUnless(os.name == "nt", "Windows product adapter")
     def test_real_product_package_preflight_and_readiness(self):

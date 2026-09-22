@@ -2,6 +2,9 @@
 
 Never uses a real credential home or model service. Dynamic tool calls are
 answered by this fixture and perform no work. This is not billing qualification.
+--policy-broker runs the real policy/broker with only its native quota Reader
+replaced by synthetic canonical-account facts; actual Codex model requests and
+the bridge's external-auth adoption are exercised against localhost.
 """
 import argparse
 import base64
@@ -29,7 +32,7 @@ def token(account):
     }), 'fixture'])
 
 
-def run(executable, scratch, transport, bridge):
+def run(executable, scratch, transport, bridge, policy_broker=False):
     release = threading.Event()
     arrived = threading.Event()
     requests = []
@@ -138,6 +141,7 @@ def run(executable, scratch, transport, bridge):
     write_lock = threading.Lock()
     proc = None
     summary = {'qualification': 'native external auth, synthetic localhost model', 'transport': transport, 'bridge': bridge,
+               'policy_broker': policy_broker,
                'version': subprocess.check_output([executable, '--version'], text=True).strip()}
     try:
         with tempfile.TemporaryDirectory(prefix='rollover-', dir=scratch, ignore_cleanup_errors=True) as td:
@@ -159,6 +163,8 @@ enable_request_compression = false
             if bridge:
                 env['HOTPL8_FIXTURE_TOKENS'] = json.dumps(tokens)
                 command = ['node', str(Path(__file__).with_name('t3-native-rollover.mjs')), executable]
+                if policy_broker:
+                    command.append('--policy-broker')
             proc = subprocess.Popen(command, cwd=home, env=env,
                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                     text=True, encoding='utf-8',
@@ -189,7 +195,10 @@ enable_request_compression = false
                 nonlocal counter
                 counter += 1
                 write({'id': counter, 'method': method, 'params': params})
-                msg = responses.get(timeout=20)
+                try:
+                    msg = responses.get(timeout=20)
+                except queue.Empty as exc:
+                    raise RuntimeError(f'{method}: native response timeout') from exc
                 if msg['id'] != counter:
                     raise RuntimeError('Unexpected native response correlation')
                 if 'error' in msg:
@@ -238,6 +247,14 @@ enable_request_compression = false
                 and requests[1]['previousResponseId'] is None
                 and summary['followup_same_turn'] and requests[1]['containsFollowup']
                 and requests[1]['turnState'] != 'fixture-state-fixture-a'
+                and (not bridge or not summary['login_b_response'].get('routingErrors'))
+                and (not policy_broker or (
+                    summary['login_b_response'].get('policyBroker') is True
+                    and summary['login_b_response'].get('selected') == 'b'
+                    and summary['login_b_response'].get('calls', 0) >= 2
+                    and set(summary['login_b_response'].get('validatedSlots', [])) == {'a', 'b'}
+                    and not summary['login_b_response'].get('routingErrors')
+                ))
             )
             if not completed:
                 rpc('turn/interrupt', {'threadId': tid, 'turnId': first['turn']['id']})
@@ -266,8 +283,9 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=Path)
     parser.add_argument('--transport', choices=['http', 'websocket'], default='http')
     parser.add_argument('--bridge', action='store_true', help='Qualify the production dispatcher with a synthetic broker')
+    parser.add_argument('--policy-broker', action='store_true', help='Qualify shared policy, real broker, bridge and native via a synthetic quota Reader; implies --bridge')
     args = parser.parse_args()
-    result = run(args.codex, args.scratch.resolve(), args.transport, args.bridge)
+    result = run(args.codex, args.scratch.resolve(), args.transport, args.bridge or args.policy_broker, args.policy_broker)
     text = json.dumps(result, indent=2) + '\n'
     print(text, end='')
     if args.output:

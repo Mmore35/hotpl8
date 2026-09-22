@@ -10,7 +10,7 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-t3-'+[guid]::NewGuid().ToStri
 [void][IO.Directory]::CreateDirectory($dir)
 $passed=0
 function Assert($Value,[string]$Why){if(-not $Value){throw $Why};$script:passed++}
-function Reject([scriptblock]$Body,[string]$Code){try{& $Body;throw 'accepted unexpectedly'}catch{Assert ($_.Exception.Message -eq $Code) ('expected '+$Code+', got '+$_.Exception.Message)}}
+function Reject([scriptblock]$Body,[string]$Code){try{& $Body;throw 'accepted unexpectedly'}catch{Assert ($_.Exception.Message -eq $Code) ('expected '+$Code+', got '+$_.Exception.Message+' at '+$_.ScriptStackTrace)}}
 function Save($Name,$Value){Write-Hotpl8Text (Join-Path $dir $Name) ($Value|ConvertTo-Json -Depth 30)}
 $savedEnv=@{}
 foreach($key in @('OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_SQLITE_HOME','OPENAI_BASE_URL','HOTPL8_TEST_LAUNCH')){$savedEnv[$key]=[Environment]::GetEnvironmentVariable($key);[Environment]::SetEnvironmentVariable($key,$null)}
@@ -36,17 +36,71 @@ try{
     $route=Get-Hotpl8CodexRoute $request $dir $exe
     Assert ($route.slot -eq 'a' -and $route.auth.accessToken -eq 'FAKE-a') 'preferred native account selected'
     Assert (($route|ConvertTo-Json -Depth 10) -notmatch 'NEVER_EXPORT') 'refresh token never exported'
+    $background=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='a';cwd=$dir}
+    $script:controlReads=0
+    $unexpectedRead={param($slot,$refresh);$script:controlReads++;throw 'unexpected native read'}
+    Reject {Get-Hotpl8CodexRoute $background $dir $exe $unexpectedRead} 'routing_monitor_only'
+    Assert ($script:controlReads -eq 0) 'monitor suppresses autonomous routing before native validation'
+    $policy.mode='automate';$policy.switchEnabled=$false;Save 'policy.json' $policy
+    Reject {Get-Hotpl8CodexRoute $background $dir $exe $unexpectedRead} 'routing_switching_disabled'
+    $policy.switchEnabled=$true;Save 'policy.json' $policy
+    Save 'automation-pause.json' @{until=$now.AddMinutes(5).ToString('o');reason='fixture'}
+    Reject {Get-Hotpl8CodexRoute $background $dir $exe $unexpectedRead} 'routing_automation_paused'
+    Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'a') 'explicit admission remains available during pause'
+    $pinned=[pscustomobject]@{operation='refresh';previousSlot='a';accountId='a';model='fixture-model';cwd=$dir}
+    Assert ((Get-Hotpl8CodexRoute $pinned $dir $exe).slot -eq 'a') 'same-identity token refresh remains available during pause'
+    [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
+    $changedDuringRead={param($slot,$refresh,$budget)
+        $result=Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
+        Save 'automation-pause.json' @{until=$now.AddMinutes(5).ToString('o');reason='during-validation'}
+        return $result
+    }
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $changedDuringRead} 'routing_state_changed'
+    [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
     # Same production margins as launch selection, measured on both sides before
     # exhaustion. No separate rollover threshold or quota scheduler.
-    $ongoing=[pscustomobject]@{operation='select';model='fixture-model';models=@('fixture-model');previousSlot='a';cwd=$dir}
+    $ongoing=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';models=@('fixture-model');previousSlot='a';cwd=$dir}
     [IO.File]::WriteAllText((Join-Path $dir 'a/used-percent'),'94')
-    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'a') 'six percent retains work account above its five percent margin'
+    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'b') 'fresh native degraded quota yields to healthy work before the five percent floor'
+    $script:fallbackReads=@{a=0;b=0}
+    $unavailablePeer={param($slot,$refresh,$budget)
+        $script:fallbackReads[$slot.id]++
+        if($slot.id -eq 'b'){return [pscustomobject]@{status='authentication_required'}}
+        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
+    }
+    $fallback=Get-Hotpl8CodexRoute $request $dir $exe $unavailablePeer
+    Assert ($fallback.slot -eq 'a' -and $fallback.auth.accessToken -eq 'FAKE-a') 'validated degraded account remains a fallback when healthier peer fails'
+    Assert ($script:fallbackReads.a -eq 1 -and $script:fallbackReads.b -eq 1) 'fallback uses one native validation per candidate'
+    $changedBeforeFallback={param($slot,$refresh,$budget)
+        if($slot.id -eq 'b'){
+            Save 'automation-pause.json' @{until=$now.AddMinutes(5).ToString('o');reason='before-fallback'}
+            return [pscustomobject]@{status='authentication_required'}
+        }
+        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
+    }
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $changedBeforeFallback} 'routing_state_changed'
+    [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
+    $reboundBeforeFallback={param($slot,$refresh,$budget)
+        if($slot.id -eq 'b'){
+            $drift=Read-Hotpl8Json (Join-Path $dir 'codex-state.json');$drift.slots.a.identityKey='changed';Save 'codex-state.json' $drift
+            return [pscustomobject]@{status='authentication_required'}
+        }
+        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
+    }
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $reboundBeforeFallback} 'routing_binding_changed'
+    Save 'codex-state.json' @{slots=$bindings}
     [IO.File]::WriteAllText((Join-Path $dir 'a/used-percent'),'96')
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $unavailablePeer} 'routing_unavailable'
     Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'b') 'four percent rolls ongoing work before account exhaustion'
     Save 'hold.json' @{until=$now.AddMinutes(5).ToString('o');reason='fixture'}
-    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_unavailable'
+    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_selection_held'
+    $heldExhausted=[pscustomobject]@{operation='select';intent='admit';model='fixture-model';previousSlot='a';cwd=$dir}
+    Reject {Get-Hotpl8CodexRoute $heldExhausted $dir $exe} 'routing_unavailable'
     $ongoing.previousSlot='b'
-    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'b') 'hold preserves actual process account despite collector recommendation a'
+    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_selection_held'
+    $heldAdmission=[pscustomobject]@{operation='select';intent='admit';model='fixture-model';previousSlot='b';cwd=$dir}
+    Assert ((Get-Hotpl8CodexRoute $heldAdmission $dir $exe).slot -eq 'b') 'held admission preserves actual process account despite collector recommendation a'
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_binding_unknown'
     [IO.File]::Delete((Join-Path $dir 'hold.json'))
     [IO.File]::Delete((Join-Path $dir 'a/used-percent'))
     $policy.codex.modelMeters['other-model']='codex_bengalfox';Save 'policy.json' $policy

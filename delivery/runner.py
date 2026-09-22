@@ -257,6 +257,9 @@ def recover(root, config, adapter=invoke_adapter):
     previous = txn.get("previous")
     if previous:
         with drained(root, config):
+            # State survives deployments. An older release must prove it can
+            # still read that state before it becomes the selected reader.
+            adapter(config, root / previous["release"], "preflight", root)
             write(root / "current.json", previous)
             adapter(config, root / previous["release"], "recover", root)
     elif read(root / "current.json"):
@@ -335,6 +338,10 @@ def update(root, github=None, adapter=invoke_adapter):
                     adapter(config, destination, "health", root)
                 except Exception:
                     if current:
+                        # Activation may have advanced a state schema. Preserve
+                        # the candidate pointer and transaction if rollback is
+                        # incompatible, so recovery cannot select a bad reader.
+                        adapter(config, root / current["release"], "preflight", root)
                         write(root / "current.json", current)
                         adapter(config, root / current["release"], "recover", root)
                     write(root / "rejected.json", {"sha": sha, "at": now(), "reason": "Activation health check failed"})
