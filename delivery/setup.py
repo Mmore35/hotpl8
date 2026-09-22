@@ -11,6 +11,8 @@ from runner import DeliveryError, lock, read, run, safe_root, update, write
 
 def setup(root, register=True):
     root = safe_root(root)
+    if (root / "delivery-owner.json").exists():
+        raise DeliveryError("Centrally owned installation; unenroll through its manager before standalone setup")
     owned = read(root / "installation.json")
     if not owned or owned.get("product") != "hotpl8":
         raise DeliveryError("First install HotPl8 normally, then enroll that owned installation")

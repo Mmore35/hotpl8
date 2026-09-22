@@ -1,5 +1,22 @@
 # Automatic main updates and PR previews
 
+## Shared update ownership
+
+An operator may enroll an installation into a compatible protocol-1 central
+manager. Its local `delivery-owner.json` pins a manager entrypoint digest, service
+identity and task name. The stable bootstrap delegates update and preview calls;
+status retains HotPl8's richer component diagnostics. Missing or changed manager
+identity fails closed rather than starting a second updater. Direct invocation of
+the bundled update runner and standalone re-enrollment are refused while owned.
+
+The native registrar continues to update the collector, but never creates or
+changes the product updater under central ownership. A retained legacy updater
+must stay disabled. Export task definitions and preserve bootstrap bytes before
+handoff; rollback drains the central owner before restoring them. Runtime state
+and active provider sessions are not rolled back. `delivery/contract.json` declares
+the application lifecycle accepted by the shared manager. This optional integration
+does not enroll other installations or add a dependency for standalone use.
+
 HotPl8 has two installation choices. Ordinary installations use reviewed versioned
 releases. An installation explicitly enrolled in Local Delivery follows tested
 `main` automatically. Contributors continue to work in separate source checkouts.

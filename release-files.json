@@ -109,6 +109,7 @@
     "docs/agent-api.md",
     "delivery/runner.py",
     "delivery/bootstrap.py",
+    "delivery/contract.json",
     "delivery/package.py",
     "delivery/setup.py",
     "delivery/launch.ps1",
@@ -135,6 +136,7 @@
     "src/jobs/finite-host.cs",
     "src/jobs/provenance.json",
     "tests/test-job-host.ps1",
+    "tests/test-central-owner.ps1",
     "scripts/import-job-containment.ps1"
   ]
 }

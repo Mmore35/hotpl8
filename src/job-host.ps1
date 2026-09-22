@@ -33,6 +33,17 @@ function Get-Hotpl8JobComponentStatus([string]$InstallDirectory) {
     $config=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
     if(-not $config.scheduledJobs){return}
     foreach($role in @('collector','updater')){
+        $owner=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery-owner.json')
+        if($role -eq 'updater' -and $owner){
+            $managerRoot=Split-Path $owner.entry -Parent
+            $registry=Read-Hotpl8Json (Join-Path $managerRoot 'registry.json')
+            $task=Get-ScheduledTask -TaskName $owner.taskName -ErrorAction SilentlyContinue
+            $valid=$owner.protocol -eq 1 -and $registry -and $task -and $task.Settings.Enabled -and $task.Actions.Count -eq 1 -and $task.Actions[0].Execute -eq $registry.host
+            $latest=Get-ChildItem -LiteralPath (Join-Path $managerRoot ('runs/'+$owner.service)) -Filter run.json -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
+            $receipt=if($latest){Read-Hotpl8Json $latest.FullName}else{$null}
+            [pscustomobject]@{component='scheduled-updater';state=$(if($valid){'current'}else{'error'});task=$owner.taskName;owner='central';nextLaunchHost=$registry.host;observedHost=$receipt.host;execution=$receipt.status;observedAt=$receipt.completedAt;adoption='Shared manager; application runtime versions reported separately';outcomeAuthority='delivery-status.json'}
+            continue
+        }
         $name=if($role -eq 'collector'){$config.scheduledJobs.collectorTask}else{'LocalDelivery-'+$config.product}
         if(-not $name){continue}
         $task=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue

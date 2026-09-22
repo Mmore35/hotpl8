@@ -267,6 +267,8 @@ def recover(root, config, adapter=invoke_adapter):
 
 def update(root, github=None, adapter=invoke_adapter):
     root = safe_root(root)
+    if (root / "delivery-owner.json").exists():
+        raise DeliveryError("This installation has a central update owner; use its delivery.py entrypoint")
     config = read(root / "delivery.json")
     if not config or config.get("protocol") != PROTOCOL or config.get("channel") != "main":
         raise DeliveryError("Installation is not registered for main delivery")

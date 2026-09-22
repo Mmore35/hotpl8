@@ -552,5 +552,35 @@ export async function main(config, args) {
         with self.assertRaises(d.DeliveryError): gh.candidate(B, self.config)
 
 
+    def test_central_owner_blocks_direct_runner_without_writes(self):
+        d.write(self.root / "delivery-owner.json", {"protocol": 1})
+        before = (self.root / "current.json").read_bytes()
+        with self.assertRaises(d.DeliveryError):
+            self.update()
+        self.assertEqual((self.root / "current.json").read_bytes(), before)
+        self.assertEqual(self.github.downloads, 0)
+
+    def test_bootstrap_delegates_update_and_preview_but_refuses_broken_owner(self):
+        import runpy
+        source = Path(__file__).resolve().parents[1] / "delivery/bootstrap.py"
+        bootstrap = self.root / "delivery.py"
+        shutil.copyfile(source, bootstrap)
+        entry = self.root / "manager.py"
+        entry.write_text("# fixture dispatcher")
+        owner = {"protocol": 1, "entry": str(entry), "entrySha256": d.digest(entry), "service": "sample"}
+        d.write(self.root / "delivery-owner.json", owner)
+        for args in (["update"], ["preview", "7"]):
+            with self.subTest(args=args), patch.object(sys, "argv", [str(bootstrap), *args]), patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as invoke:
+                with self.assertRaises(SystemExit) as exited:
+                    runpy.run_path(str(bootstrap), run_name="__main__")
+                self.assertEqual(exited.exception.code, 0)
+                command = invoke.call_args.args[0]
+                self.assertEqual(command[:6], [sys.executable, str(entry), "--service", "sample", "--expected-install", str(self.root)])
+                self.assertEqual(command[6:], ["update"] if args[0] == "update" else ["preview", "--pr", "7"])
+        entry.write_text("changed")
+        with patch.object(sys, "argv", [str(bootstrap), "update"]), patch.object(subprocess, "run") as invoke:
+            with self.assertRaises(SystemExit): runpy.run_path(str(bootstrap), run_name="__main__")
+            invoke.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()

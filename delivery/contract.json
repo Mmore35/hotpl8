@@ -1,0 +1,1 @@
+{"schemaVersion":1,"managerProtocol":1,"centralOwner":true,"operations":["preflight","drain","activate","health","recover","components"]}

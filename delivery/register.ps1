@@ -8,12 +8,16 @@ $release=Split-Path $PSScriptRoot -Parent
 . (Join-Path $release 'src/job-host.ps1')
 . (Join-Path $release 'src/lifecycle.ps1')
 $config=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
+$ownerPath=Join-Path $InstallDirectory 'delivery-owner.json'
+$owner=Read-Hotpl8Json $ownerPath
+if((Test-Path -LiteralPath $ownerPath) -and (-not $owner -or $owner.protocol -ne 1 -or -not [IO.Path]::IsPathRooted($owner.entry) -or -not (Test-Path -LiteralPath $owner.entry) -or (Get-FileHash -LiteralPath $owner.entry -Algorithm SHA256).Hash -ine $owner.entrySha256)){throw 'Invalid central delivery owner.'}
 $name='LocalDelivery-'+$config.product
 $description='Local Delivery owned installation '+$InstallDirectory
 $exe=Install-Hotpl8JobHost $InstallDirectory
 $argv=@('540',(Join-Path $InstallDirectory 'job-runs/updater'),$InstallDirectory,$Python,(Join-Path $InstallDirectory 'delivery.py'),'update')
 $arguments=(@($argv|ForEach-Object{ConvertTo-NativeArgument $_}) -join ' ')
 $plan=@{name=$name;description=$description;execute=$exe;arguments=$arguments}
+$plan.updaterOwner=if($owner){'central'}else{'product'}
 if($PlanOnly){$plan|ConvertTo-Json;return}
 $existing=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
 if($existing -and $existing.Description -ne $description){throw 'Updater task ownership mismatch.'}
@@ -34,6 +38,7 @@ $null=New-Item -ItemType Directory -Path $recovery -Force
 foreach($task in @($existing,$collector)){
     if($task){Export-ScheduledTask -TaskName $task.TaskName|Set-Content -LiteralPath (Join-Path $recovery (($task.TaskName -replace '[^a-zA-Z0-9_.-]','_')+'.xml')) -Encoding Unicode}
 }
+if(-not $owner){
 $action=New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory $InstallDirectory
 if($existing){
     # Set only Actions: logon+interval, identity, battery and enabled state survive.
@@ -46,12 +51,15 @@ if($existing){
     $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName $name -InputObject (New-ScheduledTask -Action $action -Trigger @($periodic,$logon) -Settings $settings -Principal $principal -Description $description)|Out-Null
 }
+}elseif($existing -and $existing.Settings.Enabled){throw 'Central ownership requires the product updater task to remain disabled.'}
 if($collector){
     $ca=New-ScheduledTaskAction -Execute $collectorDefinition.execute -Argument $collectorDefinition.arguments -WorkingDirectory $InstallDirectory
     Set-ScheduledTask -TaskName $CollectorTaskName -Action $ca|Out-Null
 }
-$actual=Get-ScheduledTask -TaskName $name
-if($actual.Actions.Count -ne 1 -or $actual.Actions[0].Execute -ne $exe -or $actual.Actions[0].Arguments -ne $arguments){throw 'Updater action verification failed.'}
+if(-not $owner){
+    $actual=Get-ScheduledTask -TaskName $name
+    if($actual.Actions.Count -ne 1 -or $actual.Actions[0].Execute -ne $exe -or $actual.Actions[0].Arguments -ne $arguments){throw 'Updater action verification failed.'}
+}
 $config|Add-Member NoteProperty scheduledJobs @{version=1;collectorTask=$CollectorTaskName;host=$exe;at=[DateTime]::UtcNow.ToString('o');recovery=$recovery} -Force
 Write-Hotpl8Text (Join-Path $InstallDirectory 'delivery.json') ($config|ConvertTo-Json -Depth 12) -NoBom
 $plan|ConvertTo-Json
