@@ -294,6 +294,23 @@ try{
         Assert (@($r.decisions|Where-Object {-not $_.selected -and $_.reserve}).Count -eq 0)
         Assert ($r.frames -eq 1 -and $r.limitation.Contains('does not measure quota savings'))
     }
+    Check 'replay holds expire at the frame clock and malformed holds do not strand selection' {
+        $p=Clone @{prefer=@(2,1);reserve=@();margin5h=25;margin7d=20;hysteresis=0}
+        $s=Clone @{generatedAt=$now.ToString('o');active=1;slots=@(foreach($id in @(1,2)){@{slot=$id;status='ok';fresh=$true;observedAt=$now.ToString('o');used5h=10;used7d=10;reset5h=$now.AddHours(2).ToString('o');reset7d=$now.AddDays(3).ToString('o')}})}
+        foreach($until in @($now.AddSeconds(-1).ToString('o'),'invalid',$null)){
+            $s|Add-Member NoteProperty hold @{until=$until} -Force
+            $r=Invoke-Hotpl8Replay @($s) $p
+            Assert (@($r.decisions|Where-Object stream -EQ 'claude/prefer')[0].selected -eq 2) 'expired/invalid hold suppressed selection'
+        }
+        $s.hold.until=$now.AddMinutes(5).ToString('o')
+        Assert (@((Invoke-Hotpl8Replay @($s) $p).decisions|Where-Object stream -EQ 'claude/prefer')[0].selected -eq 1) 'active hold did not retain eligible current account'
+    }
+    Check 'history inventory counts the canonical shared store once' {
+        $p=Clone @{prefer=@(1);codex=@{slots=@(@{id='one';home='C:\fixture'})}}
+        Write-Hotpl8Text (Join-Path $dir 'usage-history.json') '{"schemaVersion":1,"samples":[{"key":"claude/x"},{"key":"codex/y"}]}'
+        $stores=@(Get-Hotpl8HistoryStores $p $dir)
+        Assert ($stores.Count -eq 1 -and $stores[0].samples -eq 2 -and $stores[0].providers.Count -eq 2)
+    }
     Check 'disabled Codex homes are not polled and explicit launch cannot bypass disabling' {
         $p=Clone @{slots=@(@{id='off';home=(Join-Path $dir 'off')},@{id='on';home=(Join-Path $dir 'on')});disabled=@('off');prefer=@('off','on')}
         $script:quotaReads=0
@@ -306,6 +323,9 @@ try{
         $s=Clone @{generatedAt=$now.AddHours(-1).ToString('o');decision=@{policy='balanced';reason='switch held';accounts=@(@{slot=2;reason='model_below_margin';rank=1})}}
         $text=(Format-Hotpl8Explanation $s $now)-join ' '
         Assert ($text.Contains('STALE') -and $text.Contains('model_below_margin') -and $text.Contains('switch held'))
+        $alias=Clone @{generatedAt=$now.ToString('o');providers=@{fictional=@{decision=@{policy='prefer';reason='switch held';accounts=@(@{slot=2;reason='scoped_margin';rank=1})}}};providerOverview=@{}}
+        $text=(Format-Hotpl8Explanation $alias $now)-join ' '
+        Assert ($text.Contains('fictional: switch held') -and $text.Contains('scoped_margin')) 'numeric-driver alias lost recorded decision details'
     }
     Check 'notifications are opt-in and quiet-hour aware' {
         $s=Clone @{collector=@{startedAt=$now.AddHours(-1).ToString('o')}}
@@ -328,7 +348,7 @@ try{
     Check 'tray model is read-only and has the same decision explanation' {
         $f=Get-Hotpl8ScreenshotFixture;$before=$f.status|ConvertTo-Json -Depth 24
         $m=Get-Hotpl8TrayModel $f.status $f.policy $f.now
-        Assert ($m.details.Contains('Existing sessions retain their account') -and ($f.status|ConvertTo-Json -Depth 24) -eq $before)
+        Assert ($m.details.Contains('Managed host sessions require their own confirmed routing evidence') -and ($f.status|ConvertTo-Json -Depth 24) -eq $before)
     }
     Check 'release checks choose stable versus preview and enforce asset origin' {
         $stable=Clone @{tag_name='v1.0.0';prerelease=$false;draft=$false;published_at='2026-09-01';html_url='https://github.com/Mmore35/hotpl8/releases/tag/v1.0.0';assets=@(@{name='hotpl8-1.0.0-windows.zip';browser_download_url='https://github.com/Mmore35/hotpl8/releases/download/v1.0.0/hotpl8-1.0.0-windows.zip'})}

@@ -59,7 +59,7 @@ function Get-Hotpl8AgentPolicy([string]$Directory) {
     try{
         Assert-Hotpl8Policy $policy
         if($policy.codex){Assert-CodexPolicy $policy.codex}
-        if(@($policy.prefer).Count -gt 256 -or @($policy.codex.slots).Count -gt 256){throw 'too many accounts'}
+        foreach($r in @(Get-Hotpl8ConfiguredProviders $policy)){if(@(Get-Hotpl8ProviderAccounts $policy|Where-Object provider -CEQ $r.id).Count -gt 256){throw 'too many accounts'}}
     }catch{Stop-Hotpl8AgentRequest 'policy_invalid'}
     return $policy
 }
@@ -68,6 +68,7 @@ function Get-Hotpl8AgentSnapshot([string]$Directory) {
     if(-not (Test-Path -LiteralPath $path)){Stop-Hotpl8AgentRequest 'snapshot_missing'}
     $snapshot=Read-Hotpl8Json $path
     if($snapshot -isnot [pscustomobject] -or -not (ConvertTo-Hotpl8AgentTime $snapshot.generatedAt) -or ($null -ne $snapshot.schemaVersion -and $snapshot.schemaVersion -notin @(1,2)) -or @($snapshot.slots).Count -gt 256 -or @($snapshot.providers.codex.slots).Count -gt 256){Stop-Hotpl8AgentRequest 'snapshot_invalid'}
+    foreach($entry in $snapshot.providers.PSObject.Properties){if(@($entry.Value.slots).Count -gt 256){Stop-Hotpl8AgentRequest 'snapshot_invalid'}}
     return $snapshot
 }
 function Test-Hotpl8AgentCodexObservation($Slot,[string]$Meter) {
@@ -84,8 +85,8 @@ function Test-Hotpl8AgentCodexObservation($Slot,[string]$Meter) {
     }
     return $true
 }
-function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$Provider,[string]$Model,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    $pause=Get-Hotpl8AgentPause $Directory $Now
+function Get-Hotpl8NativeAgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$Provider,[string]$Model,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,[string]$ControlDirectory) {
+    $pause=Get-Hotpl8AgentPause $(if($ControlDirectory){$ControlDirectory}else{$Directory}) $Now
     $part=if($Provider -eq 'claude'){$Policy}else{$Policy.codex}
     $meter=if($Provider -eq 'claude'){'claude'}elseif($Model){[string]$part.modelMeters.$Model}elseif($part.defaultMeter){[string]$part.defaultMeter}else{'codex'}
     if($Model -and ($Provider -ne 'codex' -or -not $meter)){Stop-Hotpl8AgentRequest 'model_unknown'}
@@ -119,6 +120,7 @@ function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$
                     $entry=@{h5=$(if($short){100-[double]$w5.used}else{$null});h7=$(if($week){100-[double]$w7.used}else{$null});fresh=($slot.fresh -eq $true -and $short -and $week);modelBlocked=[bool]$modelBlock;obj=@{usage=@{fiveHour=@{resetsAt=$w5.resetAt};sevenDay=@{resetsAt=$w7.resetAt};scoped=$slot.scoped}}}
                     # A zero floor is not permission to use an exhausted account, including in critical mode.
                     if($entry.h5 -eq 0 -or $entry.h7 -eq 0){$entry.fresh=$false}
+                    $entry.observation=ConvertTo-Hotpl8ClaudeObservation $slot $Policy $Now
                     $acc[[int]$id]=$entry
                     $eligible=Test-Ok $entry ([double]$Policy.margin5h) (Get-Margin7dFor $Policy ([int]$id))
                     $reason=if($modelBlock){$modelBlock}elseif(-not $slot.fresh){'stale'}elseif(-not $short -or -not $week){'window_unmeasured'}elseif($eligible){'eligible'}else{'below_margin'}
@@ -160,7 +162,9 @@ function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$
         $switching=(Get-Hotpl8Actions $Policy $false).switching -and -not $pause.active -and -not $held
         $selected=if($switching){$proposed}elseif($selection.activeOk){$active}else{$null}
     }else{
-        $hold=$Snapshot.providers.codex.hold
+        $holdRoot=if($ControlDirectory){$ControlDirectory}else{$Directory}
+        $holdFile=Join-Path $holdRoot 'hold.json'
+        $hold=if(Test-Path -LiteralPath $holdFile){Get-Hold $holdRoot}else{$Snapshot.providers.codex.hold}
         $held=[bool]$hold -and (-not (ConvertTo-Hotpl8AgentTime $hold.until) -or (Test-Hotpl8FutureReset $hold.until $Now))
         if(-not $held){$hold=$null}
         $prior=[string]$Snapshot.providers.codex.recommendations.$meter
@@ -178,6 +182,14 @@ function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$
     $next=@($accounts.windows|Where-Object {Test-Hotpl8FutureReset $_.resetsAt $Now}|Sort-Object resetsAt|Select-Object -First 1)
     return [pscustomobject]@{provider=$Provider;meter=$meter;eligible=[bool]$selected;selectedSlot=$(if($selected){[string]$selected}else{$null});activeSlot=$active;proposedSlot=$proposed;requiresSelection=($Provider -eq 'claude' -and $proposed -and $proposed -ne $active);switchingPermitted=[bool]$switching;automationPaused=$pause.active;pause=$pause;selectionHeld=[bool]$held;mode=$(if($Policy.mode){$Policy.mode}else{'legacy'});critical=[bool]$critical;requiresNativeValidation=$true;scope=$(if($Provider -eq 'codex'){'next-launch'}else{'active-or-proposed-account'});nextObservedResetAt=$(if($next.Count){$next[0].resetsAt}else{$null});accounts=$accounts}
 }
+function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$Provider,[string]$Model,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    $view=Get-Hotpl8ProviderView $Snapshot $Policy $Provider
+    $state=Get-Hotpl8ProviderStateDirectory $Directory $Provider
+    $result=Get-Hotpl8NativeAgentReadiness $view.policy $view.snapshot $state $view.provider $Model $Now $Directory
+    $result.provider=$Provider
+    $result|Add-Member NoteProperty driver $view.registration.driver -Force
+    return $result
+}
 function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause=$true) {
     $operation=$null
     try{
@@ -189,7 +201,7 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
         $operation=[string]$Request.operation;$a=$Request.arguments
         if($operation -eq 'readiness'){
             Assert-Hotpl8AgentArguments $a @('provider','model') @('provider')
-            if($a.provider -isnot [string] -or $a.provider -cnotin @('claude','codex') -or ($a.PSObject.Properties['model'] -and ($a.model -isnot [string] -or $a.model -notmatch '^[a-zA-Z0-9_.-]{1,100}$'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            if($a.provider -isnot [string] -or $a.provider -cnotin @(Get-Hotpl8ProviderCatalog|ForEach-Object id) -or ($a.PSObject.Properties['model'] -and ($a.model -isnot [string] -or $a.model -notmatch '^[a-zA-Z0-9_.-]{1,100}$'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
         }elseif($operation -in @('pause.acquire','pause.release')){
             if(-not $AllowPause){Stop-Hotpl8AgentRequest 'permission_denied'}
             $keys=if($operation -eq 'pause.acquire'){@('leaseId','owner','minutes')}else{@('leaseId')}
@@ -202,13 +214,16 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
             $doctor=Get-Hotpl8Doctor $Directory
             # The original doctor is already redacted; select fields so future additions do not escape.
             $data=[pscustomobject]@{policyPresent=[bool]$doctor.policyPresent;policyValid=[bool]$doctor.policyValid;collectorBusy=[bool]$doctor.collectorBusy;snapshotFresh=[bool]$doctor.snapshotFresh;snapshotAgeSeconds=$doctor.snapshotAgeSeconds;claudeConfigured=[bool]$doctor.claudeConfigured;codexConfigured=[bool]$doctor.codexConfigured;claudeInstalled=[bool]$doctor.cswapFound;codexInstalled=[bool]$doctor.codexFound}
+            $providers=[ordered]@{}
+            foreach($entry in $doctor.providers.PSObject.Properties){$providers[$entry.Name]=[pscustomobject]@{configured=[bool]$entry.Value.configured;installed=[bool]$entry.Value.installed;driver=[string]$entry.Value.driver}}
+            $data|Add-Member NoteProperty providers ([pscustomobject]$providers)
             if($operation -eq 'capabilities'){$data|Add-Member NoteProperty operations @($operations|Where-Object {$AllowPause -or $_ -notlike 'pause.*'});$data|Add-Member NoteProperty pauseWrites $AllowPause;$data|Add-Member NoteProperty observationMode 'cached';$data|Add-Member NoteProperty readinessScope 'eligibility-only'}
         }else{
             $policy=Get-Hotpl8AgentPolicy $Directory
             if($operation -eq 'pause.acquire'){$data=Invoke-Hotpl8LeaseAcquire $Directory $a.leaseId $a.owner ([int]$a.minutes) $now}
             elseif($operation -eq 'pause.release'){$data=Invoke-Hotpl8LeaseRelease $Directory $a.leaseId $now}
             elseif($operation -eq 'accounts'){
-                $rows=@(foreach($id in @($policy.prefer)){[pscustomobject]@{provider='claude';slot=[string]$id;disabled=($id -in @($policy.disabled));reserve=($id -in @($policy.reserve))}};foreach($s in @($policy.codex.slots|Where-Object {$_})){[pscustomobject]@{provider='codex';slot=[string]$s.id;disabled=($s.id -in @($policy.codex.disabled));reserve=($s.id -in @($policy.codex.reserve))}})
+                $rows=@(Get-Hotpl8ProviderAccounts $policy|Select-Object provider,slot,disabled,reserve)
                 $data=[pscustomobject]@{accounts=$rows}
             }else{
                 $snapshot=Get-Hotpl8AgentSnapshot $Directory
@@ -216,7 +231,8 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
                 else{
                     $collector=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
                     if(-not $collector -or ((ConvertTo-Hotpl8AgentTime $snapshot.collector.completedAt) -and (ConvertTo-Hotpl8AgentTime $snapshot.collector.completedAt) -gt (ConvertTo-Hotpl8AgentTime $collector.startedAt))){$collector=$snapshot.collector}
-                    $data=[pscustomobject]@{generatedAt=(ConvertTo-Hotpl8AgentTime $snapshot.generatedAt);ageSeconds=(Get-Hotpl8AgentAge $snapshot.generatedAt $now);collector=[pscustomobject]@{status=$(if($collector.status -in @('ok','incomplete','collecting','started','failed')){$collector.status}else{'unknown'});startedAt=(ConvertTo-Hotpl8AgentTime $collector.startedAt);completedAt=(ConvertTo-Hotpl8AgentTime $collector.completedAt)};providers=[pscustomobject]@{claude=(Get-Hotpl8AgentReadiness $policy $snapshot $Directory 'claude' '' $now);codex=(Get-Hotpl8AgentReadiness $policy $snapshot $Directory 'codex' '' $now)}}
+                    $data=[pscustomobject]@{generatedAt=(ConvertTo-Hotpl8AgentTime $snapshot.generatedAt);ageSeconds=(Get-Hotpl8AgentAge $snapshot.generatedAt $now);collector=[pscustomobject]@{status=$(if($collector.status -in @('ok','incomplete','collecting','started','failed')){$collector.status}else{'unknown'});startedAt=(ConvertTo-Hotpl8AgentTime $collector.startedAt);completedAt=(ConvertTo-Hotpl8AgentTime $collector.completedAt)};providers=[pscustomobject]([ordered]@{})}
+                    foreach($r in @(Get-Hotpl8ConfiguredProviders $policy -IncludeUnconfigured)){$data.providers|Add-Member NoteProperty $r.id (Get-Hotpl8AgentReadiness $policy $snapshot $Directory $r.id '' $now)}
                 }
             }
         }

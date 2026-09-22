@@ -1,4 +1,5 @@
 ﻿# Per-provider due times persist across scheduler, manual refresh and process restarts.
+. (Join-Path $PSScriptRoot 'provider-registry.ps1')
 function Get-Hotpl8CollectionState([string]$Directory) {
     $state=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
     if(-not $state){$state=[pscustomobject]@{schemaVersion=1;providers=[pscustomobject]@{}}}
@@ -14,7 +15,7 @@ function Test-Hotpl8CollectionDue($State, [string]$Provider, [bool]$Scheduled, [
         # cswap already owns each account's polling/cache deadlines. Observe it
         # on every healthy scheduler wake; adding a second cache can expire its
         # otherwise valid readings. Neither path may cancel failure backoff.
-        if(-not $p.failures -and (-not $Scheduled -or $Provider -eq 'claude')){return $true}
+        if(-not $p.failures -and (-not $Scheduled -or (Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver).healthyPollSeconds -eq 60)){return $true}
         return [datetimeoffset]::Parse($p.nextAttemptAt) -le $Now
     }catch{return $true}
 }

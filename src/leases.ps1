@@ -1,4 +1,6 @@
-# Cooperative capabilities, separate from the human-owned pause. Writers hold tick.lock.
+# Cooperative capabilities, separate from the human-owned pause. Writers hold
+# tick.lock, then briefly action-control.lock at publication (never native I/O).
+. (Join-Path $PSScriptRoot 'provider-actions.ps1')
 function Stop-Hotpl8LeaseError([string]$Code, [string]$Message) {
     $exception=New-Object InvalidOperationException($Message)
     $exception.Data['Hotpl8Code']=$Code
@@ -65,7 +67,7 @@ function Open-Hotpl8LeaseLock([string]$Directory) {
     }
 }
 function Save-Hotpl8LeaseLedger([string]$Directory, $Entries) {
-    try { Write-Hotpl8Text (Join-Path $Directory 'automation-leases.json') (@{schemaVersion=1;entries=@($Entries)} | ConvertTo-Json -Depth 8 -Compress) -NoBom }
+    try { Invoke-Hotpl8ControlWrite $Directory { Write-Hotpl8Text (Join-Path $Directory 'automation-leases.json') (@{schemaVersion=1;entries=@($Entries)} | ConvertTo-Json -Depth 8 -Compress) -NoBom } }
     catch { Stop-Hotpl8LeaseError 'state_write_failed' 'Agent pause state could not be saved.' }
 }
 function Invoke-Hotpl8LeaseAcquire($Directory, $LeaseId, $Owner, [int]$Minutes, [datetimeoffset]$Now=[datetimeoffset]::UtcNow) {

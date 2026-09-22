@@ -1,5 +1,9 @@
 # T3 / Codex integration design and acceptance
 
+Historical initial design. Installation identity and delivery are superseded by
+the [managed delivery plan](t3-managed-delivery.md); routing/authentication decisions
+below remain the original qualification record.
+
 HotPl8 previously recommended a Codex account only to its own CLI launcher.
 T3 independently launched a fixed home; a healthy alternative in HotPl8 could
 not help a T3 session pinned to an exhausted subscription.

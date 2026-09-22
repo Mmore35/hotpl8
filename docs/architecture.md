@@ -16,7 +16,7 @@ flowchart LR
 
 ## Who decides, and whose login is used?
 
-HotPl8 owns the decision policy. For Claude, it reads `cswap list --json` and uses numeric account slots. When a switch is allowed, it calls `cswap switch SLOT`; cswap owns the switch mechanism and the corresponding account credentials. HotPl8 changes its reported active account only when that command succeeds. It does not claim to rebind an already running client.
+HotPl8 owns the decision policy. For Claude, it reads `cswap list --json` and uses numeric account slots. When a switch is allowed, it calls `cswap switch SLOT`; cswap owns the switch mechanism and the corresponding account credentials. HotPl8 changes its reported active account only when that command succeeds. Native-client adoption is separate evidence; a global switch receipt does not prove a particular chat has rebound.
 
 Codex has separate native homes. Each slot points to an explicitly enrolled, independently signed-in home. HotPl8 launches a child Codex process with that home's `CODEX_HOME`; it does not rewrite the parent environment or move credentials between homes. **NEXT LAUNCH** is a recommendation, not a claim that an existing session switched. An explicit slot launch validates native authentication but does not guarantee quota. Resume requires the slot that owns the conversation.
 
@@ -27,9 +27,9 @@ There is no separate Warden component in this repository: collection and decisio
 1. Exclude unavailable, stale, malformed, or insufficient quota readings from automatic selection. Missing quota is unknown, not unlimited.
 2. Keep reserve accounts behind work accounts. Healthy accounts outrank accounts near their weekly floor; among degraded accounts, favor more weekly headroom.
 3. Among healthy peers, use configured preference order or the soonest reset. Unmeasurable reset times sort behind known expiry times.
-4. Avoid needless changes. Claude uses a headroom band in preference mode or a reset lead in soonest-reset mode; a hold blocks the switch. Codex applies its own recommendation rules before launch.
+4. Avoid needless changes. Claude uses a headroom band in preference mode or a reset lead in soonest-reset mode; a hold blocks the switch. Both adapters invoke the same normalized decision function; different quota facts or native activation boundaries remain explicit inputs.
 
-Claude: [Test-Ok, Get-RankedOrder, Invoke-ClaudeTick](../src/providers/claude.ps1). Codex: [Get-CodexEligibility, Select-CodexSlot, Get-CodexLaunchPlan](../src/providers/codex.ps1). These choose according to configured policy; “best” is not a universal optimization guarantee.
+Shared decisions: [provider-decision.ps1](../src/provider-decision.ps1), fed by [native observation adapters](../src/provider-observation.ps1). Legacy Claude/Codex selector signatures are compatibility wrappers over that core. These choose according to configured policy; “best” is not a universal optimization guarantee.
 
 ## Warming is a separate decision
 
@@ -73,6 +73,11 @@ setup-codex.ps1             Native account enrollment and optional hooks
 install/uninstall/rollback.ps1
                             Stable installation entrypoints
 src/
+  provider-registry.ps1     Validated data catalog, v1/v2/v3 compatibility views
+  provider-runtime.ps1      Fixed driver dispatch and native ownership checks
+  provider-observation.ps1  Native quota decoders into the shared contract
+  provider-decision.ps1     One eligibility, ranking and action-intent decision
+  provider-actions.ps1      Short control authorization and generation boundary
   common.ps1                Atomic files, quoting, bounded processes
   config.ps1                State resolution and policy validation
   diagnostics.ps1           Offline doctor and bounded event logs
@@ -121,3 +126,20 @@ The [T3 integration](t3-integration.md) is a separate opt-in launch boundary. It
 uses native external-token login with ephemeral credential storage in the shared
 conversation home. Native Codex alone refreshes the canonical enrolled homes.
 The collector and public agent API never return authentication material.
+
+## Provider registration
+
+`data/providers/` is a bounded catalog of declarative definitions. Driver IDs bind
+to reviewed implementations, never arbitrary module paths. Collection, setup,
+account edits, overview/details, CLI, API, MCP and diagnostics discover this
+catalog. Policy v3 stores native policy parts by registered ID; compatibility
+views let existing native decoders and renderers consume their established shapes
+without treating an alias as another provider's account population.
+
+The configured ID owns its cache and public snapshot key. A native home/subscription
+cannot supply duplicate registered capacity; the global activation driver has one
+configured owner. Common controls belong to the installation, while authenticated
+binding and critical dwell belong to their actual native scope. The
+[third-provider test](../tests/test-provider-registration.ps1) adds data and synthetic
+enrollment to an isolated package, exercising real consumers without adding a
+provider-name branch. See [adding a provider](adding-a-provider.md).

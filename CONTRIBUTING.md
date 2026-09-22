@@ -24,6 +24,13 @@ Contribute code you have the right to submit, under the project's MIT license. B
 
 Public entrypoints are at the root, internal code in `src/`, provider adapters in `src/providers/`, and all offline suites in `tests/`. Build and verification tools live in `scripts/`. See the [source map and decisions](docs/architecture.md). Preserve entrypoint paths used by installations and hooks. Update release-files.json when a shipped file moves.
 
+Before adding or changing an installed bridge, helper, launcher or service, read
+[the delivery contract](docs/delivery.md#component-lifecycle). Define its update
+owner, activation boundary, loaded-version evidence and recovery behavior. Include
+it in the existing adapter inventory/readiness and test an upgrade from a prior
+installation. A working source checkout or passing clean-install test does not
+prove an enrolled installation will receive the change.
+
 For UI changes, regenerate and inspect the [documentation screenshots](docs/screenshots.md). The harness uses the real renderer with fixed fictional fixtures; never capture live accounts. Relevant focused checks:
 
 ```powershell

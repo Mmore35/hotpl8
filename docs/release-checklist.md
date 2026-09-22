@@ -6,7 +6,14 @@ archive with source identity, attests it and publishes an immutable
 `main-<sha>` prerelease. This is separate from the manually published semantic
 versions described below. PR jobs cannot publish main packages.
 
-For the 0.2 candidate, consult [delivery status](plans/subscription-roadmap.md) and retain experimental labels for unqualified native capabilities. Run the full suite including operational state and replay tests. Verify both schema versions, new release-manifest entries, pause after restart, delayed warm reconciliation, and incompatible-policy rollback refusal.
+Any runtime component change must satisfy the [component lifecycle](delivery.md#component-lifecycle)
+contract: existing-install upgrade, next-process adoption, retained active work,
+component version evidence, failed readiness and interrupted rollback. Include
+bridges/helpers copied by setup; packaging their new source alone is not delivery.
+
+For the 0.2 candidate, consult [delivery status](plans/subscription-roadmap.md) and retain experimental labels for unqualified native capabilities. Run the full suite including operational state and replay tests. Verify schema versions 1, 2 and 3, new release-manifest entries, pause after restart, delayed warm reconciliation, and incompatible-policy rollback refusal before pointer replacement.
+
+For shared-provider changes, include the descriptor-only third-provider acceptance fixture and both native rollover transports with the policy broker. For T3 transition, verify both retained alias and ordinary-entry receipts across update/removal and document which existing processes still run an older release. A picker change is not bulk migration qualification.
 
 To publish an updater-compatible artifact, merge reviewed code into main, run **Build attested release** (`.github/workflows/release.yml`) on that exact main revision, and download its tested archive plus SHA256SUMS. Verify the archive with `gh attestation verify --repo Mmore35/hotpl8 --signer-workflow Mmore35/hotpl8/.github/workflows/release.yml --source-ref refs/heads/main --source-digest COMMIT --deny-self-hosted-runners`. Create the matching version tag at that exact commit and upload the unchanged archive as a release asset. Keep prereleases in the preview channel. Do not rebuild or rezip the attested file. Creating/publishing the release is a separate explicit maintainer action; the workflow only builds and attests.
 

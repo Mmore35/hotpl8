@@ -2,6 +2,7 @@
 # Offline acceptance tests. No live accounts or OpenAI requests.
 $ErrorActionPreference = 'Stop'
 . (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/config.ps1')
 . (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 $script:passed = 0; $script:failed = 0
@@ -190,6 +191,17 @@ try {
         Assert (((Format-CodexStatus $s $policy $now)-join "`n").Contains('next launch = a'))
     }
     Check 'automatic launch chooses recommended account' { $p=Get-CodexLaunchPlan $policy $status '' '' @() $now; Assert ($p.slot.id -eq 'a'); Assert $p.automatic }
+    Check 'new launch recomputes shared policy instead of trusting a cached recommendation' {
+        $changed=Copy-Value $policy;$changed.prefer=@('b','a')
+        $p=Get-CodexLaunchPlan $changed $status '' '' @() $now
+        Assert ($status.recommendations.codex -eq 'a' -and $p.slot.id -eq 'b')
+    }
+    Check 'unknown held binding defers automatic launch while an explicit home stays manual' {
+        $context=[pscustomobject]@{intent='admit';hold=$true;bindingKnown=$false}
+        $threw=$false;try{Get-CodexLaunchPlan $policy $status '' '' @() $now $context|Out-Null}catch{$threw=$true};Assert $threw
+        $p=Get-CodexLaunchPlan $policy $status b '' @() $now $context
+        Assert ($p.slot.id -eq 'b' -and -not $p.automatic)
+    }
     Check 'stale automatic launch rejected' { $s=Copy-Value $status; $s.observedAt=$now.AddHours(-1).ToString('o'); $threw=$false; try { Get-CodexLaunchPlan $policy $s '' '' @() $now | Out-Null } catch { $threw=$true }; Assert $threw }
     Check 'explicit launch works without cached recommendation' { $p=Get-CodexLaunchPlan $policy $null b '' @() $now; Assert ($p.slot.id -eq 'b'); Assert (-not $p.automatic) }
     Check 'resume requires owning slot' { $threw=$false; try { Get-CodexLaunchPlan $policy $status '' '' @('resume','abc') $now | Out-Null } catch { $threw=$true }; Assert $threw }
@@ -280,6 +292,16 @@ try {
         $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH
         Assert ($record.home -eq $homeA); Assert ($record.cwd -eq (Get-Location).Path)
         Assert (($record.args -join '|') -eq '--model|fixture-model|exec|--json|fixture prompt')
+    }
+    Check 'policy drift between planning and native launch is refused before dispatch' {
+        $path=Join-Path $dir 'policy.json';$before=[IO.File]::ReadAllText($path)
+        try {
+            $p=Get-CodexLaunchPlan $policy $status b '' @() $now
+            $changed=$before|ConvertFrom-Json;$changed.codex.margin5h=[double]$changed.codex.margin5h+1
+            Write-Hotpl8Text $path ($changed|ConvertTo-Json -Depth 24)
+            $threw=$false;try{Invoke-Hotpl8Codex $p $dir $fake $homeA -ControlDirectory $dir|Out-Null}catch{$threw=$true;Assert ($_.Exception.Message -match 'Policy changed before native launch')}
+            Assert $threw
+        } finally {[IO.File]::WriteAllText($path,$before)}
     }
     Check 'binding changed since collection prevents automatic dispatch' {
         $c=Invoke-CodexCollection $policy $dir $fake $null $null

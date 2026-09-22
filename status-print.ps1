@@ -10,18 +10,21 @@
 # line shows a visibly stale time at every session start.
 #
 # Silent + exit 0 when the feature is off or has never run.
-param([ValidateSet('claude','codex')][string]$Provider = 'claude', [string]$StateDirectory)
+param([string]$Provider = 'claude', [string]$StateDirectory)
 . (Join-Path $PSScriptRoot 'src/common.ps1')
 . (Join-Path $PSScriptRoot 'src/config.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
-if ($Provider -eq 'codex') {
+try{$driver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver}catch{exit 0}
+if ($driver.provider -eq 'codex') {
     $ErrorActionPreference = 'SilentlyContinue'
     try {
         . (Join-Path $PSScriptRoot 'src/common.ps1')
 
         $policy = Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
-        if (-not $policy.codex) { exit 0 }
         $status = Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')
+        $view=Get-Hotpl8ProviderView $status $policy $Provider
+        $policy=$view.policy;$status=$view.snapshot
+        if (-not $policy.codex) { exit 0 }
         if (-not $status.providers.codex) { exit 0 }
         $bound = $env:HOTPL8_SLOT
         if (-not $bound) {
@@ -30,7 +33,7 @@ if ($Provider -eq 'codex') {
             if ($matching.Count -eq 1) { $bound = [string]$matching[0].id }
         }
         $slot = @($status.providers.codex.slots | Where-Object id -EQ $bound | Select-Object -First 1)
-        $context = [ordered]@{ provider = 'codex'; boundSlot = $bound; meter = $env:HOTPL8_METER; observedAt = $status.providers.codex.observedAt; recommendedNextLaunch = $status.providers.codex.recommendedSlot; warm = 'unmeasured' }
+        $context = [ordered]@{ provider = $Provider; boundSlot = $bound; meter = $env:HOTPL8_METER; observedAt = $status.providers.codex.observedAt; recommendedNextLaunch = $status.providers.codex.recommendedSlot; warm = 'unmeasured' }
         if ($slot.Count) { $context.quota = $(if ($env:HOTPL8_METER) { $slot[0].buckets.($env:HOTPL8_METER) } else { $slot[0].buckets }); $context.observedAt = $slot[0].observedAt; $context.status = $slot[0].status }
         $context.fresh = $false
         try {

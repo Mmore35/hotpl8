@@ -2,6 +2,7 @@
 . (Join-Path $PSScriptRoot 'automation.ps1')
 . (Join-Path $PSScriptRoot 'capacity.ps1')
 . (Join-Path $PSScriptRoot 'critical.ps1')
+. (Join-Path $PSScriptRoot 'provider-registry.ps1')
 function Resolve-Hotpl8StateDirectory([string]$Explicit, [string]$CodeDirectory) {
     if ($Explicit) { return [IO.Path]::GetFullPath($Explicit) }
     if ($env:HOTPL8_STATE_DIRECTORY) { return [IO.Path]::GetFullPath($env:HOTPL8_STATE_DIRECTORY) }
@@ -12,6 +13,35 @@ function Resolve-Hotpl8StateDirectory([string]$Explicit, [string]$CodeDirectory)
 }
 function Assert-Hotpl8Policy($Policy) {
     if (-not $Policy -or $Policy -is [array] -or $Policy -isnot [pscustomobject]) { throw 'Invalid policy: expected an object.' }
+    if($Policy.schemaVersion -eq 3 -and (Test-Hotpl8Number $Policy.schemaVersion)){
+        $allowed=@('schemaVersion','mode','providers','switchEnabled','warm','probeEnabled','automation','historyEnabled','notificationsEnabled','display')
+        foreach($field in $Policy.PSObject.Properties){if($field.Name -cnotin $allowed){throw 'Invalid version 3 policy field.'}}
+        if($Policy.mode -cnotin @('monitor','automate')){throw 'Invalid policy: version 3 requires mode.'}
+        $control=Copy-Hotpl8ProviderValue $Policy;$control.PSObject.Properties.Remove('providers');$control.schemaVersion=2
+        Assert-Hotpl8Policy $control
+        $nativeHomes=@{};$globalOwners=0
+        foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
+            $driver=Get-Hotpl8ProviderDriver $r.driver
+            $view=Get-Hotpl8ProviderView $null $Policy $r.id
+            if($driver.provider -eq 'claude'){
+                foreach($key in @('schemaVersion','mode','switchEnabled','warm','probeEnabled','automation','historyEnabled','notificationsEnabled','display','providers','codex')){if($r.policy.PSObject.Properties[$key]){throw 'Provider policy contains a global or foreign setting.'}}
+                Assert-Hotpl8Policy $view.policy
+                if(@($r.policy.prefer|Where-Object {$null -ne $_}).Count){$globalOwners++}
+            }else{
+                # Load only the shipped reviewed validator, never a path from data.
+                if(-not (Get-Command Assert-CodexPolicy -ErrorAction SilentlyContinue)){. (Join-Path $PSScriptRoot 'providers/codex.ps1')}
+                Assert-CodexPolicy $r.policy
+                foreach($slot in @($r.policy.slots)){
+                    $homeKey=[IO.Path]::GetFullPath([string]$slot.home).TrimEnd('\','/').ToLowerInvariant()
+                    if($nativeHomes.ContainsKey($homeKey)){throw 'Native account home is enrolled under more than one provider.'}
+                    $nativeHomes[$homeKey]=$true
+                }
+            }
+            if(-not $r.definition.capabilities.warming -and $r.policy.warm){throw 'Provider does not support warming.'}
+        }
+        if($globalOwners -gt 1){throw 'The native global activation driver supports only one configured provider owner.'}
+        return
+    }
     if ($null -ne $Policy.schemaVersion -and (-not (Test-Hotpl8Number $Policy.schemaVersion) -or $Policy.schemaVersion -notin @(1,2))) { throw 'Invalid policy: unsupported schemaVersion.' }
     $v2Fields=@('automation','disabled','claudeModels','historyEnabled','notificationsEnabled','capacity','critical','display')
     if($Policy.schemaVersion -ne 2 -and @($Policy.PSObject.Properties|Where-Object {$_.Name -in $v2Fields}).Count){throw 'New operational settings require schemaVersion 2.'}

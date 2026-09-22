@@ -1,0 +1,356 @@
+# Fixed-clock fictional inputs only. No native process, credential or state access.
+$ErrorActionPreference='Stop'
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'src/provider-decision.ps1')
+$script:passed=0;$script:failed=0
+$now=[datetimeoffset]::Parse('2026-09-22T00:00:00Z')
+function Copy-Value($Value){$Value|ConvertTo-Json -Depth 30|ConvertFrom-Json}
+function Assert($Value,[string]$Message='assertion failed'){if(-not $Value){throw $Message}}
+function Check([string]$Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
+function Policy {Copy-Value @{prefer=@('a','b');reserve=@();order='prefer';margin5h=25;margin7d=20;margin7dWork=5;hysteresis=10;resetLeadMin=10;maxUsageAgeS=900}}
+function Account([string]$Id='a',[double]$Short=90,[double]$Week=90,[int]$ResetMinutes=120){
+    Copy-Value @{id=$Id;status='ok';observedAt=$now.ToString('o');windows=@(
+        @{name='300';scope='fixture';role='short';state='observed';required=$true;usedPercent=(100-$Short);resetAt=$now.AddMinutes($ResetMinutes).ToString('o');observedAt=$now.ToString('o');resetConfirmed=$true},
+        @{name='10080';scope='fixture';role='weekly';state='observed';required=$true;usedPercent=(100-$Week);resetAt=$now.AddDays(3).ToString('o');observedAt=$now.ToString('o');resetConfirmed=$true})}
+}
+function Context([string]$Intent='admit',[string]$Previous=''){
+    Copy-Value @{intent=$Intent;previousId=$Previous;bindingKnown=[bool]$Previous;identityKnown=[bool]$Previous;scopes=@('fixture');mode='automate';switching=$true;paused=$false;hold=$false}
+}
+function Decide($Accounts,$Policy=(Policy),$Context=(Context)){Get-Hotpl8ProviderDecision $Accounts $Policy $Context $now}
+Check 'healthy preference and explicit recommendation are independent from a known binding' {
+    $d=Decide @((Account a),(Account b)) (Policy) (Context admit b)
+    Assert ($d.proposedSlot -eq 'a' -and $d.targetSlot -eq 'a' -and $d.actionPermitted)
+}
+Check 'equivalent input decisions do not depend on provider labels' {
+    $a=Account;$p=Policy;$c=Context
+    $a|Add-Member NoteProperty provider 'claude';$first=Decide @($a) $p $c
+    $a.provider='fictional-third-provider';$second=Decide @($a) $p $c
+    Assert (($first|ConvertTo-Json -Depth 30 -Compress) -ceq ($second|ConvertTo-Json -Depth 30 -Compress))
+}
+Check 'degraded headroom improves despite later short reset' {
+    $p=Policy;$p.order='soonest-reset'
+    Assert ((Decide @((Account a 90 6 60),(Account b 90 16 120)) $p (Context admit a)).targetSlot -eq 'b')
+}
+Check 'return from reserve bypasses healthy-peer headroom hysteresis' {
+    $p=Policy;$p.reserve=@('a')
+    Assert ((Decide @((Account a),(Account b 30)) $p (Context admit a)).targetSlot -eq 'b')
+}
+Check 'equal degraded headroom retains actual current account' {
+    Assert ((Decide @((Account a 90 15),(Account b 90 15)) (Policy) (Context admit b)).targetSlot -eq 'b')
+}
+Check 'healthy work outranks degraded work and any healthy reserve' {
+    $p=Policy;$p.reserve=@('c')
+    Assert ((Decide @((Account a 90 15),(Account b),(Account c)) $p).targetSlot -eq 'b')
+}
+Check 'healthy-peer preference band still avoids churn' {
+    Assert ((Decide @((Account a 30),(Account b)) (Policy) (Context admit b)).targetSlot -eq 'b')
+}
+Check 'healthy-peer reset lead still avoids churn at boundary' {
+    $p=Policy;$p.order='soonest-reset'
+    Assert ((Decide @((Account a 90 90 115),(Account b 90 90 120)) $p (Context admit b)).targetSlot -eq 'b')
+    Assert ((Decide @((Account a 90 90 110),(Account b 90 90 120)) $p (Context admit b)).targetSlot -eq 'a')
+}
+Check 'ineligible current account cannot impose hysteresis' {
+    Assert ((Decide @((Account a 26),(Account b 0)) (Policy) (Context admit b)).targetSlot -eq 'a')
+}
+Check 'weekly expiry and balanced use the shared selection key' {
+    $a=Account a 90 90;$b=Account b 90 90;$a.windows[1].resetAt=$now.AddDays(6).ToString('o');$b.windows[1].resetAt=$now.AddDays(1).ToString('o')
+    foreach($order in @('weekly-expiry','balanced')){$p=Policy;$p.order=$order;Assert ((Decide @($a,$b) $p).targetSlot -eq 'b')}
+}
+Check 'small account permutations retain deterministic ties' {
+    $p=Policy;$p.prefer=@()
+    foreach($ids in @(@('a','b','c'),@('c','a','b'),@('b','c','a'))){$accounts=@(foreach($id in $ids){Account $id});Assert ((Decide $accounts $p).targetSlot -eq 'a')}
+}
+Check 'zero quota stays ineligible with zero margins' {
+    $p=Policy;$p.margin5h=0;$p.margin7dWork=0
+    Assert (-not (Decide @((Account a 0 90)) $p).accounts[0].eligible)
+}
+Check 'exact freshness ceiling allowed, older and future observations rejected' {
+    foreach($case in @(@(900,$true),@(901,$false),@(-5,$true),@(-6,$false))){$a=Account;$a.observedAt=$now.AddSeconds(-$case[0]).ToString('o');Assert ((Decide @($a)).accounts[0].eligible -eq $case[1])}
+}
+Check 'missing and invalid observations fail closed' {
+    foreach($value in @($null,'nonsense')){$a=Account;$a.observedAt=$value;Assert ((Decide @($a)).accounts[0].reason -eq 'stale')}
+}
+Check 'fresh account timestamp cannot launder stale or missing window evidence' {
+    foreach($stamp in @($now.AddSeconds(-901).ToString('o'),$now.AddSeconds(6).ToString('o'),$null,'invalid')){$a=Account;$a.windows[0].observedAt=$stamp;Assert ((Decide @($a)).accounts[0].reason -eq 'window_stale')}
+}
+Check 'malformed normalized window metadata fails closed' {
+    foreach($case in @(@('role','invented'),@('name',''),@('name',7),@('scope',7),@('required','false'),@('required',$null),@('state','invented'),@('resetConfirmed','true'))){$a=Account;$a.windows[0].($case[0])=$case[1];Assert (-not (Decide @($a)).accounts[0].eligible)}
+}
+Check 'elapsed-after-observation reset restores quota but not next expiry' {
+    $a=Account a 0;$a.windows[0].resetAt=$now.AddSeconds(-1).ToString('o');$a.windows[0].observedAt=$now.AddMinutes(-5).ToString('o')
+    $d=Decide @($a);Assert ($d.accounts[0].eligible -and $d.accounts[0].shortRemaining -eq 100 -and -not $d.accounts[0].resetAt)
+}
+Check 'expired-on-arrival reset grants no refill' {
+    $a=Account;$a.windows[0].resetAt=$now.AddSeconds(-1).ToString('o');Assert ((Decide @($a)).accounts[0].reason -eq 'reset_unconfirmed')
+}
+Check 'missing or malformed percentages cannot be refilled' {
+    foreach($bad in @($null,-1,101,'0',$true)){$a=Account;$a.windows[0].usedPercent=$bad;$a.windows[0].resetAt=$now.AddSeconds(-1).ToString('o');$a.windows[0].observedAt=$now.AddMinutes(-5).ToString('o');Assert (-not (Decide @($a)).accounts[0].eligible)}
+}
+Check 'observed null reset permits quota but cannot rank a known expiry' {
+    $a=Account;$a.windows[0].resetAt=$null;$a.windows[0].resetConfirmed=$false
+    $d=Decide @($a);Assert ($d.accounts[0].eligible -and -not $d.accounts[0].resetAt)
+}
+Check 'unconfirmed future reset does not rank as confirmed expiry' {
+    $p=Policy;$p.order='soonest-reset';$a=Account a 90 90 10;$a.windows[0].resetConfirmed=$false
+    Assert ((Decide @($a,(Account b)) $p).targetSlot -eq 'b')
+}
+Check 'mixed time zone offsets rank the earliest instant across windows' {
+    $a=Account;$a.windows[0].resetAt='2026-09-22T01:00:00-05:00'
+    $second=Copy-Value $a.windows[0];$second.name='other-short';$second.resetAt='2026-09-22T03:00:00+00:00';$a.windows+= $second
+    Assert ([datetimeoffset]::Parse((Decide @($a)).accounts[0].resetAt) -eq $now.AddHours(3))
+}
+Check 'confirmed non-applicability differs from missing required window' {
+    $a=Account;$a.windows[1].state='not_applicable';$a.windows[1].required=$false
+    $d=Decide @($a);Assert ($d.accounts[0].eligible -and -not $d.accounts[0].degraded)
+    $a.windows[1].required=$true;Assert ((Decide @($a)).accounts[0].reason -eq 'window_required')
+    $a.windows[1].state='unknown';Assert ((Decide @($a)).accounts[0].reason -eq 'window_unknown')
+}
+Check 'unknown requested model scope and duplicate windows are rejected' {
+    $a=Account;$c=Context;$c.scopes=@('missing');Assert ((Decide @($a) (Policy) $c).accounts[0].reason -eq 'model_quota_unknown')
+    $a.windows+=Copy-Value $a.windows[0];Assert ((Decide @($a)).accounts[0].reason -eq 'duplicate_window')
+}
+Check 'not-applicable windows cannot satisfy a required model scope' {
+    $a=Account;foreach($w in $a.windows){$w.state='not_applicable';$w.required=$false}
+    Assert ((Decide @($a)).accounts[0].reason -eq 'model_quota_unknown')
+}
+Check 'every active scope must pass quota constraints' {
+    $a=Account;$w=Copy-Value $a.windows[0];$w.scope='child';$w.usedPercent=100;$a.windows+= $w
+    $c=Context;Assert ((Decide @($a) (Policy) $c).accounts[0].eligible)
+    $c.scopes=@('fixture','child');Assert (-not (Decide @($a) (Policy) $c).accounts[0].eligible)
+}
+Check 'duplicate slots and identities exclude all copies' {
+    $a=Account;$b=Account
+    Assert (@((Decide @($a,$b)).accounts|Where-Object eligible).Count -eq 0)
+    $b.id='b';$a|Add-Member NoteProperty identityKey 'same';$b|Add-Member NoteProperty identityKey 'same'
+    Assert (@((Decide @($a,$b)).accounts|Where-Object eligible).Count -eq 0)
+}
+Check 'disabled and rebound accounts never authorize action' {
+    foreach($field in @('enabled','identityValid','bindingValid')){$a=Account;$a|Add-Member NoteProperty $field $false;Assert (-not (Decide @($a)).actionPermitted)}
+}
+Check 'observe returns proposal but permits no action' {
+    $d=Decide @((Account)) (Policy) (Context observe);Assert ($d.proposedSlot -eq 'a' -and -not $d.actionPermitted -and -not $d.requiresNativeValidation)
+}
+Check 'paused monitor explicit launch remains allowed' {
+    $c=Context;$c.mode='monitor';$c.paused=$true;$c.switching=$false
+    Assert ((Decide @((Account)) (Policy) $c).actionPermitted)
+}
+Check 'unknown held admission defers instead of borrowing recommendation' {
+    $c=Context;$c.hold=$true;$c.previousId='a'
+    $d=Decide @((Account)) (Policy) $c;Assert (-not $d.actionPermitted -and $d.suppressionReason -eq 'binding_unknown')
+}
+Check 'hold retains actual eligible binding and cannot bless an empty one' {
+    $c=Context admit b;$c.hold=$true
+    Assert ((Decide @((Account a),(Account b)) (Policy) $c).targetSlot -eq 'b')
+    $d=Decide @((Account a),(Account b 0)) (Policy) $c;Assert (-not $d.actionPermitted -and -not $d.targetSlot)
+}
+Check 'manual pin can establish held binding without automatic quota approval' {
+    $c=Context;$c.hold=$true;$c|Add-Member NoteProperty pin 'a'
+    $d=Decide @((Account a 0)) (Policy) $c;Assert ($d.actionPermitted -and $d.manual -and -not $d.accounts[0].eligible -and $d.requiresNativeValidation)
+}
+Check 'autonomous rebinding obeys each common control' {
+    foreach($case in @(@('mode','monitor','monitor_only'),@('paused',$true,'automation_paused'),@('switching',$false,'switching_disabled'),@('hold',$true,'selection_held'))){$c=Context rebind b;$c.($case[0])=$case[1];$d=Decide @((Account a),(Account b)) (Policy) $c;Assert (-not $d.actionPermitted -and $d.suppressionReason -eq $case[2])}
+}
+Check 'unknown autonomous binding and invalid safety state fail closed' {
+    Assert ((Decide @((Account)) (Policy) (Context rebind)).suppressionReason -eq 'binding_unknown')
+    $c=Context;$c|Add-Member NoteProperty safetyInvalid $true;Assert ((Decide @((Account)) (Policy) $c).suppressionReason -eq 'safety_state_invalid')
+}
+Check 'control delivery remains independent from quota and action controls' {
+    $c=Context control a;$c.paused=$true;$c.hold=$true;$c.mode='monitor';$c|Add-Member NoteProperty safetyInvalid $true
+    Assert ((Decide @((Account a 0)) (Policy) $c).actionPermitted)
+}
+Check 'native refresh is identity-pinned while held paused and exhausted' {
+    $c=Context refresh a;$c.hold=$true;$c.paused=$true;$c.mode='monitor'
+    $d=Decide @((Account a 0)) (Policy) $c;Assert ($d.actionPermitted -and $d.targetSlot -eq 'a')
+    $stale=Account;$stale.observedAt=$now.AddHours(-1).ToString('o');Assert ((Decide @($stale) (Policy) $c).actionPermitted)
+    $disabled=Account;$disabled|Add-Member NoteProperty enabled $false;Assert (-not (Decide @($disabled) (Policy) $c).actionPermitted)
+    $c.identityKnown=$false;Assert ((Decide @((Account)) (Policy) $c).suppressionReason -eq 'binding_unknown')
+}
+Check 'warm and probe ignore rotation hold but obey pause and action budget' {
+    foreach($intent in @('warm','probe')){$c=Context $intent;$c.hold=$true;$c|Add-Member NoteProperty actionEnabled $true;$c|Add-Member NoteProperty actionSlot 'a';$c|Add-Member NoteProperty actionEligible $true;Assert ((Decide @((Account)) (Policy) $c).actionPermitted);$c.paused=$true;Assert (-not (Decide @((Account)) (Policy) $c).actionPermitted);$c.paused=$false;$c|Add-Member NoteProperty actionBlock 'daily_attempt_limit';Assert ((Decide @((Account)) (Policy) $c).suppressionReason -eq 'daily_attempt_limit')}
+}
+Check 'warming target is explicit and independent of an unavailable held active account' {
+    $c=Context warm a;$c.hold=$true;$c|Add-Member NoteProperty actionEnabled $true;$c|Add-Member NoteProperty actionSlot 'b';$c|Add-Member NoteProperty actionEligible $true
+    $d=Decide @((Account a 0),(Account b)) (Policy) $c;Assert ($d.actionPermitted -and $d.targetSlot -eq 'b')
+    $c.actionSlot=$null;Assert ((Decide @((Account)) (Policy) $c).suppressionReason -eq 'action_target_unknown')
+}
+Check 'recovery probe targets stale quarantined account without admitting it for work' {
+    $a=Account;$a.status='relogin_required';$a.windows=@();$a.observedAt=$now.AddDays(-1).ToString('o')
+    $c=Context probe b;$c|Add-Member NoteProperty actionEnabled $true;$c|Add-Member NoteProperty actionSlot 'a';$c|Add-Member NoteProperty actionEligible $true
+    $d=Decide @($a,(Account b)) (Policy) $c
+    Assert ($d.actionPermitted -and $d.targetSlot -eq 'a' -and -not $d.accounts[0].eligible -and $d.proposedSlot -eq 'b')
+}
+Check 'warm authorization rechecks freshness even after an earlier candidate check' {
+    $a=Account;$a.windows[0].observedAt=$now.AddSeconds(-901).ToString('o')
+    $c=Context warm;$c|Add-Member NoteProperty actionEnabled $true;$c|Add-Member NoteProperty actionSlot 'a';$c|Add-Member NoteProperty actionEligible $true
+    $d=Decide @($a) (Policy) $c;Assert (-not $d.actionPermitted -and $d.suppressionReason -eq 'action_ineligible')
+}
+Check 'emergency request cannot relax floors without enabled critical policy' {
+    $c=Context;$c|Add-Member NoteProperty emergency $true
+    $p=Policy;$d=Decide @((Account a 10 10)) $p $c
+    Assert (-not $d.accounts[0].eligible -and $d.accounts[0].reason -eq 'below_margin' -and -not $d.critical.active)
+    $p|Add-Member NoteProperty critical @{enabled=$false};$d=Decide @((Account a 10 10)) $p $c
+    Assert (-not $d.accounts[0].eligible -and $d.accounts[0].reason -eq 'below_margin' -and -not $d.critical.active)
+}
+Check 'enabled emergency eligibility request does not itself activate critical mode' {
+    $c=Context;$c|Add-Member NoteProperty emergency $true
+    $p=Policy;$p|Add-Member NoteProperty critical @{enabled=$true}
+    $d=Decide @((Account a 10 10),(Account b)) $p $c
+    Assert ($d.accounts[0].eligible -and -not $d.critical.active)
+}
+Check 'enabled emergency request preserves reserve floors and rejects zero quota' {
+    $c=Context;$c|Add-Member NoteProperty emergency $true
+    $p=Policy;$p.reserve=@('a');$p|Add-Member NoteProperty critical @{enabled=$true;drainToZero=$true}
+    $d=Decide @((Account a 10 10),(Account b)) $p $c
+    Assert (-not $d.accounts[0].eligible -and $d.accounts[0].reason -eq 'below_margin')
+    $p.reserve=@();$d=Decide @((Account a 0 10),(Account b)) $p $c
+    Assert (-not $d.accounts[0].eligible -and $d.accounts[0].reason -eq 'below_margin')
+}
+Check 'critical selection uses per-scope dwell and keeps reserve out' {
+    $p=Policy;$p|Add-Member NoteProperty critical @{enabled=$true;dwellSeconds=60;advantagePercent=10};$p.reserve=@('c')
+    $accounts=@((Account a 10 10),(Account b 19 19),(Account c))
+    $c=Context admit a;$c|Add-Member NoteProperty criticalState @{active=$true;selected='a';selectedAt=$now.AddSeconds(-10).ToString('o')}
+    $d=Decide $accounts $p $c;Assert ($d.critical.active -and $d.proposedSlot -eq 'a')
+    $c.criticalState.selectedAt=$now.AddSeconds(-61).ToString('o');Assert ((Decide $accounts $p $c).proposedSlot -eq 'b')
+    $other=Context admit b;$other|Add-Member NoteProperty criticalState @{active=$true;selected='b';selectedAt=$now.AddSeconds(-10).ToString('o')}
+    Assert ((Decide $accounts $p $other).proposedSlot -eq 'b')
+}
+Check 'invalid capacity evidence falls back to measured percentages' {
+    foreach($gross in @(-1,'10',[double]::NaN,[double]::PositiveInfinity)){
+        $p=Policy;$p|Add-Member NoteProperty critical @{enabled=$true}
+        $a=Account a 10 10;$a|Add-Member NoteProperty capacity @{scaled=$true;gross=$gross}
+        $b=Account b 19 19;$b|Add-Member NoteProperty capacity @{scaled=$true;gross=1}
+        $d=Decide @($a,$b) $p;Assert ($d.proposedSlot -eq 'b' -and -not $d.accounts[0].scaled -and $d.critical.basis -like 'binding-window*')
+    }
+}
+Check 'decisions do not mutate supplied observations policy or state' {
+    $a=Account;$p=Policy;$c=Context;$before=@($a,$p,$c)|ConvertTo-Json -Depth 30 -Compress
+    $null=Decide @($a) $p $c
+    Assert ($before -ceq (@($a,$p,$c)|ConvertTo-Json -Depth 30 -Compress))
+}
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'src/providers/claude.ps1')
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'src/providers/codex.ps1')
+function Native-Pair([int]$Id,[double]$Short=90,[double]$Week=90,[int]$ResetMinutes=120){
+    $shortReset=$now.AddMinutes($ResetMinutes);$weekReset=$now.AddDays(3)
+    $claude=Copy-Value @{slot=$Id;status='ok';fresh=$true;observedAt=$now.ToString('o');used5h=(100-$Short);used7d=(100-$Week);reset5h=$shortReset.ToString('o');reset7d=$weekReset.ToString('o')}
+    $codex=Copy-Value @{id=[string]$Id;status='ok';observedAt=$now.ToString('o');buckets=@{codex=@{status='observed';windows=@{'300'=@{usedPercent=(100-$Short);remainingPercent=$Short;resetsAt=$shortReset.ToUnixTimeSeconds();observedAt=$now.ToString('o');anchorState='observed-active'};'10080'=@{usedPercent=(100-$Week);remainingPercent=$Week;resetsAt=$weekReset.ToUnixTimeSeconds();observedAt=$now.ToString('o');anchorState='observed-active'}}}}}
+    [pscustomobject]@{claude=$claude;codex=$codex}
+}
+Check 'real Claude and Codex decoding plus production selectors share expected choices' {
+    $scenarios=@(
+        @{name='preference';short=@(90,90);week=@(90,90);reset=@(120,120);active=2;expected='1'},
+        @{name='degraded improvement';short=@(90,90);week=@(6,16);reset=@(60,120);active=1;order='soonest-reset';expected='2'},
+        @{name='reserve escape';short=@(90,30);week=@(90,90);reset=@(120,120);active=1;reserve=@('1');expected='2'},
+        @{name='healthy peer band';short=@(30,90);week=@(90,90);reset=@(120,120);active=2;expected='2'},
+        @{name='degraded tie';short=@(90,90);week=@(15,15);reset=@(120,120);active=2;expected='2'},
+        @{name='exhausted active';short=@(0,26);week=@(90,90);reset=@(120,120);active=1;expected='2'},
+        @{name='near resets';short=@(90,90);week=@(90,90);reset=@(115,120);active=2;order='soonest-reset';expected='2'},
+        @{name='reset lead boundary';short=@(90,90);week=@(90,90);reset=@(110,120);active=2;order='soonest-reset';expected='1'})
+    foreach($scenario in $scenarios){
+        $p=Policy;$p.prefer=@('1','2');$p.reserve=@($scenario.reserve);if($scenario.order){$p.order=$scenario.order}
+        $pairs=@(Native-Pair 1 $scenario.short[0] $scenario.week[0] $scenario.reset[0];Native-Pair 2 $scenario.short[1] $scenario.week[1] $scenario.reset[1])
+        $acc=@{}
+        foreach($pair in $pairs){$s=$pair.claude;$acc[[int]$s.slot]=@{h5=(100-$s.used5h);h7=(100-$s.used7d);fresh=$true;observedAt=$s.observedAt;observation=(ConvertTo-Hotpl8ClaudeObservation $s $p $now);obj=@{usage=@{fiveHour=@{resetsAt=$s.reset5h};sevenDay=@{resetsAt=$s.reset7d}}}}}
+        $claude=Get-ClaudeSelection $p @($p.prefer) $acc $scenario.active $now
+        $chosen=if($claude.target){[string]$claude.target}elseif($claude.activeOk){[string]$scenario.active}else{$null}
+        $codex=Select-CodexSlot @($pairs.codex) $p codex ([string]$scenario.active) $null $now
+        Assert ($chosen -eq $scenario.expected -and $codex -eq $scenario.expected) ('native parity: '+$scenario.name+' Claude='+$chosen+' Codex='+$codex)
+    }
+}
+Check 'native shape differences remain facts rather than alternative policy' {
+    $pair=Native-Pair 1;$p=Policy;$p.prefer=@('1')
+    $pair.codex.buckets.codex.windows.PSObject.Properties.Remove('300')
+    $pair.claude.used5h=$null
+    $codex=Get-CodexEligibility $pair.codex $p codex $now
+    $claude=Get-Hotpl8ProviderDecision @((ConvertTo-Hotpl8ClaudeObservation $pair.claude $p $now)) $p @{intent='observe'} $now
+    Assert ($codex -eq 'eligible' -and -not $claude.accounts[0].eligible)
+}
+Check 'production scalar eligibility cannot self-activate emergency policy' {
+    $pair=Native-Pair 1 10 10;$p=Policy;$p|Add-Member NoteProperty critical @{enabled=$true}
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now $false) -eq 'below_margin')
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now $true) -eq 'eligible')
+}
+Check 'native decoders preserve original window timestamps and reset evidence' {
+    $pair=Native-Pair 1 0;$p=Policy
+    $pair.claude.observedAt=$now.AddMinutes(-5).ToString('o');$pair.claude.reset5h=$now.AddSeconds(-1).ToString('o')
+    $pair.codex.buckets.codex.windows.'300'.observedAt=$pair.claude.observedAt;$pair.codex.buckets.codex.windows.'300'.resetsAt=$now.AddSeconds(-1).ToUnixTimeSeconds()
+    $cd=Get-Hotpl8ProviderDecision @((ConvertTo-Hotpl8ClaudeObservation $pair.claude $p $now)) $p @{intent='observe'} $now
+    $xd=Get-Hotpl8ProviderDecision @((ConvertTo-Hotpl8CodexObservation $pair.codex codex)) $p @{intent='observe'} $now
+    Assert ($cd.accounts[0].eligible -and $xd.accounts[0].eligible -and $cd.accounts[0].shortRemaining -eq 100 -and $xd.accounts[0].shortRemaining -eq 100)
+    Assert ($cd.accounts[0].windows[0].observedAt -eq $pair.claude.observedAt)
+    $pair.codex.buckets.codex.windows.'300'.observedAt=$now.AddHours(-1).ToString('o')
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'stale')
+}
+Check 'legacy missing window stamps inherit original account time but explicit null is unknown' {
+    $pair=Native-Pair 1;$p=Policy;$window=$pair.codex.buckets.codex.windows.'300'
+    $window.PSObject.Properties.Remove('observedAt')
+    $decoded=ConvertTo-Hotpl8CodexObservation $pair.codex codex
+    Assert ((@($decoded.windows|Where-Object name -EQ '300')[0]).observedAt -eq $pair.codex.observedAt)
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'eligible')
+    $window|Add-Member NoteProperty observedAt $null
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'stale')
+}
+Check 'missing meters empty windows and null native window values fail without throwing' {
+    $pair=Native-Pair 1;$p=Policy
+    Assert ((Get-CodexEligibility $pair.codex $p absent $now) -eq 'meter_unknown')
+    $pair.codex.buckets.codex.windows=[pscustomobject]@{}
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'unknown')
+    $pair.codex.buckets.codex.windows=[pscustomobject]@{'300'=$null}
+    Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'window_malformed')
+}
+Check 'native quota mirrors cannot disagree to authorize a happier reading' {
+    $p=Policy
+    foreach($value in @(0,'90',101,$null)){$pair=Native-Pair 1;$pair.codex.buckets.codex.windows.'300'.remainingPercent=$value;Assert ((Get-CodexEligibility $pair.codex $p codex $now) -eq 'window_malformed')}
+}
+Check 'invalid native ages cannot overflow or acquire a fabricated fresh timestamp' {
+    $p=Policy
+    foreach($age in @(1e100,-1,'not-a-number',604801,[double]::NaN)){
+        $entry=@{fresh=$true;h5=90;h7=90;obj=@{usageAgeSeconds=$age;usage=@{fiveHour=@{resetsAt=$now.AddHours(1).ToString('o')};sevenDay=@{resetsAt=$now.AddDays(1).ToString('o')}}}}
+        $observation=ConvertTo-Hotpl8ClaudeEntryObservation 1 $entry $p $now
+        Assert (-not $observation.observedAt)
+        Assert (-not (ConvertTo-Hotpl8ProviderAccount $observation $p @() $now).valid)
+    }
+}
+Check 'cold warm decoding permits opening a window without changing admission evidence' {
+    $p=Policy;$p.prefer=@('1')
+    $entry=@{fresh=$true;cold=$true;h5=90;h7=90;observedAt=$now.ToString('o');obj=@{usage=@{fiveHour=@{pct=10;resetsAt=''};sevenDay=@{pct=10;resetsAt=$now.AddDays(1).ToString('o')}}}}
+    $entry.observation=ConvertTo-Hotpl8ClaudeEntryObservation 1 $entry $p $now
+    $before=$entry.observation|ConvertTo-Json -Depth 20 -Compress
+    $context=@{intent='warm';mode='automate';actionSlot='1';actionEnabled=$true;actionEligible=$true}
+    $warm=Get-ClaudeProviderDecision $p @(1) @{1=$entry} 0 $now $null $context
+    $admit=Get-ClaudeProviderDecision $p @(1) @{1=$entry} 0 $now $null @{intent='admit'}
+    Assert ($warm.actionPermitted -and $warm.targetSlot -eq '1')
+    Assert (-not $admit.actionPermitted -and $admit.accounts[0].reason -eq 'reset_unconfirmed')
+    Assert ($before -ceq ($entry.observation|ConvertTo-Json -Depth 20 -Compress))
+    $entry.observation.observedAt=$now.AddMinutes(-16).ToString('o')
+    Assert (-not (Get-ClaudeProviderDecision $p @(1) @{1=$entry} 0 $now $null $context).actionPermitted)
+}
+function Legacy-ClaudeEntry([double]$Short,[double]$Week=90){
+    @{fresh=$true;h5=$Short;h7=$Week;observedAt=$now.ToString('o');obj=@{usage=@{fiveHour=@{pct=(100-$Short);resetsAt=$now.AddHours(1).ToString('o')};sevenDay=@{pct=(100-$Week);resetsAt=$now.AddDays(1).ToString('o')}}}}
+}
+Check 'legacy Claude omitted short margin retains zero without mutating policy' {
+    foreach($shape in @(@{prefer=@(1);reserve=@()},(Copy-Value @{prefer=@(1);reserve=@()}))){
+        $before=$shape|ConvertTo-Json -Depth 10 -Compress
+        $d=Get-ClaudeSelection $shape @(1) @{1=(Legacy-ClaudeEntry 15)} 0 $now
+        Assert ($d.target -eq 1 -and $d.decision.accounts[0].eligible)
+        Assert ($before -ceq ($shape|ConvertTo-Json -Depth 10 -Compress))
+    }
+}
+Check 'legacy Claude omitted hysteresis retains zero and explicit bands remain effective' {
+    $p=Copy-Value @{prefer=@(1,2);reserve=@();margin5h=25}
+    $accounts=@{1=(Legacy-ClaudeEntry 30);2=(Legacy-ClaudeEntry 90)}
+    Assert ((Get-ClaudeSelection $p @(1,2) $accounts 2 $now).target -eq 1)
+    $p|Add-Member NoteProperty hysteresis 10
+    Assert (-not (Get-ClaudeSelection $p @(1,2) $accounts 2 $now).target)
+    $p.hysteresis=0
+    Assert ((Get-ClaudeSelection $p @(1,2) $accounts 2 $now).target -eq 1)
+}
+Check 'explicit Claude reserve margins are preserved at the compatibility boundary' {
+    $p=Copy-Value @{prefer=@(1);reserve=@(1);margin5h=25}
+    Assert (-not (Get-ClaudeSelection $p @(1) @{1=(Legacy-ClaudeEntry 15)} 0 $now).target)
+    $p.margin5h=0
+    Assert (-not (Get-ClaudeSelection $p @(1) @{1=(Legacy-ClaudeEntry 90 10)} 0 $now).target)
+    $p|Add-Member NoteProperty margin7d 0
+    Assert ((Get-ClaudeSelection $p @(1) @{1=(Legacy-ClaudeEntry 90 10)} 0 $now).target -eq 1)
+}
+'Provider core: '+$script:passed+' passed, '+$script:failed+' failed'
+if($script:failed){exit 1}

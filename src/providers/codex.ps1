@@ -1,5 +1,5 @@
 ﻿# Native Codex owns login and refresh. Ordinary collection never exports tokens.
-. (Join-Path (Split-Path $PSScriptRoot -Parent) 'selection.ps1')
+. (Join-Path (Split-Path $PSScriptRoot -Parent) 'provider-observation.ps1')
 function Invoke-CodexRpc($Process, $Clock, [int]$TimeoutMs, [int]$Id, [string]$Method, $Params) {
     $request = @{ id = $Id; method = $Method }
     if ($null -ne $Params) { $request.params = $Params }
@@ -141,10 +141,7 @@ function ConvertTo-CodexBuckets($Quota, $PreviousBuckets, [datetimeoffset]$Now) 
     return [pscustomobject]$result
 }
 function Get-CodexMargin($Policy, [string]$SlotId, [string]$Duration) {
-    if ($Duration -eq '300') { if ($null -ne $Policy.margin5h) { return [double]$Policy.margin5h }; return 25.0 }
-    if (@($Policy.reserve) -notcontains $SlotId -and $null -ne $Policy.margin7dWork) { return [double]$Policy.margin7dWork }
-    if ($null -ne $Policy.margin7d) { return [double]$Policy.margin7d }
-    return 20.0
+    Get-Hotpl8ProviderMargin $Policy @{reserve=($SlotId -in @($Policy.reserve))} @{role=$(if($Duration -eq '300'){'short'}else{'weekly'})}
 }
 function Test-CodexWindowRolledOver($Window, [datetimeoffset]$Now) {
     # One answer to 'did this window's own reset elapse after we read it',
@@ -153,80 +150,20 @@ function Test-CodexWindowRolledOver($Window, [datetimeoffset]$Now) {
     return (Resolve-Hotpl8Window $Window.usedPercent $Window.resetsAt $Window.observedAt $Now -Unix).rolledOver
 }
 function Get-CodexEligibility($Slot, $Policy, [string]$Meter, [datetimeoffset]$Now, [bool]$Emergency=$false) {
-    if($Slot.id -in @($Policy.disabled)){return 'disabled'}
-    if ($Slot.status -ne 'ok') { return [string]$Slot.status }
-    try { $age = ($Now - [datetimeoffset]::Parse($Slot.observedAt)).TotalSeconds } catch { return 'unknown' }
-    if ($age -lt -5 -or $age -gt 900) { return 'stale' }
-    $b = $Slot.buckets.$Meter
-    if (-not $b -or $b.status -ne 'observed') { if ($b) { return [string]$b.status }; return 'meter_unknown' }
-    # A supported native shape can explicitly omit either window. Evaluate all real ones.
-    $count = 0
-    foreach ($w in $b.windows.PSObject.Properties) {
-        $count++
-        # A window we read before its own reset, whose reset has now passed,
-        # refilled; only an anchor that was already expired when we read it
-        # stays unconfirmed.
-        if (Test-CodexWindowRolledOver $w.Value $Now) { continue }
-        if ($null -ne $w.Value.resetsAt -and $w.Value.resetsAt -le $Now.ToUnixTimeSeconds()) { return 'reset_unconfirmed' }
-        $margin=Get-CodexMargin $Policy $Slot.id $w.Name
-        if($Emergency -and $Policy.critical.enabled -eq $true -and $Slot.id -notin @($Policy.reserve)){$margin=if($Policy.critical.drainToZero){0}else{Get-Hotpl8CriticalSetting $Policy 'floorPercent' 1}}
-        if (-not (Test-Hotpl8Number $w.Value.remainingPercent) -or $w.Value.remainingPercent -gt 100 -or $w.Value.remainingPercent -le 0 -or $w.Value.remainingPercent -lt $margin) { return 'below_margin' }
-    }
-    if ($count -eq 0) { return 'unknown' }
-    return 'eligible'
+    $account=ConvertTo-Hotpl8CodexObservation $Slot $Meter
+    $decision=Get-Hotpl8ProviderDecision @($account) $Policy @{intent='observe';scopes=@($Meter);eligibilityOnly=$true;emergency=$Emergency} $Now
+    $reason=$decision.accounts[0].reason
+    # Public compatibility codes; the shared decision keeps its detailed reason.
+    if($reason -in @('window_unknown','model_quota_unknown')){return 'unknown'}
+    if($reason -eq 'window_stale'){return 'stale'}
+    return $reason
 }
 function Select-CodexSlot($Slots, $Policy, [string]$Meter, [string]$PreviousId, $Hold, [datetimeoffset]$Now, $CriticalState=$null) {
-    $snapshot=[pscustomobject]@{providers=[pscustomobject]@{codex=[pscustomobject]@{slots=$Slots}}}
-    $accounts=@(Get-Hotpl8CapacityAccounts $snapshot $Policy 'codex' $Now $Meter)
-    $critical=Get-Hotpl8CriticalDecision $accounts $Policy $PreviousId $CriticalState $Now
-    if($critical.active -and $critical.ranked.Count){if($Hold){if($PreviousId -in $critical.ranked){return $PreviousId};return $null};return $critical.selected}
-    $rows = @(); $index = 0
-    $preferred = @($Policy.prefer)
-    foreach ($slot in @($Slots)) {
-        if ((Get-CodexEligibility $slot $Policy $Meter $Now) -ne 'eligible') { continue }
-        $idx = [array]::IndexOf($preferred, [string]$slot.id)
-        if ($idx -lt 0) { $idx = $preferred.Count + $index }; $index++
-        $tier = if (@($Policy.reserve) -contains $slot.id) { 1 } else { 0 }
-        $week = $slot.buckets.$Meter.windows.'10080'
-        # Rank from the numbers the eligibility check above just accepted. A
-        # rolled-over window is full and has no known next reset, so reading
-        # its pre-reset snapshot here would flag the fullest account degraded
-        # and sort it behind every ordinary one right after it refilled.
-        $weekRolled = Test-CodexWindowRolledOver $week $Now
-        $weekLeft = if ($weekRolled) { 100.0 } else { $week.remainingPercent }
-        $degraded = 0; $key = [double]$idx; $reset = $null
-        $window = $slot.buckets.$Meter.windows.'300'
-        $rolled = if ($window) { Test-CodexWindowRolledOver $window $Now } else { $weekRolled }
-        $shortLeft = if (-not $window) { $null } elseif ($rolled) { 100.0 } else { $window.remainingPercent }
-        if (-not $window) { $window = $week }
-        if ($window -and -not $rolled -and $window.anchorState -eq 'observed-active') { $reset = $window.resetsAt }
-        if ($Policy.order -eq 'soonest-reset') { $key = [double]::MaxValue; if ($null -ne $reset) { $key = [double]$reset } }
-        if($Policy.order -in @('weekly-expiry','balanced')){
-            $weekReset=if($week -and -not $weekRolled -and $week.anchorState -eq 'observed-active' -and $week.resetsAt){[datetimeoffset]::FromUnixTimeSeconds($week.resetsAt).ToString('o')}else{$null}
-            $key=Get-Hotpl8SelectionKey $Policy.order $shortLeft $weekLeft $weekReset $Now
-        }
-        $preferredWeek = if ($null -ne $Policy.margin7d) { [double]$Policy.margin7d } else { 20 }
-        if ($week -and $weekLeft -lt $preferredWeek) { $degraded = 1; $key = -$weekLeft }
-        $rows += [pscustomobject]@{ id = $slot.id; tier = $tier; degraded = $degraded; key = $key; idx = $idx; reset = $reset; slot = $slot }
-    }
-    $ordered = @($rows | Sort-Object tier,degraded,key,idx)
-    if ($ordered.Count -eq 0) { return $null }
-    $best = $ordered[0]
-    $prior = @($ordered | Where-Object id -EQ $PreviousId | Select-Object -First 1)
-    if ($Hold) { if ($prior.Count) { return $prior[0].id }; return $null }
-    if ($prior.Count -and $best.id -ne $PreviousId -and $best.tier -ge $prior[0].tier -and $best.degraded -ge $prior[0].degraded) {
-        $lead = if ($null -ne $Policy.resetLeadMin) { [double]$Policy.resetLeadMin * 60 } else { 600 }
-        # Reset hysteresis only arbitrates reset ordering. Degraded accounts rank
-        # by weekly headroom, and prefer ordering must honor its own preference.
-        if ($Policy.order -eq 'soonest-reset' -and $best.degraded -eq 0 -and $prior[0].degraded -eq 0 -and $null -ne $best.reset -and $null -ne $prior[0].reset -and ($prior[0].reset - $best.reset) -lt $lead) { return $PreviousId }
-        if ($Policy.order -ne 'soonest-reset') {
-            $band = if ($null -ne $Policy.hysteresis) { [double]$Policy.hysteresis } else { 10 }
-            $short = $best.slot.buckets.$Meter.windows.'300'
-            $shortLeft = if (Test-CodexWindowRolledOver $short $Now) { 100.0 } else { $short.remainingPercent }
-            if ($short -and $shortLeft -lt ((Get-CodexMargin $Policy $best.id '300') + $band)) { return $PreviousId }
-        }
-    }
-    return $best.id
+    $observations=@(foreach($slot in @($Slots)){ConvertTo-Hotpl8CodexObservation $slot $Meter})
+    $capacity=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=@{slots=$Slots}}}) $Policy 'codex' $Now $Meter)
+    $observations=@(Add-Hotpl8ObservationCapacity $observations $capacity)
+    $decision=Get-Hotpl8ProviderDecision $observations $Policy @{intent='observe';scopes=@($Meter);previousId=$PreviousId;bindingKnown=[bool]$PreviousId;hold=[bool]$Hold;criticalState=$CriticalState} $Now
+    return $decision.targetSlot
 }
 function Assert-CodexPolicy($Policy) {
     Assert-Hotpl8CapacityPolicy $Policy
@@ -255,7 +192,8 @@ function Assert-CodexPolicy($Policy) {
     if($null -ne $Policy.resetLeadMin -and (-not (Test-Hotpl8Number $Policy.resetLeadMin) -or $Policy.resetLeadMin -lt 0 -or $Policy.resetLeadMin -gt 604800)){throw 'invalid_reset_lead'}
     foreach($id in @($Policy.disabled)){if($id -and -not $ids.ContainsKey([string]$id)){throw 'invalid_disabled_slot'}}
 }
-function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Executable, $Previous, [scriptblock]$Reader) {
+function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Executable, $Previous, [scriptblock]$Reader,[string]$ControlDirectory) {
+    if(-not $ControlDirectory){$ControlDirectory=$StateDirectory}
     Assert-CodexPolicy $Policy
     $statePath = Join-Path $StateDirectory 'codex-state.json'
     $state = Read-Hotpl8Json $statePath
@@ -304,7 +242,7 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
             else { $identities[$identity] = $slot }
         }
     }
-    $hold = Get-Hold $StateDirectory
+    $hold = Get-Hold $ControlDirectory
     $recommendations = [ordered]@{}
     $criticalStates=[ordered]@{}
     foreach ($meter in @('codex','codex_bengalfox')) {
@@ -369,7 +307,7 @@ function Format-CodexStatus($Codex, $Policy, [datetimeoffset]$Now = [datetimeoff
     }
 }
 # Native launch decisions use cached quotas, followed by native login/config validation.
-function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, [string[]]$Arguments, [datetimeoffset]$Now) {
+function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, [string[]]$Arguments, [datetimeoffset]$Now,$Context=$null) {
     Assert-CodexPolicy $Policy
     foreach ($key in @('OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_SQLITE_HOME','OPENAI_BASE_URL')) {
         if ([Environment]::GetEnvironmentVariable($key)) { throw ('Conflicting environment setting: ' + $key + '. Use native Codex directly for an explicitly different authentication mode.') }
@@ -391,22 +329,38 @@ function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, 
     if (-not $explicit) {
         try { $age = ($Now - [datetimeoffset]::Parse($Status.observedAt)).TotalSeconds } catch { throw 'No current Codex status. Run hotpl8 refresh first or choose -Slot.' }
         if ($age -lt -5 -or $age -gt 900) { throw 'Codex status is stale. Refresh it or choose -Slot.' }
-        $SlotId = [string]$Status.recommendations.$meter
-        if (-not $SlotId) { throw 'No eligible subscription for this meter.' }
     }
+    $observations=@(foreach($configured in @($Policy.slots)){
+        $rows=@($Status.slots|Where-Object id -CEQ $configured.id)
+        if($rows.Count -eq 1){ConvertTo-Hotpl8CodexObservation $rows[0] $meter}
+        else{[pscustomobject]@{id=[string]$configured.id;status='unknown';windows=@();observedAt=$null;bindingValid=($rows.Count -eq 0)}}
+    })
+    $capacity=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$Status}}) $Policy 'codex' $Now $meter)
+    $observations=@(Add-Hotpl8ObservationCapacity $observations $capacity)
+    if(-not $Context){$Context=[pscustomobject]@{intent='admit';bindingKnown=$false;scopes=@($meter)}}
+    else{$Context=$Context|ConvertTo-Json -Depth 24|ConvertFrom-Json}
+    $Context|Add-Member NoteProperty scopes @($meter) -Force
+    if($explicit){$Context|Add-Member NoteProperty pin $SlotId -Force}
+    $decision=Get-Hotpl8ProviderDecision $observations $Policy $Context $Now
+    if(-not $decision.actionPermitted){throw ('No eligible subscription for this launch: '+$decision.suppressionReason)}
+    $SlotId=[string]$decision.targetSlot
     $matches = @($Policy.slots | Where-Object id -EQ $SlotId)
     if ($matches.Count -ne 1) { throw 'Unknown or duplicate Codex slot.' }
     $slot = $matches[0]
     if($slot.id -in @($Policy.disabled)){throw 'This Codex slot is disabled. Enable it before launch.'}
-    $criticalAccounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$Status}}) $Policy 'codex' $Now $meter)
-    $critical=Get-Hotpl8CriticalDecision $criticalAccounts $Policy $SlotId $Status.critical.$meter $Now
     $observed = @($Status.slots | Where-Object id -EQ $SlotId | Select-Object -First 1)
-    if (-not $explicit -and ($observed.Count -ne 1 -or (Get-CodexEligibility $observed[0] $Policy $meter $Now $critical.active) -ne 'eligible')) { throw 'Recommended slot is no longer eligible.' }
     if (-not $Model -and $observed.Count) { $Model = [string]$observed[0].defaultModel }
     if (-not $explicit -and (-not $Model -or [string]$Policy.modelMeters.$Model -ne $meter)) { throw 'Default model quota mapping is unverified. Configure codex.modelMeters or launch an explicit -Slot.' }
-    return [pscustomobject]@{ policy = $Policy; slot = $slot; model = $Model; meter = $meter; automatic = (-not $explicit); emergency=[bool]$critical.active; arguments = @($Arguments) }
+    return [pscustomobject]@{ policy = $Policy; slot = $slot; model = $Model; meter = $meter; automatic = (-not $explicit); emergency=[bool]$decision.critical.active; arguments = @($Arguments);observations=$observations;context=$Context;status=$Status }
 }
-function Invoke-Hotpl8Codex($Plan, [string]$StateDirectory, [string]$Executable, [string]$WorkingDirectory) {
+function Invoke-Hotpl8Codex($Plan, [string]$StateDirectory, [string]$Executable, [string]$WorkingDirectory,[string]$ControlDirectory,[string]$ProviderId='codex') {
+    $admission=$null
+    if($ControlDirectory){
+        $admission=Get-Hotpl8ControlSnapshot $ControlDirectory
+        Assert-Hotpl8Policy $admission.policy
+        $currentPart=(Get-Hotpl8ConfiguredProvider $admission.policy $ProviderId).policy
+        if(($currentPart|ConvertTo-Json -Depth 24 -Compress) -cne ($Plan.policy|ConvertTo-Json -Depth 24 -Compress)){throw 'Policy changed before native launch; prepare a new launch.'}
+    }
     $exe = Resolve-CodexExecutable $Executable
     $read = Read-CodexQuota $Plan.slot.home $exe 5000 $WorkingDirectory
     if ($read.status -ne 'ok') { throw ('Native subscription validation failed: ' + $read.status) }
@@ -419,6 +373,22 @@ function Invoke-Hotpl8Codex($Plan, [string]$StateDirectory, [string]$Executable,
         $now = [datetimeoffset]::UtcNow
         $current = [pscustomobject]@{ id = $Plan.slot.id; status = 'ok'; observedAt = $now.ToString('o'); buckets = (ConvertTo-CodexBuckets $read.quota $null $now) }
         if ((Get-CodexEligibility $current $Plan.policy $Plan.meter $now ([bool]$Plan.emergency)) -ne 'eligible') { throw 'Quota changed before launch; the selected subscription is no longer eligible.' }
+    }
+    if($admission){
+        $authorized=Invoke-Hotpl8ActionAuthorization $ControlDirectory $admission.generation {
+            $context=Get-Hotpl8ProviderActionContext $admission.policy $ControlDirectory $Plan.context
+            $observations=@($Plan.observations|Where-Object id -CNE ([string]$Plan.slot.id))
+            $readNow=[datetimeoffset]::UtcNow
+            $previousRows=@($Plan.status.slots|Where-Object id -CEQ ([string]$Plan.slot.id))
+            $previousBuckets=if($previousRows.Count -eq 1){$previousRows[0].buckets}else{$null}
+            $nativeRow=[pscustomobject]@{id=$Plan.slot.id;status='ok';observedAt=$readNow.ToString('o');buckets=(ConvertTo-CodexBuckets $read.quota $previousBuckets $readNow)}
+            $observations+=@(ConvertTo-Hotpl8CodexObservation $nativeRow $Plan.meter)
+            $rows=@($Plan.status.slots|Where-Object id -CNE ([string]$Plan.slot.id))+@($nativeRow)
+            $capacity=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=@{slots=$rows}}}) $Plan.policy 'codex' $readNow $Plan.meter)
+            $observations=@(Add-Hotpl8ObservationCapacity $observations $capacity)
+            Get-Hotpl8ProviderDecision $observations $Plan.policy $context $readNow
+        }
+        if(-not $authorized.actionPermitted -or $authorized.targetSlot -cne [string]$Plan.slot.id){throw 'Launch decision changed during native validation; prepare a new launch.'}
     }
     $arguments = @()
     if ($Plan.model) { $arguments += @('--model', [string]$Plan.model) }
