@@ -1,7 +1,22 @@
-﻿. (Join-Path $PSScriptRoot 'overview.ps1')
+. (Join-Path $PSScriptRoot 'overview.ps1')
 . (Join-Path $PSScriptRoot 'forecast.ps1')
 . (Join-Path $PSScriptRoot 'replay.ps1')
 . (Join-Path $PSScriptRoot 'diagnostics.ps1')
+function Get-Hotpl8HistoryStores($Policy,[string]$Directory) {
+    # Canonical adapters share the original store. Aliases have isolated stores;
+    # enumerate configured registrations only, never arbitrary residual folders.
+    $stores=@{}
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
+        $state=Get-Hotpl8ProviderStateDirectory $Directory $r.id
+        if(-not $stores.ContainsKey($state)){$stores[$state]=[pscustomobject]@{directory=$state;providers=@();samples=0}}
+        $stores[$state].providers+=@($r.id)
+    }
+    foreach($key in @($stores.Keys|Sort-Object)){
+        $history=Read-Hotpl8Json (Join-Path $key 'usage-history.json')
+        $stores[$key].samples=@($history.samples|Where-Object {$_}).Count
+        $stores[$key]
+    }
+}
 function Add-Hotpl8ActionEvent([string]$Directory, [string]$Provider, [string]$Slot, [string]$Kind, [string]$Reason, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     $path=Join-Path $Directory 'activity.json'
     $old=Read-Hotpl8Json $path
@@ -36,7 +51,7 @@ function Get-Hotpl8Health($Collector, [datetimeoffset]$Now = [datetimeoffset]::U
     } catch { return 'collector state invalid' }
 }
 
-function Add-Hotpl8Insights($Snapshot, $Policy, [string]$Directory, $Previous, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
+function Add-Hotpl8NativeInsights($Snapshot, $Policy, [string]$Directory, $Previous, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     $history=if($Policy.historyEnabled -eq $true){Read-Hotpl8Json (Join-Path $Directory 'usage-history.json')}else{$null}; $newSamples=@()
     foreach ($slot in @($Snapshot.slots)) {
         if(-not $slot){continue}
@@ -84,6 +99,31 @@ function Add-Hotpl8Insights($Snapshot, $Policy, [string]$Directory, $Previous, [
     $shadow=Invoke-Hotpl8Replay @($Snapshot) $Policy
     $Snapshot|Add-Member NoteProperty shadow @($shadow.decisions) -Force
 }
+function Add-Hotpl8Insights($Snapshot,$Policy,[string]$Directory,$Previous,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    $events=@();$shadow=@()
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
+        $view=Get-Hotpl8ProviderView $Snapshot $Policy $r.id
+        $old=Get-Hotpl8ProviderView $Previous $Policy $r.id
+        $state=Get-Hotpl8ProviderStateDirectory $Directory $r.id
+        if(-not (Test-Path -LiteralPath $state)){continue}
+        Add-Hotpl8NativeInsights $view.snapshot $view.policy $state $old.snapshot $Now
+        $payload=if($view.provider -eq 'claude'){$view.snapshot}else{$view.snapshot.providers.codex}
+        if($r.id -ceq 'claude'){
+            foreach($key in @('slots','decision','critical')){if($payload.PSObject.Properties[$key]){$Snapshot|Add-Member NoteProperty $key $payload.$key -Force}}
+        }elseif($Snapshot.providers -and $Snapshot.providers.PSObject.Properties[$r.id]){$Snapshot.providers.($r.id)=$payload}
+        foreach($event in @($view.snapshot.recentActions|Where-Object {$_ -and ($_.provider -ceq $view.provider -or $_.provider -ceq $r.id)})){
+            $copy=Copy-Hotpl8ProviderValue $event;$copy.provider=$r.id;$events+=@($copy)
+        }
+        foreach($decision in @($view.snapshot.shadow|Where-Object {$_.stream -like ($view.provider+'/*')})){
+            if($view.driver.slotKind -eq 'native-home' -and $decision.stream.Split('/')[1] -cnotin $r.definition.meters){continue}
+            $copy=Copy-Hotpl8ProviderValue $decision;$copy.stream=$r.id+$copy.stream.Substring($view.provider.Length);$shadow+=@($copy)
+        }
+    }
+    $Snapshot|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $Directory $Now) -Force
+    $Snapshot|Add-Member NoteProperty recentActions @($events|Sort-Object at|Select-Object -Last 5) -Force
+    $Snapshot|Add-Member NoteProperty shadow $shadow -Force
+    $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
+}
 function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null) {
     $s=Read-Hotpl8Json (Join-Path $Directory 'status.json')
     $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
@@ -127,5 +167,17 @@ function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoff
         'Codex '+$d.meter+': next launch '+$(if($d.selected){$d.selected}else{'none'})+'; policy '+$d.policy
         foreach($r in @($d.accounts)){'  '+$r.slot+': '+$r.reason+'; reserve='+$r.reserve}
     }
-    'Codex selection affects the next launch. Existing sessions retain their account.'
+    'Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.'
+    foreach($entry in $Snapshot.providers.PSObject.Properties){
+        if($entry.Name -eq 'codex'){continue}
+        $name=if($Snapshot.providerOverview.($entry.Name).name){$Snapshot.providerOverview.($entry.Name).name}else{$entry.Name}
+        if($entry.Value.decision){
+            $name+': '+$entry.Value.decision.reason+'; policy '+$entry.Value.decision.policy
+            foreach($r in @($entry.Value.decision.accounts)){'  slot '+$r.slot+': '+$r.reason+'; rank '+$r.rank}
+        }
+        foreach($d in @($entry.Value.decisions)){
+            $name+' '+$d.meter+': proposed '+$(if($d.selected){$d.selected}else{'none'})+'; policy '+$d.policy
+            foreach($r in @($d.accounts)){'  '+$r.slot+': '+$r.reason+'; reserve='+$r.reserve}
+        }
+    }
 }

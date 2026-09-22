@@ -233,7 +233,7 @@ def unpack(archive, destination, config, sha):
 
 def invoke_adapter(config, release, operation, root):
     ps = config.get("powershell") or str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
-    run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+    return run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
          Path(release) / config["adapter"], "-Operation", operation,
          "-InstallDirectory", root, "-ReleaseDirectory", release,
          "-StateDirectory", config["stateDirectory"]], config.get("adapterTimeout", 120))
@@ -257,6 +257,9 @@ def recover(root, config, adapter=invoke_adapter):
     previous = txn.get("previous")
     if previous:
         with drained(root, config):
+            # State survives deployments. An older release must prove it can
+            # still read that state before it becomes the selected reader.
+            adapter(config, root / previous["release"], "preflight", root)
             write(root / "current.json", previous)
             adapter(config, root / previous["release"], "recover", root)
     elif read(root / "current.json"):
@@ -283,6 +286,10 @@ def update(root, github=None, adapter=invoke_adapter):
             sha = github.main()
             status.update(desiredSha=sha, installedSha=current.get("sha") if current else None)
             if current and current["sha"] == sha:
+                # Existing enrollments can gain components without a new main
+                # commit. Product readiness must still cover those components.
+                if config.get("componentHealth"):
+                    adapter(config, root / current["release"], "health", root)
                 status.update(state="current", reason=None)
                 return status
             if current and not github.is_forward(current["sha"], sha):
@@ -331,6 +338,10 @@ def update(root, github=None, adapter=invoke_adapter):
                     adapter(config, destination, "health", root)
                 except Exception:
                     if current:
+                        # Activation may have advanced a state schema. Preserve
+                        # the candidate pointer and transaction if rollback is
+                        # incompatible, so recovery cannot select a bad reader.
+                        adapter(config, root / current["release"], "preflight", root)
                         write(root / "current.json", current)
                         adapter(config, root / current["release"], "recover", root)
                     write(root / "rejected.json", {"sha": sha, "at": now(), "reason": "Activation health check failed"})
@@ -435,6 +446,9 @@ def main():
                 collector = read(Path(config["stateDirectory"]) / "collector.json", {})
                 result["running"] = {"collectorSha": collector.get("runningSha"), "completedAt": collector.get("completedAt"),
                                      "collectorStatus": collector.get("status")}
+                current = result["installed"]
+                if current and (root / current["release"] / "src/t3-delivery.ps1").is_file():
+                    result["components"] = json.loads(invoke_adapter(config, root / current["release"], "components", root))
         else:
             if not args.pr or args.pr < 1:
                 raise DeliveryError("Specify a positive PR number")

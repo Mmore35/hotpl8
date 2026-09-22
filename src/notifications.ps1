@@ -1,5 +1,5 @@
 # Pure notification candidates; a single optional desktop consumer delivers them.
-function Get-Hotpl8Alerts($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+function Get-Hotpl8NativeAlerts($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     if($Policy.notificationsEnabled -ne $true -or -not (Test-Hotpl8WorkTime $Policy.automation.schedule $Now)){return}
     $health=Get-Hotpl8Health $Snapshot.collector $Now
     $repeated=$Snapshot.collector.incompleteRuns -ge 2
@@ -28,6 +28,19 @@ function Get-Hotpl8Alerts($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset
             if($d.meter -eq $Snapshot.providers.codex.defaultMeter -and @($d.accounts).Count -and -not @($d.accounts|Where-Object reason -EQ eligible).Count){
                 [pscustomobject]@{key=('codex/'+$d.meter+'/no-eligible');title='No eligible Codex account';text='Run hotpl8 explain before the next launch.'}
             }
+        }
+    }
+}
+function Get-Hotpl8Alerts($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    $seen=@{}
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
+        $v=Get-Hotpl8ProviderView $Snapshot $Policy $r.id
+        foreach($alert in @(Get-Hotpl8NativeAlerts $v.snapshot $v.policy $Now)){
+            if($alert.key -like ($v.provider+'/*')){
+                $alert.key=$r.id+$alert.key.Substring($v.provider.Length)
+                $alert.title=$alert.title -replace ('(?i)^'+[regex]::Escape($v.provider)), $r.name
+            }
+            if(-not $seen.ContainsKey($alert.key)){$seen[$alert.key]=$true;$alert}
         }
     }
 }

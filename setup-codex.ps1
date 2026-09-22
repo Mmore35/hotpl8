@@ -1,4 +1,4 @@
-﻿# Explicit enrollment only. Native Codex retains all authentication ownership.
+# Explicit enrollment only. Native Codex retains all authentication ownership.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$Slot,
@@ -22,6 +22,14 @@ $policyPath=Join-Path $StateDirectory 'policy.json'
 $policy=Read-Hotpl8Json $policyPath
 if (-not $policy) { throw 'Create policy.json from policy.example.json first, or use {"codex":{"slots":[]}} for Codex-only operation.' }
 $policyHash=(Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash
+$policyDocument=$policy
+if($policy.schemaVersion -eq 3){
+    Assert-Hotpl8Policy $policy
+    $view=Get-Hotpl8ProviderView $null $policy 'codex'
+    $policy=$view.policy
+    if(-not $view.registration.configured){$policy.PSObject.Properties.Remove('codex')}
+}
+
 if($InstallCommand -and ($env:OS -ne 'Windows_NT' -or $StateDirectory -ne $PSScriptRoot)){throw 'Use install.ps1 for command installation with a custom state directory.'}
 $homePath=[IO.Path]::GetFullPath($AccountHome)
 $read=Read-CodexQuota $homePath $CodexExecutable 5000
@@ -69,12 +77,18 @@ if ($InstallHook) {
         $hooks.hooks|Add-Member NoteProperty SessionStart $entries -Force
     }
 }
+$savedPolicy=$policy
+if($policyDocument.schemaVersion -eq 3){
+    $policyDocument.providers|Add-Member NoteProperty codex $policy.codex -Force
+    Assert-Hotpl8Policy $policyDocument
+    $savedPolicy=$policyDocument
+}
 $lock=$null
 try {
     $lock=[IO.File]::Open((Join-Path $StateDirectory 'tick.lock'),'OpenOrCreate','ReadWrite','None')
     if((Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash -ne $policyHash){throw 'Policy changed during enrollment; rerun setup rather than overwriting another edit.'}
     Write-Hotpl8Text (Join-Path $StateDirectory 'policy.previous.json') ([IO.File]::ReadAllText($policyPath))
-    Write-Hotpl8Text $policyPath ($policy|ConvertTo-Json -Depth 24)
+    Write-Hotpl8Text $policyPath ($savedPolicy|ConvertTo-Json -Depth 24)
     if ($hooks) { Write-Hotpl8Text $hookPath ($hooks|ConvertTo-Json -Depth 32) -NoBom }
 } finally { if($lock){$lock.Dispose()} }
 if ($InstallCommand) {

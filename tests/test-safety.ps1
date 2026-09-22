@@ -132,6 +132,28 @@ try{
         $r=Invoke-ClaudeTick $wp $dir $stub -ObserveOnly
         Assert ($script:warmDispatches -eq 1 -and $r.payload.slots[0].warmOutcome.outcome -eq 'observed-active')
     }
+    Check 'cold warming retains freshness weekly and scoped quota guards' {
+        function Invoke-SlotPing { $script:warmDispatches++;return $true }
+        foreach($mutation in @('stale','weekly-reset','percentage','scoped-exhausted','scoped-missing')){
+            $script:warmDispatches=0
+            $wp=Copy-Value $p;$wp.mode='automate';$wp.switchEnabled=$false;$wp.probeEnabled=$false
+            $f=Copy-Value $fixture;$f.accounts[1].usage.fiveHour.resetsAt=''
+            if($mutation -eq 'stale'){$f.accounts[1].usageAgeSeconds=901}
+            if($mutation -eq 'weekly-reset'){$f.accounts[1].usage.sevenDay.resetsAt=''}
+            if($mutation -eq 'percentage'){$f.accounts[1].usage.fiveHour.pct=-1}
+            if($mutation -like 'scoped-*'){
+                $wp|Add-Member NoteProperty claudeModels @('seven_day_opus')
+                if($mutation -eq 'scoped-exhausted'){$f.accounts[1].usage|Add-Member NoteProperty scoped @(@{name='seven_day_opus';pct=99;resetsAt=$now.AddDays(1).ToString('o')})}
+            }
+            Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
+            # Each case starts without receipts or cooldowns that could mask a
+            # broken quota guard by independently suppressing dispatch.
+            $caseDirectory=Join-Path $dir ('cold-'+$mutation)
+            [void][IO.Directory]::CreateDirectory($caseDirectory)
+            $r=Invoke-ClaudeTick $wp $caseDirectory $stub
+            Assert ($script:warmDispatches -eq 0 -and $null -eq $r.payload.proposedSlot)
+        }
+    }
     Check 'monitor does not warm cold accounts or probe dead accounts' {
         $f=Copy-Value $fixture;$f.accounts[0].usage.fiveHour.resetsAt=''
         $f.accounts[1].usage=$null;$f.accounts[1].usageStatus='relogin_required'

@@ -1,6 +1,6 @@
 # T3 Code and Codex account routing
 
-The optional **HotPl8 Codex** provider makes T3 consume HotPl8's account policy.
+The optional bridge makes T3's normal **Codex** provider consume HotPl8's account policy.
 It supports T3's stdio app-server sessions, account/model probes and stateless
 `codex exec` helpers. Windows, Node 22+, independently enrolled file-backed native
 Codex homes and a running HotPl8 collector are required. It is experimental;
@@ -8,42 +8,96 @@ the external-token API is an experimental Codex interface.
 
 ## Install and remove
 
-From a reviewed source checkout or extracted release:
+Close T3 (including a separately started server) before first-time setup. From a
+reviewed source checkout or extracted release:
 
 ```powershell
 .\setup-t3.ps1 -Operation install -StateDirectory C:\HotPl8State -MakeDefault
 .\setup-t3.ps1 -Operation doctor -StateDirectory C:\HotPl8State
 ```
 
-Setup clones the existing `codex` provider into a new `hotpl8-codex` instance named
-**HotPl8 Codex**. `-MakeDefault` changes the default only if it currently selects
-the source provider; it preserves model and reasoning options. It also routes
-title/branch/commit helpers previously assigned to that Codex provider through
-HotPl8. An absent helper selection uses the chosen chat model with low reasoning;
-an explicit helper model is preserved. Every helper model must have a verified
-quota mapping; supply `-TextGenerationModel` to choose a mapped model explicitly.
-Selections belonging to other providers are preserved. Existing project
-defaults and threads keep their existing selections. Select **HotPl8 Codex** in
-those threads to opt in. T3 identifies continuation by the shared home, so the
-native conversation remains in the same location.
+Setup replaces the binary path on the existing `codex` provider, preserving its
+ID, label, model choices, conversation home and helper selections. The model
+picker shows Codex once; models such as Astra are unchanged. Removal restores the
+recorded original provider configuration. First-time setup requires T3 to be
+closed because T3 can tear down sessions when provider configuration changes.
 
-The original provider is untouched: T3 tears down a provider's sessions when its
-configuration changes. Adding a distinct provider avoids that interruption.
-Setup does not restart T3 or enable the collector's Claude automation.
+`-MakeDefault` verifies helper model mappings and supplies an explicit mapped
+helper model when absent; `-TextGenerationModel` chooses that model. Existing
+helper models are preserved unless explicitly overridden. An explicit distinct
+`-TargetProviderId` still supports an opt-in provider for isolated qualification;
+in that mode `-MakeDefault` also moves matching default selections. Ordinary
+installations need no second provider. Setup does not enable Claude automation
+or restart T3.
 
 Optional parameters: `-SettingsPath`, `-IntegrationDirectory`, `-CodexExecutable`,
-`-NodeExecutable`, `-ProviderId` (source) and `-TargetProviderId` (new instance).
+`-NodeExecutable`, `-ProviderId` (source) and `-TargetProviderId` (defaults to source).
 For an existing integration, `-Operation defaults` applies helper routing without
-rebuilding the provider or interrupting chats. Removal restores the recorded
+rebuilding the provider. Setup mutations require the host to be closed. Removal restores the recorded
 helper defaults only if they remain unchanged, including originally absent fields.
 Custom launch arguments and shadow homes require manual reconciliation before
 installation. No Developer Mode, symlink or administrator privilege is needed.
 
-Setup pins a complete copy of the reviewed application files under the integration
-directory, compiles an argument-preserving native launcher and records a receipt.
-Working-tree edits and ordinary HotPl8 updates do not change that running adapter.
-Upgrade deliberately: close T3, remove the old instance, then install the reviewed
-new revision into a new integration directory. Retained code is not deleted.
+For a [Local Delivery](delivery.md) installation, keep the integration directly
+under `<installation>/integrations/<name>` (the default is `t3-codex`). Existing
+owned integrations there are enrolled when the next release activates. New
+installations enroll during setup. New provider processes resolve the same
+verified `current.json` release as HotPl8; active processes keep their loaded
+code until T3 closes them. No update kills a chat, swaps accounts mid-turn or
+rewrites T3 settings. The next ordinary title/helper process also adopts the
+current release. An idle but long-lived app-server may remain old until restarted.
+
+Standalone integrations outside that inventory retain a pinned snapshot and
+report `unmanaged`. They require deliberate installation upgrades. The native
+launcher is retained; an incompatible launcher change blocks automatic promotion
+until its migration is qualified. State, credentials and retained releases are
+never rolled back with code.
+
+`hotpl8 delivery` reports each registered bridge's desired, installed, next-launch
+and observed running SHAs. `restart-pending` means older processes are alive;
+`running-version-unknown` includes sessions launched before process receipts were
+introduced. Neither is evidence that a chat has loaded the fix. Health verifies
+the selected bridge module and package hashes without native login or inference.
+It continues on timer checks even when main has not advanced. Removed providers
+are not reinstalled; a missing registered integration cannot report healthy.
+
+### Existing two-provider installations
+
+Earlier setups created `hotpl8-codex`. Automatic delivery preserves that provider
+ID because conversations reference it. The gradual transition manages ordinary
+Codex while keeping the old entry operational:
+
+```powershell
+.\setup-t3.ps1 -Operation transition -StateDirectory C:\HotPl8State -PlanOnly
+# Close the complete T3 host, including a separately started server.
+.\setup-t3.ps1 -Operation transition -StateDirectory C:\HotPl8State
+```
+
+The dry run is read-only. When the specified integration directory belongs to
+the old alias, transition uses a distinct `-ordinary` sibling. Both retain their
+own receipt, launcher and delivery membership. Existing model/options, shared
+home, defaults and helper selections are preserved unless `-MakeDefault` is
+explicitly requested; defaults already using the old alias continue to work.
+Doctor reports `ordinary-managed/legacy-retained`, not migrated. New conversations
+can use ordinary Codex; the old entry continues serving existing conversations.
+
+There is no thread metadata/database write, automatic prompt or alias removal.
+For manual picker changes, verify continuation on a compatible live-idle thread.
+Leave stopped/archived threads on the old entry when native resume preservation
+is not established. Bulk retirement requires a separately qualified host
+operation; see [the pinned host contract evidence](plans/t3-provider-consolidation-contract.md).
+
+Setup checks the desktop and standalone server, including the data directory's
+runtime PID record, then rechecks before settings replacement. Keep the host
+closed until setup exits. Do not edit settings during setup: process snapshots
+and HotPl8's lock cannot stop an external editor or a newly launched T3 host.
+Settings operations use a shared lock keyed by the absolute settings path and exact
+before/after digests. Interrupted staging and a committed write with a lost
+acknowledgement are retryable by rerunning the same operation. Concurrent user
+edits cause a conflict instead of overwriting settings; preserve the receipt and
+reconcile that conflict. Removing the ordinary integration restores its original
+provider while leaving the old alias alone; reinstall can reuse its retained
+verified launcher. Uninstall never proves old conversation references are gone.
 
 Close T3 (including any separately started T3 server) before removal:
 
@@ -52,9 +106,9 @@ Close T3 (including any separately started T3 server) before removal:
 ```
 
 Removal rejects edits to the installed provider rather than overwriting them. It
-preserves other provider settings and restores the prior default only if the
-installed default is still unchanged. Sessions previously selected on the removed
-instance need their provider changed back to the original Codex instance.
+restores the original provider for in-place installs. For a separately added
+instance, it removes that instance and restores only unchanged installed defaults;
+move its thread selections back before removal.
 
 ## Account lifecycle
 
@@ -65,14 +119,21 @@ instance need their provider changed back to the original Codex instance.
    holds, model-to-meter mapping, freshness checks and canonical identity bindings.
    It validates the selected home through native account/quota reads. A newly
    exhausted candidate is excluded and another fresh eligible candidate can win.
+   Concurrent title helpers and chat sessions may briefly contend for the same
+   native account lock. Admission waits up to 2.5 seconds per candidate, within
+   a shared validation deadline, before reporting prolonged contention.
 4. Only the access token and account ID travel through private pipes to Codex's
    external-token login. Refresh tokens stay in their native homes. Neither
    tokens nor raw provider errors appear in HotPl8 status, logs or diagnostics.
-5. Before each new `turn/start`, the broker validates and selects again. The same
-   thread ID and conversation home are retained. A running turn, including an
-   observed child turn, pins the account. Concurrent starts are rejected as busy;
-   steering, interrupts, approvals and tool responses continue to pass through.
-6. An external-token refresh request is answered only for the pinned account.
+5. New turns validate and select again. Active follow-ups with unchanged model
+   and working directory pass directly to native Codex, retaining its turn ID.
+   Collector publications and native quota notifications also trigger validation
+   during ongoing work. A validated alternative can be adopted for later model
+   requests without replaying the turn. Existing native requests finish under
+   their original account; native owns WebSocket reconnection and continuation.
+   Account changes serialize independently of follow-ups, steering, interrupts,
+   approvals and tool replies. Observed active child models participate in selection.
+6. An external-token refresh request is answered only for the matching account.
    Native Codex refreshes that canonical home under HotPl8's per-home lock. A
    failed refresh or changed identity fails closed; it never refreshes another
    account into an active turn.
@@ -90,6 +151,12 @@ managed T3 provider are intentionally unavailable.
 Selecting a provider or sending a new turn is a deliberate launch, like
 `hotpl8 codex`. Monitor mode and automation pauses do not block these explicit
 launches. A selection hold still constrains which account can be selected.
+Autonomous rollover during admitted work requires `mode: automate`,
+`switchEnabled: true`, no active pause and no selection hold. This matches Claude's
+shared controls. Same-account authentication refresh remains available while
+automation is paused. Before upgrading an existing bridge, review these global
+settings; enabling them also affects Claude actions. The upgrade does not silently
+change them.
 
 ## Errors and recovery
 
@@ -98,9 +165,26 @@ Errors have fixed `routing_*` codes. `routing_stale` means refresh the collector
 `routing_unavailable` means no validated eligible account was found;
 `routing_binding_changed` requires rechecking enrollment;
 `routing_refresh_failed` requires native authentication inspection;
-`routing_busy` means wait for the current parent/child turn to finish.
+`routing_monitor_only`, `routing_switching_disabled`, `routing_automation_paused`
+and `routing_selection_held` explain suppressed autonomous rollover;
+`routing_state_changed` means controls changed during validation and selection must
+be prepared again. These codes never authorize replaying an admitted turn.
+Older loaded bridges can still report `routing_busy` for active follow-ups.
+Check their running revision; this implementation removes that blanket rejection.
+`routing_model_changed` defers a switch when active models change during validation;
+`routing_observation_failed` means the collector subscription failed. Native quota
+notifications remain an additional wakeup. See the
+[rollover design and evidence](plans/t3-active-turn-admission.md).
+`routing_account_busy` means another validator held the account lock beyond the
+bounded wait; `routing_validation_timeout` means the admission deadline expired.
+These failures occur before inference. The broker records only the time and
+fixed failure code in HotPl8's bounded `events.jsonl`, never credentials or paths.
+See the [concurrent admission repair](plans/t3-concurrent-admission.md).
 
-An account can run out after admission. The original failure is shown once;
+An account can still run out after admission: reserve headroom cannot cover every
+in-flight request, observation delay, explicit hold or exhausted-all condition.
+Unsuccessful background selection reports a fixed diagnostic and preserves native
+work. The original native failure, if one occurs, is shown once;
 the bridge never replays a partially executed prompt or duplicates tool effects.
 The next user turn performs a fresh selection. Unknown/unsupported protocol or
 command options fail closed, including non-stdio app-server transports.
@@ -118,6 +202,8 @@ installation/removal and token redaction. Run:
 ```powershell
 node --test tests/test-t3-codex.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-routing.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-migration.ps1
+python tests/test_delivery.py
 ```
 
 Native qualification on 2026-09-19 used T3 0.0.42's installed launch contract and
@@ -128,8 +214,12 @@ account, then used the production broker for turn admission: the native account
 changed and the turn succeeded. The shared authentication file remained
 unchanged. This does not establish a multi-day refresh soak, two healthy accounts
 alternating successful inference, all future T3/Codex versions or other platforms.
-Quota exhaustion/fallback, active-turn pinning and refresh failures have offline
-regression coverage; promotion requires corresponding native observations.
+On 2026-09-20, isolated native HTTP and WebSocket probes on 0.155.1 also passed
+same-turn A-to-B model-request adoption through the production dispatcher, with
+an active follow-up and one tool execution. WebSocket continuation state was
+cleared across accounts. These synthetic-account tests do not establish real
+billing or exhaustive child/retry races. The linked rollover design records
+reproduction steps and the remaining experimental promotion boundaries.
 
 See the [implementation plan](plans/t3-codex-integration.md),
 [compatibility](compatibility.md) and the

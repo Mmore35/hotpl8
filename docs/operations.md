@@ -47,7 +47,7 @@ Policy version 2 adds:
 }
 ```
 
-This is a fragment to merge into a complete policy with `schemaVersion: 2` and an explicit mode. Existing version-1 policies remain supported. New installations remain monitor-only, with history and notifications off. Account commands upgrade the policy without enabling actions. Older releases reject version 2; rollback checks reader compatibility before replacing files.
+This is a fragment to merge into a complete policy with `schemaVersion: 2` and an explicit mode. Existing version-1 policies remain supported. New installations remain monitor-only, with history and notifications off. Account commands preserve the policy version unless a requested setting requires migration, without enabling actions. Older releases reject version 2; rollback checks reader compatibility before replacing files.
 
 Days use Sunday=0 through Saturday=6. Start is inclusive, end exclusive. Overnight intervals belong to their starting day; equal start/end allows no prompts. Omit the schedule for all hours. The default time zone is local; optional `timeZone` uses an ID supported by the host PowerShell runtime. Check that ID again when moving policy between Windows and Mac. Local daylight-saving transitions follow the runtime time-zone database.
 
@@ -63,7 +63,7 @@ Collector state records start, completion, due times and failures. The dashboard
 
 ## Pace, model constraints and alternative ordering
 
-Weekly pace compares usage with elapsed time in an observed seven-day window. The cycle-average time-to-limit is an estimate, not a promised amount of remaining work. Zero usage, an expired/unconfirmed reset, stale readings, or less than a day of weekly evidence produce no forecast. With `historyEnabled: true`, separated samples from the same window can also provide a recent-rate estimate. History stays local, with at most 4,096 samples over 14 days and one sample per stream per 30 minutes. `hotpl8 history` reports retention; `hotpl8 history -Operation clear` deletes those samples. Disable history to stop future recording. The pre-existing bounded Codex observation audit log is separate.
+Weekly pace compares usage with elapsed time in an observed seven-day window. The cycle-average time-to-limit is an estimate, not a promised amount of remaining work. Zero usage, an expired/unconfirmed reset, stale readings, or less than a day of weekly evidence produce no forecast. With `historyEnabled: true`, separated samples from the same window can also provide a recent-rate estimate. History stays local, with at most 4,096 samples per provider store over 14 days and one sample per stream per 30 minutes. Canonical providers share the original store; registered aliases use their own namespaces. `hotpl8 history` reports aggregate and per-store counts without counting the shared store twice; `hotpl8 history -Operation clear` deletes samples in configured provider stores. Residual history belonging only to unregistered providers is retained. Disable history to stop future recording. The pre-existing bounded Codex observation audit log is separate.
 
 Set `claudeModels` to exact scoped quota names reported by your installed cswap contract. Every requested scope must be present, have a future reset, and meet the slot's weekly floor. Missing or exhausted scoped quotas block eligibility; unrelated headroom cannot substitute for them. Scopes remain visible without configuration but do not silently choose your intended model. Codex continues to require explicit verified `modelMeters` mappings.
 
@@ -97,3 +97,24 @@ The dashboard, status command and tray share the [provider overview](provider-ov
 ## Cooperative agent pauses
 
 Agent jobs may acquire independent expiring pauses through the [agent API](agent-api.md). Effective automation pause combines manual pause state with all active leases. Manual `resume` affects only the manual pause, and reports when other pause state remains. Invalid lease state blocks automation and requires local inspection. Collection continues.
+
+## Registered account operations
+
+Provider arguments are registered IDs from the shipped catalog, not a fixed
+Claude/Codex enum. `hotpl8 setup` lists detected native integrations; interactive
+setup offers those registrations and existing native homes. Enrollment validates
+native account identity and rejects duplicate ownership. Use
+`hotpl8 accounts -Provider ID -Slot SLOT -Operation remove` to remove an enrollment
+without deleting its native home, credentials, history or conversation data.
+
+The same registry drives collection scheduling, cached views, agent readiness,
+MCP discovery and diagnostics. Each provider uses shared decision rules; native
+transport and window decoding stay with its reviewed driver. Quota cache state is
+namespaced for additional registrations; installation pause/hold controls remain
+shared. Read-only operations never create those namespaces or run a provider.
+
+Status distinguishes native launch recommendations from host-session adoption.
+A managed T3 bridge can adopt an eligible account at a qualified native request
+boundary; that does not make a CLI recommendation proof that every open session
+switched. New T3 enrollment uses the ordinary provider entry; a legacy alias may
+remain for [gradual manual transition](t3-integration.md).

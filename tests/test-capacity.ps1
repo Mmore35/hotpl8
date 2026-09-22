@@ -531,6 +531,7 @@ Check 'Codex details give two distinct account headers with one availability ver
     $first.buckets.codex.windows.'10080'.remainingPercent=0;$first.buckets.codex.windows.'10080'.usedPercent=100
     $s.providers.codex.recommendedSlot='personal'
     $s.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=95
+    $s.providers.codex.slots[1].buckets.codex.windows.'10080'.usedPercent=5
     $text=((Get-Hotpl8DashboardRows $s $p $now 108).text)-join "`n"
     Assert ($text.Contains('Work  [work]') -and $text.Contains('EXHAUSTED') -and $text.Contains('Personal  [personal]') -and $text.Contains('NEXT LAUNCH')) $text
     Assert ($text.Substring($text.IndexOf('CODEX  /')) -notmatch 'MONITORED|Main  /|    Main')

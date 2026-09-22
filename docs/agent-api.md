@@ -1,6 +1,6 @@
 # Local agent API
 
-HotPl8 has a versioned JSON command and an optional local MCP subprocess. Both use the same dispatcher and existing selection functions. Reads inspect local evidence; they do not collect quota, start provider processes, change accounts, send prompts or validate native login. The supported runtime is Windows PowerShell 5.1.
+HotPl8 has a versioned JSON command and an optional local MCP subprocess. Both use the same dispatcher and shared provider decision core. Reads inspect local evidence; they do not collect quota, start provider processes, change accounts, send prompts or validate native login. The supported runtime is Windows PowerShell 5.1.
 
 ## JSON command
 
@@ -29,11 +29,11 @@ The envelope is stable v1. Exit 0 means the request succeeded, which includes a 
 
 | Operation | Arguments | Data |
 |---|---|---|
-| `status`, `explain` | `{}` | Current eligibility explanations for both providers, snapshot time/age and collector completion markers. These two views currently share the same compact projection. |
+| `status`, `explain` | `{}` | Current eligibility explanations for registered providers, snapshot time/age and collector completion markers. These two views currently share the same compact projection. |
 | `doctor` | `{}` | Policy validity, CLI presence, cached snapshot freshness and collector lock state; works before setup. |
 | `capabilities` | `{}` | Doctor fields plus the connection's available operations, pause permission and cached-read limitations. |
 | `accounts` | `{}` | Enrolled slot IDs, provider, disabled and reserve flags. No labels or account paths. |
-| `readiness` | `provider: "claude"` or `"codex"`; optional `model` | One provider's current cached eligibility and blockers. Model overrides require a verified Codex model mapping. |
+| `readiness` | `provider: REGISTERED_ID`; optional `model` | One provider's current cached eligibility and blockers. Model overrides require a verified mapping supported by the native driver. |
 | `pause.acquire` | `leaseId`, `owner`, `minutes` | Lease capability, original expiry, active and released flags. |
 | `pause.release` | `leaseId` | That lease's expiry, active=false and released=true. |
 
@@ -111,3 +111,17 @@ Add `-AllowAgentPause` to `args` only when that client should acquire/release au
 The server implements MCP 2025-11-25 and 2025-06-18 initialization, `notifications/initialized`, `ping`, `tools/list` and `tools/call`. A client must finish initialization before calling tools. Responses carry the v1 envelope in `structuredContent` and matching JSON text; failures set `isError`. Invalid JSON-RPC requests use protocol errors. Notifications have no response. Lines are bounded to 64 KiB, UTF-8 and newline-delimited; malformed lines are rejected independently, and EOF closes the process. No HTTP listener, resources, prompts, tasks or subscriptions are advertised.
 
 The interface does not expose native credentials, arbitrary shell execution, provider prompts, account-policy writes, refresh, job launch or event subscriptions. Use the existing deliberate commands for those supported operations. [Architecture](architecture.md), [operations](operations.md), [privacy](../PRIVACY.md).
+
+## Registered provider compatibility
+
+The v1 envelope and existing provider fields retain their meaning. Registered
+providers add keys to `data.providers`; `accounts` retains each account's real
+registered ID. Doctor/capabilities add a bounded `providers` map containing only
+configured/installed flags and reviewed driver IDs. Private labels, account homes,
+identity material and tokens remain excluded from these projections.
+
+Readiness and the MCP provider enum resolve the packaged catalog. An unknown ID
+still fails validation. Driver capability describes an available native mechanism;
+it does not establish host enrollment or a confirmed live-session binding.
+Codex-compatible readiness remains an explicit-admission/next-launch projection,
+including for a registration whose managed host integration supports rollover.

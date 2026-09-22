@@ -1,4 +1,5 @@
 # Local, dependency-free MCP transport. All product operations use the shared API.
+. (Join-Path $PSScriptRoot 'provider-registry.ps1')
 function Test-Hotpl8McpObject($Value) {
     return ($null -ne $Value -and ($Value -is [System.Management.Automation.PSCustomObject] -or $Value -is [System.Collections.IDictionary]))
 }
@@ -32,9 +33,9 @@ function Get-Hotpl8McpTools([bool]$AllowPause) {
         } }; outputSchema = $outputSchema; annotations = $readAnnotations
     }
     @{
-        name = 'hotpl8_readiness'; description = 'Check current cached account eligibility. Does not reserve capacity, launch work, or validate native authentication. Model is supported only for Codex.'
+        name = 'hotpl8_readiness'; description = 'Check current cached account eligibility. Does not reserve capacity, launch work, or validate native authentication. Model mapping depends on the registered native driver.'
         inputSchema = @{ type = 'object'; additionalProperties = $false; required = @('provider'); properties = @{
-            provider = @{ type = 'string'; enum = @('claude','codex') }; model = @{ type = 'string'; minLength = 1; maxLength = 100; pattern = '^[a-zA-Z0-9_.-]{1,100}$' }
+            provider = @{ type = 'string'; enum = @(Get-Hotpl8ProviderCatalog|ForEach-Object id) }; model = @{ type = 'string'; minLength = 1; maxLength = 100; pattern = '^[a-zA-Z0-9_.-]{1,100}$' }
         } }; outputSchema = $outputSchema; annotations = $readAnnotations
     }
     if ($AllowPause) {
