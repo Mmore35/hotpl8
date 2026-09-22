@@ -324,5 +324,33 @@ Check 'cold warm decoding permits opening a window without changing admission ev
     $entry.observation.observedAt=$now.AddMinutes(-16).ToString('o')
     Assert (-not (Get-ClaudeProviderDecision $p @(1) @{1=$entry} 0 $now $null $context).actionPermitted)
 }
+function Legacy-ClaudeEntry([double]$Short,[double]$Week=90){
+    @{fresh=$true;h5=$Short;h7=$Week;observedAt=$now.ToString('o');obj=@{usage=@{fiveHour=@{pct=(100-$Short);resetsAt=$now.AddHours(1).ToString('o')};sevenDay=@{pct=(100-$Week);resetsAt=$now.AddDays(1).ToString('o')}}}}
+}
+Check 'legacy Claude omitted short margin retains zero without mutating policy' {
+    foreach($shape in @(@{prefer=@(1);reserve=@()},(Copy-Value @{prefer=@(1);reserve=@()}))){
+        $before=$shape|ConvertTo-Json -Depth 10 -Compress
+        $d=Get-ClaudeSelection $shape @(1) @{1=(Legacy-ClaudeEntry 15)} 0 $now
+        Assert ($d.target -eq 1 -and $d.decision.accounts[0].eligible)
+        Assert ($before -ceq ($shape|ConvertTo-Json -Depth 10 -Compress))
+    }
+}
+Check 'legacy Claude omitted hysteresis retains zero and explicit bands remain effective' {
+    $p=Copy-Value @{prefer=@(1,2);reserve=@();margin5h=25}
+    $accounts=@{1=(Legacy-ClaudeEntry 30);2=(Legacy-ClaudeEntry 90)}
+    Assert ((Get-ClaudeSelection $p @(1,2) $accounts 2 $now).target -eq 1)
+    $p|Add-Member NoteProperty hysteresis 10
+    Assert (-not (Get-ClaudeSelection $p @(1,2) $accounts 2 $now).target)
+    $p.hysteresis=0
+    Assert ((Get-ClaudeSelection $p @(1,2) $accounts 2 $now).target -eq 1)
+}
+Check 'explicit Claude reserve margins are preserved at the compatibility boundary' {
+    $p=Copy-Value @{prefer=@(1);reserve=@(1);margin5h=25}
+    Assert (-not (Get-ClaudeSelection $p @(1) @{1=(Legacy-ClaudeEntry 15)} 0 $now).target)
+    $p.margin5h=0
+    Assert (-not (Get-ClaudeSelection $p @(1) @{1=(Legacy-ClaudeEntry 90 10)} 0 $now).target)
+    $p|Add-Member NoteProperty margin7d 0
+    Assert ((Get-ClaudeSelection $p @(1) @{1=(Legacy-ClaudeEntry 90 10)} 0 $now).target -eq 1)
+}
 'Provider core: '+$script:passed+' passed, '+$script:failed+' failed'
 if($script:failed){exit 1}

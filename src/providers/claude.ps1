@@ -433,12 +433,18 @@ function Resolve-CswapExecutable([string]$CswapExecutable) {
     return $cswap
 }
 function Get-ClaudeProviderDecision($Policy,$Prefer,$Accounts,[int]$Active,[datetimeoffset]$Now,$CriticalState=$null,$Context=$null) {
+    # Legacy Claude omitted these fields as zero. Registered views already carry
+    # descriptor defaults; preserve explicit values without mutating either input.
+    $decisionPolicy=@{}
+    if($Policy -is [Collections.IDictionary]){foreach($key in $Policy.Keys){$decisionPolicy[$key]=$Policy[$key]}}
+    else{foreach($property in $Policy.PSObject.Properties){$decisionPolicy[$property.Name]=$property.Value}}
+    foreach($key in @('margin5h','hysteresis')){if($null -eq $decisionPolicy[$key]){$decisionPolicy[$key]=0}}
     $observations=@(foreach($id in $Prefer){ConvertTo-Hotpl8ClaudeEntryObservation $id $Accounts[[int]$id] $Policy $Now -ForWarm:($Context.intent -eq 'warm' -and [string]$id -ceq [string]$Context.actionSlot)})
     $slots=@(foreach($id in $Prefer){$e=$Accounts[[int]$id];[pscustomobject]@{slot=$id;status=$(if($e.fresh -and -not $e.modelBlocked){'ok'}else{'unavailable'});fresh=[bool]$e.fresh;observedAt=$(if($e.observedAt){$e.observedAt}else{$Now.ToString('o')});used5h=$(if(Test-Hotpl8Number $e.h5){100-$e.h5}else{$null});used7d=$(if(Test-Hotpl8Number $e.h7){100-$e.h7}else{$null});reset5h=$e.obj.usage.fiveHour.resetsAt;reset7d=$e.obj.usage.sevenDay.resetsAt;scoped=$e.obj.usage.scoped}})
     $capacity=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{slots=$slots}) $Policy 'claude' $Now)
     $observations=@(Add-Hotpl8ObservationCapacity $observations $capacity)
     if(-not $Context){$Context=@{intent='observe';previousId=[string]$Active;bindingKnown=($Active -gt 0);criticalState=$CriticalState}}
-    Get-Hotpl8ProviderDecision $observations $Policy $Context $Now
+    Get-Hotpl8ProviderDecision $observations $decisionPolicy $Context $Now
 }
 function Get-ClaudeSelection($policy, $prefer, $acc, [int]$active, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, $CriticalState=$null) {
     $decision=Get-ClaudeProviderDecision $policy $prefer $acc $active $Now $CriticalState
@@ -538,7 +544,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             $priorOutcome=$outcomes.$key.outcome
             $updated=Update-Hotpl8WarmOutcome $outcomes.$key $e.identity $e.observedAt $e.obj.usage.fiveHour.resetsAt $e.fresh
             $outcomes|Add-Member NoteProperty $key $updated -Force
-            if($updated.outcome -ne $priorOutcome -and (Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue)){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$n) 'warm_outcome' $updated.outcome}
+            if($updated.outcome -ne $priorOutcome -and (Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue)){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'warm_outcome' $updated.outcome}
         }
     }
     if(@($outcomes.PSObject.Properties).Count){Save-Hotpl8WarmOutcomes $StateDirectory $outcomes}
@@ -567,7 +573,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $switchResult=Invoke-Hotpl8Process $cswap @('switch',[string]$target) 20000
         if ($switchResult.exitCode -eq 0) {
             $switched = $true; $active = $target
-            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$target) 'switch' 'native_switch_succeeded'}
+            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$target) 'switch' 'native_switch_succeeded'}
         }
         else { throw 'claude_switch_failed' }
     }
@@ -676,13 +682,13 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             # to wedge the timer (the task is registered IgnoreNew). Remaining cold
             # slots are picked up by the next tick 5 minutes later, which is far
             # inside the 5h window this is protecting.
-            if($e.modelBlocked -or (Get-Hotpl8ActionBlock $policy $StateDirectory 'claude' ([string]$n) 'warm')){continue}
+            if($e.modelBlocked -or (Get-Hotpl8ActionBlock $policy $StateDirectory $ProviderId ([string]$n) 'warm')){continue}
             $outcomeKey='claude:'+ $n
             if(Test-Hotpl8WarmPending $outcomes.$outcomeKey $e.identity){continue}
             if(-not (Test-Hotpl8ClaudeActionAuthorization $policy $prefer $acc $active $criticalPrior 'warm' ([string]$n) $ControlDirectory $controlGeneration)){continue}
-            Add-Hotpl8Attempt $StateDirectory 'claude' ([string]$n)
+            Add-Hotpl8Attempt $StateDirectory $ProviderId ([string]$n)
             # Persist before dispatch. A crash cannot cause an immediate duplicate prompt.
-            $outcome=New-Hotpl8WarmOutcome 'claude' ([string]$n) $e.identity 'fiveHour' $true
+            $outcome=New-Hotpl8WarmOutcome $ProviderId ([string]$n) $e.identity 'fiveHour' $true
             $outcome.outcome='requested'
             $outcomes|Add-Member NoteProperty $outcomeKey $outcome -Force
             Save-Hotpl8WarmOutcomes $StateDirectory $outcomes
@@ -690,7 +696,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             $outcome.outcome=if($ok){'sent'}else{'failed'}
             $outcomes|Add-Member NoteProperty $outcomeKey $outcome -Force
             Save-Hotpl8WarmOutcomes $StateDirectory $outcomes
-            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$n) 'warm_attempt' $outcome.outcome}
+            if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'warm_attempt' $outcome.outcome}
 
             # Stamped either way: a slot that fails to warm must back off to $wFloor,
             # not be retried every 5 minutes forever. But only a REAL ping counts as a
@@ -745,11 +751,11 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 if ((([datetimeoffset]::UtcNow - [datetimeoffset]::Parse($last)).TotalSeconds) -lt $staleS) { continue }
             } catch { }
         }
-        if(Get-Hotpl8ActionBlock $policy $StateDirectory 'claude' ([string]$n) 'probe'){continue}
+        if(Get-Hotpl8ActionBlock $policy $StateDirectory $ProviderId ([string]$n) 'probe'){continue}
         if(-not (Test-Hotpl8ClaudeActionAuthorization $policy $prefer $acc $active $criticalPrior 'probe' ([string]$n) $ControlDirectory $controlGeneration)){continue}
-        Add-Hotpl8Attempt $StateDirectory 'claude' ([string]$n)
+        Add-Hotpl8Attempt $StateDirectory $ProviderId ([string]$n)
         $pok = Invoke-SlotPing $cswap $n ([string]$e.obj.email) $StateDirectory 'probe'
-        if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory 'claude' ([string]$n) 'recovery_probe' $(if($pok){'sent'}else{'failed'})}
+        if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'recovery_probe' $(if($pok){'sent'}else{'failed'})}
         $probed += $n
         if ($pok) { $revived += $n }
         $pstate["$n"] = [datetimeoffset]::UtcNow.ToString('o')
@@ -936,7 +942,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 streamKey = Get-Hotpl8Hash ($StateDirectory+'|usage|'+$e.identity)
                 scoped = @($e.obj.usage.scoped)
                 warmOutcome = $outcomes.('claude:'+ $n) | Select-Object schemaVersion,id,provider,slot,meter,sentAt,expiresAt,outcome,observedAt,resetAt
-                actionBlock = Get-Hotpl8ActionBlock $policy $StateDirectory 'claude' ([string]$n) 'warm'
+                actionBlock = Get-Hotpl8ActionBlock $policy $StateDirectory $ProviderId ([string]$n) 'warm'
                 modelBlock = $e.modelReason
                 status     = [string]$e.obj.usageStatus
                 used5h     = $(if ($f -and $null -ne $f.pct) { [double]$f.pct } else { $null })

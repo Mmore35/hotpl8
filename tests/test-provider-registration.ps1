@@ -204,6 +204,32 @@ try{
         Assert ((Json $catalog) -ceq $before)
         Assert ((Json @(Get-Hotpl8ProviderCatalog)) -ceq $before)
     }
+    Check 'Claude v3 migration preserves weekly selection floors including explicit zero and work overrides' {
+        foreach($name in @('common','config','management')){. (Join-Path $root ('src/'+$name+'.ps1'))}
+        . (Join-Path $root 'src/providers/claude.ps1')
+        $now=[datetimeoffset]::UtcNow
+        $accounts=@{1=@{h5=90;h7=10;fresh=$true;observedAt=$now.ToString('o');obj=@{usageStatus='ok';usageAgeSeconds=0;usage=@{fiveHour=@{pct=10;resetsAt=$now.AddHours(2).ToString('o')};sevenDay=@{pct=90;resetsAt=$now.AddDays(3).ToString('o')}}}}}
+        foreach($case in @(
+            @{name='omitted reserve';reserve=@(1);floor=20;eligible=$false},
+            @{name='explicit zero reserve';reserve=@(1);margin7d=0;floor=0;eligible=$true},
+            @{name='work override';reserve=@();margin7dWork=5;floor=5;eligible=$true},
+            @{name='zero work override';reserve=@();margin7dWork=0;floor=0;eligible=$true},
+            @{name='reserve ignores work override';reserve=@(1);margin7dWork=5;floor=20;eligible=$false}
+        )){
+            $legacy=[pscustomobject]@{schemaVersion=2;mode='automate';prefer=@(1);reserve=$case.reserve}
+            foreach($key in @('margin7d','margin7dWork')){if($case.ContainsKey($key)){$legacy|Add-Member NoteProperty $key $case[$key]}}
+            Assert-Hotpl8Policy $legacy
+            $original=Json $legacy
+            $beforeSelection=Get-ClaudeSelection $legacy @(1) $accounts 0 $now
+            $migrated=ConvertTo-Hotpl8PolicyV3 $legacy;Assert-Hotpl8Policy $migrated
+            $view=Get-Hotpl8ProviderView $null $migrated claude
+            $afterSelection=Get-ClaudeSelection $view.policy @(1) $accounts 0 $now
+            Assert ((Get-Margin7dFor $legacy 1) -eq $case.floor -and (Get-Margin7dFor $view.policy 1) -eq $case.floor) ($case.name+': weekly floor changed')
+            Assert (($beforeSelection.target -eq 1) -eq $case.eligible -and ($afterSelection.target -eq 1) -eq $case.eligible) ($case.name+': 10-percent weekly selection changed')
+            Assert ($beforeSelection.decision.accounts[0].reason -ceq $afterSelection.decision.accounts[0].reason) ($case.name+': eligibility reason changed')
+            Assert ((Json $legacy) -ceq $original) ($case.name+': migration mutated source policy')
+        }
+    }
     Check 'descriptor and enrollment only reaches collector CLI UI API MCP controls and diagnostics' {
         $package=Join-Path $lab 'package';[void][IO.Directory]::CreateDirectory($package)
         $files=@((Get-Content (Join-Path $root 'release-files.json') -Raw|ConvertFrom-Json).files)+@('src/provider-runtime.ps1')
@@ -250,7 +276,58 @@ $twoOwners=Copy-Hotpl8ProviderValue $policy
 $twoOwners.providers.claude.prefer=@(1)
 $twoOwners.providers|Add-Member NoteProperty 'fictional-claude' ([pscustomobject]@{prefer=@(2)})
 Reject {Assert-Hotpl8Policy $twoOwners} 'two global activation owners accepted'
-# The fourth definition is only a validation case, never an enrolled runtime.
+# Exercise the sole numeric-driver alias with synthetic reads and a ping spy.
+# The unexcluded controls prove each native action path is otherwise reachable.
+& {
+    function Resolve-CswapExecutable {return 'fixture-only'}
+    function Read-Hotpl8ClaudePlans {return [pscustomobject]@{}}
+    function Invoke-Hotpl8Process($Executable,$Arguments,$TimeoutMs) {
+        Assert ($Executable -eq 'fixture-only' -and ($Arguments -join ' ') -ceq 'list --json') 'unexpected native command in alias fixture'
+        $at=[datetimeoffset]::UtcNow
+        $account=if($script:aliasAction -eq 'warm'){
+            @{number=1;email='alias@example.invalid';usageStatus='ok';usageAgeSeconds=0;usage=@{fiveHour=@{pct=0;resetsAt=''};sevenDay=@{pct=10;resetsAt=$at.AddDays(3).ToString('o')}}}
+        }else{@{number=1;email='alias@example.invalid';usageStatus='relogin_required';lastGoodAgeSeconds=86400;usage=$null}}
+        @{exitCode=0;output=(@{schemaVersion=1;activeAccountNumber=1;accounts=@($account)}|ConvertTo-Json -Depth 10)}
+    }
+    function Invoke-SlotPing($Executable,$Slot,$Email,$Directory,$Kind) {
+        Assert ($Executable -eq 'fixture-only' -and $Slot -eq 1) 'unexpected ping target'
+        $script:aliasPings+=@($Kind);return $false
+    }
+    foreach($kind in @('warm','probe')){
+        foreach($excluded in @($true,$false)){
+            $script:aliasAction=$kind;$script:aliasPings=@()
+            $aliasRoot=Join-Path (Split-Path $Package -Parent) ('claude-alias-'+$kind+'-'+$excluded)
+            [void][IO.Directory]::CreateDirectory($aliasRoot)
+            $aliasPolicy=[pscustomobject]@{schemaVersion=3;mode='automate';switchEnabled=$false;warm=$true;probeEnabled=$true;automation=[pscustomobject]@{warmExcluded=@(if($excluded){'fictional-claude:1'})};providers=[pscustomobject]@{'fictional-claude'=[pscustomobject]@{prefer=@(1);reserve=@()}}}
+            Assert-Hotpl8Policy $aliasPolicy
+            Write-Hotpl8Text (Join-Path $aliasRoot 'policy.json') ($aliasPolicy|ConvertTo-Json -Depth 12)
+            $aliasView=Get-Hotpl8ProviderView $null $aliasPolicy fictional-claude
+            $aliasDirectory=Get-Hotpl8ProviderStateDirectory $aliasRoot fictional-claude
+            [void][IO.Directory]::CreateDirectory($aliasDirectory)
+            $result=Invoke-ClaudeTick $aliasView.policy $aliasDirectory -ControlDirectory $aliasRoot -ProviderId fictional-claude
+            Assert ($result.payload.slots.Count -eq 1) 'sole Claude alias was not collected'
+            if($excluded){
+                Assert ($script:aliasPings.Count -eq 0) ('registered exclusion allowed '+$kind)
+                Assert ($result.payload.slots[0].actionBlock -ceq 'account_excluded') ('registered '+$kind+' exclusion missing from diagnostic block')
+                Assert (-not (Test-Path -LiteralPath (Join-Path $aliasDirectory 'attempt-budget.json'))) 'excluded action consumed attempt budget'
+            }else{
+                Assert ($script:aliasPings.Count -eq 1 -and $script:aliasPings[0] -ceq $kind) ('unexcluded '+$kind+' control did not reach ping spy')
+                Assert (-not $result.payload.slots[0].actionBlock) 'unexcluded action reported an exclusion'
+                $ledger=Read-Hotpl8Json (Join-Path $aliasDirectory 'attempt-budget.json')
+                $expectedKey=[datetimeoffset]::UtcNow.UtcDateTime.ToString('yyyy-MM-dd')+'/fictional-claude/1'
+                Assert ($ledger.$expectedKey -eq 1 -and @($ledger.PSObject.Properties).Count -eq 1) 'attempt budget used native family instead of registration identity'
+                $aliasView.policy.automation|Add-Member NoteProperty dailyAttemptLimit 1 -Force
+                Assert ((Get-Hotpl8ActionBlock $aliasView.policy $aliasDirectory fictional-claude 1 $kind) -ceq 'daily_attempt_limit') 'registered action could not read its own attempt budget'
+                $activity=Read-Hotpl8Json (Join-Path $aliasDirectory 'activity.json')
+                Assert (@($activity.events).Count -gt 0 -and @($activity.events|Where-Object provider -CNE fictional-claude).Count -eq 0) 'action event used native family identity'
+                if($kind -eq 'warm'){
+                    $outcomes=Read-Hotpl8WarmOutcomes $aliasDirectory
+                    Assert ($outcomes.'claude:1'.provider -ceq 'fictional-claude') 'warm outcome lost registration identity'
+                }
+            }
+        }
+    }
+}
 $reader={param($accountPath,$exe,$budget)
     $now=[datetimeoffset]::UtcNow
     [pscustomobject]@{status='ok';standardTransport=$true;identityKey='fictional-only';modelProvider='openai';model='fixture-model';elapsedMs=0;quota=[pscustomobject]@{rateLimitsByLimitId=[pscustomobject]@{codex=[pscustomobject]@{limitId='codex';spendControlReached=$false;primary=[pscustomobject]@{windowDurationMins=300;usedPercent=10;resetsAt=$now.AddHours(2).ToUnixTimeSeconds()};secondary=[pscustomobject]@{windowDurationMins=10080;usedPercent=20;resetsAt=$now.AddDays(3).ToUnixTimeSeconds()}}}}}

@@ -34,7 +34,7 @@ function ConvertTo-Hotpl8PolicyV3($Policy) {
         $part=Copy-Hotpl8ProviderValue $r.policy;$driver=Get-Hotpl8ProviderDriver $r.driver
         foreach($key in @('schemaVersion','mode','switchEnabled','warm','probeEnabled','automation','historyEnabled','notificationsEnabled','display','codex')){$part.PSObject.Properties.Remove($key)}
         # Freeze the old reader's missing-value semantics before defaults apply.
-        $defaults=if($driver.provider -eq 'claude'){@{order='prefer';margin5h=0;margin7d=0;hysteresis=0;resetLeadMin=10}}else{@{order='prefer';margin5h=25;margin7d=20;hysteresis=10;resetLeadMin=10}}
+        $defaults=if($driver.provider -eq 'claude'){@{order='prefer';margin5h=0;margin7d=20;hysteresis=0;resetLeadMin=10}}else{@{order='prefer';margin5h=25;margin7d=20;hysteresis=10;resetLeadMin=10}}
         foreach($key in $defaults.Keys){if($null -eq $part.$key){$part|Add-Member NoteProperty $key $defaults[$key] -Force}}
         $next.providers|Add-Member NoteProperty $r.id $part
     }
