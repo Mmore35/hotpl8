@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "claude",
+  "name": "Claude",
+  "driver": "claude-cswap",
+  "defaultMeter": "claude",
+  "meters": ["claude"],
+  "windows": [
+    {"id": "300", "minutes": 300, "required": true},
+    {"id": "10080", "minutes": 10080, "required": true}
+  ],
+  "policyDefaults": {"order": "prefer", "margin5h": 25, "margin7d": 20, "hysteresis": 10, "resetLeadMin": 10},
+  "modelMeters": {},
+  "capabilities": {"observation": true, "enrollment": true, "selection": true, "nativeLaunch": false, "warming": true, "recoveryProbe": true, "t3Rollover": false},
+  "integrations": {"native": "claude", "t3": "claudeAgent"},
+  "display": {"order": 10}
+}

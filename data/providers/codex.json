@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "codex",
+  "name": "Codex",
+  "driver": "codex-app-server",
+  "defaultMeter": "codex",
+  "meters": ["codex", "codex_bengalfox"],
+  "windows": [
+    {"id": "300", "minutes": 300, "required": false},
+    {"id": "10080", "minutes": 10080, "required": false}
+  ],
+  "policyDefaults": {"order": "prefer", "margin5h": 25, "margin7d": 20, "hysteresis": 10, "resetLeadMin": 10},
+  "modelMeters": {},
+  "capabilities": {"observation": true, "enrollment": true, "selection": true, "nativeLaunch": true, "warming": false, "recoveryProbe": false, "t3Rollover": true},
+  "integrations": {"native": "codex", "t3": "codex"},
+  "display": {"order": 20}
+}
