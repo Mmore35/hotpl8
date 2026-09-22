@@ -99,7 +99,7 @@ jobs:
           python delivery/package.py $package[0].FullName hotpl8-main.zip --sha $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Delivery packaging failed' }
       - name: Attest tested main package
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: hotpl8-main.zip
       - name: Publish retained main package
