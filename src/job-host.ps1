@@ -39,6 +39,6 @@ function Get-Hotpl8JobComponentStatus([string]$InstallDirectory) {
         $latest=Get-ChildItem -LiteralPath (Join-Path $InstallDirectory ('job-runs/'+$role)) -Filter run.json -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
         $receipt=if($latest){Read-Hotpl8Json $latest.FullName}else{$null}
         $valid=$task -and $task.Actions.Count -eq 1 -and $task.Actions[0].Execute -eq $config.scheduledJobs.host -and (Test-Path -LiteralPath $config.scheduledJobs.host)
-        [pscustomobject]@{component=('scheduled-'+$role);state=$(if($valid){'current'}else{'error'});task=$name;nextLaunchHost=$config.scheduledJobs.host;observedHost=$receipt.host;execution=$receipt.status;observedAt=$receipt.completedAt;adoption='Next native wake; admitted work completes on its original host';outcomeAuthority=$(if($role -eq 'collector'){'collector.json; provider freshness remains separate'}else{'delivery-status.json'})}
+        [pscustomobject]@{component=('scheduled-'+$role);state=$(if(-not $valid){'error'}elseif(-not $task.Settings.Enabled){'disabled'}else{'current'});task=$name;nextLaunchHost=$config.scheduledJobs.host;observedHost=$receipt.host;execution=$receipt.status;observedAt=$receipt.completedAt;adoption='Next native wake; admitted work completes on its original host';outcomeAuthority=$(if($role -eq 'collector'){'collector.json; provider freshness remains separate'}else{'delivery-status.json'})}
     }
 }

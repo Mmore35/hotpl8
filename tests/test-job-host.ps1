@@ -55,6 +55,23 @@ public static class TreeFixture {
         Assert (-not $left -or $left.StartTime.ToUniversalTime().ToString('o') -ne $child.created) "$mode contains the immediate grandchild"
         if($mode -eq 'timeout'){Assert ($p.ExitCode -eq 124) 'timeout has a distinct failure code'}
     }
+    # Shadowing the cmdlet keeps the default suite off the real scheduler.
+    $install=Join-Path $lab 'install';$null=New-Item -ItemType Directory -Path $install
+    @{product='fixture';scheduledJobs=@{version=1;collectorTask='Fixture collector';host=$hostExe}}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $install 'delivery.json')
+    function New-FixtureTask([string]$Execute,[bool]$Enabled){[pscustomobject]@{Actions=@([pscustomobject]@{Execute=$Execute});Settings=[pscustomobject]@{Enabled=$Enabled}}}
+    function Get-FixtureComponentState([hashtable]$Tasks){
+        function Get-ScheduledTask{[CmdletBinding()]param([string]$TaskName) $Tasks[$TaskName]}
+        $state=@{};foreach($c in @(Get-Hotpl8JobComponentStatus $install)){$state[$c.component]=$c.state};$state
+    }
+    $state=Get-FixtureComponentState @{'Fixture collector'=(New-FixtureTask $hostExe $true);'LocalDelivery-fixture'=(New-FixtureTask $hostExe $true)}
+    Assert ($state['scheduled-collector'] -eq 'current' -and $state['scheduled-updater'] -eq 'current') 'enabled matching tasks report current'
+    $state=Get-FixtureComponentState @{'Fixture collector'=(New-FixtureTask $hostExe $false);'LocalDelivery-fixture'=(New-FixtureTask $hostExe $false)}
+    Assert ($state['scheduled-collector'] -eq 'disabled' -and $state['scheduled-updater'] -eq 'disabled') 'a turned-off task reports disabled, not current'
+    $state=Get-FixtureComponentState @{'Fixture collector'=(New-FixtureTask $hostExe $true)}
+    Assert ($state['scheduled-collector'] -eq 'current' -and $state['scheduled-updater'] -eq 'error') 'a missing task reports error'
+    $other=Join-Path $lab 'other-host.exe'
+    $state=Get-FixtureComponentState @{'Fixture collector'=(New-FixtureTask $other $true);'LocalDelivery-fixture'=(New-FixtureTask $other $false)}
+    Assert ($state['scheduled-collector'] -eq 'error' -and $state['scheduled-updater'] -eq 'error') 'a mismatched task reports error even when turned off'
     if($Native){
         'Start-Sleep -Seconds 8; Set-Content (Join-Path $PSScriptRoot "finished.txt") "done"; exit 0'|Set-Content -LiteralPath $worker
         $argv=@('20',(Join-Path $lab 'runs'),$lab,(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'),'-NoProfile','-NonInteractive','-File',$worker)

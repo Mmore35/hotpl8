@@ -50,6 +50,10 @@ Read component adoption states before claiming a reported bug is fixed in an
 already-open session. Existing bridges without process receipts are explicitly
 unknown until those processes end.
 
+Enrolled scheduled collector and updater tasks report `current` when they launch
+the configured host and are turned on, `disabled` when turned off (for example,
+paused for recovery) and `error` when missing or pointing elsewhere.
+
 Updates prepare immutable `releases/<sha>` directories and change `current.json`
 only after preflight and writer drain. Existing short commands finish first. The
 collector's existing lock is also held during activation. Dashboards and native
