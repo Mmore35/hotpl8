@@ -147,15 +147,15 @@ Check 'opening through a pipe returns one plain frame without changing cache' {
         Write-Hotpl8Text (Join-Path $dir 'status.json') ($s|ConvertTo-Json -Depth 20)
         Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 10)
         $before=(Get-FileHash (Join-Path $dir 'status.json')).Hash
-        $out=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hotpl8.ps1') -StateDirectory $dir
+        $out=& (Get-Hotpl8PowerShell) -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hotpl8.ps1') -StateDirectory $dir
         Assert ($LASTEXITCODE -eq 0 -and ($out -join "`n").Contains('hotpl8'))
         Assert (-not ($out -join "`n").Contains('PREVIEW POLICY'))
         foreach($command in @('watch','nyan','status')){
             $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'hotpl8.ps1'),$command,'-StateDirectory',$dir)
             if($command -eq 'status'){$args+='-AsJson'}
-            $normal=& powershell @args
+            $normal=& (Get-Hotpl8PowerShell) @args
             Assert ($LASTEXITCODE -eq 0)
-            $preview=& powershell @args -PreviewPolicy (Join-Path $dir 'policy.json')
+            $preview=& (Get-Hotpl8PowerShell) @args -PreviewPolicy (Join-Path $dir 'policy.json')
             Assert ($LASTEXITCODE -eq 0)
             if($command -eq 'status'){
                 Assert (-not (($normal -join "`n"|ConvertFrom-Json).displayPolicy))

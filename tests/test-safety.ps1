@@ -54,7 +54,7 @@ try{
     Check 'scheduled Claude collection updates before cached native readings expire' {
         Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($fixture|ConvertTo-Json -Depth 12)
         Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 12)
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $dir -CswapExecutable $stub -Scheduled -ObserveOnly -Strict
+        & (Get-Hotpl8PowerShell) -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $dir -CswapExecutable $stub -Scheduled -ObserveOnly -Strict
         Assert ($LASTEXITCODE -eq 0)
         $state=Read-Hotpl8Json (Join-Path $dir 'collector.json')
         $delay=([datetimeoffset]::Parse($state.providers.claude.nextAttemptAt)-[datetimeoffset]::Parse($state.providers.claude.lastAttemptAt)).TotalSeconds

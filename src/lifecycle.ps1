@@ -1,11 +1,20 @@
 ﻿# Installation ownership and file allowlists protect unrelated applications and native account homes.
+# macOS reaches /tmp, /var and /etc through root-owned links in a root-owned directory no one
+# else can write. Only an administrator can repoint those, unlike a link a user could place.
+function Test-Hotpl8SystemLink($Item) {
+    if($env:OS -eq 'Windows_NT' -or $Item.LinkType -ne 'SymbolicLink' -or $Item.User -ne 'root'){return $false}
+    $parent=[IO.Path]::GetDirectoryName($Item.FullName.TrimEnd('/'))
+    $open=[IO.UnixFileMode]'GroupWrite, OtherWrite'
+    (Get-Item -LiteralPath $parent -Force).User -eq 'root' -and -not ([IO.File]::GetUnixFileMode($parent) -band $open)
+}
 function Assert-Hotpl8Path([string]$Path) {
     $full=[IO.Path]::GetFullPath($Path).TrimEnd('\','/')
     if($full -eq [IO.Path]::GetPathRoot($full).TrimEnd('\','/')){throw 'A drive root cannot be an installation directory.'}
     $cursor=$full
     while($cursor){
         if(Test-Path -LiteralPath $cursor){
-            if((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Installation paths cannot traverse links or junctions.'}
+            $item=Get-Item -LiteralPath $cursor -Force
+            if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -and -not (Test-Hotpl8SystemLink $item)){throw 'Installation paths cannot traverse links or junctions.'}
         }
         $parent=Split-Path $cursor -Parent
         if($parent -eq $cursor){break};$cursor=$parent

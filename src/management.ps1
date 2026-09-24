@@ -148,7 +148,7 @@ function Get-Hotpl8ProviderDiscovery($Policy) {
         }catch{}
         $record=@(Get-Hotpl8ConfiguredProviders $Policy|Where-Object id -CEQ $definition.id)
         if($driver.slotKind -eq 'native-home'){
-            $homes=@(@($record.policy.slots|ForEach-Object home)+@($env:CODEX_HOME,(Join-Path $env:USERPROFILE '.codex'))|Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -Unique)
+            $homes=@(@($record.policy.slots|ForEach-Object home)+@($env:CODEX_HOME,(Join-Path (Get-Hotpl8UserHome) '.codex'))|Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -Unique)
         }
         [pscustomobject]@{id=$definition.id;name=$definition.name;driver=$definition.driver;installed=$installed;configured=($record.Count -gt 0);slotKind=$driver.slotKind;nativeHomes=$homes;capabilities=$definition.capabilities}
     }
