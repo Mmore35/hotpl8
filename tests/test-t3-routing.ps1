@@ -166,7 +166,7 @@ try{
     $settings=@{unrelated='preserve';defaultModelSelection=@{instanceId='codex';model='fixture-model';options=@()};providerInstances=@{codex=@{driver='codex';enabled=$true;config=@{binaryPath='codex';homePath=$shared;shadowHomePath='';launchArgs=''}}}}
     Save 'settings.json' $settings
     $settingsPath=Join-Path $dir 'settings.json';$integration=Join-Path $dir 'integration space'
-    $ps=(Get-Command powershell).Source
+    $ps=Get-Hotpl8PowerShell
     $setup=Join-Path $root 'setup-t3.ps1'
     $beforeSettings=[IO.File]::ReadAllText($settingsPath)
     # Hosted Windows needs ~23s for first-use PowerShell/module initialization in

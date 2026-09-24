@@ -68,12 +68,30 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def _system_link(node):
+    """A root-owned link in a root-owned directory that no one else can write.
+
+    macOS reaches /tmp, /var and /etc through exactly such links. Only an
+    administrator can repoint them, so they cannot redirect an installation the
+    way a user-placed link could. Windows has no equivalent and trusts none."""
+    if os.name == "nt":
+        return False
+    try:
+        link, parent = node.lstat(), node.parent.lstat()
+    except OSError:
+        return False
+    return link.st_uid == 0 and parent.st_uid == 0 and not parent.st_mode & 0o022
+
+
 def safe_root(path):
     p = Path(path).absolute()
     if not p.is_absolute() or p == Path(p.anchor):
         raise DeliveryError("An absolute non-root installation path is required")
     for node in (p, *p.parents):
-        if node.exists() and (node.is_symlink() or getattr(node.lstat(), "st_file_attributes", 0) & 1024):
+        if not node.exists():
+            continue
+        reparse = getattr(node.lstat(), "st_file_attributes", 0) & 1024
+        if reparse or (node.is_symlink() and not _system_link(node)):
             raise DeliveryError("Installation paths cannot traverse links")
     return p
 

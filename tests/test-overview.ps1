@@ -143,7 +143,7 @@ Check 'CLI status and explain re-evaluate policy and clock without collecting' {
         Write-Hotpl8Text (Join-Path $dir 'automation-pause.json') (@{until=[datetimeoffset]::UtcNow.AddHours(1).ToString('o');reason='test'}|ConvertTo-Json)
         $before=(Get-FileHash (Join-Path $dir 'status.json')).Hash
         foreach($command in @('status','explain')){
-            $output=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hotpl8.ps1') $command -StateDirectory $dir -AsJson
+            $output=& (Get-Hotpl8PowerShell) -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hotpl8.ps1') $command -StateDirectory $dir -AsJson
             Assert ($LASTEXITCODE -eq 0)
             $o=($output|ConvertFrom-Json).providerOverview.claude
             Assert ($o.accounts -eq 2 -and $o.measured -eq 0 -and $null -eq $o.remainingPercent -and $o.automation -eq 'automation paused')
