@@ -729,3 +729,30 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstallationRootTests(unittest.TestCase):
+    """A link in an installation path can redirect writes and deletions."""
+
+    def test_user_created_link_is_refused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            real = Path(temp) / "real"
+            real.mkdir()
+            link = Path(temp) / "link"
+            try:
+                link.symlink_to(real, target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"Cannot create a link here: {error}")
+            with self.assertRaisesRegex(d.DeliveryError, "cannot traverse links"):
+                d.safe_root(link / "install")
+
+    @unittest.skipIf(os.name == "nt" or not Path("/var").is_symlink(), "needs a root-owned system link such as macOS /var")
+    def test_root_owned_system_link_is_trusted(self):
+        self.assertEqual(d.safe_root(Path("/var/example/install")), Path("/var/example/install"))
+
+    @unittest.skipIf(os.name == "nt", "POSIX ownership")
+    def test_link_owned_by_a_user_is_not_a_system_link(self):
+        with tempfile.TemporaryDirectory() as temp:
+            link = Path(temp) / "link"
+            link.symlink_to(temp, target_is_directory=True)
+            self.assertFalse(d._system_link(link))

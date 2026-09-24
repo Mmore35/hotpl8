@@ -219,3 +219,20 @@ function Resolve-Hotpl8Window($Used,$ResetAt,$ObservedAt,[datetimeoffset]$Now=[d
     if($null -eq $observed -or $observed -ge $at){return $result}
     return @{used=0.0;resetAt=$null;rolledOver=$true}
 }
+# Child PowerShell for tests and launchers: Windows PowerShell 5.1 where it exists, else pwsh.
+# pwsh puts its own $PSHOME first on PATH. Under Homebrew that copy is a bare apphost that
+# needs the DOTNET_ROOT its bin/ wrapper supplies and fails under launchd, so prefer any pwsh
+# outside $PSHOME. An official package's $PSHOME pwsh runs standalone and remains the fallback.
+function Get-Hotpl8PowerShell {
+    if($env:OS -eq 'Windows_NT'){return (Get-Command powershell -CommandType Application | Select-Object -First 1).Source}
+    $found=@(Get-Command pwsh -CommandType Application -All -ErrorAction Stop).Source
+    $outside=@($found | Where-Object {[IO.Path]::GetDirectoryName($_) -ne $PSHOME.TrimEnd('/')})
+    if($outside){$outside[0]}else{$found[0]}
+}
+# The user's home from the environment, so a test's isolated profile is honoured on every
+# platform. USERPROFILE is Windows-only; HOME is the POSIX equivalent.
+function Get-Hotpl8UserHome {
+    if($env:USERPROFILE){return $env:USERPROFILE}
+    if($env:HOME){return $env:HOME}
+    throw 'Neither USERPROFILE nor HOME is set.'
+}
