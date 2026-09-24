@@ -29,7 +29,7 @@ function Assert-Hotpl8T3HostStopped([string]$SettingsPath,$Processes=$null) {
         if(-not $runtime -or -not $runtime.pid){throw 'T3 runtime record is unreadable; verify host shutdown before setup.'}
         if(@($Processes|Where-Object {$_.ProcessId -eq $runtime.pid}).Count){throw 'Close the complete T3 host, including its standalone server, before changing provider settings.'}
     }
-    $default=[IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.t3/userdata/settings.json'))
+    $default=[IO.Path]::GetFullPath((Join-Path (Get-Hotpl8UserHome) '.t3/userdata/settings.json'))
     foreach($process in @($Processes)){
         $name=[string]$process.Name;$command=[string]$process.CommandLine
         $desktop=$name -match '^(T3 Code( \(Alpha\))?|t3code|t3)\.exe$'
