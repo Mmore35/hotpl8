@@ -47,7 +47,6 @@ test('explicit admission and background rollover carry distinct intents and proc
 
 test('failed native apply invalidates the binding receipt without replaying work', async () => {
   const h = harness(); await opened(h);
-  h.bridge.native({ method: 'turn/started', params: { threadId: 't', turn: { id: 'turn' } } });
   const send = h.bridge.toNative;
   h.bridge.toNative = message => {
     if (message.method === 'account/login/start') {
@@ -56,10 +55,10 @@ test('failed native apply invalidates the binding receipt without replaying work
     } else send(message);
   };
   const count = h.native.filter(m => m.method === 'turn/start').length;
-  h.select('b'); await h.bridge.observe();
+  h.select('b'); await assert.rejects(h.bridge.select('fixture-model'), /routing_native_rejected/);
   assert.equal(h.bridge.route, null);
   assert.equal(h.native.filter(m => m.method === 'turn/start').length, count);
-  assert.equal(h.bridge.active.get('t'), 'turn');
+  assert.equal(h.bridge.active.size, 0);
   h.bridge.close();
 });
 
@@ -106,14 +105,17 @@ test('failed turns are forwarded once, never replayed; next turn can choose anot
   h.select('b'); await h.bridge.client({ id: 4, method: 'turn/start', params: { threadId: 't' } });
   assert.equal(h.bridge.route.slot, 'b'); h.bridge.close();
 });
-test('ongoing child work can adopt another account after parent completion', async () => {
+test('ongoing child work defers account changes even after parent completion', async () => {
   const h = harness(); await opened(h);
   h.bridge.native({ method: 'thread/started', params: { thread: { id: 'child', model: 'fixture-model', cwd: 'fixture' } } });
   h.bridge.native({ method: 'turn/started', params: { threadId: 'child' } });
   h.bridge.native({ method: 'turn/completed', params: { threadId: 't' } });
   h.select('b'); await h.bridge.observe();
-  assert.equal(h.bridge.route.slot, 'b'); assert.equal(h.bridge.active.has('child'), true);
-  assert.deepEqual(h.requests.at(-1).models, ['fixture-model']); h.bridge.close();
+  assert.equal(h.bridge.route.slot, 'a'); assert.equal(h.bridge.active.has('child'), true);
+  assert.deepEqual(h.requests.at(-1).models, ['fixture-model']);
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 'child' } });
+  await h.bridge.select('fixture-model');
+  assert.equal(h.bridge.route.slot, 'b'); h.bridge.close();
 });
 test('quota failure blocks inference with fixed error and no fallback to native shared auth', async () => {
   const h = harness(); await opened(h); h.reject();
@@ -195,10 +197,48 @@ function started(h, threadId = 't', id = 'one') {
   h.bridge.native({ method: 'turn/started', params: { threadId, turn: { id } } });
 }
 
-test('quota observation switches ongoing work once, without resubmitting a turn', async () => {
+test('live native network permissions survive a preferred-account change', async () => {
+  const h = harness(); await opened(h); started(h);
+  const send = h.bridge.toNative;
+  h.bridge.toNative = message => {
+    if (message.method === 'account/login/start' && h.bridge.active.size) {
+      h.bridge.native({ method: 'error', params: { threadId: 't', error: { message: 'application network permission was revoked' } } });
+    }
+    send(message);
+  };
+  h.select('b'); await h.bridge.observe();
+  assert.equal(h.bridge.route.slot, 'a');
+  assert.equal(h.native.filter(m => m.method === 'account/login/start').length, 1);
+  assert.ok(!h.client.some(m => m.method === 'error'));
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 't', turn: { id: 'one' } } });
+  await h.bridge.client({ id: 41, method: 'turn/start', params: { threadId: 't' } });
+  assert.equal(h.bridge.route.slot, 'b');
+  assert.equal(h.native.filter(m => m.method === 'turn/start').length, 1);
+  h.bridge.close();
+});
+
+test('pending admission and newly active children prevent a concurrent account change', async () => {
+  const h = harness(); await opened(h);
+  await h.bridge.client({ id: 3, method: 'turn/start', params: { threadId: 't' } });
+  h.select('b'); await h.bridge.observe();
+  assert.equal(h.bridge.route.slot, 'a');
+  h.bridge.threads.set('other', { model: 'fixture-model', cwd: 'fixture' });
+  await h.bridge.client({ id: 4, method: 'turn/start', params: { threadId: 'other' } });
+  assert.match(h.client.at(-1).error.message, /routing_account_change_deferred/);
+  assert.equal(h.native.filter(m => m.method === 'turn/start').length, 1);
+  h.bridge.native({ id: 3, error: { code: 1 } });
+  const broker = h.bridge.broker;
+  h.bridge.broker = async request => { started(h, 'other'); return broker(request); };
+  await h.bridge.client({ id: 5, method: 'turn/start', params: { threadId: 't' } });
+  assert.match(h.client.at(-1).error.message, /routing_account_change_deferred/);
+  assert.equal(h.native.filter(m => m.method === 'account/login/start').length, 1);
+  h.bridge.close();
+});
+
+test('quota observation preserves the account of ongoing work without resubmitting a turn', async () => {
   const h = harness(); await opened(h); started(h);
   h.select('b'); await h.bridge.observe();
-  assert.equal(h.bridge.route.slot, 'b');
+  assert.equal(h.bridge.route.slot, 'a');
   assert.equal(h.bridge.active.get('t'), 'one');
   assert.equal(h.native.filter(m => m.method === 'turn/start').length, 0);
   const logins = h.native.filter(m => m.method === 'account/login/start').length;
@@ -217,7 +257,7 @@ test('slow rollover does not block follow-ups, approvals, steering or interrupti
     await h.bridge.client(msg); assert.deepEqual(h.native.at(-1), msg);
   }
   assert.equal(h.bridge.route.slot, 'a'); release(); await observing;
-  assert.equal(h.bridge.route.slot, 'b'); h.bridge.close();
+  assert.equal(h.bridge.route.slot, 'a'); h.bridge.close();
 });
 
 test('a rejected follow-up and late completion cannot clear a different active turn', async () => {
@@ -291,14 +331,14 @@ test('rejected model changes preserve the native active model and reservation ow
 });
 
 test('late refresh cannot restore the account replaced by a rollover', async () => {
-  const h = harness(); await opened(h); started(h);
+  const h = harness(); await opened(h);
   const broker = h.bridge.broker; let release;
   h.bridge.broker = async request => {
     if (request.operation === 'refresh') await new Promise(done => { release = done; });
     return broker(request);
   };
   const refresh = h.bridge.refresh({ id: 91, params: { previousAccountId: 'a' } });
-  h.select('b'); await h.bridge.observe(); release(); await refresh;
+  h.select('b'); await h.bridge.select('fixture-model'); release(); await refresh;
   assert.equal(h.bridge.route.slot, 'b'); assert.match(h.native.at(-1).error.message, /routing_refresh_failed/); h.bridge.close();
 });
 
@@ -315,8 +355,8 @@ test('completed latest-admitted model cannot block surviving work on another met
     if (request.models.some(model => meters[model] === 'codex_bengalfox')) throw Object.assign(new Error(), { code: 'routing_unavailable' });
     return broker(request);
   };
-  h.select('b'); await h.bridge.observe();
-  assert.equal(h.bridge.route.slot, 'b'); assert.equal(h.bridge.route.model, 'fixture-model');
+  await h.bridge.observe();
+  assert.equal(h.bridge.route.slot, 'a'); assert.equal(h.bridge.route.model, 'fixture-model');
   assert.deepEqual(h.requests.at(-1).models, ['fixture-model']); h.bridge.close();
 });
 
@@ -328,7 +368,7 @@ test('queued observation derives its models when execution starts and ignores co
   const observation = h.bridge.observe();
   h.bridge.native({ method: 'turn/completed', params: { threadId: 'finishing', turn: { id: 'done' } } });
   h.select('b'); release(); await observation;
-  assert.equal(h.bridge.route.slot, 'b'); assert.deepEqual(h.requests.at(-1).models, ['fixture-model']);
+  assert.equal(h.bridge.route.slot, 'a'); assert.deepEqual(h.requests.at(-1).models, ['fixture-model']);
   const before = h.requests.length;
   h.bridge.routing = new Promise(done => { release = done; });
   const idleObservation = h.bridge.observe();

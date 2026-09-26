@@ -183,9 +183,17 @@ export class CodexBridge {
     if ([...this.active.keys()].some(id => !this.threads.get(id)?.model) || activeModels().some(m => !models.includes(m))) throw error('routing_model_changed');
     if (!route.auth?.accessToken || !route.auth?.chatgptAccountId) throw error('routing_auth_unavailable');
     const changed = this.route?.accountId !== route.auth.chatgptAccountId || this.route?.slot !== route.slot;
+    // Native account/login/start can revoke the old application's network
+    // permission, including running turns and MCP requests. A successful login
+    // response does not prove in-flight work survived. Recheck AFTER validation:
+    // children or pending admissions may have become active while it awaited I/O.
+    if (changed && (this.active.size || this.reservations.size)) {
+      if (background) return this.route;
+      throw error('routing_account_change_deferred');
+    }
     if (changed) {
-      // Native adopts external auth for later requests and reconnects account-bound
-      // websockets. In-flight requests finish under their original identity.
+      // Only change the process-wide account between turns, after child work and
+      // pending admissions have also drained. Never replay an interrupted turn.
       this.rebinding = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId };
       try { await this.rpc('account/login/start', { type: 'chatgptAuthTokens', ...route.auth }); }
       catch (err) {

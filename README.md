@@ -4,7 +4,7 @@
 
 **Spend less time juggling AI subscriptions.**
 
-- **Pick the best available account.** Claude and Codex share quota, reset, reserve and account-selection rules. Codex selects a native home for standalone launches; the optional T3 integration also supports ongoing rollover.
+- **Pick the best available account.** Claude and Codex share quota, reset, reserve and account-selection rules. Codex selects a native home for standalone launches; the optional T3 integration switches accounts between turns while preserving active work.
 - **Warm idle Claude accounts.** Optional small requests aim to start usage windows earlier, so accounts are ready when you need them.
 - **See your subscriptions at a glance.** One layered bar for Claude and one for Codex: usable allowance now, projected refill, and full capacity. Individual accounts remain below.
 
