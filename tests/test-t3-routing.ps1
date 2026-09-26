@@ -209,6 +209,10 @@ try{
 
 $script:FixtureNativeReader=${function:Read-CodexQuota}
 function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutMs=5000,[string]$WorkingDirectory,[switch]$IncludeAccessToken,[switch]$RefreshToken){
+    # Only the synthetic gate owner waits for a second cold Windows process to
+    # start. Its artificial gate must not expire before the measured 3 s overlap;
+    # production readers and the contender's 6.5 s lock wait remain unchanged.
+    if(Test-Path (Join-Path $AccountHome 'quota-gate')){$PSBoundParameters['TimeoutMs']=15000}
     $read=& $script:FixtureNativeReader @PSBoundParameters
     if($read.status -eq 'home_busy'){[IO.File]::WriteAllText((Join-Path $AccountHome 'quota-contended'),'fixture')}
     return $read
@@ -251,22 +255,30 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     [IO.File]::WriteAllText((Join-Path $shared 'keep-active'),'fixture')
     $turn=Invoke-CodexRpc $proc $clock 20000 3 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
     Assert ($turn.account -eq 'b') 'real launcher/proxy/broker chooses healthy account for turn'
-    # Collector-style atomic publication wakes the installed bridge. Neither a
-    # user turn nor a new process is required for native login to change.
+    # Collector publication may validate a preferred peer, but applying its auth
+    # while a turn runs revokes native network permission. Defer until idle.
     [IO.File]::Delete((Join-Path $dir 'a/exhausted'))
     [IO.File]::WriteAllText((Join-Path $dir 'b/used-percent'),'96')
+    [IO.File]::Delete((Join-Path $dir 'a/quota-observed'))
     $status.recommendations.codex='a';Save 'status.json' @{providers=@{codex=$status}}
-    $rolled=$false;$rollClock=[Diagnostics.Stopwatch]::StartNew();$rpcId=40
+    $validatedPeer=$false;$rollClock=[Diagnostics.Stopwatch]::StartNew();$rpcId=40
     while($rollClock.ElapsedMilliseconds -lt 20000){
         $readClock=[Diagnostics.Stopwatch]::StartNew()
         $current=Invoke-CodexRpc $proc $readClock 2000 (++$rpcId) 'account/read' @{}
-        if($current.account.email -eq 'a@example.invalid'){$rolled=$true;break}
+        Assert ($current.account.email -eq 'b@example.invalid') 'active native account is retained during background validation'
+        if(Test-Path (Join-Path $dir 'a/quota-observed')){$validatedPeer=$true;break}
         Start-Sleep -Milliseconds 50
     }
-    Assert $rolled 'collector publication rebinds ongoing installed native process'
+    Assert $validatedPeer 'collector publication validates the preferred peer'
     $followClock=[Diagnostics.Stopwatch]::StartNew()
     $follow=Invoke-CodexRpc $proc $followClock 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@(@{type='text';text='fixture followup'})}
-    Assert ($follow.account -eq 'a' -and $follow.turn.id -eq $turn.turn.id -and $follow.toolExecutions -eq 1) 'followup keeps active turn and executed effects after rollover'
+    Assert ($follow.account -eq 'b' -and $follow.turn.id -eq $turn.turn.id -and $follow.toolExecutions -eq 1) 'followup keeps active account turn and executed effects'
+    Assert (-not (Test-Path (Join-Path $shared 'network-revoked'))) 'no live auth change revokes native network permission'
+    [IO.File]::Delete((Join-Path $shared 'keep-active'))
+    $finish=Invoke-CodexRpc $proc ([Diagnostics.Stopwatch]::StartNew()) 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';input=@()}
+    Assert ($finish.account -eq 'b' -and $finish.toolExecutions -eq 1) 'original work completes under the original account'
+    $next=Invoke-CodexRpc $proc ([Diagnostics.Stopwatch]::StartNew()) 15000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
+    Assert ($next.account -eq 'a' -and $next.toolExecutions -eq 2) 'next idle admission switches accounts without replaying prior work'
     [IO.File]::Delete((Join-Path $dir 'b/used-percent'))
     [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
     Stop-Hotpl8Process $proc;$proc=$null
