@@ -36,6 +36,21 @@ try{
     $route=Get-Hotpl8CodexRoute $request $dir $exe
     Assert ($route.slot -eq 'a' -and $route.auth.accessToken -eq 'FAKE-a') 'preferred native account selected'
     Assert (($route|ConvertTo-Json -Depth 10) -notmatch 'NEVER_EXPORT') 'refresh token never exported'
+    # A collector that collided with a broker retains its previous quota. A new
+    # admission must be able to validate that fresh candidate after the lock clears.
+    foreach($row in $rows){$row.status='home_busy'}
+    Save 'status.json' @{providers=@{codex=$status}}
+    Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'a') 'cached collector contention is recoverable through fresh native validation'
+    $script:recoveryReads=0
+    $recoveryFailure={param($slot,$refresh);$script:recoveryReads++;[pscustomobject]@{status='authentication_required'}}
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
+    Assert ($script:recoveryReads -eq 2) 'cached quota alone cannot authorize a contended account'
+    foreach($row in $rows){$row.observedAt=$now.AddHours(-1).ToString('o')}
+    Save 'status.json' @{providers=@{codex=$status}}
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
+    Assert ($script:recoveryReads -eq 2) 'contention recovery preserves per-account freshness gates'
+    foreach($row in $rows){$row.status='ok';$row.observedAt=$now.ToString('o')}
+    Save 'status.json' @{providers=@{codex=$status}}
     $background=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='a';cwd=$dir}
     $script:controlReads=0
     $unexpectedRead={param($slot,$refresh);$script:controlReads++;throw 'unexpected native read'}
@@ -220,6 +235,9 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     $initialization=$proc.StandardOutput.ReadLineAsync()
     $contentionClock=[Diagnostics.Stopwatch]::StartNew()
     while(-not (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) -and -not $initialization.IsCompleted -and $contentionClock.ElapsedMilliseconds -lt 5000){Start-Sleep -Milliseconds 10}
+    # Healthy native readers can own the lock longer than the old 2.5 s retry
+    # cutoff. Hold it for 3 s AFTER verified contention, then finish normally.
+    Start-Sleep -Milliseconds 3000
     [IO.File]::Delete($gate)
     Assert (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) 'chat native validation encounters the title helper lock'
     Assert ($initialization.Wait(15000)) 'concurrent chat startup responds within its deadline'

@@ -177,6 +177,11 @@ notifications remain an additional wakeup. See the
 [rollover design and evidence](plans/t3-active-turn-admission.md).
 `routing_account_busy` means another validator held the account lock beyond the
 bounded wait; `routing_validation_timeout` means the admission deadline expired.
+New chat and helper admissions wait up to 6.5 seconds per busy account, within
+the existing 20-second total validation budget. A collector's cached `home_busy`
+reading can be reconsidered only while its retained quota is fresh, and always
+requires successful native validation before admission. Same-account token
+refresh retains its shorter wait and pinned identity.
 These failures occur before inference. The broker records only the time and
 fixed failure code in HotPl8's bounded `events.jsonl`, never credentials or paths.
 See the [concurrent admission repair](plans/t3-concurrent-admission.md).
