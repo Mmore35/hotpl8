@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from runner import DeliveryError, Deferred, digest, drained, lock, now, read, run, safe_root, update, write
@@ -54,6 +55,7 @@ def selected(root):
 
 
 def owned_config(root):
+    safe_root(root)
     owned, config = read(root / "installation.json", {}), read(root / "delivery.json", {})
     if (owned.get("product") != "hotpl8" or not re.fullmatch(r"[a-f0-9]{12}", owned.get("id", ""))
             or config.get("product") != "hotpl8" or config.get("platform") != "macos"
@@ -104,7 +106,7 @@ class Launchd:
         return not re.search(r'"' + re.escape(label) + r'"\s*=>\s*true', output)
 
     def install(self, path, spec):
-        if not self.loaded(spec["Label"]):
+        if self.enabled(spec['Label']) and not self.loaded(spec["Label"]):
             self.call("bootstrap", self.domain, str(path))
 
     def remove(self, label):
@@ -318,7 +320,8 @@ def uninstall(root, backend=None):
         for role, record in receipt["jobs"].items():
             spec = job_plist(root, role, owned, config)
             path = backend.directory / (spec["Label"] + ".plist")
-            if record.get("path") != str(path) or path.is_symlink() or (path.exists() and digest(path) != record["digest"]):
+            if (record.get("path") != str(path) or record.get('label') != spec['Label'] or path.is_symlink()
+                    or (path.exists() and (digest(path) != record["digest"] or plistlib.loads(path.read_bytes()) != spec))):
                 raise DeliveryError("Native job changed; refusing removal")
         for record in receipt["jobs"].values():
             backend.remove(record["label"])
@@ -352,10 +355,16 @@ def dispatch(root, command, arguments):
                 write(root / 'job-runs' / ('unfinished-' + prior['runId'] + '.json'), prior)
             record = dict(schemaVersion=1, runId=uuid.uuid4().hex, startedAt=now(), sha=read(release / "build-info.json")["sha"], state="running")
             write(path, record)
-            tail = ["run", "tick", "-Scheduled"] if role == "collector" else ["update"]
+            tail = ["run", "tick", "-Scheduled", "-ObserveOnly"] if role == "collector" else ["update"]
             result = guardian.execute([config["python"], str(root / "delivery.py"), *tail], 225 if role == "collector" else 540)
             record.update(result, completedAt=now())
-            record['outcome'] = read(root / 'delivery-status.json', {}) if role == 'updater' else read(Path(config['stateDirectory']) / 'collector.json', {})
+            outcome = read(root / 'delivery-status.json', {}) if role == 'updater' else read(Path(config['stateDirectory']) / 'collector.json', {})
+            fields = ('state', 'lastCheck', 'installedSha', 'desiredSha', 'reason') if role == 'updater' else ('status', 'startedAt', 'completedAt', 'runningSha')
+            record['outcome'] = {key: outcome.get(key) for key in fields}
+            if result['state'] == 'complete':
+                stamp = outcome.get('lastCheck' if role == 'updater' else 'startedAt')
+                fresh = bool(stamp and datetime.fromisoformat(stamp) >= datetime.fromisoformat(record['startedAt']))
+                record['completion'] = ('no-new-outcome' if not fresh else outcome.get('state') if role == 'updater' else outcome.get('status'))
             write(path, record)
             return 0 if result["state"] == "complete" else 1
     except Deferred:

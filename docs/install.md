@@ -2,6 +2,10 @@
 
 This is a release candidate. Use Windows PowerShell 5.1 and a terminal such as Windows Terminal. Mac/Linux source use is experimental. Installation is per-user and requires no administrator rights.
 
+Existing Mac state can use [verified automatic main delivery](macos-delivery.md).
+That opt-in path has its own native enrollment and component qualification; it
+does not make every Windows feature available on macOS.
+
 1. Install and sign into the native tools for the providers you want. Follow [Codex installation](https://developers.openai.com/codex/cli/) or [Claude Code setup](https://code.claude.com/docs/en/setup). Claude monitoring also requires Python 3.12+ and a compatible [claude-swap](https://github.com/realiti4/claude-swap) installation; its upstream isolated installation instructions are preferred. Codex-only use requires neither Python nor claude-swap.
 2. Download/extract a reviewed HotPl8 archive. Compare `Get-FileHash .\hotpl8-VERSION-windows.zip -Algorithm SHA256` with the release's SHA256SUMS through a trusted release page. Checksums detect mismatch; they do not independently prove publisher identity. Do not weaken global execution policy. Inspect/unblock only the downloaded files you trust if Windows marks them as downloaded.
 3. In the extracted directory run `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1`. Default installation: `%LOCALAPPDATA%\HotPl8`; writable state: its `state` subdirectory. Code lives separately in `app`. Use `-InstallDirectory` and `-StateDirectory` for custom locations. `-NoPath` avoids changing user PATH.

@@ -165,6 +165,7 @@
     "delivery/macos-t3.py",
     "delivery/macos-t3-launch.py",
     "scripts/test-macos-delivery.ps1",
-    "tests/test_macos_delivery.py"
+    "tests/test_macos_delivery.py",
+    "docs/macos-delivery.md"
   ]
 }

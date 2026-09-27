@@ -4,6 +4,9 @@ HotPl8 has two installation choices. Ordinary installations use reviewed version
 releases. An installation explicitly enrolled in Local Delivery follows tested
 `main` automatically. Contributors continue to work in separate source checkouts.
 
+For macOS enrollment, collector adoption and T3 lifecycle, use
+[Mac automatic delivery](macos-delivery.md). The instructions below enroll Windows.
+
 ## Enroll an installation
 
 Install HotPl8 using the [normal installer](install.md), then install Python 3.11+

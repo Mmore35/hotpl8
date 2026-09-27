@@ -133,7 +133,8 @@ def enroll(root, settings_path, node, codex, shared_home, activate=False):
     directory = root / 'integrations' / 't3-codex'
     directory.mkdir(parents=True, exist_ok=True)
     with lock(root / 'update.lock'), lock(directory / 'setup.lock'):
-        settings = read(settings_path)
+        settings_bytes = settings_path.read_bytes()
+        settings = json.loads(settings_bytes.decode('utf-8-sig'))
         if not isinstance(settings, dict) or not shared_home.is_dir():
             raise DeliveryError('Existing T3 settings and shared Codex home are required')
         receipt = read(directory / 'receipt.json')
@@ -178,12 +179,17 @@ def enroll(root, settings_path, node, codex, shared_home, activate=False):
         closed()
         if original not in (receipt['originalInstance'], receipt['installedInstance']):
             raise DeliveryError('T3 Codex settings changed after staging')
-        before = settings_path.read_bytes()
+        bridge = read(directory / 'bridge-config.json')
+        # Verify the complete selected release before committing a T3 binding.
+        probe = json.loads(run([bridge['node'], bridge['script'], '--bridge-config', directory / 'bridge-config.json', '--delivery-probe'], 20))
+        if probe.get('sha') != read(release / 'build-info.json')['sha']:
+            raise DeliveryError('Native T3 staged release failed readiness')
         settings.setdefault('providerInstances', {})['codex'] = receipt['installedInstance']
         # The receipt precedes the settings commit; an interruption is retryable.
-        if settings_path.read_bytes() != before:
+        if settings_path.read_bytes() != settings_bytes:
             raise DeliveryError('T3 settings changed concurrently')
-        atomic_bytes(directory / 'settings-before.json', before)
+        if not (directory / 'settings-before.json').exists():
+            atomic_bytes(directory / 'settings-before.json', settings_bytes)
         write(settings_path, settings)
         receipt['phase'] = 'active'
         write(directory / 'receipt.json', receipt)

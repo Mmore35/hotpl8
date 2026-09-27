@@ -129,6 +129,22 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual((self.state / 'policy.json').read_bytes(), policy)
         self.assertEqual((self.state / 'native-account-sentinel').read_bytes(), b'preserve account')
 
+    def test_setup_entrypoint_first_and_repeated_without_native_registration(self):
+        (self.root / 'delivery.json').unlink()
+        (self.root / 'installation.json').unlink()
+        class GitHub:
+            main, download, attest, is_forward = self.main, self.download, self.attest, self.is_forward
+            candidate = self.candidate_metadata
+        for _ in range(2):
+            result = m.setup(self.root, self.state, self.pwsh, self.gh, register_jobs=False,
+                             backend=self.backend, github=GitHub())
+            self.assertEqual(result['state'], 'current')
+        command = [sys.executable, str(self.root / 'delivery.py'), 'status']
+        result = subprocess.run(command, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['installed']['sha'], A)
+        self.assertTrue(os.access(self.root / 'hotpl8', os.X_OK))
+
     def test_readiness_failure_rolls_back_without_reverting_state(self):
         self.assertEqual(self.update()['state'], 'current')
         self.candidate(B)
@@ -181,6 +197,52 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.update()['state'], 'error')
         self.assertFalse(path.exists())
 
+    def test_installed_bootstrap_job_dispatch_and_overlap(self):
+        # Build a checksummed fixture collector: native scheduling never reads
+        # credentials or invokes a real provider during qualification.
+        with zipfile.ZipFile(self.source) as source:
+            files = {name: source.read(name) for name in source.namelist()}
+        files['tick.ps1'] = b'''param([switch]$Scheduled,[switch]$ObserveOnly)
+if(-not $Scheduled -or -not $ObserveOnly){exit 9}
+@{startedAt=[datetimeoffset]::UtcNow.ToString('o');completedAt=[datetimeoffset]::UtcNow.ToString('o');status='ok';runningSha=('a'*40)}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'collector.json')
+'''
+        with zipfile.ZipFile(self.source, 'w') as source:
+            for name, body in files.items():
+                source.writestr(name, body)
+        self.candidate(A)
+        self.assertEqual(self.update()['state'], 'current')
+        command = [sys.executable, str(self.root / 'delivery.py'), 'job', 'collector']
+        with d.lock(self.root / 'collector.job.lock'):
+            self.assertEqual(subprocess.run(command, timeout=15).returncode, 0)
+        self.assertFalse((self.root / 'job-runs/collector.json').exists())
+        self.assertEqual(subprocess.run(command, timeout=20).returncode, 0)
+        record = d.read(self.root / 'job-runs/collector.json')
+        self.assertEqual(record['state'], 'complete')
+        self.assertEqual(record['completion'], 'ok')
+        self.assertEqual(record['outcome']['runningSha'], A)
+        unfinished = dict(record, state='running', runId='fixture-unfinished')
+        d.write(self.root / 'job-runs/collector.json', unfinished)
+        self.assertEqual(subprocess.run(command, timeout=20).returncode, 0)
+        self.assertEqual(d.read(self.root / 'job-runs/unfinished-fixture-unfinished.json'), unfinished)
+
+    def test_t3_modified_binding_refuses_update_and_missing_receipt_stays_visible(self):
+        self.assertEqual(self.update()['state'], 'current')
+        settings = self.base / 'settings.json'
+        shared = self.base / 'shared'
+        shared.mkdir()
+        d.write(settings, {})
+        with patch.object(t3, 'closed'):
+            t3.enroll(self.root, settings, shutil.which('node'), '/usr/bin/true', shared, True)
+        document = d.read(settings)
+        document['providerInstances']['codex']['config']['homePath'] = str(self.base)
+        d.write(settings, document)
+        self.candidate(B)
+        self.assertEqual(self.update()['state'], 'error')
+        self.assertEqual(d.read(self.root / 'current.json')['sha'], A)
+        (self.root / 'integrations/t3-codex/receipt.json').unlink()
+        with self.assertRaises(d.DeliveryError):
+            t3.components(self.root)
+
     def test_t3_staging_activation_upgrade_and_removal_preserve_identity(self):
         self.assertEqual(self.update()['state'], 'current')
         settings = self.base / 'settings.json'
@@ -232,6 +294,42 @@ class Lifecycle(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == 'darwin', 'Native Mac process containment')
 class Guardian(unittest.TestCase):
+    def test_interactive_dashboard_renders_and_quits_on_native_pty(self):
+        import fcntl
+        import pty
+        import select
+        import struct
+        import termios
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            d.write(state / 'policy.json', dict(schemaVersion=2, mode='monitor', prefer=[], codex=dict(slots=[])))
+            master, slave = pty.openpty()
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 35, 100, 0, 0))
+            child = subprocess.Popen([shutil.which('pwsh'), '-NoProfile', '-File', str(REPO / 'hotpl8.ps1'),
+                                      'watch', '-StateDirectory', str(state), '-ReducedMotion'],
+                                     stdin=slave, stdout=slave, stderr=slave, env=dict(os.environ, TERM='xterm-256color'))
+            os.close(slave)
+            output = b''
+            try:
+                deadline = time.monotonic() + 15
+                while child.poll() is None and time.monotonic() < deadline:
+                    if select.select([master], [], [], .1)[0]:
+                        try:
+                            output += os.read(master, 65536)
+                        except OSError:
+                            break
+                    if b'hotpl8 enroll' in output:
+                        os.write(master, b'q')
+                        break
+                self.assertIn(b'hotpl8 enroll', output)
+                self.assertEqual(child.wait(timeout=5), 0, output.decode('utf-8', 'replace'))
+                self.assertIn(b'\x1b[?1049h', output)
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=5)
+                os.close(master)
+
     def test_success_failure_timeout_and_output_limit(self):
         for code, expected in [('pass', 'complete'), ('raise SystemExit(7)', 'failed'),
                                ('import time; time.sleep(60)', 'timeout'),
