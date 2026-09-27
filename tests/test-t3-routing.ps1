@@ -49,6 +49,22 @@ try{
     Save 'status.json' @{providers=@{codex=$status}}
     Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
     Assert ($script:recoveryReads -eq 2) 'contention recovery preserves per-account freshness gates'
+    # One slow collector read under load is the same: the retained quota is
+    # still fresh, and fresh native validation still decides.
+    foreach($row in $rows){$row.status='timeout';$row.observedAt=$now.ToString('o')}
+    Save 'status.json' @{providers=@{codex=$status}}
+    Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'a') 'a fresh account after one timed-out collector read is recoverable'
+    $script:recoveryReads=0
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
+    Assert ($script:recoveryReads -eq 2) 'cached quota alone cannot authorize a timed-out account'
+    foreach($row in $rows){$row.observedAt=$now.AddHours(-1).ToString('o')}
+    Save 'status.json' @{providers=@{codex=$status}}
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
+    Assert ($script:recoveryReads -eq 2) 'timeout recovery preserves per-account freshness gates'
+    foreach($row in $rows){$row.status='authentication_required';$row.observedAt=$now.ToString('o')}
+    Save 'status.json' @{providers=@{codex=$status}}
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
+    Assert ($script:recoveryReads -eq 2) 'only a busy or slow read is reconsidered'
     foreach($row in $rows){$row.status='ok';$row.observedAt=$now.ToString('o')}
     Save 'status.json' @{providers=@{codex=$status}}
     $background=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='a';cwd=$dir}

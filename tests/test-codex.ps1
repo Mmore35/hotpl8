@@ -250,6 +250,34 @@ try {
         $lock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')
         try { $r=Read-CodexQuota $homeA $fake 1000;Assert ($r.status -eq 'home_busy') } finally { $lock.Dispose() }
     }
+    Check 'collector waits out a briefly busy home instead of reporting it' {
+        $waitDir=Join-Path $dir 'lock-wait';New-Item -ItemType Directory $waitDir|Out-Null
+        $lockPath=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-codex-'+(Get-Hotpl8Hash ([IO.Path]::GetFullPath($homeA).ToLowerInvariant()))+'.lock')
+        $script:heldLock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None');$script:busyReads=0
+        # Another reader finishes after the collector's third attempt.
+        $reader={param($h,$exe,$budget) $r=Read-CodexQuota $h $exe $budget;if($r.status -eq 'home_busy' -and ++$script:busyReads -ge 3){$script:heldLock.Dispose()};$r}
+        try {
+            $c=Invoke-CodexCollection $policy $waitDir $fake $null $reader
+            Assert (($c.slots|Where-Object id -EQ a).status -eq 'ok') ('a '+($c.slots|Where-Object id -EQ a).status)
+            Assert ($script:busyReads -eq 3) ('busy reads '+$script:busyReads)
+        } finally { $script:heldLock.Dispose() }
+    }
+    Check 'collector reports a home busy past its read budget, within that budget' {
+        $waitDir=Join-Path $dir 'lock-held';New-Item -ItemType Directory $waitDir|Out-Null
+        function Get-CodexReadBudgetMs { 1500 }
+        $script:busyReads=0;$script:busyClock=$null;$script:busySpan=0
+        $reader={param($h,$exe,$budget)
+            if($h -ne $homeA){return Read-CodexQuota $h $exe $budget}
+            if(-not $script:busyClock){$script:busyClock=[Diagnostics.Stopwatch]::StartNew()}
+            $script:busyReads++;$script:busySpan=$script:busyClock.ElapsedMilliseconds
+            [pscustomobject]@{status='home_busy';elapsedMs=5}
+        }
+        $c=Invoke-CodexCollection $policy $waitDir $fake $null $reader
+        Assert (($c.slots|Where-Object id -EQ a).status -eq 'home_busy') ('a '+($c.slots|Where-Object id -EQ a).status)
+        Assert (($c.slots|Where-Object id -EQ b).status -eq 'ok') 'the other home is still read'
+        Assert ($script:busyReads -gt 1) 'the busy home was retried'
+        Assert ($script:busySpan -lt 1500) ('waited '+$script:busySpan+' ms on a 1500 ms budget')
+    }
     Check 'same subscription in two homes is not double capacity' {
         $env:HOTPL8_TEST_SCENARIO='same-account'
         try { $c=Invoke-CodexCollection $policy $dir $fake $null $null;Assert ($null -eq $c.recommendedSlot);Assert (@($c.slots|Where-Object status -EQ duplicate_subscription).Count -eq 2) } finally {$env:HOTPL8_TEST_SCENARIO='ok'}
