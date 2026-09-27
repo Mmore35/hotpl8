@@ -172,6 +172,15 @@ try{
         Assert $threw;Assert (Test-Path -LiteralPath (Join-Path $foreign 'keep.txt'))
         $threw=$false;try{$null=Assert-Hotpl8Path ([IO.Path]::GetPathRoot($dir))}catch{$threw=$true};Assert $threw
     }
+    Check 'installation paths refuse user links but accept root-owned system links' {
+        $target=Join-Path $dir 'link-target';[void][IO.Directory]::CreateDirectory($target)
+        $link=Join-Path $dir 'user-link'
+        # Windows needs Developer Mode or elevation to create a link; the reparse check still applies.
+        $made=$true;try{$null=New-Item -ItemType SymbolicLink -Path $link -Target $target}catch{$made=$false}
+        if($made){$threw=$false;try{$null=Assert-Hotpl8Path (Join-Path $link 'app')}catch{$threw=$true};Assert $threw}
+        # macOS temp and /var sit behind root-owned links in /; they must not block installation.
+        if($env:OS -ne 'Windows_NT' -and (Get-Item -LiteralPath '/var' -Force).LinkType -eq 'SymbolicLink'){$null=Assert-Hotpl8Path '/var/hotpl8-example/app'}
+    }
     Check 'managed delivery uninstall refuses before any mutation' {
         $marker=Join-Path $install 'installation.json';$original=[IO.File]::ReadAllText($marker)
         $managed=Read-Hotpl8Json $marker;$managed|Add-Member NoteProperty managedBy 'local-delivery' -Force

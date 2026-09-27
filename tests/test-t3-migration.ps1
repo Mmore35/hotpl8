@@ -11,7 +11,7 @@ function Assert($Condition,[string]$Why){if(-not $Condition){throw $Why};$script
 function Reject([scriptblock]$Body,[string]$Pattern){try{& $Body;throw 'unexpected success'}catch{Assert ($_.Exception.Message -match $Pattern) ('expected '+$Pattern+', got '+$_.Exception.Message)}}
 function Save([string]$Path,$Value){Write-Hotpl8Text $Path ($Value|ConvertTo-Json -Depth 50) -NoBom}
 function Clone($Value){$Value|ConvertTo-Json -Depth 50|ConvertFrom-Json}
-$ps=(Get-Command powershell).Source
+$ps=Get-Hotpl8PowerShell
 function Setup([string]$Op,[string]$Directory,[string[]]$More=@()){
     Write-Host ('fixture setup '+$Op+' '+(Split-Path $Directory -Leaf))
     $arguments=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'setup-t3.ps1'),'-Operation',$Op,'-StateDirectory',$fixtureRoot,'-SettingsPath',$script:settingsPath,'-IntegrationDirectory',$Directory,'-CodexExecutable',$script:exe)+$More
