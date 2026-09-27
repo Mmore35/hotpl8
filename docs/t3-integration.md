@@ -6,6 +6,9 @@ It supports T3's stdio app-server sessions, account/model probes and stateless
 Codex homes and a running HotPl8 collector are required. It is experimental;
 the external-token API is an experimental Codex interface.
 
+For the native Mac managed bridge, use [Mac enrollment and recovery](macos-delivery.md#t3-uses-ordinary-codex).
+The PowerShell installer below is the Windows path.
+
 ## Install and remove
 
 Close T3 (including a separately started server) before first-time setup. From a

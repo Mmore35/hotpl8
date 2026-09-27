@@ -176,14 +176,14 @@ def install_dispatch(root, release, config):
     # native launch/guardian/adapter code is loaded from the selected release.
     bootstrap = root / "delivery.py"
     expected = (release / "delivery/bootstrap.py").read_bytes()
-    if bootstrap.exists() and bootstrap.read_bytes() != expected:
+    if bootstrap.is_symlink() or (bootstrap.exists() and bootstrap.read_bytes() != expected):
         raise DeliveryError("Existing delivery bootstrap needs explicit compatibility migration")
     if not bootstrap.exists():
         atomic_bytes(bootstrap, expected)
     shim = ("#!/bin/sh\nexec " + shlex.quote(config["python"]) + " " + shlex.quote(str(bootstrap))
             + ' run hotpl8 "$@"\n').encode()
     target = root / "hotpl8"
-    if target.exists() and target.read_bytes() != shim:
+    if target.is_symlink() or (target.exists() and target.read_bytes() != shim):
         raise DeliveryError("Existing command is not owned by this Mac enrollment")
     if not target.exists():
         atomic_bytes(target, shim, 0o700)

@@ -303,31 +303,40 @@ class Guardian(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
             d.write(state / 'policy.json', dict(schemaVersion=2, mode='monitor', prefer=[], codex=dict(slots=[])))
-            master, slave = pty.openpty()
-            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 35, 100, 0, 0))
-            child = subprocess.Popen([shutil.which('pwsh'), '-NoProfile', '-File', str(REPO / 'hotpl8.ps1'),
-                                      'watch', '-StateDirectory', str(state), '-ReducedMotion'],
-                                     stdin=slave, stdout=slave, stderr=slave, env=dict(os.environ, TERM='xterm-256color'))
-            os.close(slave)
+            # forkpty supplies the controlling terminal used by .NET ReadKey.
+            # Merely redirecting three descriptors to a PTY can render output
+            # while /dev/tty still points at the CI runner's unrelated terminal.
+            pid, master = pty.fork()
+            if pid == 0:
+                os.execve(shutil.which('pwsh'), [shutil.which('pwsh'), '-NoProfile', '-File', str(REPO / 'hotpl8.ps1'),
+                          'watch', '-StateDirectory', str(state), '-ReducedMotion'], dict(os.environ, TERM='xterm-256color'))
+            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 35, 100, 0, 0))
             output = b''
+            status = None
+            sent = False
             try:
                 deadline = time.monotonic() + 15
-                while child.poll() is None and time.monotonic() < deadline:
+                while time.monotonic() < deadline:
+                    waited, value = os.waitpid(pid, os.WNOHANG)
+                    if waited:
+                        status = value
+                        break
                     if select.select([master], [], [], .1)[0]:
                         try:
                             output += os.read(master, 65536)
                         except OSError:
-                            break
-                    if b'hotpl8 enroll' in output:
+                            pass
+                    if b'hotpl8 enroll' in output and not sent:
                         os.write(master, b'q')
-                        break
+                        sent = True
                 self.assertIn(b'hotpl8 enroll', output)
-                self.assertEqual(child.wait(timeout=5), 0, output.decode('utf-8', 'replace'))
+                self.assertIsNotNone(status, output.decode('utf-8', 'replace'))
+                self.assertEqual(os.waitstatus_to_exitcode(status), 0, output.decode('utf-8', 'replace'))
                 self.assertIn(b'\x1b[?1049h', output)
             finally:
-                if child.poll() is None:
-                    child.kill()
-                child.wait(timeout=5)
+                if status is None:
+                    os.kill(pid, signal.SIGKILL)
+                    os.waitpid(pid, 0)
                 os.close(master)
 
     def test_success_failure_timeout_and_output_limit(self):
