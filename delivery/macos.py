@@ -64,6 +64,10 @@ def owned_config(root):
     safe_root(config["stateDirectory"])
     for key in ("python", "powershell", "gh"):
         executable(config.get(key))
+    for key, value in config.get('macos', {}).get('runtimes', {}).items():
+        if key not in ('codex', 'cswap'):
+            raise DeliveryError('Unknown collector runtime binding')
+        executable(value)
     return owned, config
 
 
@@ -268,7 +272,7 @@ def adopt_collector(root, backend, path, expected_digest):
 
 
 def setup(root, state, powershell, github_cli, register_jobs=True, backend=None, github=None,
-          adopt=None, adopt_digest=None):
+          adopt=None, adopt_digest=None, runtimes=None):
     native_only()
     root, state = safe_root(root), safe_root(state)
     if not (state / "policy.json").is_file():
@@ -292,6 +296,13 @@ def setup(root, state, powershell, github_cli, register_jobs=True, backend=None,
                           gh=executable(github_cli), powershell=executable(powershell), python=executable(sys.executable),
                           drainSeconds=30, macos=dict(protocol=1, path=os.environ.get("PATH", "/usr/bin:/bin"), jobsEnrolled=False))
             write(root / "delivery.json", config)
+        if runtimes:
+            requested = {key: executable(value) for key, value in runtimes.items()}
+            existing = config['macos'].get('runtimes', {})
+            if existing and existing != requested:
+                raise DeliveryError('Collector runtime bindings changed; explicitly reconcile before enrollment')
+            config['macos']['runtimes'] = requested
+            write(root / 'delivery.json', config)
         owned_config(root)
         backend = backend or Launchd()
         migration = read(root / 'collector-migration.json', {})
@@ -338,6 +349,12 @@ def dispatch(root, command, arguments):
     if command == "run":
         if not arguments or arguments[0] not in ("hotpl8", "tick", "status-print", "audit-codex", "setup-codex"):
             raise DeliveryError("Specify a supported HotPl8 entrypoint")
+        arguments = list(arguments)
+        runtimes = config['macos'].get('runtimes', {})
+        for key, flag, entries in [('codex', '-CodexExecutable', ('hotpl8', 'tick')),
+                                   ('cswap', '-CswapExecutable', ('tick',))]:
+            if key in runtimes and arguments[0] in entries and not any(x.lower().rstrip(':') == flag.lower() for x in arguments[1:]):
+                arguments += [flag, runtimes[key]]
         return subprocess.call([config["powershell"], "-NoProfile", "-File", str(release / "delivery/launch.ps1"),
                                 "-InstallDirectory", str(root), "-Entry", arguments[0], *arguments[1:]])
     if len(arguments) != 1 or arguments[0] not in ("collector", "updater"):
@@ -381,6 +398,8 @@ def main():
     parser.add_argument("--gh", default=shutil.which("gh"))
     parser.add_argument('--adopt-collector')
     parser.add_argument('--adopt-digest')
+    parser.add_argument('--codex', help='Explicit collector/CLI native Codex executable; preserve isolated native packages')
+    parser.add_argument('--cswap', help='Explicit collector cswap executable')
     args = parser.parse_args()
     root = safe_root(args.install)
     try:
@@ -389,7 +408,8 @@ def main():
             if not args.state:
                 raise DeliveryError("Specify the existing state directory")
             result = setup(root, args.state, args.powershell, args.gh,
-                           adopt=args.adopt_collector, adopt_digest=args.adopt_digest)
+                           adopt=args.adopt_collector, adopt_digest=args.adopt_digest,
+                           runtimes={key: value for key, value in [('codex', args.codex), ('cswap', args.cswap)] if value})
         elif args.operation == "uninstall":
             result = uninstall(root)
         else:

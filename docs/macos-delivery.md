@@ -24,11 +24,17 @@ python3 delivery/macos.py setup \
   --install "$HOME/Library/Application Support/HotPl8/managed" \
   --state "$HOME/Library/Application Support/HotPl8/state" \
   --powershell /absolute/path/to/pwsh --gh /absolute/path/to/gh \
+  --codex /absolute/path/to/native-codex --cswap /absolute/path/to/cswap \
   --adopt-collector "$HOME/Library/LaunchAgents/inspected.collector.plist" \
   --adopt-digest SHA256_OF_THAT_EXACT_FILE
 ```
 
 Choose an empty managed directory; the pinned source installation remains intact.
+Bind the existing collector's exact Codex/cswap executables, especially when
+HotPl8 uses a separate native package from T3's global CLI. Omitted bindings use
+the existing provider resolver and the enrolled PATH; omission is appropriate
+only after verifying those resolve the intended binaries. These are runtime
+bindings, not account enrollment or credential copies.
 For a new host without a collector, omit the two adoption arguments. Enrollment
 first obtains an attested passing **main** Mac package; it never installs a PR
 artifact or builds a fallback from source. A missing release leaves the existing

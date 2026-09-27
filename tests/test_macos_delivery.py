@@ -205,8 +205,11 @@ class Lifecycle(unittest.TestCase):
         # credentials or invokes a real provider during qualification.
         with zipfile.ZipFile(self.source) as source:
             files = {name: source.read(name) for name in source.namelist()}
-        files['tick.ps1'] = b'''param([switch]$Scheduled,[switch]$ObserveOnly)
+        self.config['macos']['runtimes'] = dict(codex=sys.executable, cswap=sys.executable)
+        d.write(self.root / 'delivery.json', self.config)
+        files['tick.ps1'] = b'''param([switch]$Scheduled,[switch]$ObserveOnly,[string]$CodexExecutable,[string]$CswapExecutable)
 if(-not $Scheduled -or -not $ObserveOnly){exit 9}
+if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
 @{startedAt=[datetimeoffset]::UtcNow.ToString('o');completedAt=[datetimeoffset]::UtcNow.ToString('o');status='ok';runningSha=('a'*40)}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'collector.json')
 '''
         with zipfile.ZipFile(self.source, 'w') as source:
