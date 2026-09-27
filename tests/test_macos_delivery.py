@@ -249,6 +249,19 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         with self.assertRaises(d.DeliveryError):
             t3.components(self.root)
 
+    def test_t3_host_closed_guard_includes_standalone_runtime(self):
+        settings = self.base / 'settings.json'
+        d.write(settings, {})
+        for process in (b' 42 /Applications/T3 Code.app/Contents/MacOS/T3 Code\n',
+                        b' 42 /usr/bin/node /workspace/apps/server/dist/bin.mjs\n'):
+            with patch.object(t3, 'run', return_value=process), self.assertRaises(d.DeliveryError):
+                t3.closed(settings)
+        d.write(self.base / 'server-runtime.json', dict(pid=42))
+        with patch.object(t3, 'run', return_value=b' 42 /usr/bin/node /custom/server.mjs\n'), self.assertRaises(d.DeliveryError):
+            t3.closed(settings)
+        with patch.object(t3, 'run', return_value=b' 51 /usr/bin/unrelated\n'):
+            t3.closed(settings)
+
     def test_t3_staging_activation_upgrade_and_removal_preserve_identity(self):
         self.assertEqual(self.update()['state'], 'current')
         settings = self.base / 'settings.json'

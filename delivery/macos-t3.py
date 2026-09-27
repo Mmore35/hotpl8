@@ -19,9 +19,13 @@ from runner import DeliveryError, digest, lock, read, run, safe_root, write
 from macos import atomic_bytes, executable, native_only, owned_config, selected
 
 
-def closed():
-    processes = run(['/bin/ps', '-axo', 'command='], 10).decode('utf-8', 'replace')
-    if re.search(r'/[^\n/]*[Tt]3[^\n/]*\.app/Contents/', processes):
+def closed(settings_path=None):
+    processes = run(['/bin/ps', '-axo', 'pid=,command='], 10).decode('utf-8', 'replace')
+    runtime = read(Path(settings_path).parent / 'server-runtime.json', {}) if settings_path else {}
+    live_pid = runtime.get('pid') and re.search(r'^\s*' + re.escape(str(runtime['pid'])) + r'\s', processes, re.M)
+    desktop = re.search(r'/[^\n/]*[Tt]3[^\n/]*\.app/Contents/', processes)
+    standalone = re.search(r'^\s*\d+\s+(?:\S*/)?(?:node|bun|t3|t3code)\s+[^\n]*(?:server\.asar|/apps/server/|/@t3tools/|/t3code/|/t3/|\bt3(?:code)?\.(?:mjs|cjs|js)\b)', processes, re.M | re.I)
+    if live_pid or desktop or standalone:
         raise DeliveryError('Quit T3 completely before changing its provider settings; active work was preserved')
 
 
@@ -178,7 +182,7 @@ def enroll(root, settings_path, node, codex, shared_home, activate=False):
         write(root / 'delivery.json', config)
         if not activate:
             return dict(state='staged', providerId='codex')
-        closed()
+        closed(settings_path)
         if original not in (receipt['originalInstance'], receipt['installedInstance']):
             raise DeliveryError('T3 Codex settings changed after staging')
         bridge = read(directory / 'bridge-config.json')
@@ -190,6 +194,7 @@ def enroll(root, settings_path, node, codex, shared_home, activate=False):
         # The receipt precedes the settings commit; an interruption is retryable.
         if settings_path.read_bytes() != settings_bytes:
             raise DeliveryError('T3 settings changed concurrently')
+        closed(settings_path)
         if not (directory / 'settings-before.json').exists():
             atomic_bytes(directory / 'settings-before.json', settings_bytes)
         write(settings_path, settings)
@@ -207,6 +212,7 @@ def remove(root):
             if bridge is None:
                 continue
             with lock(directory / 'setup.lock'):
+                closed(receipt['settingsPath'])
                 settings = read(receipt['settingsPath'])
                 if settings.get('providerInstances', {}).get('codex') != receipt['installedInstance']:
                     raise DeliveryError('T3 settings changed; refusing removal')
