@@ -336,6 +336,14 @@ try {
         & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $entry 'setup-codex.ps1') -Slot a -AccountHome $homeA -CodexExecutable $fake | Out-Null
         Assert ($LASTEXITCODE -eq 0);Assert ((Read-Hotpl8Json (Join-Path $entry 'policy.json')).codex.slots.Count -eq 1)
     }
+    Check 'a slow but healthy native read is still collected' {
+        $slowDir=Join-Path $dir 'slow';New-Item -ItemType Directory $slowDir|Out-Null
+        $env:HOTPL8_TEST_SCENARIO='slow'
+        try {
+            $r=Invoke-CodexCollection $policy $slowDir $fake $null $null
+            foreach($s in $r.slots){Assert ($s.status -eq 'ok') ($s.id+' '+$s.status+' after '+$s.elapsedMs+' ms')}
+        } finally {$env:HOTPL8_TEST_SCENARIO='ok'}
+    }
     Check 'collection budget is bounded and unpolled homes get the next turn' {
         $budgetDir=Join-Path $dir 'budget';New-Item -ItemType Directory $budgetDir|Out-Null
         $large=Copy-Value $policy;$large.slots=@();$large.prefer=@()
@@ -346,7 +354,10 @@ try {
             Assert ($clock.ElapsedMilliseconds -lt 25000) ('collection elapsed '+$clock.ElapsedMilliseconds)
             $unpolled=@($first.slots|Where-Object status -EQ collection_budget|ForEach-Object{$_.id});Assert ($unpolled.Count -gt 0)
             $second=Invoke-CodexCollection $large $budgetDir $fake $first $null
-            foreach($id in $unpolled){Assert (($second.slots|Where-Object id -EQ $id).status -ne 'collection_budget') ('starved '+$id)}
+            # Oldest attempt first: no home read last turn may go again while one left unread still waits.
+            $polled=@($second.slots|Where-Object status -NE collection_budget|ForEach-Object{$_.id});Assert ($polled.Count -gt 0)
+            $again=@($polled|Where-Object{$_ -notin $unpolled});$waiting=@($unpolled|Where-Object{$_ -notin $polled})
+            Assert (-not ($again.Count -and $waiting.Count)) ('starved '+($waiting -join ',')+' behind '+($again -join ','))
         } finally {$env:HOTPL8_TEST_SCENARIO='ok'}
     }
     Check 'out-of-range Unix reset is unsupported' {
