@@ -93,6 +93,7 @@ jobs:
           python tests/test_delivery.py
           python tests/test_publish_main.py
           python tests/test_macos_lock.py
+          python tests/test_macos_launch.py
           node --test tests/test-t3-codex.mjs
       - name: Native Mac delivery and enabled-surface regression suites
         shell: pwsh

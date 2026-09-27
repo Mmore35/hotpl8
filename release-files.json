@@ -157,6 +157,7 @@
     "scripts/publish-main.py",
     "tests/test_publish_main.py",
     "docs/plans/macos-delivery.md",
-    "tests/test_macos_lock.py"
+    "tests/test_macos_lock.py",
+    "tests/test_macos_launch.py"
   ]
 }

@@ -2,8 +2,17 @@
 param([ValidateSet('hotpl8','tick','status-print','audit-codex','setup-codex')][string]$Entry='hotpl8', [Parameter(ValueFromRemainingArguments=$true)][object[]]$Forward)
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
-$exe=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $config=Get-Content -LiteralPath (Join-Path $root 'delivery.json') -Raw -Encoding UTF8|ConvertFrom-Json
+if($env:OS -eq 'Windows_NT'){
+    $exe=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+}else{
+    # launchd does not inherit an interactive shell's PATH. Enrollment binds the
+    # native wrapper explicitly (Homebrew's bare apphost may lack DOTNET_ROOT).
+    $exe=[string]$config.powershell
+    if(-not $exe -or -not [IO.Path]::IsPathRooted($exe) -or -not [IO.File]::Exists($exe)){
+        throw 'Managed delivery requires an absolute enrolled PowerShell executable.'
+    }
+}
 $env:HOTPL8_STATE_DIRECTORY=$config.stateDirectory
 $env:HOTPL8_INSTALL_DIRECTORY=$root
 # Legacy callers splat a hashtable into a compatibility shim without a param
