@@ -36,6 +36,21 @@ try{
     $route=Get-Hotpl8CodexRoute $request $dir $exe
     Assert ($route.slot -eq 'a' -and $route.auth.accessToken -eq 'FAKE-a') 'preferred native account selected'
     Assert (($route|ConvertTo-Json -Depth 10) -notmatch 'NEVER_EXPORT') 'refresh token never exported'
+    # A collector that collided with a broker retains its previous quota. A new
+    # admission must be able to validate that fresh candidate after the lock clears.
+    foreach($row in $rows){$row.status='home_busy'}
+    Save 'status.json' @{providers=@{codex=$status}}
+    Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'a') 'cached collector contention is recoverable through fresh native validation'
+    $script:recoveryReads=0
+    $recoveryFailure={param($slot,$refresh);$script:recoveryReads++;[pscustomobject]@{status='authentication_required'}}
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
+    Assert ($script:recoveryReads -eq 2) 'cached quota alone cannot authorize a contended account'
+    foreach($row in $rows){$row.observedAt=$now.AddHours(-1).ToString('o')}
+    Save 'status.json' @{providers=@{codex=$status}}
+    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
+    Assert ($script:recoveryReads -eq 2) 'contention recovery preserves per-account freshness gates'
+    foreach($row in $rows){$row.status='ok';$row.observedAt=$now.ToString('o')}
+    Save 'status.json' @{providers=@{codex=$status}}
     $background=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='a';cwd=$dir}
     $script:controlReads=0
     $unexpectedRead={param($slot,$refresh);$script:controlReads++;throw 'unexpected native read'}
@@ -194,6 +209,10 @@ try{
 
 $script:FixtureNativeReader=${function:Read-CodexQuota}
 function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutMs=5000,[string]$WorkingDirectory,[switch]$IncludeAccessToken,[switch]$RefreshToken){
+    # Only the synthetic gate owner waits for a second cold Windows process to
+    # start. Its artificial gate must not expire before the measured 3 s overlap;
+    # production readers and the contender's 6.5 s lock wait remain unchanged.
+    if(Test-Path (Join-Path $AccountHome 'quota-gate')){$PSBoundParameters['TimeoutMs']=15000}
     $read=& $script:FixtureNativeReader @PSBoundParameters
     if($read.status -eq 'home_busy'){[IO.File]::WriteAllText((Join-Path $AccountHome 'quota-contended'),'fixture')}
     return $read
@@ -220,6 +239,9 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     $initialization=$proc.StandardOutput.ReadLineAsync()
     $contentionClock=[Diagnostics.Stopwatch]::StartNew()
     while(-not (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) -and -not $initialization.IsCompleted -and $contentionClock.ElapsedMilliseconds -lt 5000){Start-Sleep -Milliseconds 10}
+    # Healthy native readers can own the lock longer than the old 2.5 s retry
+    # cutoff. Hold it for 3 s AFTER verified contention, then finish normally.
+    Start-Sleep -Milliseconds 3000
     [IO.File]::Delete($gate)
     Assert (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) 'chat native validation encounters the title helper lock'
     Assert ($initialization.Wait(15000)) 'concurrent chat startup responds within its deadline'
@@ -233,22 +255,30 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     [IO.File]::WriteAllText((Join-Path $shared 'keep-active'),'fixture')
     $turn=Invoke-CodexRpc $proc $clock 20000 3 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
     Assert ($turn.account -eq 'b') 'real launcher/proxy/broker chooses healthy account for turn'
-    # Collector-style atomic publication wakes the installed bridge. Neither a
-    # user turn nor a new process is required for native login to change.
+    # Collector publication may validate a preferred peer, but applying its auth
+    # while a turn runs revokes native network permission. Defer until idle.
     [IO.File]::Delete((Join-Path $dir 'a/exhausted'))
     [IO.File]::WriteAllText((Join-Path $dir 'b/used-percent'),'96')
+    [IO.File]::Delete((Join-Path $dir 'a/quota-observed'))
     $status.recommendations.codex='a';Save 'status.json' @{providers=@{codex=$status}}
-    $rolled=$false;$rollClock=[Diagnostics.Stopwatch]::StartNew();$rpcId=40
+    $validatedPeer=$false;$rollClock=[Diagnostics.Stopwatch]::StartNew();$rpcId=40
     while($rollClock.ElapsedMilliseconds -lt 20000){
         $readClock=[Diagnostics.Stopwatch]::StartNew()
         $current=Invoke-CodexRpc $proc $readClock 2000 (++$rpcId) 'account/read' @{}
-        if($current.account.email -eq 'a@example.invalid'){$rolled=$true;break}
+        Assert ($current.account.email -eq 'b@example.invalid') 'active native account is retained during background validation'
+        if(Test-Path (Join-Path $dir 'a/quota-observed')){$validatedPeer=$true;break}
         Start-Sleep -Milliseconds 50
     }
-    Assert $rolled 'collector publication rebinds ongoing installed native process'
+    Assert $validatedPeer 'collector publication validates the preferred peer'
     $followClock=[Diagnostics.Stopwatch]::StartNew()
     $follow=Invoke-CodexRpc $proc $followClock 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@(@{type='text';text='fixture followup'})}
-    Assert ($follow.account -eq 'a' -and $follow.turn.id -eq $turn.turn.id -and $follow.toolExecutions -eq 1) 'followup keeps active turn and executed effects after rollover'
+    Assert ($follow.account -eq 'b' -and $follow.turn.id -eq $turn.turn.id -and $follow.toolExecutions -eq 1) 'followup keeps active account turn and executed effects'
+    Assert (-not (Test-Path (Join-Path $shared 'network-revoked'))) 'no live auth change revokes native network permission'
+    [IO.File]::Delete((Join-Path $shared 'keep-active'))
+    $finish=Invoke-CodexRpc $proc ([Diagnostics.Stopwatch]::StartNew()) 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';input=@()}
+    Assert ($finish.account -eq 'b' -and $finish.toolExecutions -eq 1) 'original work completes under the original account'
+    $next=Invoke-CodexRpc $proc ([Diagnostics.Stopwatch]::StartNew()) 15000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
+    Assert ($next.account -eq 'a' -and $next.toolExecutions -eq 2) 'next idle admission switches accounts without replaying prior work'
     [IO.File]::Delete((Join-Path $dir 'b/used-percent'))
     [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
     Stop-Hotpl8Process $proc;$proc=$null

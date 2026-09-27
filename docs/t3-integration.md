@@ -120,7 +120,7 @@ move its thread selections back before removal.
    It validates the selected home through native account/quota reads. A newly
    exhausted candidate is excluded and another fresh eligible candidate can win.
    Concurrent title helpers and chat sessions may briefly contend for the same
-   native account lock. Admission waits up to 2.5 seconds per candidate, within
+   native account lock. Ordinary admission waits up to 6.5 seconds per candidate, within
    a shared validation deadline, before reporting prolonged contention.
 4. Only the access token and account ID travel through private pipes to Codex's
    external-token login. Refresh tokens stay in their native homes. Neither
@@ -128,9 +128,10 @@ move its thread selections back before removal.
 5. New turns validate and select again. Active follow-ups with unchanged model
    and working directory pass directly to native Codex, retaining its turn ID.
    Collector publications and native quota notifications also trigger validation
-   during ongoing work. A validated alternative can be adopted for later model
-   requests without replaying the turn. Existing native requests finish under
-   their original account; native owns WebSocket reconnection and continuation.
+   during ongoing work. Account changes are deferred while any parent, child or
+   pending admission is active. Native external-token login can revoke network
+   permission for existing work, so a validated alternative is adopted only
+   between turns. The bridge never replays the previous turn.
    Account changes serialize independently of follow-ups, steering, interrupts,
    approvals and tool replies. Observed active child models participate in selection.
 6. An external-token refresh request is answered only for the matching account.
@@ -151,12 +152,13 @@ managed T3 provider are intentionally unavailable.
 Selecting a provider or sending a new turn is a deliberate launch, like
 `hotpl8 codex`. Monitor mode and automation pauses do not block these explicit
 launches. A selection hold still constrains which account can be selected.
-Autonomous rollover during admitted work requires `mode: automate`,
+Background account selection requires `mode: automate`,
 `switchEnabled: true`, no active pause and no selection hold. This matches Claude's
 shared controls. Same-account authentication refresh remains available while
 automation is paused. Before upgrading an existing bridge, review these global
 settings; enabling them also affects Claude actions. The upgrade does not silently
-change them.
+change them. Account changes remain deferred until active work drains, regardless
+of the automation controls.
 
 ## Errors and recovery
 
@@ -177,6 +179,15 @@ notifications remain an additional wakeup. See the
 [rollover design and evidence](plans/t3-active-turn-admission.md).
 `routing_account_busy` means another validator held the account lock beyond the
 bounded wait; `routing_validation_timeout` means the admission deadline expired.
+`routing_account_change_deferred` means a new admission requires a different
+account while other work still uses this process. Complete that work before
+retrying the new admission. Active follow-ups still pass through normally.
+See the [native network-permission repair](plans/codex-network-revocation.md).
+New chat and helper admissions wait up to 6.5 seconds per busy account, within
+the existing 20-second total validation budget. A collector's cached `home_busy`
+reading can be reconsidered only while its retained quota is fresh, and always
+requires successful native validation before admission. Same-account token
+refresh retains its shorter wait and pinned identity.
 These failures occur before inference. The broker records only the time and
 fixed failure code in HotPl8's bounded `events.jsonl`, never credentials or paths.
 See the [concurrent admission repair](plans/t3-concurrent-admission.md).

@@ -24,9 +24,16 @@ public class T3FakeCodex {
             var p=message.ContainsKey("params") ? message["params"] as Dictionary<string,object> : null;
             object result=new {};
             if(method=="initialize") result=new {userAgent="codex/fixture"};
-            if(method=="account/login/start") { account=(string)p["chatgptAccountId"]; result=new {type="chatgptAuthTokens"}; }
+            if(method=="account/login/start") {
+                if(active && account!=(string)p["chatgptAccountId"]) {
+                    File.WriteAllText(Path.Combine(home,"network-revoked"),"fixture");
+                    Send(new {method="error",@params=new {threadId="thread-fixture",error=new {message="application network permission was revoked"}}});
+                }
+                account=(string)p["chatgptAccountId"]; result=new {type="chatgptAuthTokens"};
+            }
             if(method=="account/read") result=new {account=new {type="chatgpt",email=account+"@example.invalid",planType="plus"},requiresOpenaiAuth=true};
             if(method=="account/rateLimits/read") {
+                File.WriteAllText(Path.Combine(home,"quota-observed"),"fixture");
                 string gate=Path.Combine(home,"quota-gate");
                 if(File.Exists(gate)) {
                     File.WriteAllText(Path.Combine(home,"quota-entered"),"fixture");

@@ -1,5 +1,10 @@
 # Follow-ups and proactive rollover during ongoing work
 
+**Active account switching superseded, 2026-09-26:** native CLI 0.157.1 evidence
+shows external-token login revoking network permission for running work. The
+[network-permission repair](codex-network-revocation.md) defers account changes
+until idle. Follow-up, steering, approval and same-account refresh support remain.
+
 Implementation candidate, 2026-09-20. Native transport qualification: Codex CLI
 0.155.1; T3 input contract: installed 0.0.42. This replaces the earlier
 containment-only proposal to pin an account for the entire active turn.
