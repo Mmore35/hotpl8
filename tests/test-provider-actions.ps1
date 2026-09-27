@@ -11,6 +11,7 @@ function Assert($Value,[string]$Message){if(-not $Value){throw $Message};$script
 function Save($Name,$Value){Write-Hotpl8Text (Join-Path $dir $Name) ($Value|ConvertTo-Json -Depth 12)}
 function Reject([scriptblock]$Action,[string]$Code){try{& $Action;throw 'unexpected success'}catch{Assert ($_.Exception.Message -eq $Code) ('expected '+$Code+', got '+$_.Exception.Message)}}
 try {
+    Reject {Invoke-Hotpl8ControlWrite (Join-Path $dir 'missing/parent') {'should not run'} -TimeoutMs 20} 'action_state_unavailable'
     Save 'policy.json' @{schemaVersion=2;mode='automate';prefer=@(1);switchEnabled=$true;warm=$true;probeEnabled=$true}
     $generation=Get-Hotpl8ControlGeneration $dir
     $script:admitted=$false

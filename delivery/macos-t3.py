@@ -122,7 +122,9 @@ def components(root):
         result.append(dict(component='t3-codex', providerId='codex', state=state,
                            nextLaunchSha=current if bridge else None, runningShas=running,
                            unknownRunningProcesses=unknown, adoption='New provider processes; active work retained'))
-    return result
+    return result or [dict(component='t3-codex', providerId='codex', state='unmanaged',
+                           nextLaunchSha=None, runningShas=[], unknownRunningProcesses=None,
+                           adoption='No T3 bridge enrolled with this installation')]
 
 
 def enroll(root, settings_path, node, codex, shared_home, activate=False):

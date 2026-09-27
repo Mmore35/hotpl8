@@ -125,7 +125,10 @@ class Lifecycle(unittest.TestCase):
         self.candidate(B)
         self.assertEqual(self.update()['state'], 'current')
         self.assertEqual(d.read(self.root / 'previous.json')['sha'], A)
-        self.assertEqual({c['nextLaunchSha'] for c in m.components(self.root, self.backend)}, {B})
+        inventory = m.components(self.root, self.backend)
+        self.assertEqual({c['nextLaunchSha'] for c in inventory if c['component'].startswith('scheduled-')}, {B})
+        self.assertEqual(inventory[-1]['state'], 'unmanaged')
+        self.assertIsNone(inventory[-1]['nextLaunchSha'])
         self.assertEqual((self.state / 'policy.json').read_bytes(), policy)
         self.assertEqual((self.state / 'native-account-sentinel').read_bytes(), b'preserve account')
 
