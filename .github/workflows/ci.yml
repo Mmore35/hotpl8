@@ -71,8 +71,44 @@ jobs:
           name: preview-images
           path: docs/assets/*.png
           retention-days: 30
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Static and policy checks
+        shell: pwsh
+        run: ./scripts/check.ps1
+      - name: Shared delivery, publication and bridge regressions on Mac
+        shell: bash
+        run: |
+          python tests/test_delivery.py
+          python tests/test_publish_main.py
+          node --test tests/test-t3-codex.mjs
+      - name: Native Mac delivery and enabled-surface regression suites
+        shell: pwsh
+        run: ./scripts/test-macos-delivery.ps1
+      - name: Build Mac candidate archive
+        shell: pwsh
+        run: ./scripts/package.ps1 -Platform macos
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hotpl8-macos-candidate
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
   publish-main:
-    needs: windows
+    needs: [windows, macos]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: windows-latest
     permissions:
@@ -86,41 +122,35 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - name: Download the tested package
+      - name: Download the tested packages
         env:
           GH_TOKEN: ${{ github.token }}
         shell: powershell
-        run: gh run download $env:GITHUB_RUN_ID --name hotpl8-windows-candidate --dir tested
+        run: |
+          gh run download $env:GITHUB_RUN_ID --name hotpl8-windows-candidate --dir tested/windows
+          if ($LASTEXITCODE -ne 0) { throw 'Windows candidate download failed' }
+          gh run download $env:GITHUB_RUN_ID --name hotpl8-macos-candidate --dir tested/macos
+          if ($LASTEXITCODE -ne 0) { throw 'Mac candidate download failed' }
       - name: Add exact source identity
         shell: powershell
         run: |
-          $package = @(Get-ChildItem tested -Filter '*.zip')
-          if ($package.Count -ne 1) { throw 'Expected one tested archive' }
-          python delivery/package.py $package[0].FullName hotpl8-main.zip --sha $env:GITHUB_SHA
-          if ($LASTEXITCODE -ne 0) { throw 'Delivery packaging failed' }
-      - name: Attest tested main package
+          foreach ($platform in @('windows', 'macos')) {
+            $package = @(Get-ChildItem (Join-Path tested $platform) -Filter '*.zip')
+            if ($package.Count -ne 1) { throw ('Expected one tested ' + $platform + ' archive') }
+            $output = if ($platform -eq 'windows') { 'hotpl8-main.zip' } else { 'hotpl8-macos-main.zip' }
+            python delivery/package.py $package[0].FullName $output --sha $env:GITHUB_SHA --platform $platform
+            if ($LASTEXITCODE -ne 0) { throw ('Delivery packaging failed: ' + $platform) }
+          }
+      - name: Attest tested main packages
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: hotpl8-main.zip
-      - name: Publish retained main package
+          subject-path: |
+            hotpl8-main.zip
+            hotpl8-macos-main.zip
+      - name: Publish retained main packages
         env:
           GH_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
-          $tag = 'main-' + $env:GITHUB_SHA
-          # Listing succeeds for an empty release set. An expected 404 written
-          # to stderr becomes a terminating NativeCommandError in PowerShell 5.1.
-          $releaseText = gh api ('repos/' + $env:GITHUB_REPOSITORY + '/releases?per_page=100')
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing releases' }
-          $releases = $releaseText | ConvertFrom-Json
-          $existing = @($releases | Where-Object tag_name -EQ $tag)
-          if ($existing.Count -gt 0) {
-            $existing = $existing[0]
-            $assets = @($existing.assets | Where-Object name -EQ 'hotpl8-main.zip')
-            $expected = 'sha256:' + (Get-FileHash hotpl8-main.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($existing.draft -or $assets.Count -ne 1 -or $assets[0].digest -cne $expected) { throw 'Existing release differs; refusing replacement.' }
-            Write-Output 'Identical immutable release already published.'
-            exit 0
-          }
-          gh release create $tag hotpl8-main.zip --target $env:GITHUB_SHA --prerelease --title ('Tested main ' + $env:GITHUB_SHA.Substring(0,12)) --notes ('Automatic main-channel package for commit ' + $env:GITHUB_SHA + '. Ordinary stable installations are unchanged.')
+          python scripts/publish-main.py --repository $env:GITHUB_REPOSITORY --sha $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Main publication failed' }
