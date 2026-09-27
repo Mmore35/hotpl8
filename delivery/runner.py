@@ -213,6 +213,16 @@ class GitHub:
              "--source-digest", sha, "--source-ref", "refs/heads/main", "--deny-self-hosted-runners"], 120)
 
 
+def validate_manifest_identity(manifest, config, sha):
+    platform = config.get("platform", "windows")
+    if (platform not in ("windows", "macos")
+            or manifest.get("protocol") != PROTOCOL or manifest.get("product") != config["product"]
+            or manifest.get("repository") != config["repository"] or manifest.get("sha") != sha
+            or manifest.get("platform") != platform
+            or manifest.get("stateCompatibility") != config["stateCompatibility"]):
+        raise DeliveryError("Incompatible or incorrectly identified release")
+
+
 def unpack(archive, destination, config, sha):
     """Validate the complete archive BEFORE extracting or executing any code."""
     with zipfile.ZipFile(archive) as z:
@@ -233,10 +243,7 @@ def unpack(archive, destination, config, sha):
             manifest = json.loads(z.read("delivery-manifest.json"))
         except (KeyError, ValueError):
             raise DeliveryError("Missing delivery manifest") from None
-        if (manifest.get("protocol") != PROTOCOL or manifest.get("product") != config["product"]
-                or manifest.get("repository") != config["repository"] or manifest.get("sha") != sha
-                or manifest.get("platform") != "windows" or manifest.get("stateCompatibility") != config["stateCompatibility"]):
-            raise DeliveryError("Incompatible or incorrectly identified release")
+        validate_manifest_identity(manifest, config, sha)
         hashes = manifest.get("files", {})
         if set(hashes) != {i.filename for i in infos} - {"delivery-manifest.json"}:
             raise DeliveryError("Release file inventory mismatch")
@@ -327,6 +334,7 @@ def update(root, github=None, adapter=invoke_adapter):
                 if digest(destination / "delivery-manifest.json") != receipt.get("manifestDigest"):
                     raise DeliveryError("Previously staged manifest was modified")
                 manifest = read(destination / "delivery-manifest.json")
+                validate_manifest_identity(manifest, config, sha)
                 for name, expected in manifest["files"].items():
                     if digest(destination / name) != expected:
                         raise DeliveryError("Previously staged release was modified")

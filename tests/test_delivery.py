@@ -90,6 +90,38 @@ class DeliveryTests(unittest.TestCase):
         self.assertIn("health", self.calls)
         self.assertFalse((self.root / "transaction.json").exists())
 
+    def test_macos_enrollment_rejects_windows_package_before_adapter(self):
+        self.config["platform"] = "macos"
+        d.write(self.root / "delivery.json", self.config)
+        result = self.update()
+        self.assertEqual(result["state"], "error")
+        self.assertEqual(self.calls, [])
+        self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+
+    def test_windows_enrollment_rejects_macos_package_before_adapter(self):
+        package(self.source, self.archive, "hotpl8", "example/hotpl8", B, "macos")
+        result = self.update()
+        self.assertEqual(result["state"], "error")
+        self.assertEqual(self.calls, [])
+        self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+
+    def test_macos_package_updates_and_retains_rollback(self):
+        self.config["platform"] = "macos"
+        d.write(self.root / "delivery.json", self.config)
+        package(self.source, self.archive, "hotpl8", "example/hotpl8", B, "macos")
+        self.test_success_preserves_state_and_previous()
+
+    def test_cached_windows_release_cannot_bypass_macos_identity_check(self):
+        self.assertEqual(self.update()["state"], "current")
+        d.write(self.root / "current.json", self.previous)
+        self.config["platform"] = "macos"
+        d.write(self.root / "delivery.json", self.config)
+        self.calls.clear()
+        result = self.update()
+        self.assertEqual(result["state"], "error")
+        self.assertEqual(self.calls, [])
+        self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+
     def test_noop_does_not_download_or_restart(self):
         self.github.sha = A
         self.assertEqual(self.update()["state"], "current")
