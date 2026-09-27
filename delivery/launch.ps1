@@ -1,4 +1,5 @@
 # Stable installed launcher. Every child resolves one immutable release.
+[CmdletBinding(PositionalBinding=$false)]
 param([ValidateSet('hotpl8','tick','status-print','audit-codex','setup-codex')][string]$Entry='hotpl8', [string]$InstallDirectory, [Parameter(ValueFromRemainingArguments=$true)][object[]]$Forward)
 $ErrorActionPreference='Stop'
 $root=if($InstallDirectory){[IO.Path]::GetFullPath($InstallDirectory)}else{$PSScriptRoot}

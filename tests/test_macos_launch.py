@@ -60,6 +60,14 @@ exit 0
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertFalse((self.state / "observed.json").exists())
 
+    def test_positional_cli_command_is_forwarded_not_bound_as_install_directory(self):
+        (self.root / 'releases' / A / 'hotpl8.ps1').write_text('''param([string]$Command)
+@{command=$Command}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'observed.json')
+''', encoding='utf-8')
+        result = self.launch('-Entry', 'hotpl8', 'status')
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(runner.read(self.state / 'observed.json')['command'], 'status')
+
     def test_relative_native_executable_is_rejected(self):
         self.config["powershell"] = "pwsh"
         runner.write(self.root / "delivery.json", self.config)
