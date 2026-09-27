@@ -187,6 +187,11 @@ class Lifecycle(unittest.TestCase):
         original = path.read_bytes()
         m.adopt_collector(self.root, self.backend, path, d.digest(path))
         m.adopt_collector(self.root, self.backend, path, None)
+        journal = d.read(self.root / 'collector-migration.json')
+        journal['label'] = 'unrelated.job'
+        d.write(self.root / 'collector-migration.json', journal)
+        with self.assertRaises(d.DeliveryError):
+            m.adopt_collector(self.root, self.backend, path, None)
         m.register(self.root, self.backend)
         self.assertEqual(len(self.backend.jobs), 2)
         self.assertEqual((self.root / 'legacy-collector.plist').read_bytes(), original)
@@ -226,10 +231,14 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         self.assertEqual(record['state'], 'complete')
         self.assertEqual(record['completion'], 'ok')
         self.assertEqual(record['outcome']['runningSha'], A)
-        unfinished = dict(record, state='running', runId='fixture-unfinished')
+        unfinished = dict(record, state='running', runId='c' * 32)
         d.write(self.root / 'job-runs/collector.json', unfinished)
         self.assertEqual(subprocess.run(command, timeout=20).returncode, 0)
-        self.assertEqual(d.read(self.root / 'job-runs/unfinished-fixture-unfinished.json'), unfinished)
+        self.assertEqual(d.read(self.root / 'job-runs' / ('unfinished-' + 'c' * 32 + '.json')), unfinished)
+        invalid = dict(unfinished, runId='../../outside')
+        d.write(self.root / 'job-runs/collector.json', invalid)
+        self.assertNotEqual(subprocess.run(command, timeout=20).returncode, 0)
+        self.assertEqual(d.read(self.root / 'job-runs/collector.json'), invalid)
 
     def test_t3_modified_binding_refuses_update_and_missing_receipt_stays_visible(self):
         self.assertEqual(self.update()['state'], 'current')
@@ -268,6 +277,7 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         shared = self.base / 'shared home'
         shared.mkdir()
         d.write(settings, dict(providers=dict(cursor={}), theme='dark'))
+        settings.chmod(0o600)
         node = shutil.which('node')
         # The native Codex binding is a harmless executable: probes must not invoke it.
         native = self.base / 'native-codex'
@@ -281,12 +291,14 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         self.candidate(B)
         self.assertEqual(self.update()['state'], 'current')
         self.assertEqual(settings.read_bytes(), before)
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
         self.assertEqual(t3.components(self.root)[0]['nextLaunchSha'], B)
         self.assertFalse((self.base / 'provider-invoked').exists())
         with patch.object(t3, 'closed'):
             t3.remove(self.root)
         self.assertEqual(d.read(settings)['theme'], 'dark')
         self.assertNotIn('codex', d.read(settings)['providerInstances'])
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
         self.assertEqual(t3.components(self.root)[0]['state'], 'unmanaged')
 
     def test_real_launchd_wake_and_removal(self):

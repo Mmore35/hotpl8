@@ -260,6 +260,9 @@ def adopt_collector(root, backend, path, expected_digest):
     backup = root / 'legacy-collector.plist'
     if digest(backup) != journal['digest'] or path.parent != backend.directory:
         raise DeliveryError('Collector recovery evidence is invalid')
+    original = plistlib.loads(backup.read_bytes())
+    if journal.get('label') != original.get('Label') or path.name != original['Label'] + '.plist':
+        raise DeliveryError('Collector recovery identity changed')
     with drained(root, config):
         if path.exists() and (path.is_symlink() or digest(path) != journal['digest']):
             raise DeliveryError('Legacy collector changed after inspection')
@@ -369,6 +372,8 @@ def dispatch(root, command, arguments):
             prior = read(path, {})
             if prior.get('state') == 'running':
                 # Keep unfinished evidence independently of the next green wake.
+                if not re.fullmatch(r'[a-f0-9]{32}', prior.get('runId', '')):
+                    raise DeliveryError('Unfinished job receipt has invalid identity')
                 write(root / 'job-runs' / ('unfinished-' + prior['runId'] + '.json'), prior)
             record = dict(schemaVersion=1, runId=uuid.uuid4().hex, startedAt=now(), sha=read(release / "build-info.json")["sha"], state="running")
             write(path, record)

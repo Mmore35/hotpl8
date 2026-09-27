@@ -11,12 +11,18 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from runner import DeliveryError, digest, lock, read, run, safe_root, write
 from macos import atomic_bytes, executable, native_only, owned_config, selected
+
+
+def write_settings(path, settings):
+    path = Path(path)
+    atomic_bytes(path, (json.dumps(settings, indent=2) + '\n').encode(), stat.S_IMODE(path.stat().st_mode))
 
 
 def closed(settings_path=None):
@@ -197,7 +203,7 @@ def enroll(root, settings_path, node, codex, shared_home, activate=False):
         closed(settings_path)
         if not (directory / 'settings-before.json').exists():
             atomic_bytes(directory / 'settings-before.json', settings_bytes)
-        write(settings_path, settings)
+        write_settings(settings_path, settings)
         receipt['phase'] = 'active'
         write(directory / 'receipt.json', receipt)
         reconcile(root, release, 'health')
@@ -220,7 +226,7 @@ def remove(root):
                     settings['providerInstances'].pop('codex')
                 else:
                     settings['providerInstances']['codex'] = receipt['originalInstance']
-                write(receipt['settingsPath'], settings)
+                write_settings(receipt['settingsPath'], settings)
                 receipt['phase'] = 'removed'
                 write(directory / 'receipt.json', receipt)
 
