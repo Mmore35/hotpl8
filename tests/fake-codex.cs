@@ -18,6 +18,7 @@ public class FakeCodex {
   }
   if (scenario == "exit") return 8;
   if (scenario == "hang") { Thread.Sleep(30000); return 0; }
+  if (scenario == "slow") Thread.Sleep(6000);
   if (scenario == "stderr") Console.Error.Write(new string('x', 100000));
   string line;
   while ((line=Console.ReadLine()) != null) {

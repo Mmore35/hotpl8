@@ -54,11 +54,12 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
         if($prior.identityKey -and $prior.binding -eq (Get-Hotpl8Hash ([IO.Path]::GetFullPath([string]$slot.home))) -and $slot.id -notin @($Request.exclude)){
             if($matches.Count -eq 1){
                 $row=$matches[0]
-                # A failed lock acquisition says nothing about the account's
-                # quota or login. Reconsider its retained observation privately;
-                # all freshness/policy gates and fresh native validation below
-                # still apply. Never publish this provisional status as health.
-                if($row.status -eq 'home_busy'){$row=$row|Select-Object *;$row.status='ok'}
+                # A failed lock acquisition or one slow collector read says
+                # nothing about the account's quota or login. Reconsider its
+                # retained observation privately; all freshness/policy gates
+                # and fresh native validation below still apply, so a stale or
+                # never-read account stays out. Never publish this as health.
+                if($row.status -in @('home_busy','timeout')){$row=$row|Select-Object *;$row.status='ok'}
                 $row
             }
             elseif($refresh -and $matches.Count -eq 0){[pscustomobject]@{id=$slot.id;status='unknown';observedAt=$null;buckets=$null}}
@@ -87,8 +88,10 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
         if($cached){$read=$validated[$selected]}
         else{
           $accountClock=[Diagnostics.Stopwatch]::StartNew()
-          # A collector may hold this lock for 5 s; another admission for 6.5 s.
-          # Let one healthy reader finish before excluding its account. Refresh
+          # Another admission may hold this lock for 6.5 s; a collector usually
+          # 2-4 s, but up to 12 s on a saturated machine. Let one healthy reader
+          # finish before excluding its account, without waiting out a slow
+          # collector: the admission budget must still reach a peer. Refresh
           # keeps its shorter wait so native I/O still fits the 6.5 s deadline.
           $lockWaitBudget=if($refresh){2500}else{6500}
           do{
