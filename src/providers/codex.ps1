@@ -214,9 +214,16 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
         elseif ($clock.ElapsedMilliseconds -ge 20000) { $read = [pscustomobject]@{ status = 'collection_budget'; elapsedMs = 0 } }
         elseif ($old.retryAfter -and [datetimeoffset]::Parse($old.retryAfter) -gt $now) { $read = [pscustomobject]@{ status = 'backoff'; elapsedMs = 0 } }
         else {
-            $budget = [Math]::Min((Get-CodexReadBudgetMs), 20000 - [int]$clock.ElapsedMilliseconds)
-            if ($Reader) { $read = & $Reader $slot.home $Executable $budget }
-            else { $read = Read-CodexQuota $slot.home $Executable $budget }
+            # A T3 admission holds this home's lock for up to 6.5 s. Wait for it
+            # inside this slot's read budget rather than publishing a busy home.
+            $slotBudget = [Math]::Min((Get-CodexReadBudgetMs), 20000 - [int]$clock.ElapsedMilliseconds); $slotClock = [Diagnostics.Stopwatch]::StartNew()
+            do {
+                $budget = [Math]::Max(1, $slotBudget - [int]$slotClock.ElapsedMilliseconds)
+                if ($Reader) { $read = & $Reader $slot.home $Executable $budget }
+                else { $read = Read-CodexQuota $slot.home $Executable $budget }
+                if ($read.status -ne 'home_busy' -or $slotClock.ElapsedMilliseconds + 75 -ge $slotBudget) { break }
+                Start-Sleep -Milliseconds 75
+            } while ($true)
         }
         if (-not $read) { $read = [pscustomobject]@{ status = 'transport_failed'; elapsedMs = 0 } }
         # Collection and dispatch must agree about what the observed subscription

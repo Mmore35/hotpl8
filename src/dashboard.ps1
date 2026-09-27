@@ -129,7 +129,7 @@ function Get-Hotpl8NativeDashboardRows($Status,$Policy,[datetimeoffset]$Now,[int
     $globalSnapshot=if($GlobalStatus){$GlobalStatus}else{$Status}
     if(-not $globalSnapshot -or -not $globalSnapshot.generatedAt){New-DashboardRow '  no reading yet  ·  hotpl8 refresh' amber}
     elseif($stale){New-DashboardRow '  ! readings stale  ·  hotpl8 refresh' amber}
-    $allSlots=@($globalSnapshot.slots)+@(foreach($entry in $globalSnapshot.providers.PSObject.Properties){$entry.Value.slots})
+    $allSlots=@($globalSnapshot.slots)+@(foreach($entry in $globalSnapshot.providers.PSObject.Properties){@($entry.Value.slots|Where-Object {$_ -and -not (Test-Hotpl8CodexReadRetrying $_ $Now)})})
     $needsHelp = @($allSlots | Where-Object { $_ -and $_.status -notin @('ok','disabled') }).Count -gt 0
     if ($needsHelp) { New-DashboardRow '  ! account unavailable  ·  hotpl8 doctor' amber }
     if($globalSnapshot.collector){

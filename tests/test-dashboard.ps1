@@ -22,6 +22,20 @@ Check 'stale and failed readings offer a recovery action' {
     $text=((Render $c).text)-join "`n"
     Assert ($text.Contains('hotpl8 refresh') -and $text.Contains('hotpl8 doctor') -and $text.Contains('SIGN-IN NEEDED'))
 }
+Check 'one busy or slow Codex read retries quietly until its last success ages out' {
+    foreach($failure in @('home_busy','timeout')){
+        $c=Copy-Value $s;$c.providers.codex.slots[0].status=$failure;$c.providers.codex.slots[0].observedAt=$now.AddMinutes(-5).ToString('o')
+        $text=((Render $c).text)-join "`n"
+        Assert ($text.Contains('READ RETRYING') -and -not $text.Contains('account unavailable'))
+        $c.providers.codex.slots[0].observedAt=$now.AddHours(-1).ToString('o')
+        $text=((Render $c).text)-join "`n"
+        Assert (-not $text.Contains('READ RETRYING') -and $text.Contains('account unavailable'))
+    }
+    $c=Copy-Value $s;$c.providers.codex.slots[0].status='transport_failed'
+    $text=((Render $c).text)-join "`n"
+    Assert ($text.Contains('TRANSPORT FAILED') -and $text.Contains('account unavailable'))
+    Assert ((Get-DashboardBadgeTone 'READ RETRYING') -eq 'amber')
+}
 Check 'healthy provider projections do not invent an unavailable account' {
     Assert (-not (((Render).text)-join "`n").Contains('account unavailable'))
     $c=Copy-Value $s;$c.providers.codex.slots[0].status='authentication_required'
