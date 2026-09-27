@@ -30,7 +30,10 @@ function Invoke-CodexRpc($Process, $Clock, [int]$TimeoutMs, [int]$Id, [string]$M
     }
     throw 'timeout'
 }
-function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$TimeoutMs = 5000, [string]$WorkingDirectory, [switch]$IncludeAccessToken, [switch]$RefreshToken) {
+# A healthy native read takes 2-4 s; app-server startup alone can pass 5 s on a
+# CPU-saturated machine, where a tighter bound reported every account unavailable.
+function Get-CodexReadBudgetMs { 12000 }
+function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$TimeoutMs = (Get-CodexReadBudgetMs), [string]$WorkingDirectory, [switch]$IncludeAccessToken, [switch]$RefreshToken) {
     $homeLock = $null
     $proc = $null; $clock = [Diagnostics.Stopwatch]::StartNew()
     try {
@@ -211,7 +214,7 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
         elseif ($clock.ElapsedMilliseconds -ge 20000) { $read = [pscustomobject]@{ status = 'collection_budget'; elapsedMs = 0 } }
         elseif ($old.retryAfter -and [datetimeoffset]::Parse($old.retryAfter) -gt $now) { $read = [pscustomobject]@{ status = 'backoff'; elapsedMs = 0 } }
         else {
-            $budget = [Math]::Min(5000, 20000 - [int]$clock.ElapsedMilliseconds)
+            $budget = [Math]::Min((Get-CodexReadBudgetMs), 20000 - [int]$clock.ElapsedMilliseconds)
             if ($Reader) { $read = & $Reader $slot.home $Executable $budget }
             else { $read = Read-CodexQuota $slot.home $Executable $budget }
         }
@@ -362,7 +365,7 @@ function Invoke-Hotpl8Codex($Plan, [string]$StateDirectory, [string]$Executable,
         if(($currentPart|ConvertTo-Json -Depth 24 -Compress) -cne ($Plan.policy|ConvertTo-Json -Depth 24 -Compress)){throw 'Policy changed before native launch; prepare a new launch.'}
     }
     $exe = Resolve-CodexExecutable $Executable
-    $read = Read-CodexQuota $Plan.slot.home $exe 5000 $WorkingDirectory
+    $read = Read-CodexQuota $Plan.slot.home $exe (Get-CodexReadBudgetMs) $WorkingDirectory
     if ($read.status -ne 'ok') { throw ('Native subscription validation failed: ' + $read.status) }
     if (-not $read.standardTransport) { throw 'This home overrides the OpenAI endpoint. Subscription routing is unavailable for that configuration.' }
     if ($read.modelProvider -and $read.modelProvider -ne 'openai') { throw 'This home uses a custom model provider. Its billing cannot be represented as this subscription.' }

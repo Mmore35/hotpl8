@@ -2,6 +2,7 @@
 
 ## Unreleased — shared provider core
 
+- Allow a native Codex quota read 12 s instead of 5 s. On a CPU-saturated machine app-server startup alone passed 5 s, so every account read as unavailable and launches stopped while cached quotas were minutes old.
 - Use one normalized selection core for Claude, Codex launches and T3 routing, including reserves, degraded accounts, critical state, holds and pause controls. Better health/work tiers bypass ordinary churn protection consistently.
 - Distinguish explicit admission, autonomous rollover and pinned refresh. Validate current controls at the action boundary and record Codex binding/dwell only after native acknowledgement; never replay turns or tools after ambiguous login failure.
 - Discover providers through validated shipped-driver definitions across enrollment, collection and cached consumers. Add explicit schema-v3 migration while preserving legacy policy behavior and rejecting incompatible rollback readers before activation.
