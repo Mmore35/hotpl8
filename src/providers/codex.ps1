@@ -223,7 +223,8 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
                 else { $read = Read-CodexQuota $slot.home $Executable $budget }
                 if ($read.status -ne 'home_busy' -or $slotClock.ElapsedMilliseconds + 75 -ge $slotBudget) { break }
                 Start-Sleep -Milliseconds 75
-            } while ($true)
+                # A loaded Windows host can oversleep; never start a read past the budget.
+            } while ($slotClock.ElapsedMilliseconds -lt $slotBudget)
         }
         if (-not $read) { $read = [pscustomobject]@{ status = 'transport_failed'; elapsedMs = 0 } }
         # Collection and dispatch must agree about what the observed subscription
