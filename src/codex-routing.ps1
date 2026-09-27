@@ -87,8 +87,10 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
         if($cached){$read=$validated[$selected]}
         else{
           $accountClock=[Diagnostics.Stopwatch]::StartNew()
-          # A collector may hold this lock for 5 s; another admission for 6.5 s.
-          # Let one healthy reader finish before excluding its account. Refresh
+          # Another admission may hold this lock for 6.5 s; a collector usually
+          # 2-4 s, but up to 12 s on a saturated machine. Let one healthy reader
+          # finish before excluding its account, without waiting out a slow
+          # collector: the admission budget must still reach a peer. Refresh
           # keeps its shorter wait so native I/O still fits the 6.5 s deadline.
           $lockWaitBudget=if($refresh){2500}else{6500}
           do{
