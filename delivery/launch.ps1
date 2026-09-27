@@ -1,7 +1,7 @@
 # Stable installed launcher. Every child resolves one immutable release.
-param([ValidateSet('hotpl8','tick','status-print','audit-codex','setup-codex')][string]$Entry='hotpl8', [Parameter(ValueFromRemainingArguments=$true)][object[]]$Forward)
+param([ValidateSet('hotpl8','tick','status-print','audit-codex','setup-codex')][string]$Entry='hotpl8', [string]$InstallDirectory, [Parameter(ValueFromRemainingArguments=$true)][object[]]$Forward)
 $ErrorActionPreference='Stop'
-$root=$PSScriptRoot
+$root=if($InstallDirectory){[IO.Path]::GetFullPath($InstallDirectory)}else{$PSScriptRoot}
 $config=Get-Content -LiteralPath (Join-Path $root 'delivery.json') -Raw -Encoding UTF8|ConvertFrom-Json
 if($env:OS -eq 'Windows_NT'){
     $exe=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
