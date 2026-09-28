@@ -1,6 +1,6 @@
 # macOS implementation handoff
 
-Owner-approved handoff, 2026-09-12. Continue from the public `Mmore35/hotpl8` repository, branch `improve-subscription-operations` (or main after its PR merges). Work from this public history only. The Windows development install and any private predecessor are not migration sources. This file is the task contract; no previous chat is required.
+Contributor acceptance criteria for native macOS support. Work from the public HotPl8 repository and record the exact tested revision. Qualification must be reproducible without private checkouts, machine inventories or development conversations.
 
 ## Outcome
 
@@ -49,7 +49,7 @@ Record pass/fail, exact versions and sanitized evidence for each row; do not mar
 | Views | Two views cause no extra polls; stale state stays visible; notifications deduplicate. |
 | Engineering | Windows suite still passes; Mac suite and CI pass; reproducible package includes every dependency; secret scan passes. |
 
-Commit the Mac implementation, tests and qualification record together in reviewable increments, push the public branch, and open a PR. Update compatibility, install/usage/upgrading docs, policy schema, release manifest and feature-status plan as applicable. Keep unsupported cells explicit. Leave the owner a short report of what works, any real account/provider boundary requiring a decision, and links to the PR and tested artifact. Do not publish a stable support claim until its rows pass.
+Commit the Mac implementation, tests and qualification record together in reviewable increments, push the public branch, and open a PR. Update compatibility, install/usage/upgrading docs, policy schema, release manifest and feature-status plan as applicable. Keep unsupported cells explicit. Publish a sanitized qualification report linked to the PR and tested artifact. Keep account details and workstation configuration in operator-owned records. Do not publish a stable support claim until its rows pass.
 
 ## Provider overview parity
 

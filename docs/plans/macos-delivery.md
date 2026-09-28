@@ -7,7 +7,7 @@ installation therefore remains pinned, including any separately copied T3 bridge
 Adding a timer that pulls or builds source would bypass the tested-release and
 recovery contract.
 
-The target is one owned Mac installation following tested public main, with
+The target is an explicitly enrolled Mac installation able to select tested public main, with
 separate desired, installed, next-launch and running version evidence. Updates
 preserve native credentials, policy, history and active conversations. This plan
 does not declare the broader Mac feature port complete.
@@ -29,8 +29,9 @@ does not declare the broader Mac feature port complete.
 ## Native installation and activation
 
 The Mac adapter binds absolute Python, PowerShell and GitHub CLI paths to its owned
-installation and preserves its existing state directory. One user launchd job
-wakes the updater every five minutes and at login. Sleep and logout are
+installation and preserves its existing state directory. Setup creates no
+schedules by default. An operator may enroll the collector and independently
+schedule the public bounded update command using an external manager. Sleep and logout are
 availability boundaries; a timer wake reconciles current desired state rather
 than replaying missed work. Dependencies run without interactive input and with
 bounded execution and process cleanup.
@@ -43,7 +44,9 @@ compatible previous reader while retaining current application state.
 
 First enrollment preserves the source installation as recovery evidence. Native
 scheduler replacement requires proof of ownership and cannot create a second
-collector. Unenrollment must leave native accounts and unrelated jobs intact.
+collector. Collector observation overrides are explicit local configuration;
+platform identity never implies an account-action policy or another host's role.
+Unenrollment must leave native accounts and unrelated jobs intact.
 
 ## Components
 
@@ -64,7 +67,7 @@ The implementation PR must record Windows regression results and actual native
 Mac evidence for:
 
 1. Clean and repeated enrollment; migration of the existing owned collector.
-2. Previous release to attested main update and no-change timer checks.
+2. Previous release to attested main update and no-change externally invoked checks.
 3. Wrong platform, bad provenance, corrupt inventory, held writer, offline
    GitHub and unavailable build without disturbing the working release.
 4. Failed readiness, interrupted activation and compatible rollback; rejection
@@ -74,6 +77,8 @@ Mac evidence for:
 6. Actual launchd invocation, bounded hung descendants, overlap, login and
    sleep/wake behavior, plus preserved authentication and observation policy.
 
-Fixture and CI success do not establish installation on a user's Mac. Completion
-requires the native enrollment and version evidence after the implementation
-merges and its attested package is published.
+Fixture and CI success do not establish installation or update scheduling on a
+user's Mac. Product acceptance covers the interfaces and native fixture evidence;
+host deployment is separately qualified after its attested package is published.
+Machine inventories, private updater registration and cross-host action ownership
+remain in operator records outside this repository.

@@ -1,7 +1,7 @@
 # Explicit source refresh; never downloads or enrolls a job.
 param([Parameter(Mandatory)][string]$SourceRoot,[Parameter(Mandatory)][string]$Revision)
 $ErrorActionPreference='Stop'
-if($Revision -notmatch '^[a-f0-9]{40}$'){throw 'Pin a complete approved golden revision.'}
+if($Revision -notmatch '^[a-f0-9]{40}$'){throw 'Pin a complete reviewed upstream revision.'}
 $body=@(& git -C $SourceRoot show ($Revision+':scripts/jobs/process.cs'))
 if($LASTEXITCODE -ne 0){throw 'Could not read pinned containment source.'}
 $text=($body -join "`n")+"`n"

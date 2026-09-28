@@ -74,6 +74,7 @@ $work+=[pscustomobject]@{name='tests/test-t3-codex.mjs';weight=1;executable=(Get
 if(Get-Command python -ErrorAction SilentlyContinue){
     $work+=[pscustomobject]@{name='tests/test_delivery.py';weight=8;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_delivery.py'))}
     $work+=[pscustomobject]@{name='tests/test_publish_main.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_publish_main.py'))}
+    $work+=[pscustomobject]@{name='tests/test_macos_delivery.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_macos_delivery.py'))}
 }
 if(-not $SkipClaude){
     $work+=[pscustomobject]@{name='tests/test_claude_plan.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_claude_plan.py'))}

@@ -4,7 +4,7 @@ Decision for the 0.2 candidate: keep automatic Codex warming unavailable. This i
 
 On 2026-09-12, local `codex-cli 0.154.0` help verified native `exec` options including `--ignore-user-config`, `--ignore-rules`, `--strict-config`, `--ephemeral`, `--skip-git-repo-check`, `--disable`, read-only sandboxing and JSON events. These establish possible controls; help output does not establish isolation from all managed/project settings or prove a useful quota-window transition.
 
-The available observation had a weekly-only main meter, for which preparing a five-hour window is not applicable. The additional meter had 0% usage, unconfirmed anchors and an unknown constraint; those observations cannot authorize spending that pool or demonstrate coldness. No warm inference was sent and no native credentials were moved during this investigation.
+A weekly-only meter cannot establish a five-hour warming benefit. Zero usage with unconfirmed reset anchors or unknown spend constraints does not establish coldness or authorize spending an additional pool. Qualification requires an explicitly eligible test subscription; personal account readings do not belong in the public evidence record.
 
 The official [noninteractive guide](https://developers.openai.com/codex/noninteractive/) and [configuration reference](https://developers.openai.com/codex/config-reference/) describe the native controls. Shell execution, hooks and MCP are separate surfaces; a temporary working directory and read-only sandbox alone are insufficient. Native versions and contracts must be rechecked when resuming.
 

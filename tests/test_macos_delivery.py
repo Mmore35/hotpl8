@@ -52,6 +52,45 @@ class Scheduler:
         self.jobs.pop(label, None)
 
 
+class EnrollmentContract(unittest.TestCase):
+    """Portable interface checks; native lifecycle qualification stays separate."""
+
+    def test_cli_default_and_explicit_collector_mode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            argv = ['macos.py', 'setup', '--install', temporary, '--state', temporary]
+            for flags, scheduled, observe in [([], False, None),
+                                              (['--schedule-collector', '--observe-only'], True, True)]:
+                with patch.object(sys, 'argv', argv + flags), patch.object(m, 'native_only'), \
+                        patch.object(m, 'setup', return_value={}) as setup:
+                    m.main()
+                    self.assertEqual(setup.call_args.kwargs['register_jobs'], scheduled)
+                    self.assertEqual(setup.call_args.kwargs['observe_only'], observe)
+
+    def test_no_updater_definition_and_external_schedule_is_not_a_collector(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            owned = dict(id='abcdef123456')
+            config = dict(python=sys.executable, macos=dict(path='fixture'))
+            with self.assertRaises(d.DeliveryError):
+                m.job_plist(root, 'updater', owned, config)
+            backend = Scheduler(root)
+            external = dict(Label='example.external', ProgramArguments=[sys.executable,
+                            str(root / 'hotpl8/delivery.py'), 'job', 'updater'])
+            (root / 'external.plist').write_bytes(plistlib.dumps(external))
+            m.collector_conflicts(backend, root / 'state', owned['id'])
+            legacy = dict(external, Label='io.hotpl8.' + owned['id'] + '.updater')
+            (root / 'legacy.plist').write_bytes(plistlib.dumps(legacy))
+            with self.assertRaises(d.DeliveryError):
+                m.collector_conflicts(backend, root / 'state', owned['id'])
+
+    def test_adoption_without_schedule_refuses_before_writing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'untouched'
+            with patch.object(m, 'native_only'), self.assertRaises(d.DeliveryError):
+                m.setup(root, root, sys.executable, sys.executable, adopt='fixture')
+            self.assertFalse(root.exists())
+
+
 @unittest.skipUnless(sys.platform == 'darwin', 'Native Mac qualification required')
 class Lifecycle(unittest.TestCase):
     def setUp(self):
@@ -119,14 +158,16 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.attested, 1)
         m.register(self.root, self.backend)
         m.register(self.root, self.backend)
-        self.assertEqual(len(self.backend.jobs), 2)
+        self.assertEqual(len(self.backend.jobs), 1)
         self.assertEqual(self.update()['state'], 'current')
         self.assertEqual(self.attested, 1)
         self.candidate(B)
         self.assertEqual(self.update()['state'], 'current')
         self.assertEqual(d.read(self.root / 'previous.json')['sha'], A)
         inventory = m.components(self.root, self.backend)
-        self.assertEqual({c['nextLaunchSha'] for c in inventory if c['component'].startswith('scheduled-')}, {B})
+        self.assertEqual(inventory[0]['nextLaunchSha'], B)
+        self.assertEqual(inventory[1]['state'], 'unmanaged')
+        self.assertIsNone(inventory[1]['nextLaunchSha'])
         self.assertEqual(inventory[-1]['state'], 'unmanaged')
         self.assertIsNone(inventory[-1]['nextLaunchSha'])
         self.assertEqual((self.state / 'policy.json').read_bytes(), policy)
@@ -139,14 +180,34 @@ class Lifecycle(unittest.TestCase):
             main, download, attest, is_forward = self.main, self.download, self.attest, self.is_forward
             candidate = self.candidate_metadata
         for _ in range(2):
-            result = m.setup(self.root, self.state, self.pwsh, self.gh, register_jobs=False,
+            result = m.setup(self.root, self.state, self.pwsh, self.gh,
                              backend=self.backend, github=GitHub())
             self.assertEqual(result['state'], 'current')
+        self.assertFalse(self.backend.jobs)
+        self.assertFalse((self.root / 'macos-jobs.json').exists())
+        self.assertFalse(d.read(self.root / 'delivery.json')['macos']['collectorObserveOnly'])
         command = [sys.executable, str(self.root / 'delivery.py'), 'status']
         result = subprocess.run(command, capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)['installed']['sha'], A)
         self.assertTrue(os.access(self.root / 'hotpl8', os.X_OK))
+
+    def test_observation_override_is_explicit_and_survives_repeat_setup(self):
+        (self.root / 'delivery.json').unlink()
+        (self.root / 'installation.json').unlink()
+        class GitHub:
+            main, download, attest, is_forward = self.main, self.download, self.attest, self.is_forward
+            candidate = self.candidate_metadata
+        for override in (True, None):
+            result = m.setup(self.root, self.state, self.pwsh, self.gh, observe_only=override,
+                             backend=self.backend, github=GitHub())
+            self.assertEqual(result['state'], 'current')
+            self.assertTrue(d.read(self.root / 'delivery.json')['macos']['collectorObserveOnly'])
+        with self.assertRaises(d.DeliveryError):
+            m.setup(self.root, self.state, self.pwsh, self.gh, observe_only=False,
+                    backend=self.backend, github=GitHub())
+        self.assertTrue(d.read(self.root / 'delivery.json')['macos']['collectorObserveOnly'])
+        self.assertFalse(self.backend.jobs)
 
     def test_readiness_failure_rolls_back_without_reverting_state(self):
         self.assertEqual(self.update()['state'], 'current')
@@ -158,7 +219,7 @@ class Lifecycle(unittest.TestCase):
 
     def test_registration_prevalidates_all_and_preserves_disabled_jobs(self):
         owned, config = m.owned_config(self.root)
-        spec = m.job_plist(self.root, 'updater', owned, config)
+        spec = m.job_plist(self.root, 'collector', owned, config)
         path = self.backend.directory / (spec['Label'] + '.plist')
         path.write_bytes(b'foreign')
         with self.assertRaises(d.DeliveryError):
@@ -168,14 +229,14 @@ class Lifecycle(unittest.TestCase):
         m.register(self.root, self.backend)
         self.backend.disabled.add(spec['Label'])
         self.backend.remove(spec['Label'])
-        self.assertEqual(m.components(self.root, self.backend)[1]['state'], 'disabled')
+        self.assertEqual(m.components(self.root, self.backend)[0]['state'], 'disabled')
         m.uninstall(self.root, self.backend)
         m.uninstall(self.root, self.backend)
         self.assertFalse(self.backend.jobs)
         self.assertTrue((self.state / 'native-account-sentinel').exists())
 
     def test_legacy_adoption_checks_digest_and_retries_without_duplicates(self):
-        legacy = dict(Label='io.hotpl8.legacy', ProgramArguments=['/bin/echo', 'hotpl8'], StartInterval=60)
+        legacy = dict(Label='io.hotpl8.legacy', ProgramArguments=['/bin/echo', 'hotpl8', '-ObserveOnly'], StartInterval=60)
         path = self.backend.directory / (legacy['Label'] + '.plist')
         path.write_bytes(plistlib.dumps(legacy))
         self.backend.install(path, legacy)
@@ -185,6 +246,12 @@ class Lifecycle(unittest.TestCase):
             m.adopt_collector(self.root, self.backend, path, 'wrong')
         self.assertTrue(self.backend.loaded(legacy['Label']))
         original = path.read_bytes()
+        with self.assertRaises(d.DeliveryError):
+            m.adopt_collector(self.root, self.backend, path, d.digest(path))
+        self.assertEqual(path.read_bytes(), original)
+        self.assertFalse((self.root / 'collector-migration.json').exists())
+        self.config['macos']['collectorObserveOnly'] = True
+        d.write(self.root / 'delivery.json', self.config)
         m.adopt_collector(self.root, self.backend, path, d.digest(path))
         m.adopt_collector(self.root, self.backend, path, None)
         journal = d.read(self.root / 'collector-migration.json')
@@ -193,7 +260,7 @@ class Lifecycle(unittest.TestCase):
         with self.assertRaises(d.DeliveryError):
             m.adopt_collector(self.root, self.backend, path, None)
         m.register(self.root, self.backend)
-        self.assertEqual(len(self.backend.jobs), 2)
+        self.assertEqual(len(self.backend.jobs), 1)
         self.assertEqual((self.root / 'legacy-collector.plist').read_bytes(), original)
 
     def test_missing_owned_job_is_error_and_not_silently_recreated_by_update(self):
@@ -213,9 +280,9 @@ class Lifecycle(unittest.TestCase):
         self.config['macos']['runtimes'] = dict(codex=sys.executable, cswap=sys.executable)
         d.write(self.root / 'delivery.json', self.config)
         files['tick.ps1'] = b'''param([switch]$Scheduled,[switch]$ObserveOnly,[string]$CodexExecutable,[string]$CswapExecutable)
-if(-not $Scheduled -or -not $ObserveOnly){exit 9}
+if(-not $Scheduled){exit 9}
 if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
-@{startedAt=[datetimeoffset]::UtcNow.ToString('o');completedAt=[datetimeoffset]::UtcNow.ToString('o');status='ok';runningSha=('a'*40)}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'collector.json')
+@{startedAt=[datetimeoffset]::UtcNow.ToString('o');completedAt=[datetimeoffset]::UtcNow.ToString('o');status='ok';runningSha=('a'*40);observeOnly=[bool]$ObserveOnly}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'collector.json')
 '''
         with zipfile.ZipFile(self.source, 'w') as source:
             for name, body in files.items():
@@ -231,6 +298,12 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         self.assertEqual(record['state'], 'complete')
         self.assertEqual(record['completion'], 'ok')
         self.assertEqual(record['outcome']['runningSha'], A)
+        self.assertFalse(d.read(self.state / 'collector.json')['observeOnly'])
+        config = d.read(self.root / 'delivery.json')
+        config['macos']['collectorObserveOnly'] = True
+        d.write(self.root / 'delivery.json', config)
+        self.assertEqual(subprocess.run(command, timeout=20).returncode, 0)
+        self.assertTrue(d.read(self.state / 'collector.json')['observeOnly'])
         unfinished = dict(record, state='running', runId='c' * 32)
         d.write(self.root / 'job-runs/collector.json', unfinished)
         self.assertEqual(subprocess.run(command, timeout=20).returncode, 0)

@@ -40,11 +40,8 @@ winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else pr
 cp "$HERE/tick.ps1" "$S/tick.ps1"
 cp -R "$HERE/src" "$S/src"
 cp -R "$HERE/data" "$S/data"
-# Seed from the TRACKED example, never from policy.json (2026-08-30). policy.json is
-# gitignored per-machine config carrying this fleet's labels and reserve set, so seeding
-# from it made every result depend on a file no other machine has and no commit records
-# -- the tell was failure output printing this owner's live labels ("active slot 1
-# (reserve)"). Same knobs, same values; only the labels differ.
+# Seed only from the tracked fictional fixture. A local policy contains private
+# account labels and deployment choices and would make the suite non-reproducible.
 cp "$HERE/tests/legacy-policy.json" "$S/policy.json" || exit 2
 
 # The stub must be a REAL EXECUTABLE for this platform, and the reason changed on
@@ -428,8 +425,8 @@ PY
 # slot 1 = reserve, spent on its 5h; slot 2 = work, 88% through its week.
 pt '[1]' 5
 mk 1 90 30 10 30 22 88 ; run "work slot past 80% weekly is taken"       2
-# Identical numbers with margin7dWork ABSENT. An older policy.json -- or another
-# machine's, this file ships via personal-sync -- must keep the pre-2026-08-28 rule
+# Identical numbers with margin7dWork ABSENT. An older policy.json
+# must keep its prior rule
 # rather than silently inherit a laxer ceiling it never opted into.
 pt '[1]' absent
 mk 1 90 30 10 30 22 88 ; run "no margin7dWork -> old rule still holds"  none
@@ -474,10 +471,7 @@ echo "== stale quarantine: a verdict cswap stopped re-testing (2026-08-31, F24) 
 # cswap quarantines a slot after ONE invalid_grant and then never fetches it again
 # (AUTH_DEAD_STRIKES=1; _row_eligible short-circuits on the strike before any
 # scheduling gate). No switch/backup path clears the strike -- only add/re-login --
-# so a slot can be HEALTHY and reported dead indefinitely. Measured 2026-08-31:
-# slot 1 sat relogin_required for 64.8h with nextPollAt AND backoffUntil both 64.8h
-# in the past, while the account answered fine and the fleet ran the other two to
-# 91%/83% of their 5h windows.
+# so a slot can be usable yet reported unavailable indefinitely.
 #
 # The signal is cswap's PUBLIC shape for a null-usage row (json_output.py:203-207):
 # lastGoodUsage / lastGoodFetchedAt / lastGoodAgeSeconds. Pinning that shape here is
@@ -522,8 +516,7 @@ PY
 sq absent
 mkq 2 relogin_required 300 10 10
 run "recently-checked dead slot still says re-login"  none "NEEDS RE-LOGIN"
-# 65h unchecked: cswap has stopped asking. Saying "-> cswap add" here is the
-# instruction that cost 2.7 days.
+# A long unchecked interval should identify stale polling, not demand re-login.
 mkq 2 relogin_required 234000 10 10
 run "unchecked 65h reports QUARANTINE STALE"          none "QUARANTINE STALE"
 mkq 2 relogin_required 234000 10 10
@@ -555,14 +548,12 @@ cp "$HERE/tests/legacy-policy.json" "$S/policy.json" || exit 2
 
 echo "== probe: ACT on a stale quarantine, don't just report it (2026-09-06) =="
 # The section above proves the tick SAYS the right thing about a stale quarantine.
-# This one proves it DOES something. Measured cost of report-only: slot 2 sat dead
-# for 28h while every tick printed QUARANTINE STALE, and was revived by accident
-# when the cswap TUI switched onto it. A strike binds to the credential GENERATION
+# This one checks the explicitly enabled probe. A strike binds to the credential GENERATION
 # (cswap usage_store.py token_dead), so any ping that refreshes clears it.
 #
 # The probe pings via `cswap run` -- terminal-scoped, never moves the active
 # account. THAT is the invariant these cases exist to pin: a switch-based probe is
-# what dropped the fleet onto a dead credential on 2026-09-05.
+# capable of selecting an unusable credential for an interactive session.
 
 # tick() deletes warm-state.json every call, which is right for independent cases
 # and wrong for the floor: the floor is only observable across TWO ticks. This

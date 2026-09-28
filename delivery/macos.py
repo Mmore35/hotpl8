@@ -68,15 +68,21 @@ def owned_config(root):
         if key not in ('codex', 'cswap'):
             raise DeliveryError('Unknown collector runtime binding')
         executable(value)
+    if type(config.get('macos', {}).get('collectorObserveOnly', False)) is not bool:
+        raise DeliveryError('Collector observation override must be a boolean')
+    # An experimental predecessor installed its own updater. Never silently
+    # claim or orphan that registration when adopting external scheduling.
+    if 'updater' in read(root / 'macos-jobs.json', {}).get('jobs', {}):
+        raise DeliveryError('Legacy updater registration requires explicit retirement before enrollment')
     return owned, config
 
 
 def job_plist(root, role, owned, config):
-    if role not in ("collector", "updater"):
+    if role != "collector":
         raise DeliveryError("Unknown native job")
     return {"Label": "io.hotpl8." + owned["id"] + "." + role,
             "ProgramArguments": [config["python"], str(root / "delivery.py"), "job", role],
-            "RunAtLoad": True, "StartInterval": 60 if role == "collector" else 300,
+            "RunAtLoad": True, "StartInterval": 60,
             "ProcessType": "Background", "AbandonProcessGroup": False, "ExitTimeOut": 10,
             "EnvironmentVariables": {"PATH": config["macos"]["path"], "HOME": str(Path.home())},
             "StandardOutPath": "/dev/null", "StandardErrorPath": "/dev/null"}
@@ -124,7 +130,7 @@ def register(root, backend=None):
     backend.directory.mkdir(parents=True, exist_ok=True)
     receipt = read(root / "macos-jobs.json", {"schemaVersion": 1, "jobs": {}})
     pending = []
-    for role in ("collector", "updater"):
+    for role in ("collector",):
         spec = job_plist(root, role, owned, config)
         path = backend.directory / (spec["Label"] + ".plist")
         body = plistlib.dumps(spec, sort_keys=True)
@@ -150,7 +156,7 @@ def components(root, backend=None):
     current = read(root / "current.json", {})
     results = []
     receipt = read(root / "macos-jobs.json", {"jobs": {}})
-    for role in ("collector", "updater"):
+    for role in ("collector",):
         expected = job_plist(root, role, owned, config)
         record = receipt["jobs"].get(role, {})
         path = backend.directory / (expected["Label"] + ".plist")
@@ -165,6 +171,10 @@ def components(root, backend=None):
         execution = read(root / "job-runs" / (role + ".json"), {})
         results.append(dict(component="scheduled-" + role, state=state,
                             nextLaunchSha=current.get("sha"), execution=execution))
+    # A successful explicit update does not prove any external timer is live.
+    results.append(dict(component='scheduled-updater', state='unmanaged',
+                        scheduler='external', nextLaunchSha=None,
+                        execution=read(root / 'job-runs/updater.json', {})))
     return results + t3_module().components(root)
 
 
@@ -228,7 +238,16 @@ def collector_conflicts(backend, state, installation_id, adopted=None):
             continue
         for path in directory.glob('*.plist'):
             spec = plistlib.loads(path.read_bytes())
-            if spec.get('Label', '').startswith('io.hotpl8.' + installation_id + '.'):
+            label = spec.get('Label', '')
+            if label == 'io.hotpl8.' + installation_id + '.updater':
+                raise DeliveryError('Legacy updater registration requires explicit retirement before enrollment')
+            if label == 'io.hotpl8.' + installation_id + '.collector':
+                continue
+            # External schedules may invoke the public update command. They
+            # are not collectors and remain wholly owned by their operator.
+            argv = spec.get('ProgramArguments', [])
+            if (len(argv) >= 3 and Path(str(argv[1])).name == 'delivery.py'
+                    and (argv[2:] == ['update'] or argv[2:] == ['job', 'updater'])):
                 continue
             text = json.dumps(spec).lower()
             if ('hotpl8' in text or str(state).lower() in text) and path != adopted:
@@ -253,6 +272,9 @@ def adopt_collector(root, backend, path, expected_digest):
                 or path.name != spec['Label'] + '.plist'
                 or not spec.get('ProgramArguments') or spec.get('KeepAlive')):
             raise DeliveryError('Legacy collector is not a finite user LaunchAgent')
+        if (any(str(arg).lower() in ('-observeonly', '-observeonly:$true') for arg in spec['ProgramArguments'])
+                and not config['macos'].get('collectorObserveOnly', False)):
+            raise DeliveryError('Adopting an observation-only collector requires --observe-only')
         backup = root / 'legacy-collector.plist'
         atomic_bytes(backup, body)
         journal = dict(path=str(path), digest=expected_digest, label=spec['Label'], phase='prepared')
@@ -274,9 +296,13 @@ def adopt_collector(root, backend, path, expected_digest):
         write(journal_path, journal)
 
 
-def setup(root, state, powershell, github_cli, register_jobs=True, backend=None, github=None,
-          adopt=None, adopt_digest=None, runtimes=None):
+def setup(root, state, powershell, github_cli, register_jobs=False, backend=None, github=None,
+          adopt=None, adopt_digest=None, runtimes=None, observe_only=None):
     native_only()
+    if (adopt or adopt_digest) and not register_jobs:
+        raise DeliveryError('Collector adoption requires explicit collector scheduling')
+    if observe_only is not None and type(observe_only) is not bool:
+        raise DeliveryError('Collector observation override must be a boolean')
     root, state = safe_root(root), safe_root(state)
     if not (state / "policy.json").is_file():
         raise DeliveryError("Enroll an existing HotPl8 state directory with a valid policy")
@@ -297,8 +323,11 @@ def setup(root, state, powershell, github_cli, register_jobs=True, backend=None,
                           asset="hotpl8-macos-main.zip", attestation=True, stateCompatibility=1,
                           adapter="delivery/macos.py", stateDirectory=str(state), writerLocks=[str(state / "tick.lock")],
                           gh=executable(github_cli), powershell=executable(powershell), python=executable(sys.executable),
-                          drainSeconds=30, macos=dict(protocol=1, path=os.environ.get("PATH", "/usr/bin:/bin"), jobsEnrolled=False))
+                          drainSeconds=30, macos=dict(protocol=1, path=os.environ.get("PATH", "/usr/bin:/bin"),
+                                                     jobsEnrolled=False, collectorObserveOnly=bool(observe_only)))
             write(root / "delivery.json", config)
+        elif observe_only is not None and config['macos'].get('collectorObserveOnly', False) != observe_only:
+            raise DeliveryError('Collector observation override changed; explicitly reconcile before enrollment')
         if runtimes:
             requested = {key: executable(value) for key, value in runtimes.items()}
             existing = config['macos'].get('runtimes', {})
@@ -310,7 +339,8 @@ def setup(root, state, powershell, github_cli, register_jobs=True, backend=None,
         backend = backend or Launchd()
         migration = read(root / 'collector-migration.json', {})
         adopted = Path(adopt or migration['path']) if adopt or migration else None
-        collector_conflicts(backend, state, owned['id'], adopted)
+        if register_jobs or config['macos'].get('jobsEnrolled'):
+            collector_conflicts(backend, state, owned['id'], adopted)
         result = update(root, github=github)
         if result["state"] != "current":
             raise DeliveryError("Enrollment waits for a verified Mac main release: " + str(result.get("reason")))
@@ -377,7 +407,9 @@ def dispatch(root, command, arguments):
                 write(root / 'job-runs' / ('unfinished-' + prior['runId'] + '.json'), prior)
             record = dict(schemaVersion=1, runId=uuid.uuid4().hex, startedAt=now(), sha=read(release / "build-info.json")["sha"], state="running")
             write(path, record)
-            tail = ["run", "tick", "-Scheduled", "-ObserveOnly"] if role == "collector" else ["update"]
+            tail = ["run", "tick", "-Scheduled"] if role == "collector" else ["update"]
+            if role == 'collector' and config['macos'].get('collectorObserveOnly', False):
+                tail.append('-ObserveOnly')
             result = guardian.execute([config["python"], str(root / "delivery.py"), *tail], 225 if role == "collector" else 540)
             record.update(result, completedAt=now())
             outcome = read(root / 'delivery-status.json', {}) if role == 'updater' else read(Path(config['stateDirectory']) / 'collector.json', {})
@@ -403,6 +435,9 @@ def main():
     parser.add_argument("--gh", default=shutil.which("gh"))
     parser.add_argument('--adopt-collector')
     parser.add_argument('--adopt-digest')
+    parser.add_argument('--schedule-collector', action='store_true', help='Explicitly register the product collector; never schedules updates')
+    parser.add_argument('--observe-only', action='store_const', const=True, default=None,
+                        help='Persist a collector observation override; otherwise collection follows policy')
     parser.add_argument('--codex', help='Explicit collector/CLI native Codex executable; preserve isolated native packages')
     parser.add_argument('--cswap', help='Explicit collector cswap executable')
     args = parser.parse_args()
@@ -413,6 +448,7 @@ def main():
             if not args.state:
                 raise DeliveryError("Specify the existing state directory")
             result = setup(root, args.state, args.powershell, args.gh,
+                           register_jobs=args.schedule_collector, observe_only=args.observe_only,
                            adopt=args.adopt_collector, adopt_digest=args.adopt_digest,
                            runtimes={key: value for key, value in [('codex', args.codex), ('cswap', args.cswap)] if value})
         elif args.operation == "uninstall":
