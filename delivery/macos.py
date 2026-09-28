@@ -383,6 +383,10 @@ def dispatch(root, command, arguments):
         if not arguments or arguments[0] not in ("hotpl8", "tick", "status-print", "audit-codex", "setup-codex"):
             raise DeliveryError("Specify a supported HotPl8 entrypoint")
         arguments = list(arguments)
+        # Preserve the implicit dashboard command before adding named bindings:
+        # the stable launcher uses it to release the update exclusion and hand off.
+        if arguments == ['hotpl8']:
+            arguments.append('watch')
         runtimes = config['macos'].get('runtimes', {})
         for key, flag, entries in [('codex', '-CodexExecutable', ('hotpl8', 'tick')),
                                    ('cswap', '-CswapExecutable', ('tick',))]:

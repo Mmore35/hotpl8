@@ -160,7 +160,10 @@ exit is not evidence that every provider is fresh. Updater results remain in
 The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
 against that repository/revision and replace the import plus normalized LF SHA256
 together; the installer rejects a mismatched import. Product host source is beside
-it. The vendored implementation has no runtime dependency on its source checkout.
+it. Provenance points to the byte-identical public HotPl8 snapshot, so verification
+and source refresh need no private repository access. The retained source namespace
+records its origin; the vendored implementation has no runtime dependency on that
+project or its checkout.
 
 Ordinary installations receive the collector host through `install.ps1 -Schedule`.
 For an already-enrolled installation, explicitly migrate the native components

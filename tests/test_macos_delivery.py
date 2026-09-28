@@ -55,6 +55,18 @@ class Scheduler:
 class EnrollmentContract(unittest.TestCase):
     """Portable interface checks; native lifecycle qualification stays separate."""
 
+    def test_runtime_binding_preserves_default_and_explicit_commands(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = dict(powershell=sys.executable, macos=dict(runtimes=dict(codex=sys.executable)))
+            for arguments, expected in [(['hotpl8'], 'watch'), (['hotpl8', 'status'], 'status')]:
+                with patch.object(m, 'native_only'), patch.object(m, 'owned_config', return_value=({}, config)), \
+                        patch.object(m, 'selected', return_value=root), patch.object(m.subprocess, 'call', return_value=0) as call:
+                    self.assertEqual(m.dispatch(root, 'run', arguments), 0)
+                    argv = call.call_args.args[0]
+                    self.assertEqual(argv[argv.index('-Entry') + 1:],
+                                     ['hotpl8', expected, '-CodexExecutable', sys.executable])
+
     def test_cli_default_and_explicit_collector_mode(self):
         with tempfile.TemporaryDirectory() as temporary:
             argv = ['macos.py', 'setup', '--install', temporary, '--state', temporary]
@@ -312,6 +324,26 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         d.write(self.root / 'job-runs/collector.json', invalid)
         self.assertNotEqual(subprocess.run(command, timeout=20).returncode, 0)
         self.assertEqual(d.read(self.root / 'job-runs/collector.json'), invalid)
+
+    def test_default_dashboard_with_native_binding_does_not_hold_update_lease(self):
+        with zipfile.ZipFile(self.source) as source:
+            files = {name: source.read(name) for name in source.namelist()}
+        self.config['macos']['runtimes'] = dict(codex=sys.executable)
+        d.write(self.root / 'delivery.json', self.config)
+        files['hotpl8.ps1'] = b'''param([string]$Command='watch',[string]$CodexExecutable)
+if($Command -ne 'watch' -or -not $CodexExecutable){exit 9}
+$lease=[IO.File]::Open((Join-Path $env:HOTPL8_INSTALL_DIRECTORY 'runtime.lock'),'OpenOrCreate','ReadWrite','None')
+$lease.Dispose()
+@{command=$Command;leaseFree=$true}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'display.json')
+'''
+        with zipfile.ZipFile(self.source, 'w') as source:
+            for name, body in files.items():
+                source.writestr(name, body)
+        self.candidate(A)
+        self.assertEqual(self.update()['state'], 'current')
+        result = subprocess.run([str(self.root / 'hotpl8')], capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(d.read(self.state / 'display.json'), dict(command='watch', leaseFree=True))
 
     def test_t3_modified_binding_refuses_update_and_missing_receipt_stays_visible(self):
         self.assertEqual(self.update()['state'], 'current')
