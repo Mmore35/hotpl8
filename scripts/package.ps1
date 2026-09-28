@@ -1,5 +1,5 @@
 # Build only manifest-listed files. No working-copy state or credentials enter an archive.
-param([string]$OutputDirectory)
+param([string]$OutputDirectory,[ValidateSet('windows','macos')][string]$Platform='windows')
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
@@ -11,7 +11,7 @@ $version=(Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
 if($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'){throw 'Invalid version'}
 $files=@(Get-Hotpl8ReleaseFiles $root)
 $stage=Join-Path $output ('package-'+[guid]::NewGuid().ToString('N'))
-$zip=Join-Path $output ('hotpl8-'+$version+'-windows.zip')
+$zip=Join-Path $output ('hotpl8-'+$version+'-'+$Platform+'.zip')
 [void][IO.Directory]::CreateDirectory($stage)
 try{
     $hashes=[ordered]@{}

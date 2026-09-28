@@ -537,11 +537,16 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
     if(-not $interactive){Get-Hotpl8DashboardFrame (Read-Hotpl8Snapshot $StateDirectory $PolicyOverride) $(if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json $policyPath}) ([datetimeoffset]::UtcNow) 100 10000 -Nyan:$Nyan -ReducedMotion -Plain|ForEach-Object{$_.text};return}
     $esc=[string][char]27; $terminal=Enable-Hotpl8Terminal; $ansi=$terminal.enabled -and -not $NoColor -and -not $(if($PolicyOverride){$PolicyOverride.display.noColor}else{(Read-Hotpl8Json $policyPath).display.noColor})
     $colors=Get-Hotpl8DashboardPalette
-    $oldEncoding=[Console]::OutputEncoding; $oldCtrl=[Console]::TreatControlCAsInput; $oldCursor=[Console]::CursorVisible
+    $oldEncoding=[Console]::OutputEncoding; $oldCtrl=[Console]::TreatControlCAsInput
+    # Unix supports the setters but not these Console getters. Restore only
+    # values we actually read; ANSI cleanup restores cursor visibility on Unix.
+    $oldCursor=$null;$oldTitle=$null
+    try{$oldCursor=[Console]::CursorVisible}catch{}
+    try{$oldTitle=[Console]::Title}catch{}
     $offset=0; $paused=$false; $quit=$false; $last=''; $next=0; $clock=[Diagnostics.Stopwatch]::StartNew()
     $worker=$null;$pending=$null
     $build=Read-Hotpl8Json (Join-Path (Split-Path $PSScriptRoot -Parent) 'build-info.json')
-    $deliveryAt=-1000;$handoff=$false;$oldTitle=[Console]::Title
+    $deliveryAt=-1000;$handoff=$false
     try {
         [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
         [Console]::TreatControlCAsInput=$true; [Console]::CursorVisible=$false
@@ -617,8 +622,10 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
         if($worker){try{if($pending){$worker.Stop()}}finally{$worker.Dispose()}}
         if($ansi){[Console]::Write($esc+'[0m'+$esc+'[?25h'+$esc+'[?1049l')}
         if($terminal.handle){[void][HotPl8Console]::SetConsoleMode($terminal.handle,$terminal.mode)}
-        [Console]::Title=$oldTitle
-        [Console]::TreatControlCAsInput=$oldCtrl;[Console]::CursorVisible=$oldCursor;[Console]::OutputEncoding=$oldEncoding
+        if($null -ne $oldTitle){[Console]::Title=$oldTitle}
+        [Console]::TreatControlCAsInput=$oldCtrl
+        if($null -ne $oldCursor){[Console]::CursorVisible=$oldCursor}else{[Console]::CursorVisible=$true}
+        [Console]::OutputEncoding=$oldEncoding
     }
     if($handoff){exit 75}
 }

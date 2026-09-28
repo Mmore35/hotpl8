@@ -153,6 +153,19 @@
     "tests/test-provider-actions.ps1",
     "docs/adding-a-provider.md",
     "src/delivery-policy.ps1",
-    "tests/test-delivery-policy.ps1"
+    "tests/test-delivery-policy.ps1",
+    "scripts/publish-main.py",
+    "tests/test_publish_main.py",
+    "docs/plans/macos-delivery.md",
+    "tests/test_macos_lock.py",
+    "tests/test_macos_launch.py",
+    "delivery/macos.py",
+    "delivery/macos-preflight.ps1",
+    "delivery/macos-job.py",
+    "delivery/macos-t3.py",
+    "delivery/macos-t3-launch.py",
+    "scripts/test-macos-delivery.ps1",
+    "tests/test_macos_delivery.py",
+    "docs/macos-delivery.md"
   ]
 }

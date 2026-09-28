@@ -5,8 +5,8 @@
 On 2026-09-26, the installed Codex CLI 0.157.1 recorded a HotPl8-originated
 `account/login/start` request followed immediately by `application network
 permission was revoked` in the same native process. Both an active turn and an
-MCP event stream failed. The affected thread's saved sandbox policy was disabled;
-this was not evidence of a network-disabled tool sandbox. No deliberate failing
+MCP event stream failed. The failure also occurred without a restrictive tool
+sandbox. No deliberate failing
 live prompt was sent during the investigation.
 
 Earlier qualification on CLI 0.155.1 and an offline provider that treated login

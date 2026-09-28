@@ -69,10 +69,8 @@ function Test-QuarantineStale($a, $staleS) {
     # switch-and-backup path is NOT among them. So cswap can capture a working
     # credential for a slot and go on reporting it dead indefinitely.
     #
-    # Measured here: slot 1 sat relogin_required for 64.8h with nextPollAt and
-    # backoffUntil both 64.8h in the PAST and lastAttemptAt frozen, while the
-    # account itself answered fine. The fleet ran slots 2 and 3 to 91%/83% of
-    # their 5h windows with a healthy slot at 8% held out of rotation.
+    # A frozen lastAttemptAt with expired polling/backoff deadlines can therefore
+    # exclude a usable account indefinitely while other accounts consume quota.
     #
     # cswap >= 0.25.0 fixes the mechanism (a strike condemns a credential
     # GENERATION via struckFingerprint, not the slot) but explicitly cannot heal a
@@ -137,24 +135,15 @@ function Get-Hold($dir) {
 }
 
 # ---- credential generations: identity without ever logging a token ----------
-# WHY THIS EXISTS (2026-09-05, me/deep-dive/CSWAP-CREDS-DIE-2026-09-05.md).
-# Slots 2 and 3 both died on `invalid_grant` with the struck token still sitting
-# in their backups and NO successor generation anywhere on disk -- not in the
-# backup, its .prev, the session profile, or `cswap unclaimed`. A token that
-# vanishes without a successor was REVOKED, not consumed: refresh tokens are
-# single-use, and replaying a superseded generation makes the server revoke the
-# whole lineage (RFC 9700 reuse detection; cswap issue #164 records it for this
-# tool). Every route to that needs TWO uncoordinated holders of one token.
-#
-# Nothing logged which holder POSTed the fatal grant -- that is the one thing
-# the investigation could not measure, so these two helpers exist to make the
-# next one measurable. They record a GENERATION, never a secret.
+# Single-use refresh tokens can be revoked after competing holders replay a
+# superseded generation. Fingerprints correlate credential transitions without
+# recording the token. They do not prove which process refreshed a token or why
+# the provider rejected it.
 
 function Get-SlugEmail([string]$email) {
     # Mirrors cswap session.py slugify_email: ASCII alnum plus . _ - survive,
     # everything else becomes '_'. Must stay in step with cswap or the cleanup
-    # below would clear a path cswap never writes -- a silent no-op, which is
-    # the failure mode that let this bug live for weeks in the first place.
+    # below would clear a path cswap never writes -- a silent no-op.
     $sb = New-Object System.Text.StringBuilder
     foreach ($ch in $email.ToCharArray()) {
         $keep = ([int][char]$ch -lt 128) -and
@@ -216,19 +205,14 @@ function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
     #
     # `cswap run` is terminal-scoped and NEVER moves the global active account.
     # That is the property both callers depend on -- for the probe it is the whole
-    # safety argument, because a SWITCH-based probe is what put the fleet onto a
-    # dead credential on 2026-09-05.
+    # safety argument: a switch-based probe could select an unusable credential.
     #
     # Returns $true only on a real exit 0.
 
-    # --strict-mcp-config is LOAD-BEARING, not tidiness: the session profile's
-    # .claude.json carries 6 MCP servers (playwright, chrome-devtools, github,
-    # supabase, context7, paypal). Without it every ping would spawn all six,
-    # browsers included, every time a window turns over.
-    # `--no-share` was tried and DROPPED 2026-08-09: measured identical cost
-    # (cache_read 15642 both ways) and it did not actually remove CLAUDE.md,
-    # settings.json or the MCP list from the profile. It bought nothing while
-    # mutating a profile that interactive `cswap run` also uses.
+    # --strict-mcp-config prevents a quota probe from starting MCP servers
+    # configured for interactive work. Do not mutate the shared interactive
+    # profile to suppress those integrations: process-scoped controls belong
+    # on this invocation, and profile copying alone does not prove isolation.
     #
     # Do NOT pass `--require-session`. Tried and reverted 2026-09-05: on an
     # account that is already the default login, `cswap run` takes a same-account
@@ -248,8 +232,7 @@ function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
     # swallowed the exception and recorded the warm anyway, so on any platform
     # where Start-Process behaves differently the tick would log "warmed slot N",
     # stamp the state, and never have sent anything -- a broken warmer that
-    # reports success forever. This file is SHARED with the Mac via
-    # personal-sync, so that is not hypothetical.
+    # reports success forever. Preserve exit-code checks on every platform.
     # Diagnostics.Process, NOT Start-Process: on Windows PowerShell 5.1
     # `Start-Process -PassThru` leaves ExitCode EMPTY even after the process
     # has exited (verified 2026-08-09: `cmd /c exit 7` -> HasExited True,
@@ -271,8 +254,7 @@ function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
     # lock, and this file, which a live Claude Code reads under no lock at
     # all. Only one of them can redeem a generation; a replay of the other
     # revokes the whole lineage, and an idle slot -- unlike the active one --
-    # has no live copy to resync from, so the snapshot is dead until re-login
-    # (README, incident 2026-07-31).
+    # has no live copy to resync from, so the snapshot may require re-login.
     #
     # Deleting it is cswap's OWN supported path, not a hack:
     # _invalidate_session_credentials does exactly this, and its docstring is
@@ -289,13 +271,9 @@ function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
         catch { $cleared = 'CLEAR-FAILED' }
     }
 
-    # One line per ping. This is the record whose ABSENCE stopped the
-    # 2026-09-05 diagnosis at "some holder POSTed it": nothing anywhere
-    # logged a token's identity, so the fatal replay could not be attributed.
-    # A slot that dies from here on leaves the generation it died on, and
-    # what the ping did to it, in this file. prof-before is the load-bearing
-    # column -- with the cleanup above in force it should always read '-',
-    # and a fingerprint there means a second copy survived a previous tick.
+    # One line per ping correlates generation changes and cleanup outcomes.
+    # With cleanup in force, prof-before should read '-'; a fingerprint means
+    # another credential copy existed before this invocation.
     # Best-effort by construction: instrumentation must never fail a tick.
     try {
         $auditLine = '{0} slot {1} kind={2} ok={3} enc {4} -> {5} prof-before={6} prof={7}' -f
@@ -408,9 +386,8 @@ function Get-PhaseOffsetOf($a) {
 
 function Resolve-CswapExecutable([string]$CswapExecutable) {
     # Resolve cswap explicitly. A launchd agent's PATH excludes ~/.local/bin.
-    # This file is SHARED between the Mac and Windows via personal-sync, so every
-    # branch below must be inert on the other OS (Test-Path on a foreign path is
-    # simply $false — no platform check needed).
+    # Probe common installation locations without requiring a particular
+    # workstation layout; explicit executable bindings always take precedence.
     $cswap = $CswapExecutable
     if (-not $cswap) { foreach ($c in @((Join-Path $HOME '.local/bin/cswap'), '/usr/local/bin/cswap')) {
         if (Test-Path $c) { $cswap = $c; break }
@@ -419,9 +396,8 @@ function Resolve-CswapExecutable([string]$CswapExecutable) {
     if (-not $cswap) { $cswap = (Get-Command cswap -ErrorAction SilentlyContinue).Source }
     # Windows last-resort: pip drops cswap.exe in Python's Scripts dir, which a
     # Scheduled Task's environment does not reliably carry on PATH. Resolve by GLOB
-    # and never pin a version — a hardcoded Python313 path is precisely the
-    # "versioned path silently kills the timer" trap that
-    # scripts/register-freshener.ps1's macOS branch was rewritten to avoid.
+    # and never pin a Python version: upgrading Python must not strand the
+    # collector on a removed executable path.
     if (-not $cswap -and $env:LOCALAPPDATA) {
         $cswap = (Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python*\Scripts\cswap.exe') -ErrorAction SilentlyContinue |
                   Sort-Object FullName -Descending | Select-Object -First 1).FullName
@@ -519,8 +495,6 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         # CANDIDATE_MAX_INTERVAL_S=600, JITTER_FRAC=0.1 => an idle candidate legitimately
         # reaches ~660s. 900s clears that with margin while staying far below
         # TRUST_MAX_AGE_S=3600, which is the real "polling is dead" signal.
-        # (Observed 2026-07-30: an inactive account at 503s with 100% headroom was
-        # wrongly rejected by a 300s ceiling.)
         $fresh = ($a.usageStatus -eq 'ok') -and ($null -ne $a.usageAgeSeconds) -and ([double]$a.usageAgeSeconds -le $maxAge)
         $acc[[int]$a.number] = @{ n = [int]$a.number; h5 = $h5; h7 = $h7; fresh = $fresh; cold = $cold; obj = $a }
         $entry=$acc[[int]$a.number]
@@ -590,9 +564,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $needsHuman   = @('relogin_required', 'no_credentials')
     $broken       = @($prefer | Where-Object { $acc[$_] -and $needsHuman -contains [string]$acc[$_].obj.usageStatus })
     # Of the broken slots, the ones whose verdict cswap has stopped re-testing.
-    # Partitioned rather than filtered: a fleet can hold one genuinely dead slot and
-    # one stale-quarantined slot at the same time, and they need OPPOSITE actions --
-    # collapsing them is the same mistake the 2026-07-31 incident cost 2h to learn.
+    # Partition rather than filter: stale quarantine and missing credentials
+    # can coexist and require different recovery guidance.
     $staleS       = Get-StaleQuarantineS $policy
     $stuck        = @($broken | Where-Object { Test-QuarantineStale $acc[$_].obj $staleS })
     $reallyBroken = @($broken | Where-Object { $stuck -notcontains $_ })
@@ -652,11 +625,9 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             # For the same reason, do not pass `--require-session`: that flag turns
             # that safe fast path into a REFUSAL. It exists for wrappers that need
             # session isolation guaranteed; warming needs the window opened, and the
-            # fast path is the outcome we want. Measured 2026-09-05: slot 1 is warmed
-            # constantly, is healthy, and has NO session-profile credential, while
-            # slot 3 -- warmed while idle -- had one and died.
+            # fast path is the outcome we want, without a second credential copy.
             # Weekly guard: 5h warming cannot help a spent WEEKLY budget, and the ping
-            # itself costs weekly quota. Observed 2026-08-09: slot 1 sat at 97% 7d.
+            # itself costs weekly quota.
             if ($null -ne $e.h7 -and $e.h7 -lt (Get-WarmMin7dFor $policy $n)) { continue }
             # Anti-double-ping (W9): usage takes ~3 min to surface while maxUsageAgeS
             # allows 15-min-old data, so without this a cold slot is pinged 2-3 times.
@@ -678,10 +649,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 if (-not (Test-AtPhase $offsets[[int]$n] $wWindow)) { continue }
             }
 
-            # Bounded, and ONE slot per tick: a ping takes ~6s but must never be able
-            # to wedge the timer (the task is registered IgnoreNew). Remaining cold
-            # slots are picked up by the next tick 5 minutes later, which is far
-            # inside the 5h window this is protecting.
+            # Bounded, and ONE slot per tick: a slow ping must not monopolize
+            # collection. Remaining cold slots wait for a subsequent invocation.
             if($e.modelBlocked -or (Get-Hotpl8ActionBlock $policy $StateDirectory $ProviderId ([string]$n) 'warm')){continue}
             $outcomeKey='claude:'+ $n
             if(Test-Hotpl8WarmPending $outcomes.$outcomeKey $e.identity){continue}
@@ -699,7 +668,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'warm_attempt' $outcome.outcome}
 
             # Stamped either way: a slot that fails to warm must back off to $wFloor,
-            # not be retried every 5 minutes forever. But only a REAL ping counts as a
+            # not be retried on every invocation forever. But only a REAL ping counts as a
             # warm; a failure is reported as a failure, because a dead warm mechanism
             # is a call to action and silence is how it would stay dead.
             if ($ok) { $warmed += $n } else { $warmFailed += $n }
@@ -711,21 +680,17 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
 
     # ---- probe: re-test a slot cswap has stopped re-testing ------------------
     # $stuck means "cswap struck this slot once and has not asked again" (see
-    # Test-QuarantineStale). Until 2026-09-06 that was REPORTED and nothing more,
-    # and the remedy the report names -- "verify with cswap list" -- is a manual
-    # step for a human who may not be at the keyboard for days. Measured cost of
-    # that gap: slot 2 sat dead for 28h while every tick printed QUARANTINE STALE,
-    # and it was revived only by accident, when the cswap TUI happened to switch
-    # onto it.
+    # Test-QuarantineStale). Reporting alone cannot establish whether a new
+    # credential generation can recover an account; an explicitly enabled,
+    # bounded probe supplies fresh evidence without selecting the account.
     #
-    # That accident is also the mechanism. A strike binds to the credential
+    # A strike binds to the credential
     # GENERATION, not to the slot (cswap usage_store.py `token_dead`), so anything
     # that writes a fresh generation clears it. A ping does exactly that.
     #
     # `cswap run`, NEVER `cswap switch`. The ping is terminal-scoped and does not
-    # move the global active account, so a probe cannot drop the owner onto a dead
-    # credential mid-session. That is not a nicety: a switch-based probe is
-    # precisely what broke the fleet on 2026-09-05.
+    # move the global active account, so a probe cannot select an unusable
+    # credential for an unrelated interactive session.
     #
     # hotpl8 never POSTs a token itself. It asks cswap to run, and cswap's consume
     # gate freshens under its own per-slot lock, adopting a newer generation if one
@@ -765,32 +730,23 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
 
     # ---- status.txt (the only thing sessions ever read) ----
     # A dead CREDENTIAL and a spent QUOTA both make an account ineligible, but they
-    # need opposite responses: one needs YOU, the other needs TIME. Collapsing them
-    # into one verdict cost ~2h of silent no-failover on 2026-07-31 — status.txt said
-    # "BOTH LOW, no switch helps" (i.e. wait for the reset) while the real fix was a
-    # re-login, and it misdirected the diagnosis twice.
+    # need different responses: native sign-in versus waiting for quota reset.
     # The split is per json_output.py:135-165: token_expired is "retried
     # automatically" (:143) and foreign_credential is repaired by "a switch" (:147),
     # so both self-heal and must NOT raise a call to action. relogin_required (:34;
     # switcher.py:167 "log in with Claude Code, then run: cswap add") and
     # no_credentials cannot recover without a human.
     #
-    # ...UNLESS the verdict itself has gone stale, which is a THIRD state and the
-    # 2026-08-31 finding (F24). "Needs a human" is cswap's answer, and cswap stops
-    # re-asking it after one invalid_grant; a slot can therefore be healthy and
-    # still reported dead forever. Printing "-> cswap add" at that point names a
-    # remedy that does not apply and hides the one that does, which is exactly how
-    # a working subscription stayed out of the fleet for 2.7 days. See
-    # Test-QuarantineStale for the mechanism and the evidence.
+    # A stale verdict is a third state: cswap may stop polling after a failed
+    # credential refresh even if another credential generation exists. See
+    # Test-QuarantineStale; do not describe that condition as exhausted quota.
     # ($needsHuman/$broken/$stuck/$reallyBroken/$anyFresh/$anyEligible are computed
     #  above the warm block, which needs $anyEligible for its self-healing override.)
 
     $verdict = ''
     $calls = @()
     if ($reallyBroken.Count -gt 0) { $calls += "slot $($reallyBroken -join '+') NEEDS RE-LOGIN -> cswap add" }
-    # Deliberately does NOT say "re-login": that is the instruction that wasted the
-    # 2.7 days. Say what is actually true (cswap has stopped checking) and name the
-    # cheap test that settles it.
+    # State that polling stopped and identify the bounded verification path.
     if ($stuck.Count -gt 0) {
         $hrs = [int](($staleS) / 3600)
         $calls += "slot $($stuck -join '+') QUARANTINE STALE (>${hrs}h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account"

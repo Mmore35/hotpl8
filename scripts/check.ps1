@@ -15,9 +15,9 @@ foreach($file in $files){
     if($file.Extension -eq '.json'){
         try{$null=Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8|ConvertFrom-Json}catch{$failures+=('Invalid JSON: '+$file.Name)}
     }
-    if($file.Extension -in @('.md','.ps1','.sh','.py','.json','.yml','.vbs')){
+    if($file.Extension -in @('.md','.ps1','.psd1','.sh','.py','.json','.yml','.yaml','.vbs','.cmd','.js','.mjs','.cs','.toml')){
         $text=[IO.File]::ReadAllText($file.FullName)
-        if($text -match '(?i)(/Users/[a-z][a-z0-9_-]+/|[A-Z]:\\Users\\[a-z][a-z0-9_-]+\\|[a-z0-9._%+-]+@(?:gmail|outlook|hotmail)\.com)'){$failures+=('Private data/path candidate: '+$file.Name)}
+        if($text -match '(?i)(/(?:Users|home)/[a-z][a-z0-9._ -]+/|[A-Z]:[\\/]+Users[\\/]+[a-z][a-z0-9._ -]+[\\/]+|[a-z0-9._%+-]+@(?:gmail|outlook|hotmail)\.com)'){$failures+=('Private data/path candidate: '+$file.Name)}
         if($file.Extension -eq '.md'){
             foreach($match in [regex]::Matches($text,'\[[^\]]+\]\(([^)]+)\)')){
                 $link=$match.Groups[1].Value.Split('#')[0]

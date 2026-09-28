@@ -7,7 +7,7 @@ Approved scope: all twelve roadmap items, with native Mac implementation explici
 | 1. Verified warming outcomes | Persistent pre-dispatch receipts, later observation reconciliation, crash/restart suppression, dashboard/CLI states. | Claude remains experimental; confirm native window behavior before promoting it. |
 | 2. Explain and activity | Recorded reasons from production decisions, bounded local events, stale warning, CLI/dashboard/tray consumers. | No claim of causal quota savings. |
 | 3. Collector health and coordination | Persisted starts/completions/due times, shared lock, failure backoff, independent provider results, live health overlay. | Native sleep/wake and long-running qualification remain release checks. |
-| 4. macOS | Complete [Mac implementation handoff](macos-handoff.md). | Implement and qualify on the owner's Mac; Windows is the supported preview runtime. |
+| 4. macOS | Complete [Mac implementation handoff](macos-handoff.md). | Implement and qualify on native macOS; Windows is the supported preview runtime. |
 | 5. Pace and history | Shared cycle-average forecast, optional recent history, bounded retention, clear command, private stream pseudonyms. | Estimates remain labeled; no historical burn-rate promise. |
 | 6. Model eligibility | Explicit Claude scoped constraints; Codex model-meter validation; disabled slots block selection and launch. | Confirm each native plan's exact scope/meter mapping. |
 | 7. Controls | Work hours, overnight/time-zone logic, persistent pause, prompt exclusions, daily attempt budgets. | Mac time-zone IDs and daylight-saving/sleep qualification are in the handoff. |

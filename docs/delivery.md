@@ -1,8 +1,26 @@
-# Automatic main updates and PR previews
+# Verified main updates and PR previews
 
 HotPl8 has two installation choices. Ordinary installations use reviewed versioned
 releases. An installation explicitly enrolled in Local Delivery follows tested
 `main` automatically. Contributors continue to work in separate source checkouts.
+
+Here, Local Delivery names HotPl8's existing standalone delivery protocol and
+compatibility identifiers. It does not require an external manager, knowledge
+vault or another application. Keep existing `managedBy: local-delivery` receipts
+and `LocalDelivery-hotpl8` task names during upgrades; changing their spelling
+would strand installed ownership and recovery checks.
+
+HotPl8 owns the release payload, verification, explicit update/recovery commands
+and component adoption. Operators choose their channel, invocation schedule,
+executable bindings and account policy. A private or third-party manager can call
+the same public command without any reverse dependency in HotPl8. Cross-product
+registries, machine inventories and which host owns warming belong outside this
+repository. Mac enrollment creates no schedules by default; see
+[Mac delivery](macos-delivery.md) for explicit collector enrollment and externally
+scheduled updates. Existing Windows standalone updater enrollment remains opt-in.
+
+For macOS enrollment, collector adoption and T3 lifecycle, use
+[Mac automatic delivery](macos-delivery.md). The instructions below enroll Windows.
 
 ## Enroll an installation
 
@@ -142,7 +160,10 @@ exit is not evidence that every provider is fresh. Updater results remain in
 The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
 against that repository/revision and replace the import plus normalized LF SHA256
 together; the installer rejects a mismatched import. Product host source is beside
-it. Full UA runner enrollment is not used for these native multi-trigger jobs.
+it. Provenance points to the byte-identical public HotPl8 snapshot, so verification
+and source refresh need no private repository access. The retained source namespace
+records its origin; the vendored implementation has no runtime dependency on that
+project or its checkout.
 
 Ordinary installations receive the collector host through `install.ps1 -Schedule`.
 For an already-enrolled installation, explicitly migrate the native components

@@ -16,6 +16,18 @@ PowerShell files use UTF-8 BOM when non-ASCII text is present, for Windows Power
 
 Never commit real emails, user paths, credentials, native account homes, quota logs, screenshots of real accounts, or diagnostic dumps. Use fictional fixtures. Security reports belong in the private route in [SECURITY.md](SECURITY.md).
 
+Keep account incident details, workstation inventories, fleet roles and private
+automation instructions out of source comments and plans too. Explain the
+reusable failure mechanism with fictional examples. Automated privacy checks
+are a supplement to review; they cannot recognize every personal narrative.
+
+HotPl8 owns its release format, explicit update/recovery commands and component
+lifecycle. Operator configuration owns executable bindings, channel enrollment,
+update schedules and cross-application coordination. Product code must work
+without a private manager or knowledge vault. Do not infer a machine's action
+policy or warming role from its platform. Preserve compatible installed receipts
+when generalizing old names; a naming cleanup must not strand working updates.
+
 Release maintainers follow [release-checklist.md](docs/release-checklist.md). Do not publish from a working-directory ZIP or tag an untested revision. Provider contract changes need recorded native-client evidence; offline fakes alone cannot prove token-refresh or billing behavior.
 
 Contribute code you have the right to submit, under the project's MIT license. Be respectful, describe problems concretely, and avoid harassment or sharing personal information. Maintainers may remove abusive content and restrict participation.

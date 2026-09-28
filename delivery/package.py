@@ -8,15 +8,17 @@ import subprocess
 import zipfile
 
 
-def package(source, output, product, repository, sha):
+def package(source, output, product, repository, sha, platform="windows"):
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("An exact source SHA is required")
+    if platform not in ("windows", "macos"):
+        raise ValueError("Unsupported delivery platform")
     with zipfile.ZipFile(source) as archive:
         files = {item.filename: archive.read(item) for item in archive.infolist()}
     files["build-info.json"] = (json.dumps({"protocol": 1, "product": product, "repository": repository,
                                             "sha": sha, "channel": "main"}, indent=2) + "\n").encode()
     manifest = {"protocol": 1, "product": product, "repository": repository, "sha": sha,
-                "platform": "windows", "stateCompatibility": 1,
+                "platform": platform, "stateCompatibility": 1,
                 "files": {name: hashlib.sha256(value).hexdigest() for name, value in sorted(files.items())}}
     files["delivery-manifest.json"] = (json.dumps(manifest, indent=2) + "\n").encode()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -33,5 +35,6 @@ if __name__ == "__main__":
     parser.add_argument("--product", default="hotpl8")
     parser.add_argument("--repository", default="Mmore35/hotpl8")
     parser.add_argument("--sha", required=True)
+    parser.add_argument("--platform", choices=("windows", "macos"), default="windows")
     args = parser.parse_args()
-    package(args.source, args.output, args.product, args.repository, args.sha)
+    package(args.source, args.output, args.product, args.repository, args.sha, args.platform)

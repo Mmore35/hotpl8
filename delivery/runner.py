@@ -213,6 +213,16 @@ class GitHub:
              "--source-digest", sha, "--source-ref", "refs/heads/main", "--deny-self-hosted-runners"], 120)
 
 
+def validate_manifest_identity(manifest, config, sha):
+    platform = config.get("platform", "windows")
+    if (platform not in ("windows", "macos")
+            or manifest.get("protocol") != PROTOCOL or manifest.get("product") != config["product"]
+            or manifest.get("repository") != config["repository"] or manifest.get("sha") != sha
+            or manifest.get("platform") != platform
+            or manifest.get("stateCompatibility") != config["stateCompatibility"]):
+        raise DeliveryError("Incompatible or incorrectly identified release")
+
+
 def unpack(archive, destination, config, sha):
     """Validate the complete archive BEFORE extracting or executing any code."""
     with zipfile.ZipFile(archive) as z:
@@ -233,10 +243,7 @@ def unpack(archive, destination, config, sha):
             manifest = json.loads(z.read("delivery-manifest.json"))
         except (KeyError, ValueError):
             raise DeliveryError("Missing delivery manifest") from None
-        if (manifest.get("protocol") != PROTOCOL or manifest.get("product") != config["product"]
-                or manifest.get("repository") != config["repository"] or manifest.get("sha") != sha
-                or manifest.get("platform") != "windows" or manifest.get("stateCompatibility") != config["stateCompatibility"]):
-            raise DeliveryError("Incompatible or incorrectly identified release")
+        validate_manifest_identity(manifest, config, sha)
         hashes = manifest.get("files", {})
         if set(hashes) != {i.filename for i in infos} - {"delivery-manifest.json"}:
             raise DeliveryError("Release file inventory mismatch")
@@ -250,6 +257,9 @@ def unpack(archive, destination, config, sha):
 
 
 def invoke_adapter(config, release, operation, root):
+    if config.get("platform") == "macos" and config["adapter"].endswith(".py"):
+        return run([config["python"], Path(release) / config["adapter"], operation,
+                    "--install", root, "--release", release], config.get("adapterTimeout", 120))
     ps = config.get("powershell") or str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
     return run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
          Path(release) / config["adapter"], "-Operation", operation,
@@ -327,6 +337,7 @@ def update(root, github=None, adapter=invoke_adapter):
                 if digest(destination / "delivery-manifest.json") != receipt.get("manifestDigest"):
                     raise DeliveryError("Previously staged manifest was modified")
                 manifest = read(destination / "delivery-manifest.json")
+                validate_manifest_identity(manifest, config, sha)
                 for name, expected in manifest["files"].items():
                     if digest(destination / name) != expected:
                         raise DeliveryError("Previously staged release was modified")
@@ -449,11 +460,22 @@ def preview(root, number, gh=None):
 def main():
     parser = argparse.ArgumentParser(description="Local Delivery: tested main updates and inert PR previews")
     parser.add_argument("--install", required=True)
-    parser.add_argument("command", choices=["update", "status", "preview"])
-    parser.add_argument("pr", nargs="?", type=int)
+    parser.add_argument("command", choices=["update", "status", "preview", "job", "run"])
+    parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     root = safe_root(args.install)
     try:
+        if args.command in ("job", "run"):
+            config = read(root / "delivery.json", {})
+            if config.get("platform") != "macos":
+                raise DeliveryError("Native command requires a Mac enrollment")
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("hotpl8_macos", Path(__file__).with_name("macos.py"))
+            native = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(native)
+            return native.dispatch(root, args.command, args.arguments)
+        if args.command != "preview" and args.arguments:
+            raise DeliveryError("Unexpected command arguments")
         if args.command == "update":
             result = update(root)
         elif args.command == "status":
@@ -468,9 +490,9 @@ def main():
                 if current and (root / current["release"] / "src/t3-delivery.ps1").is_file():
                     result["components"] = json.loads(invoke_adapter(config, root / current["release"], "components", root))
         else:
-            if not args.pr or args.pr < 1:
+            if len(args.arguments) != 1 or not args.arguments[0].isdigit() or int(args.arguments[0]) < 1:
                 raise DeliveryError("Specify a positive PR number")
-            result = preview(root, args.pr)
+            result = preview(root, int(args.arguments[0]))
         print(json.dumps(result, indent=2))
         return 1 if result.get("state") == "error" else 0
     except (DeliveryError, OSError, ValueError) as error:
