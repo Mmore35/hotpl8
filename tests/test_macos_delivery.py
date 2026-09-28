@@ -331,6 +331,7 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         self.config['macos']['runtimes'] = dict(codex=sys.executable)
         d.write(self.root / 'delivery.json', self.config)
         files['hotpl8.ps1'] = b'''param([string]$Command='watch',[string]$CodexExecutable)
+$ErrorActionPreference='Stop'
 if($Command -ne 'watch' -or -not $CodexExecutable){exit 9}
 $lease=[IO.File]::Open((Join-Path $env:HOTPL8_INSTALL_DIRECTORY 'runtime.lock'),'OpenOrCreate','ReadWrite','None')
 $lease.Dispose()
