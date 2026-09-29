@@ -73,6 +73,37 @@ function Get-Hotpl8Color([string]$Tone,$Palette) {
     if($Tone -match '^\d{1,3};\d{1,3};\d{1,3}$'){return $Tone}
     if($Palette.ContainsKey($Tone)){return $Palette[$Tone]};return $Palette.text
 }
+function Get-Hotpl8TerminalColorMode {
+    # Apple Terminal interprets unsupported RGB SGR parameters separately,
+    # corrupting both foreground and background colors.
+    if($env:TERM_PROGRAM -eq 'Apple_Terminal'){return '256'}
+    return 'truecolor'
+}
+function Get-Hotpl8AnsiColor([string]$Rgb,[switch]$Background) {
+    $mode=Get-Hotpl8TerminalColorMode
+    $prefix=if($Background){'48'}else{'38'}
+    $esc=[string][char]27
+    if($mode -eq 'truecolor'){return $esc+'['+$prefix+';2;'+$Rgb+'m'}
+    if(-not $script:Hotpl8IndexedColors){$script:Hotpl8IndexedColors=@{}}
+    if(-not $script:Hotpl8IndexedColors.ContainsKey($Rgb)){
+        # Compare the nearest fixed color-cube entry with the nearest gray.
+        # Avoid indices 0..15: those colors belong to the user's terminal theme.
+        $rgbValues=@($Rgb.Split(';')|ForEach-Object {[int]$_})
+        $levels=@(0,95,135,175,215,255);$cube=@();$cubeError=0
+        foreach($value in $rgbValues){
+            $best=0
+            for($i=1;$i -lt 6;$i++){if([math]::Abs($value-$levels[$i]) -lt [math]::Abs($value-$levels[$best])){$best=$i}}
+            $cube+=$best;$cubeError+=[math]::Pow($value-$levels[$best],2)
+        }
+        $gray=[int][math]::Max(0,[math]::Min(23,[math]::Round((($rgbValues[0]+$rgbValues[1]+$rgbValues[2])/3.0-8)/10)))
+        $grayValue=8+10*$gray;$grayError=0
+        foreach($value in $rgbValues){$grayError+=[math]::Pow($value-$grayValue,2)}
+        $index=if($grayError -lt $cubeError){232+$gray}else{16+36*$cube[0]+6*$cube[1]+$cube[2]}
+        if($script:Hotpl8IndexedColors.Count -ge 1024){$script:Hotpl8IndexedColors=@{}}
+        $script:Hotpl8IndexedColors[$Rgb]=$index
+    }
+    return $esc+'['+$prefix+';5;'+$script:Hotpl8IndexedColors[$Rgb]+'m'
+}
 function Get-Hotpl8ToneMix([string]$Tone,[string]$Target,[double]$Amount) {
     # Blend two tones; named tones resolve through the palette first.
     $palette=Get-Hotpl8DashboardPalette
@@ -159,10 +190,10 @@ function ConvertTo-Hotpl8AnsiRow($Row,$Palette) {
     if($Row.ansi){return $Row.ansi}
     $esc=[string][char]27;$out=''
     foreach($span in @(Get-Hotpl8RowSpans $Row)){
-        $out+=$esc+'[38;2;'+(Get-Hotpl8Color $span.tone $Palette)+'m'
-        $out+=$esc+'[48;2;'+$(if($span.background){Get-Hotpl8Color $span.background $Palette}else{$script:Hotpl8Background})+'m'+$span.text
+        $out+=Get-Hotpl8AnsiColor (Get-Hotpl8Color $span.tone $Palette)
+        $out+=(Get-Hotpl8AnsiColor $(if($span.background){Get-Hotpl8Color $span.background $Palette}else{$script:Hotpl8Background}) -Background)+$span.text
     }
-    return $out+$esc+'[48;2;'+$script:Hotpl8Background+'m'+$esc+'[K'
+    return $out+(Get-Hotpl8AnsiColor $script:Hotpl8Background -Background)+$esc+'[K'
 }
 function Get-Hotpl8Cat([double]$AnimationSeconds,[switch]$ReducedMotion) {
     if($ReducedMotion){return '(=^.^=)'}
@@ -228,15 +259,15 @@ function Get-Hotpl8NyanStars([double]$Seconds,[int]$Inner,[ValidateSet(5,9)][int
 function Get-Hotpl8NyanAnsiScene([int]$Index,[int]$Width,$Palette,[ValidateSet(5,9)][int]$Rows=9) {
     # One sprite frame as ready-made ANSI chunks; sky chunks stay editable for stars.
     if(-not $script:Hotpl8NyanAnsiScenes){$script:Hotpl8NyanAnsiScenes=@{}}
-    $key=[string]$Index+'|'+$Width+'|'+$Rows
+    $key=[string]$Index+'|'+$Width+'|'+$Rows+'|'+(Get-Hotpl8TerminalColorMode)
     if($script:Hotpl8NyanAnsiScenes.ContainsKey($key)){return $script:Hotpl8NyanAnsiScenes[$key]}
-    $esc=[string][char]27;$bg=$esc+'[48;2;'+$script:Hotpl8Background+'m'
+    $bg=Get-Hotpl8AnsiColor $script:Hotpl8Background -Background
     $scene=Get-Hotpl8NyanScene $Index $Width $Rows;$sceneRows=@()
     for($r=0;$r -lt $scene.Count;$r++){
         $chunks=@()
         foreach($run in @($scene[$r])){
             if($run.glyph -eq ' '){$chunks+=@{start=$run.start;length=$run.length;sky=$true;text=($bg+(' '*$run.length))}}
-            else{$chunks+=@{start=$run.start;length=$run.length;sky=$false;text=($esc+'[38;2;'+(Get-Hotpl8Color $run.tone $Palette)+'m'+$esc+'[48;2;'+(Get-Hotpl8Color $run.background $Palette)+'m'+($run.glyph*$run.length))}}
+            else{$chunks+=@{start=$run.start;length=$run.length;sky=$false;text=((Get-Hotpl8AnsiColor (Get-Hotpl8Color $run.tone $Palette))+(Get-Hotpl8AnsiColor (Get-Hotpl8Color $run.background $Palette) -Background)+($run.glyph*$run.length))}}
         }
         $sceneRows+=,@($chunks)
     }
@@ -253,8 +284,8 @@ function Get-Hotpl8NyanAnsiRows([double]$AnimationSeconds,[int]$Width,$Palette,[
     $inner=[math]::Max(26,$Width-2)
     $scene=Get-Hotpl8NyanAnsiScene $index $inner $Palette $Rows
     $stars=@(Get-Hotpl8NyanStars $AnimationSeconds $inner $Rows)
-    $esc=[string][char]27;$bg=$esc+'[48;2;'+$script:Hotpl8Background+'m'
-    $edge=$esc+'[38;2;'+$Palette.border+'m'+$bg+'│'
+    $esc=[string][char]27;$bg=Get-Hotpl8AnsiColor $script:Hotpl8Background -Background
+    $edge=(Get-Hotpl8AnsiColor $Palette.border)+$bg+'│'
     $pad=' '*[math]::Max(0,$Width-1-$inner)
     for($r=0;$r -lt $scene.Count;$r++){
         $line=$edge+$bg+' '
@@ -264,7 +295,7 @@ function Get-Hotpl8NyanAnsiRows([double]$AnimationSeconds,[int]$Width,$Palette,[
                 $hits=@($rowStars|Where-Object {$_.x -ge $chunk.start -and $_.x -lt $chunk.start+$chunk.length})
                 if($hits.Count){
                     $text=$bg;$cursor=$chunk.start
-                    foreach($hit in $hits){if($hit.x -lt $cursor){continue};$text+=(' '*($hit.x-$cursor))+$esc+'[38;2;'+(Get-Hotpl8Color $hit.tone $Palette)+'m'+$hit.glyph;$cursor=$hit.x+1}
+                    foreach($hit in $hits){if($hit.x -lt $cursor){continue};$text+=(' '*($hit.x-$cursor))+(Get-Hotpl8AnsiColor (Get-Hotpl8Color $hit.tone $Palette))+$hit.glyph;$cursor=$hit.x+1}
                     $line+=$text+(' '*($chunk.start+$chunk.length-$cursor))
                     continue
                 }

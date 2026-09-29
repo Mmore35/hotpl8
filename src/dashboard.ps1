@@ -550,7 +550,7 @@ function Show-Hotpl8Dashboard([string]$StateDirectory,[switch]$Nyan,[switch]$Red
     try {
         [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
         [Console]::TreatControlCAsInput=$true; [Console]::CursorVisible=$false
-        if($ansi){[Console]::Write($esc+'[?1049h'+$esc+'[?25l'+$esc+'[48;2;18;23;35m'+$esc+'[2J')}
+        if($ansi){[Console]::Write($esc+'[?1049h'+$esc+'[?25l'+(Get-Hotpl8AnsiColor $script:Hotpl8Background -Background)+$esc+'[2J')}
         $worker=New-Hotpl8DashboardRenderer
         $policy=$null; $frameTime=0
         $layoutAt=-1000; $layoutWidth=0; $layoutHeight=0; $frame=@(); $lastLines=@(); $lines=@()
