@@ -236,6 +236,33 @@ class Preview(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.root / "current.json").read_bytes(), self.before)
 
+    def test_existing_installed_bootstrap_loads_new_preview_from_selected_release(self):
+        # This stable bootstrap predates live preview. Advancing only current.json
+        # must select all new helpers, without adding a module to the install root.
+        old = self.root / "releases" / OTHER / "delivery"
+        old.mkdir(parents=True)
+        (old / "runner.py").write_text("print('old-release')")
+        shutil.copyfile(REPO / "delivery/bootstrap.py", self.root / "delivery.py")
+        command = [sys.executable, str(self.root / "delivery.py"), "preview", "34", "--trust-revision", "short"]
+        self.assertEqual(subprocess.check_output(command).strip(), b"old-release")
+        new = self.root / "releases" / SHA / "delivery"
+        new.mkdir(parents=True)
+        for name in ("runner.py", "live_preview.py", "live-preview.ps1"):
+            shutil.copyfile(REPO / "delivery" / name, new / name)
+        d.write(self.root / "current.json", dict(sha=SHA, release="releases/" + SHA))
+        result = subprocess.run(command, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("full trusted PR revision", json.loads(result.stdout)["reason"])
+        self.assertNotIn(b"Traceback", result.stderr)
+        d.write(self.root / "current.json", dict(sha=OTHER, release="releases/" + OTHER))
+        self.assertEqual(subprocess.check_output(command).strip(), b"old-release")
+
+    def test_release_inventory_contains_live_preview_and_screenshot_dependencies(self):
+        inventory = set(json.loads((REPO / "release-files.json").read_text())["files"])
+        for name in ("delivery/live_preview.py", "delivery/live-preview.ps1", "tests/fixtures/screenshots.ps1",
+                     "tests/fixtures/terminal.ps1"):
+            self.assertIn(name, inventory)
+
     def test_script_entry_reports_invalid_pin_without_traceback(self):
         result = subprocess.run([sys.executable, str(REPO / "delivery/runner.py"), "--install", str(self.root),
                                  "preview", "34", "--trust-revision", "short"], capture_output=True, timeout=10)
