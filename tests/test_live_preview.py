@@ -27,7 +27,14 @@ def source_zip(extra=None):
         for name in ("hotpl8.ps1", "src/dashboard.ps1", "tests/fixtures/screenshots.ps1"):
             z.writestr("repo-head/" + name, "# fictional candidate")
         for name, value in (extra or {}).items():
-            z.writestr(name, value)
+            if isinstance(name, zipfile.ZipInfo):
+                info = name
+            else:
+                info = zipfile.ZipInfo(name)
+                # The writer otherwise sanitizes backslashes on Windows before
+                # the malicious fixture ever reaches the production validator.
+                info.filename = info.orig_filename = name
+            z.writestr(info, value)
     return output.getvalue()
 
 
@@ -55,8 +62,8 @@ class Preview(unittest.TestCase):
         else:
             self.children.append((argv, kwargs))
             self.assertTrue(Path(argv[argv.index("-SourceDirectory") + 1], "src/dashboard.ps1").is_file())
-            self.assertNotIn("HOTPL8_INSTALL_DIRECTORY", kwargs["env"])
-            self.assertNotIn("GH_TOKEN", kwargs["env"])
+            self.assertTrue("HOTPL8_INSTALL_DIRECTORY" not in kwargs["env"])
+            self.assertTrue("GH_TOKEN" not in kwargs["env"])
             self.assertNotIn("stdout", kwargs)  # Native terminal is inherited, not piped.
         return subprocess.CompletedProcess(argv, 0)
 
@@ -91,7 +98,7 @@ class Preview(unittest.TestCase):
         with mock.patch.object(live.subprocess, "run") as process:
             with self.assertRaises(d.DeliveryError): self.invoke()
             process.assert_not_called()
-        self.assertFalse(self.children)
+        self.assertEqual(len(self.children), 0)
 
     def test_failed_wrong_pr_wrong_sha_or_unfinished_ci_cannot_execute(self):
         for key, bad in (("conclusion", "failure"), ("head_sha", OTHER), ("pull_requests", [dict(number=35)]),
@@ -106,7 +113,7 @@ class Preview(unittest.TestCase):
     def test_head_changed_during_download_is_rejected(self):
         self.gh.api.side_effect = [self.pr, dict(workflow_runs=[self.workflow]), dict(head=dict(sha=OTHER))]
         with self.assertRaises(d.Deferred): self.invoke()
-        self.assertFalse(self.children)
+        self.assertEqual(len(self.children), 0)
         self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
 
     def test_child_failure_propagates_and_cleans_up(self):
@@ -122,7 +129,7 @@ class Preview(unittest.TestCase):
     def test_download_failure_never_executes_and_cleans_up(self):
         self.run_child = lambda argv, **kwargs: subprocess.CompletedProcess(argv, 1)
         with self.assertRaises(d.Deferred): self.invoke()
-        self.assertFalse(self.children)
+        self.assertEqual(len(self.children), 0)
         self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
 
     def test_unsafe_archive_rejected_before_any_extraction(self):
@@ -130,10 +137,22 @@ class Preview(unittest.TestCase):
                      "repo-head/file.", "repo-head/file ", "second-root/a", "repo-head/SRC/dashboard.ps1",
                      "repo-head/src", "repo-head/a/./b"):
             with self.subTest(name=name):
+                self.children.clear()
                 self.download = source_zip({name: "unsafe"})
                 with self.assertRaises(d.DeliveryError): self.invoke()
-                self.assertFalse(self.children)
+                self.assertEqual(len(self.children), 0)
                 self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
+
+    def test_raw_backslash_is_rejected_even_when_zipinfo_normalizes_it(self):
+        self.download = source_zip({"repo-head/a\\b": "unsafe"})
+        # Exercise Windows ZipInfo normalization on either test host.
+        with mock.patch.object(zipfile.os, "sep", "\\"):
+            with zipfile.ZipFile(io.BytesIO(self.download)) as z:
+                item = z.infolist()[-1]
+                self.assertEqual(item.filename, "repo-head/a/b")
+                self.assertEqual(item.orig_filename, "repo-head/a\\b")
+            with self.assertRaises(d.DeliveryError): self.invoke()
+        self.assertEqual(len(self.children), 0)
 
     def test_symlink_rejected(self):
         item = zipfile.ZipInfo("repo-head/link")
@@ -141,7 +160,7 @@ class Preview(unittest.TestCase):
         item.external_attr = (stat.S_IFLNK | 0o777) << 16
         self.download = source_zip({item: "../../private"})
         with self.assertRaises(d.DeliveryError): self.invoke()
-        self.assertFalse(self.children)
+        self.assertEqual(len(self.children), 0)
 
     def test_real_demo_harness_runs_in_installed_powershell_without_account_state(self):
         powershell = shutil.which("pwsh") or shutil.which("powershell")

@@ -26,10 +26,13 @@ def extract_source(archive, destination):
         files = {}
         seen = set()
         for item in entries:
-            name = item.filename.rstrip("/")
+            # ZipInfo.filename normalizes backslashes on Windows and truncates
+            # NULs. Validate the raw header name before that platform-dependent
+            # cleanup, so the same malformed archive is rejected on every OS.
+            name = item.orig_filename.rstrip("/")
             parts = name.split("/")
             mode = stat.S_IFMT(item.external_attr >> 16)
-            if (not name or "\\" in name or ":" in name or name.startswith("/")
+            if (not name or any(ord(c) < 32 for c in name) or "\\" in name or ":" in name or name.startswith("/")
                     or any(p in ("", ".", "..") or p.endswith((".", " "))
                            or re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", p)
                            for p in parts)
