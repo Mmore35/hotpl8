@@ -384,10 +384,10 @@ function New-DashboardTitleRow($Status,[datetimeoffset]$Now,[int]$Width,[switch]
     if(-not $Nyan -and -not $ReducedMotion){$live=New-Hotpl8Live 'New-DashboardTitleRow' @{Status=$Status;Now=$Now;Width=$Width;Paused=[bool]$Paused;Nyan=$false} 0 -Loop -Rate 200}
     New-Hotpl8StyledRow $spans $live
 }
-function Get-Hotpl8NyanRow([int]$Index,[int]$Width,[double]$AnimationSeconds=0,[ValidateSet(5,9)][int]$Rows=9) {
+function Get-Hotpl8NyanRow([int]$Index,[int]$Width,[double]$AnimationSeconds=0,[ValidateSet(5,9,10,18)][int]$Rows=9) {
     # Per-row entry point for live redraws; the whole sprite is computed once per instant.
-    if(-not $script:Hotpl8NyanLast -or $script:Hotpl8NyanLast.at -ne $AnimationSeconds -or $script:Hotpl8NyanLast.width -ne $Width -or $script:Hotpl8NyanLast.height -ne $Rows){
-        $script:Hotpl8NyanLast=@{at=$AnimationSeconds;width=$Width;height=$Rows;rows=@(Get-Hotpl8NyanAnsiRows $AnimationSeconds $Width (Get-Hotpl8DashboardPalette) $Rows)}
+    if(-not $script:Hotpl8NyanLast -or $script:Hotpl8NyanLast.at -ne $AnimationSeconds -or $script:Hotpl8NyanLast.width -ne $Width -or $script:Hotpl8NyanLast.height -ne $Rows -or $script:Hotpl8NyanLast.colorMode -ne (Get-Hotpl8TerminalColorMode)){
+        $script:Hotpl8NyanLast=@{at=$AnimationSeconds;width=$Width;height=$Rows;colorMode=(Get-Hotpl8TerminalColorMode);rows=@(Get-Hotpl8NyanAnsiRows $AnimationSeconds $Width (Get-Hotpl8DashboardPalette) $Rows)}
     }
     return $script:Hotpl8NyanLast.rows[$Index]
 }

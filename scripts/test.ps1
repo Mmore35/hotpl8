@@ -72,6 +72,7 @@ foreach($suite in @(@('tests/test-codex.ps1',70),@('tests/test-provider-core.ps1
 if(-not (Get-Command node -ErrorAction SilentlyContinue)){throw 'Node 22+ is required for the optional T3 integration tests.'}
 $work+=[pscustomobject]@{name='tests/test-t3-codex.mjs';weight=1;executable=(Get-Command node).Source;arguments=@('--test',(Join-Path $root 'tests/test-t3-codex.mjs'))}
 if(Get-Command python -ErrorAction SilentlyContinue){
+    $work+=[pscustomobject]@{name='tests/test_live_preview.py';weight=2;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_live_preview.py'))}
     $work+=[pscustomobject]@{name='tests/test_delivery.py';weight=8;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_delivery.py'))}
     $work+=[pscustomobject]@{name='tests/test_publish_main.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_publish_main.py'))}
     $work+=[pscustomobject]@{name='tests/test_macos_delivery.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_macos_delivery.py'))}

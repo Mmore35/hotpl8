@@ -2,7 +2,8 @@
 
 ## Unreleased — shared provider core
 
-- Fix unreadable magenta backgrounds in Apple Terminal by rendering the dashboard and Nyan animation with its fixed 256-color palette. Other terminals retain RGB output.
+- Fix unreadable magenta backgrounds in Apple Terminal by rendering the dashboard and Nyan animation with its fixed 256-color palette. Apple Terminal uses solid background-cell Nyan pixels to avoid font gaps; Windows retains its RGB half-block renderer and sizing.
+- Add an explicitly trusted, commit-pinned live PR dashboard preview with fictional accounts, exact-head CI checks and disposable state. Image previews remain available.
 
 - Keep a Codex account in service through one busy or slow read. The collector now waits for another reader's lock within its read budget instead of reporting the home busy at once, T3 routing reconsiders a fresh account after a timed-out collector read (fresh native validation still decides), and the dashboard shows READ RETRYING without the unavailable warning until the last success ages out.
 - Allow a native Codex quota read 12 s instead of 5 s. On a CPU-saturated machine app-server startup alone passed 5 s, so every account read as unavailable and launches stopped while cached quotas were minutes old.

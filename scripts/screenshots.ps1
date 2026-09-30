@@ -60,7 +60,13 @@ function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [i
                         if(-not $brushes.ContainsKey($bg)){$rgb=$bg.Split(';');$brushes[$bg]=New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb([int]$rgb[0],[int]$rgb[1],[int]$rgb[2]))}
                         $graphics.FillRectangle($brushes[$bg],[single]($padding+$column*$cellWidth),[single]($padding+$titleHeight+$row*$lineHeight),[single]($cells*$cellWidth),[single]$lineHeight)
                     }
-                    $graphics.DrawString($glyph,$font,$brushes[$fg],[single]($padding+$column*$cellWidth),[single]($padding+$titleHeight+$row*$lineHeight),$format)
+                    # Block pixels occupy terminal cells, not a font's padded glyph box.
+                    $left=[single]($padding+$column*$cellWidth);$top=[single]($padding+$titleHeight+$row*$lineHeight)
+                    if($glyph -in @('▀','▄','█')){
+                        $dy=if($glyph -eq '▄'){$lineHeight/2}else{0}
+                        $height=if($glyph -eq '█'){$lineHeight}else{$lineHeight/2}
+                        $graphics.FillRectangle($brushes[$fg],$left,($top+$dy),[single]($cells*$cellWidth),[single]$height)
+                    }elseif($glyph -ne ' '){$graphics.DrawString($glyph,$font,$brushes[$fg],$left,$top,$format)}
                     $column+=$cells
                 }
             }

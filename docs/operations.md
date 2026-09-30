@@ -126,3 +126,9 @@ remain for [gradual manual transition](t3-integration.md).
 terminals retain RGB output. This prevents unsupported RGB escape sequences from
 corrupting the background and text in Apple Terminal. The artwork and layout are
 unchanged; the indexed palette approximates their colors.
+
+Apple Terminal Nyan uses background-colored cells so font leading cannot create
+holes in the sprite. It selects 10- or 18-row art when the viewport has room;
+smaller windows retain the dashboard without a cropped cat. Windows and other
+RGB terminals retain the existing 5- and 9-row half-block art. See the
+[live PR preview](delivery.md#live-candidate-dashboard) for interactive review.

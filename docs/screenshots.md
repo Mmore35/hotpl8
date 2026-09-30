@@ -31,3 +31,9 @@ Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bund
 including the cached live Nyan frame. An independent fixture decoder maps the
 emitted fixed 256-color indices to pixels. These are fictional CI previews of the
 terminal stream, not native Terminal captures. Other images retain the RGB palette.
+
+Block glyphs are painted as exact cell rectangles in PNGs, preventing font padding
+from introducing artificial seams. Apple Terminal Nyan uses whole background
+cells (10 or 18 rows); Windows keeps its 5- or 9-row half-block sprite. The native
+live preview remains required for terminal acceptance; CI images are not native
+Terminal captures.
