@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("publish_main", Path(__file__).resolve().parents[1] / "scripts/publish-main.py")
 p = importlib.util.module_from_spec(spec)
@@ -38,6 +39,8 @@ class FakeGitHub:
 
 class PublicationTests(unittest.TestCase):
     def setUp(self):
+        self.sleep = patch.object(p.time, "sleep").start()
+        self.addCleanup(patch.stopall)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         for name in p.ASSETS:
@@ -100,6 +103,85 @@ class PublicationTests(unittest.TestCase):
         self.github.release["assets"].append(self.github.release["assets"][0])
         with self.assertRaisesRegex(p.PublicationError, "differs"):
             p.publish(self.github, self.root, SHA)
+
+    def test_delayed_create_upload_and_publish_readbacks_do_not_repeat_writes(self):
+        class DelayedGitHub(FakeGitHub):
+            def __init__(self):
+                super().__init__()
+                self.stale = []
+                self.created = 0
+
+            def find(self, tag):
+                return self.stale.pop(0) if self.stale else super().find(tag)
+
+            def create(self, tag, sha):
+                self.created += 1
+                super().create(tag, sha)
+                self.stale = [None, None]
+
+            def upload(self, tag, path):
+                self.stale.append(copy.deepcopy(self.release))
+                super().upload(tag, path)
+
+            def publish(self, tag):
+                self.stale = [copy.deepcopy(self.release)]
+                super().publish(tag)
+
+        github = DelayedGitHub()
+        p.publish(github, self.root, SHA)
+        self.assertEqual(github.created, 1)
+        self.assertEqual(github.uploads, list(p.ASSETS))
+        self.assertEqual(github.published, 1)
+        self.assertEqual(self.sleep.call_count, 5)
+
+    def test_invisible_create_stops_after_bounded_reads_without_uploading(self):
+        with patch.object(self.github, "find", return_value=None) as find:
+            with self.assertRaisesRegex(p.PublicationError, "not yet visible"):
+                p.publish(self.github, self.root, SHA)
+        self.assertEqual(find.call_count, 7)
+        self.assertEqual(self.sleep.call_count, 5)
+        self.assertEqual(self.github.uploads, [])
+        self.assertEqual(self.github.published, 0)
+        self.assertTrue(self.github.release["draft"])
+
+    def test_wrong_identity_after_create_is_refused_without_retry(self):
+        create = self.github.create
+        with patch.object(self.github, "create", side_effect=lambda tag, sha: create(tag, "b" * 40)):
+            with self.assertRaisesRegex(p.PublicationError, "identity"):
+                p.publish(self.github, self.root, SHA)
+        self.sleep.assert_not_called()
+        self.assertEqual(self.github.uploads, [])
+
+    def test_changed_asset_after_upload_is_refused_without_retry(self):
+        upload = self.github.upload
+
+        def corrupted_upload(tag, path):
+            upload(tag, path)
+            self.github.release["assets"][-1]["digest"] = "sha256:wrong"
+
+        with patch.object(self.github, "upload", side_effect=corrupted_upload):
+            with self.assertRaisesRegex(p.PublicationError, "differs"):
+                p.publish(self.github, self.root, SHA)
+        self.sleep.assert_not_called()
+        self.assertEqual(self.github.published, 0)
+
+    def test_incomplete_upload_visibility_never_publishes(self):
+        with patch.object(self.github, "upload") as upload:
+            with self.assertRaisesRegex(p.PublicationError, "not yet visible"):
+                p.publish(self.github, self.root, SHA)
+        self.assertEqual(upload.call_count, 2)
+        self.assertEqual(self.sleep.call_count, 5)
+        self.assertEqual(self.github.published, 0)
+
+    def test_delayed_publication_beyond_budget_can_be_rerun(self):
+        with patch.object(self.github, "publish") as publish:
+            with self.assertRaisesRegex(p.PublicationError, "not yet visible"):
+                p.publish(self.github, self.root, SHA)
+        publish.assert_called_once()
+        self.assertEqual(self.sleep.call_count, 5)
+        p.publish(self.github, self.root, SHA)
+        self.assertEqual(self.github.uploads, list(p.ASSETS))
+        self.assertFalse(self.github.release["draft"])
 
 
 if __name__ == "__main__":
