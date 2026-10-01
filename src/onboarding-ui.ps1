@@ -40,6 +40,7 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                     }
                 }
                 'already_connected'{
+                    'Your browser used an account already in HotPl8. Choose another browser profile or a guest window for the next link.'
                     $answer=Read-Host 'Sign into a different account? [Y/n]'
                     if($answer -and $answer -ne 'y'){return}
                     $r=Invoke-Hotpl8Onboarding $Directory sign_in $r.operationId;continue

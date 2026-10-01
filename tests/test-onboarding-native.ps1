@@ -109,7 +109,11 @@ try{
         $psi.EnvironmentVariables['PATH']=''
         foreach($key in @('HOME','USERPROFILE')){$psi.EnvironmentVariables[$key]=$lab}
         $psi.EnvironmentVariables.Remove('HOTPL8_NATIVE_BIN')
-        $r=Invoke-Hotpl8ProcessInfo $psi 15000
+        # Cold Windows PowerShell/compiler startup can exceed 15 seconds on CI.
+        # The separate held-worker check below proves response-pipe independence.
+        $elapsed=[Diagnostics.Stopwatch]::StartNew()
+        $r=Invoke-Hotpl8ProcessInfo $psi 90000
+        Write-Host ('JSON onboarding caller elapsed: '+[math]::Round($elapsed.Elapsed.TotalSeconds,1)+'s')
         Assert ($r.exitCode -eq 0) 'JSON caller did not exit promptly'
         $response=$r.output|ConvertFrom-Json
         $path=Get-Hotpl8OnboardingPath $d $response.operationId
@@ -125,11 +129,12 @@ try{
         Assert ($released -and $saved.phase -eq 'needs_install_authorization') 'worker did not finish after its parent exited'
     }
     if($env:OS -eq 'Windows_NT'){
-        Check 'detached Windows worker supports native UTF-8 JSON transport' {
+        Check 'detached Windows worker releases caller pipes and supports native UTF-8 JSON transport' {
             $h=Fixture detached-native @{} -Authenticated
             $child=Join-Path $lab 'detached-native.ps1';$result=Join-Path $lab 'detached-native.json'
+            $release=Join-Path $lab 'release-worker';$ended=Join-Path $lab 'worker-ended'
             Write-Hotpl8Text $child @'
-param($Root,$Node,$Fixture,$AccountHome,$Result)
+param($Root,$Node,$Fixture,$AccountHome,$Result,$Release,$Ended)
 $ErrorActionPreference='Stop'
 . (Join-Path $Root 'src/common.ps1')
 . (Join-Path $Root 'src/providers/codex.ps1')
@@ -143,14 +148,42 @@ function New-CodexProcessInfo($Executable,$AccountHome,$Arguments,$WorkingDirect
 }
 $read=Read-CodexQuota $AccountHome '' 12000 -IdentityOnly
 Write-Hotpl8Text $Result (@{status=$read.status;verified=[bool]$read.identityVerified}|ConvertTo-Json) -NoBom
+# Stay alive until the test has consumed the caller's response and releases us.
+$clock=[Diagnostics.Stopwatch]::StartNew()
+while(-not (Test-Path $Release) -and $clock.Elapsed.TotalSeconds -lt 150){Start-Sleep -Milliseconds 100}
+Write-Hotpl8Text $Ended 'done' -NoBom
 '@ -NoBom
-            $argv=@('-NoProfile','-File',$child,'-Root',$root,'-Node',$script:node,'-Fixture',(Join-Path $PSScriptRoot 'onboarding-native-fixture.mjs'),'-AccountHome',$h,'-Result',$result)
-            Start-Hotpl8WindowsWorker (Get-Process -Id $PID).Path ((@($argv|ForEach-Object{ConvertTo-NativeArgument $_})) -join ' ')
-            $clock=[Diagnostics.Stopwatch]::StartNew()
-            while(-not (Test-Path $result) -and $clock.Elapsed.TotalSeconds -lt 30){Start-Sleep -Milliseconds 200}
-            Assert (Test-Path $result) 'detached native worker did not return a result'
-            $read=Read-Hotpl8Json $result
-            Assert ($read.status -eq 'ok' -and $read.verified) ('detached native transport: '+$read.status)
+            $argv=@('-NoProfile','-File',$child,'-Root',$root,'-Node',$script:node,'-Fixture',(Join-Path $PSScriptRoot 'onboarding-native-fixture.mjs'),'-AccountHome',$h,'-Result',$result,'-Release',$release,'-Ended',$ended)
+            $workerArguments=(@($argv|ForEach-Object{ConvertTo-NativeArgument $_})) -join ' '
+            $parent=Join-Path $lab 'worker-caller.ps1'
+            $argumentsPath=Join-Path $lab 'worker-arguments.json'
+            Write-Hotpl8Text $argumentsPath (@{arguments=$workerArguments}|ConvertTo-Json) -NoBom
+            Write-Hotpl8Text $parent @'
+param($Root,$ArgumentsPath)
+$ErrorActionPreference='Stop'
+. (Join-Path $Root 'src/common.ps1')
+. (Join-Path $Root 'src/onboarding-process.ps1')
+Start-Hotpl8WindowsWorker (Get-Process -Id $PID).Path (Read-Hotpl8Json $ArgumentsPath).arguments
+[Console]::Write('{"started":true}')
+'@ -NoBom
+            $psi=New-Object Diagnostics.ProcessStartInfo
+            $psi.FileName=(Get-Process -Id $PID).Path;$psi.UseShellExecute=$false
+            $psi.Arguments=(@(@('-NoProfile','-File',$parent,'-Root',$root,'-ArgumentsPath',$argumentsPath)|ForEach-Object{ConvertTo-NativeArgument $_})) -join ' '
+            $psi.RedirectStandardInput=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
+            try{
+                $response=Invoke-Hotpl8ProcessInfo $psi 90000
+                Assert ($response.exitCode -eq 0 -and ($response.output|ConvertFrom-Json).started) 'caller response unavailable while worker lives'
+                $clock=[Diagnostics.Stopwatch]::StartNew()
+                while(-not (Test-Path $result) -and $clock.Elapsed.TotalSeconds -lt 30){Start-Sleep -Milliseconds 200}
+                Assert (Test-Path $result) 'detached native worker did not return a result'
+                Assert (-not (Test-Path $ended)) 'worker ended before caller independence was established'
+                $read=Read-Hotpl8Json $result
+                Assert ($read.status -eq 'ok' -and $read.verified) ('detached native transport: '+$read.status)
+            }finally{
+                Write-Hotpl8Text $release 'release' -NoBom
+                $clock=[Diagnostics.Stopwatch]::StartNew()
+                while(-not (Test-Path $ended) -and $clock.Elapsed.TotalSeconds -lt 10){Start-Sleep -Milliseconds 100}
+            }
         }
     }
     Check 'bounded process capture rejects excessive output and timeout' {

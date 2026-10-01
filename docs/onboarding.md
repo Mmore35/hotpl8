@@ -28,7 +28,7 @@ Native authentication can require account selection, consent, MFA, or an organiz
 
 Close setup whenever you need to. `hotpl8 setup` resumes unfinished first-account setup; `hotpl8 add` resumes an unfinished addition. A completed native sign-in is checked before opening another login. The terminal retries temporary failures, and the agent interface provides a polling interval and explicit next actions.
 
-A connected account whose usage is unavailable remains enrolled. Ordinary collection respects provider backoff and later updates its usage. Setup reports enrollment separately from a fresh observation; it never calls an unread account ready. A duplicate account reuses existing membership instead of adding capacity. An unverifiable existing identity can hold enrollment pending until comparison is possible.
+A connected account whose usage is unavailable remains enrolled. Ordinary collection respects provider backoff and later updates its usage. Setup reports enrollment separately from a fresh observation; it never calls an unread account ready. A duplicate account reuses existing membership instead of adding capacity. If the browser keeps choosing that account, open the next login link in another browser profile or a guest window; an agent can handle opening that window. An unverifiable existing identity can hold enrollment pending until comparison is possible.
 
 Canceling stops further onboarding work and cancels the pending native login when supported. It never logs out an existing account or deletes provider credentials. A policy change committed before cancellation remains enrolled. Use ordinary account controls for an intentional removal.
 

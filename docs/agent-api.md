@@ -151,7 +151,7 @@ For an existing installation, submit:
 | `needs_sign_in` | Send `sign_in`. This needs no extra confirmation when adding an account is already authorized. |
 | `awaiting_sign_in` | Open/present `handoff.url` and any `handoff.code`; ask the human to complete native authentication. Keep polling. |
 | `pending` | Preserve the operation, respect the retry interval, and send `retry`. A successful sign-in is reused. |
-| `already_connected` | Explain that this identity was already enrolled. Use `sign_in` if the user wants a different account. |
+| `already_connected` | Explain that this identity was already enrolled. For another account, use `sign_in` and open the new link in a separate browser profile or guest window so the current browser session does not silently choose the same identity. |
 | `ready` | Report completion; `account.enrolled` and `account.observed` are true. |
 | `canceled` | Stop. Existing native accounts remain available. |
 
