@@ -91,10 +91,59 @@ images in your image viewer. These are CI-rendered visual previews, not interact
 copies and not your live account readings. Old PRs without this workflow need a
 new run before a preview is available. Production selection never changes.
 
-Arbitrary PR code is not executed on the host. A local working directory or a
-display-command allowlist does not isolate a contributor's code from credentials.
-Interactive previews require separately qualified OS isolation and an exported
-display snapshot; this version does not claim to provide that sandbox.
+### Live candidate dashboard
+
+For a reviewed, same-repository PR with passing CI on its current head:
+
+```powershell
+hotpl8 preview pr NUMBER -Live -TrustRevision FULL_40_CHARACTER_HEAD_SHA
+```
+
+The command prints the PR URL, exact revision and **fictional accounts** data mode,
+then runs the actual PR dashboard and animation in your terminal. Space freezes
+or resumes, arrows scroll, Q exits; resize the window to inspect layout. It uses
+fresh demo timestamps and disposable state, never a second collector or real
+account cache. This tests presentation and interaction, not provider actions.
+
+`-TrustRevision` explicitly authorizes execution of that candidate's code with
+your user permissions. This is **not an OS sandbox**. Use it only for code you
+have reviewed and trust. Image previews remain available without executing PR
+code, including for fork PRs. Live preview rejects forks, a moved PR head,
+nonpassing or unrelated CI, and unsafe source archives. It downloads the source
+from GitHub at the pinned SHA, rechecks the head, and never silently substitutes
+a newer revision. If the head changed, review it and obtain a new command.
+
+Each run owns a temporary source export and fixture directory, removed on exit.
+The `live.json` receipt under `previews/pr-NUMBER/SHA` records the URL, SHA,
+workflow and data mode. Production pointers, scheduled tasks and ongoing native
+sessions are unchanged. Close an old preview and rerun the newly pinned command
+after a PR update; previews never switch code underneath an active session.
+
+The launcher is part of the normal release inventory: the existing immutable
+release selection updates `delivery/runner.py`, `delivery/live_preview.py` and
+`delivery/live-preview.ps1` together. No separately installed preview shim is
+needed. Rollback selects the previous implementation for the next invocation;
+existing previews retain their exported candidate until they exit.
+
+### Required PR handoff
+
+Every HotPl8 PR handoff includes its URL, full head SHA, passing Windows and Mac
+CI evidence, and the pinned live command above. For presentation changes, test
+animation, freeze/resume, resize/scroll and clean exit; inspect both terminal
+renderers. A PNG alone does not complete interactive acceptance. Run relay review
+on the final candidate and obtain owner preview acceptance before merging; after
+merge, verify installed and running component adoption through normal delivery.
+
+If installed main predates live-preview support, use the reviewed candidate's
+runner temporarily, without changing the installed release:
+
+```text
+<enrolled-python> <reviewed-checkout>/delivery/runner.py --install <managed-root> preview NUMBER --trust-revision FULL_SHA
+```
+
+The same GitHub/CI/revision checks and demo mode apply. Provide this concrete
+bootstrap command in that first handoff; never label an unbound local checkout
+or an image command as the live PR preview.
 
 ## Failure and recovery
 

@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 . (Join-Path $root 'src/dashboard.ps1')
+. (Join-Path $root 'tests/fixtures/terminal.ps1')
 $now=[datetimeoffset]::Parse('2026-09-10T12:00:00Z')
 $p=@{prefer=@(1,2,3);reserve=@(1);labels=@{'1'='reserve';'2'='work';'3'='work2'};codex=@{slots=@(@{id='main';label='Main'});defaultMeter='codex'}}|ConvertTo-Json -Depth 5|ConvertFrom-Json
 $s=@{generatedAt=$now.ToString('o');active=3;slots=@(1..3|ForEach-Object{@{slot=$_;label='Claude '+$_;status='ok';active=($_ -eq 3);fresh=$true;used5h=25;used7d=50;reset5h=$now.AddHours(2).ToString('o');reset7d=$now.AddDays(2).ToString('o')}});providers=@{codex=@{defaultMeter='codex';recommendedSlot='main';slots=@(@{id='main';label='Main';status='ok';observedAt=$now.ToString('o');buckets=@{codex=@{status='observed';windows=@{'10080'=@{usedPercent=35;remainingPercent=65;resetsAt=$now.AddDays(3).ToUnixTimeSeconds();anchorState='observed-active'}}};codex_bengalfox=@{status='constraint_unknown';windows=@{'300'=@{usedPercent=0;remainingPercent=100;resetsAt=$now.AddHours(5).ToUnixTimeSeconds();anchorState='unconfirmed'}}}}})}}}|ConvertTo-Json -Depth 15|ConvertFrom-Json
@@ -276,11 +277,142 @@ Check 'scaled live nyan matches layout through a whole loop and same-width resiz
     $b=@(Get-Hotpl8NyanRows 9 -Width 77 -Rows 5 -ReducedMotion)|ConvertTo-Json -Depth 8
     Assert ($a -ceq $b)
 }
+Check 'Apple Terminal uses complete background cells with every source pixel intact' {
+    $previous=$env:TERM_PROGRAM
+    try{
+        $env:TERM_PROGRAM='Apple_Terminal'
+        $data=Get-Hotpl8NyanData
+        foreach($height in @(10,18)){
+            $art=if($height -eq 10){$data.compact}else{$data}
+            foreach($tick in 0..11){
+                # At exactly the sprite width, source column zero is terminal column zero.
+                $scene=Get-Hotpl8NyanScene $tick ($art.frames[0][0].Length*2) $height
+                Assert ($scene.Count -eq $height)
+                for($r=0;$r -lt $height;$r++){
+                    $pixels=@(foreach($run in $scene[$r]){
+                        Assert ($run.glyph -eq ' ')
+                        for($x=0;$x -lt $run.length;$x++){
+                            if($run.background){$run.background}else{$script:Hotpl8Background}
+                        }
+                    })
+                    for($x=0;$x -lt $pixels.Count;$x++){
+                        $expected=$data.palette.([string]$art.frames[$tick][$r][[int][math]::Floor($x/2)])
+                        Assert ($pixels[$x] -ceq $expected)
+                    }
+                }
+            }
+        }
+        foreach($viewport in @(@(48,24),@(79,28),@(94,35),@(110,40),@(79,17))){
+            $frame=@(Get-Hotpl8DashboardFrame $s $p $now $viewport[0] $viewport[1] -Nyan)
+            Assert ($frame.Count -le $viewport[1])
+            foreach($row in $frame){Assert ((Get-DashboardCells $row.text) -eq $viewport[0])}
+            $cat=@($frame|Where-Object {$_.live.render -eq 'Get-Hotpl8NyanRow'})
+            if($cat.Count){
+                Assert ($cat.Count -in @(10,18))
+                foreach($row in $cat){Assert ($row.text -notmatch '[▀▄█]')}
+            }
+        }
+        Assert ((Get-Hotpl8NyanSize 108 40) -eq 18)
+        Assert ((Get-Hotpl8NyanSize 77 28) -eq 10)
+        $env:TERM_PROGRAM='Windows_Terminal'
+        Assert ((Get-Hotpl8NyanSize 108 40) -eq 9)
+        Assert ((Get-Hotpl8NyanSize 77 28) -eq 5)
+    }finally{$env:TERM_PROGRAM=$previous}
+}
+Check 'ANSI preview decoder preserves RGB and indexed pixels and rejects unsupported SGR' {
+    $esc=[string][char]27
+    $parts=@(ConvertFrom-Hotpl8TestAnsiRow ($esc+'[38;2;1;2;3m'+$esc+'[48;5;234m'+'A'+$esc+'[38;5;196mB'+$esc+'[K'))
+    Assert ($parts.Count -eq 2 -and $parts[0].tone -eq '1;2;3' -and $parts[0].background -eq '28;28;28')
+    Assert ($parts[1].text -eq 'B' -and $parts[1].tone -eq '255;0;0')
+    $rejected=$false
+    try{$null=ConvertFrom-Hotpl8TestAnsiRow ($esc+'[35mtext')}catch{$rejected=$true}
+    Assert $rejected
+}
+Check 'live and static Nyan pixels match in both color modes across all frames and sizes' {
+    $previous=$env:TERM_PROGRAM
+    try{
+        foreach($terminal in @('Apple_Terminal','iTerm.app')){
+            $env:TERM_PROGRAM=$terminal;$palette=Get-Hotpl8DashboardPalette
+            foreach($height in $(if($terminal -eq 'Apple_Terminal'){@(10,18)}else{@(5,9)})){
+                foreach($tick in 0..11){
+                    $at=$tick/12.0+0.001
+                    $styled=@(Get-Hotpl8NyanRows $at -Width 77 -Rows $height)
+                    $live=@(Get-Hotpl8NyanAnsiRows $at 77 $palette $height)
+                    for($i=0;$i -lt $height;$i++){
+                        $expected=ConvertTo-Hotpl8AnsiRow (Add-Hotpl8FrameBorder $styled[$i] 77) $palette
+                        $cells=@(foreach($ansi in @($expected,$live[$i].ansi)){
+                            $pixels=@(foreach($span in @(ConvertFrom-Hotpl8TestAnsiRow $ansi)){
+                                foreach($glyph in $span.text.ToCharArray()){
+                                    # A space's foreground is invisible; the fast path can retain it.
+                                    ([string]$glyph)+'|'+$(if($glyph -eq ' '){''}else{$span.tone})+'|'+$span.background
+                                }
+                            })
+                            $pixels -join '/'
+                        })
+                        Assert ($cells[0] -ceq $cells[1])
+                    }
+                }
+            }
+        }
+    }finally{$env:TERM_PROGRAM=$previous}
+}
+Check 'Apple Terminal uses fixed indexed colors even with an inherited truecolor hint' {
+    $previous=$env:TERM_PROGRAM;$previousColor=$env:COLORTERM
+    try{
+        $env:TERM_PROGRAM='Apple_Terminal';$env:COLORTERM='truecolor'
+        Assert ((Get-Hotpl8TerminalColorMode) -eq '256')
+        $esc=[string][char]27
+        Assert ((Get-Hotpl8AnsiColor '18;23;35' -Background) -ceq ($esc+'[48;5;234m'))
+        Assert ((Get-Hotpl8AnsiColor '255;0;0') -ceq ($esc+'[38;5;196m'))
+        Assert ((Get-Hotpl8AnsiColor '0;0;0') -ceq ($esc+'[38;5;16m'))
+        Assert ((Get-Hotpl8AnsiColor '255;255;255') -ceq ($esc+'[38;5;231m'))
+        $palette=Get-Hotpl8DashboardPalette
+        foreach($height in @(5,9)){
+            foreach($tick in 0..11){
+                $at=$tick/12.0+0.001
+                $rows=@(Get-Hotpl8NyanRows $at -Width 77 -Rows $height)
+                $live=@(Get-Hotpl8NyanAnsiRows $at 77 $palette $height)
+                foreach($row in @($rows)+@($live)){
+                    $ansi=ConvertTo-Hotpl8AnsiRow $row $palette
+                    Assert ($ansi -notmatch '\[(?:38|48);2;')
+                    $codes=[regex]::Matches($ansi,$esc+'\[([0-9;]+)m')
+                    Assert ($codes.Count -gt 0)
+                    foreach($code in $codes){
+                        Assert ($code.Groups[1].Value -match '^(38|48);5;(\d+)$')
+                        $index=[int]($code.Groups[1].Value.Split(';')[-1])
+                        Assert ($index -ge 16 -and $index -le 255)
+                    }
+                }
+            }
+        }
+        $frame=@(Get-Hotpl8DashboardFrame $s $p $now 113 33 -Nyan)
+        $text=(@($frame|ForEach-Object {ConvertTo-Hotpl8AnsiRow $_ $palette}) -join '')
+        Assert ($text.Contains($esc+'[48;5;234m') -and $text -notmatch '\[(?:38|48);2;')
+    }finally{$env:TERM_PROGRAM=$previous;$env:COLORTERM=$previousColor}
+}
+Check 'truecolor output and cached animation remain distinct from indexed output' {
+    $previous=$env:TERM_PROGRAM
+    try{
+        $palette=Get-Hotpl8DashboardPalette;$esc=[string][char]27
+        foreach($terminal in @('iTerm.app','Apple_Terminal','iTerm.app')){
+            $env:TERM_PROGRAM=$terminal
+            $row=New-Hotpl8StyledRow @(New-Hotpl8Span 'fixture' 'text')
+            $text=(ConvertTo-Hotpl8AnsiRow $row $palette)+((Get-Hotpl8NyanAnsiRows 0 77 $palette 5).ansi -join '')
+            if($terminal -eq 'Apple_Terminal'){
+                Assert ($text -match '\[38;5;' -and $text -notmatch '\[(?:38|48);2;')
+            }else{
+                Assert ($text.Contains($esc+'[38;2;220;225;238m'))
+                Assert ($text.Contains($esc+'[48;2;18;23;35m') -and $text -notmatch '\[(?:38|48);5;')
+            }
+        }
+    }finally{$env:TERM_PROGRAM=$previous}
+}
 Check 'background layout renders fixtures and preserves a frozen snapshot on resize' {
     $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-animation-'+[guid]::NewGuid().ToString('N'))
     [void][IO.Directory]::CreateDirectory($dir)
-    $worker=$null
+    $worker=$null;$previousTerminal=$env:TERM_PROGRAM
     try{
+        $env:TERM_PROGRAM='Apple_Terminal'
         Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 20)
         Write-Hotpl8Text (Join-Path $dir 'status.json') ($s|ConvertTo-Json -Depth 20)
         $before=Get-FileHash (Join-Path $dir 'status.json')
@@ -289,6 +421,7 @@ Check 'background layout renders fixtures and preserves a frozen snapshot on res
         Assert ($pending.AsyncWaitHandle.WaitOne(15000))
         $result=@($worker.EndInvoke($pending))[0]
         Assert (-not $worker.HadErrors -and $result.frame.Count -le 28 -and $result.lines.Count -eq $result.frame.Count)
+        Assert (($result.lines -join '') -match '\[48;5;234m' -and ($result.lines -join '') -notmatch '\[(?:38|48);2;')
         Assert (@($result.frame|Where-Object {$_.live.render -eq 'Get-Hotpl8NyanRow'}).Count -gt 0)
         Assert ((Get-FileHash (Join-Path $dir 'status.json')).Hash -eq $before.Hash)
         $changed=Copy-Value $s;$changed.slots[0].label='Changed fixture'
@@ -299,6 +432,7 @@ Check 'background layout renders fixtures and preserves a frozen snapshot on res
         Assert (-not $worker.HadErrors -and $result.frame.Count -le 35 -and $result.paused)
         Assert (($result.frame.text -join '') -notmatch 'Changed fixture')
     }finally{
+        $env:TERM_PROGRAM=$previousTerminal
         if($worker){$worker.Dispose()}
         $full=[IO.Path]::GetFullPath($dir)
         Assert ($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-animation-[a-f0-9]{32}$')

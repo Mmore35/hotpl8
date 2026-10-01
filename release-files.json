@@ -166,6 +166,10 @@
     "delivery/macos-t3-launch.py",
     "scripts/test-macos-delivery.ps1",
     "tests/test_macos_delivery.py",
-    "docs/macos-delivery.md"
+    "docs/macos-delivery.md",
+    "delivery/live_preview.py",
+    "delivery/live-preview.ps1",
+    "tests/test_live_preview.py",
+    "tests/fixtures/terminal.ps1"
   ]
 }
