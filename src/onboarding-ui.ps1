@@ -68,6 +68,6 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
         }
     }finally{
         # Exiting the UI does not abandon a completed sign-in or kill another client's work.
-        if($r.phase -notin @('ready','canceled')){'Your progress is saved. Run hotpl8 setup to continue.'}
+        if($r.phase -notin @('ready','canceled')){'Your progress is saved. Run hotpl8 '+$(if($NewAccount){'add'}else{'setup'})+' to continue.'}
     }
 }

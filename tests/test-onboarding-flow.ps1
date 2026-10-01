@@ -86,6 +86,17 @@ try{
         $again=Invoke-Hotpl8Onboarding $script:directory begin '' codex
         Assert ($again.operationId -eq $r.operationId)
     }
+    Check 'first setup resumes the same operation after native sign-in starts' {
+        $r=BeginFixture resumelogin;$r=RunFixture $r
+        $r=Invoke-Hotpl8Onboarding $script:directory sign_in $r.operationId
+        $saved=Read-Hotpl8Onboarding $script:directory $r.operationId
+        Assert (-not $saved.newAccount) 'sign-in must preserve first-setup intent'
+        $again=Invoke-Hotpl8Onboarding $script:directory begin '' codex
+        Assert ($again.operationId -eq $r.operationId) 'setup lost its native login operation'
+        $saved.phase='pending';Save-Hotpl8Onboarding $script:directory $saved
+        $again=Invoke-Hotpl8Onboarding $script:directory begin '' codex
+        Assert ($again.operationId -eq $r.operationId) 'setup lost interrupted sign-in progress'
+    }
     Check 'canceled operation cannot restart or become ready from a late worker result' {
         $r=BeginFixture cancel;$saved=Read-Hotpl8Onboarding $script:directory $r.operationId
         $r=Invoke-Hotpl8Onboarding $script:directory cancel $r.operationId

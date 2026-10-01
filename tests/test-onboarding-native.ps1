@@ -93,6 +93,33 @@ try{
         $selected=Connect-Hotpl8NativeAccount $d $op
         Assert ($selected -and $op.handoff.url -eq 'https://claude.ai/oauth/authorize?fixture=true')
     }
+    Check 'detached worker survives the short-lived JSON caller' {
+        $d=Join-Path $lab detached
+        $shell=(Get-Process -Id $PID).Path
+        $psi=New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName=$shell;$psi.UseShellExecute=$false
+        $argv=@('-NoProfile','-File',(Join-Path $root 'hotpl8.ps1'),'setup','-Provider','claude','-AsJson','-StateDirectory',$d)
+        $psi.Arguments=(@($argv|ForEach-Object{ConvertTo-NativeArgument $_}) -join ' ')
+        $psi.RedirectStandardInput=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
+        # Dependency discovery stops before any native account access or installation.
+        $psi.EnvironmentVariables['PATH']=''
+        foreach($key in @('HOME','USERPROFILE')){$psi.EnvironmentVariables[$key]=$lab}
+        $psi.EnvironmentVariables.Remove('HOTPL8_NATIVE_BIN')
+        $r=Invoke-Hotpl8ProcessInfo $psi 15000
+        Assert ($r.exitCode -eq 0) 'JSON caller did not exit promptly'
+        $response=$r.output|ConvertFrom-Json
+        $path=Get-Hotpl8OnboardingPath $d $response.operationId
+        $clock=[Diagnostics.Stopwatch]::StartNew();$released=$false
+        do{
+            Start-Sleep -Milliseconds 200
+            $saved=Read-Hotpl8Json $path
+            if($saved.phase -eq 'needs_install_authorization'){
+                $probe=$null
+                try{$probe=[IO.File]::Open(($path+'.worker'),'Open','ReadWrite','None');$released=$true}catch{}finally{if($probe){$probe.Dispose()}}
+            }
+        }while(-not $released -and $clock.Elapsed.TotalSeconds -lt 30)
+        Assert ($released -and $saved.phase -eq 'needs_install_authorization') 'worker did not finish after its parent exited'
+    }
     Check 'bounded process capture rejects excessive output and timeout' {
         $shell=(Get-Process -Id $PID).Path
         foreach($case in @(@{command="[Console]::Write(('x'*1100000))";budget=10000},@{command='Start-Sleep -Seconds 30';budget=500})){

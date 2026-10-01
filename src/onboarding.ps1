@@ -221,7 +221,7 @@ function Invoke-Hotpl8Onboarding([string]$Directory,[string]$Action='begin',[str
                         $op|Add-Member NoteProperty attempt ([int]$op.attempt+1) -Force
                         $op.selected=$null;$op.result=$null
                     }
-                    $op.action='login';$op.newAccount=$true
+                    $op.action='login'
                 }
                 'install'{if(-not $AllowInstall){throw 'Dependency installation needs explicit authorization.'};$op.action='install'}
                 'retry'{if($op.action -ne 'login'){$op.action=if($op.selected){'enroll'}else{'discover'}}}
