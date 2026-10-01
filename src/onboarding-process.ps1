@@ -53,10 +53,12 @@ namespace HotPl8 {
         [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
         public static void Start(string executable, string command) {
             var startup = new Startup(); startup.cb = Marshal.SizeOf(typeof(Startup)); ProcessInfo info;
+            startup.flags = 1; startup.show = 0; // STARTF_USESHOWWINDOW, SW_HIDE
             // .NET Framework Process.Start can inherit unrelated response-pipe handles.
-            // This finite worker has no console or inherited handles; credentials stay native.
+            // A private hidden console supports Framework UTF-8 code-page setup without
+            // sharing the caller's console or inheriting any of its response pipes.
             if (!CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero, false,
-                    0x08000000, IntPtr.Zero, null, ref startup, out info))
+                    0x00000010, IntPtr.Zero, null, ref startup, out info))
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             CloseHandle(info.thread); CloseHandle(info.process);
         }

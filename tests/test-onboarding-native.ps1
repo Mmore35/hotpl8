@@ -120,6 +120,35 @@ try{
         }while(-not $released -and $clock.Elapsed.TotalSeconds -lt 30)
         Assert ($released -and $saved.phase -eq 'needs_install_authorization') 'worker did not finish after its parent exited'
     }
+    if($env:OS -eq 'Windows_NT'){
+        Check 'detached Windows worker supports native UTF-8 JSON transport' {
+            $h=Fixture detached-native @{} -Authenticated
+            $child=Join-Path $lab 'detached-native.ps1';$result=Join-Path $lab 'detached-native.json'
+            Write-Hotpl8Text $child @'
+param($Root,$Node,$Fixture,$AccountHome,$Result)
+$ErrorActionPreference='Stop'
+. (Join-Path $Root 'src/common.ps1')
+. (Join-Path $Root 'src/providers/codex.ps1')
+function Resolve-CodexExecutable {return $Node}
+function New-CodexProcessInfo($Executable,$AccountHome,$Arguments,$WorkingDirectory){
+    $psi=New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName=$Node;$psi.Arguments=ConvertTo-NativeArgument $Fixture
+    $psi.UseShellExecute=$false;$psi.WorkingDirectory=$AccountHome
+    $psi.EnvironmentVariables['CODEX_HOME']=$AccountHome
+    return $psi
+}
+$read=Read-CodexQuota $AccountHome '' 12000 -IdentityOnly
+Write-Hotpl8Text $Result (@{status=$read.status;verified=[bool]$read.identityVerified}|ConvertTo-Json) -NoBom
+'@ -NoBom
+            $argv=@('-NoProfile','-File',$child,'-Root',$root,'-Node',$script:node,'-Fixture',(Join-Path $PSScriptRoot 'onboarding-native-fixture.mjs'),'-AccountHome',$h,'-Result',$result)
+            Start-Hotpl8WindowsWorker (Get-Process -Id $PID).Path ((@($argv|ForEach-Object{ConvertTo-NativeArgument $_})) -join ' ')
+            $clock=[Diagnostics.Stopwatch]::StartNew()
+            while(-not (Test-Path $result) -and $clock.Elapsed.TotalSeconds -lt 30){Start-Sleep -Milliseconds 200}
+            Assert (Test-Path $result) 'detached native worker did not return a result'
+            $read=Read-Hotpl8Json $result
+            Assert ($read.status -eq 'ok' -and $read.verified) ('detached native transport: '+$read.status)
+        }
+    }
     Check 'bounded process capture rejects excessive output and timeout' {
         $shell=(Get-Process -Id $PID).Path
         foreach($case in @(@{command="[Console]::Write(('x'*1100000))";budget=10000},@{command='Start-Sleep -Seconds 30';budget=500})){
