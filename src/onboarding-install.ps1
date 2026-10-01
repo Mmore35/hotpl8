@@ -91,6 +91,10 @@ function Install-Hotpl8OnboardingDependencies([string]$Directory,[string]$Provid
             if($result.exitCode -ne 0){throw 'Claude integration installation failed.'}
         }
         Initialize-Hotpl8OnboardingTools $Directory
-        Write-Hotpl8Text (Join-Path $runtime 'installation.json') (@{schemaVersion=1;product='hotpl8-dependencies';installed=@($missing);pins=@{codex='0.155.1';claude='2.1.281';cswap='0.26.0'};installedAt=[datetimeoffset]::UtcNow.ToString('o')}|ConvertTo-Json) -NoBom
+        $installed=@(foreach($component in @('codex','claude','cswap','uv')){
+            $name=$component+$(if($env:OS -eq 'Windows_NT'){'.exe'}else{''})
+            if(Test-Path -LiteralPath (Join-Path $bin $name) -PathType Leaf){$component}
+        })
+        Write-Hotpl8Text (Join-Path $runtime 'installation.json') (@{schemaVersion=1;product='hotpl8-dependencies';installed=$installed;pins=@{codex='0.155.1';claude='2.1.281';cswap='0.26.0'};installedAt=[datetimeoffset]::UtcNow.ToString('o')}|ConvertTo-Json) -NoBom
     }finally{if($lock){$lock.Dispose()}}
 }

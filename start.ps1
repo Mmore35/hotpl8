@@ -9,7 +9,9 @@ $null=& (Join-Path $PSScriptRoot $installer) -InstallDirectory $InstallDirectory
 $entry=Join-Path $InstallDirectory 'app/hotpl8.ps1'
 $options=@{AsJson=$AsJson;InstallDependencies=$InstallDependencies}
 if($Provider){$options.Provider=$Provider}
-if(-not $AsJson){$options.Interactive=$true}
+# Running the human installer authorizes its documented required integrations.
+# Structured callers retain the separate host authorization flag.
+if(-not $AsJson){$options.Interactive=$true;$options.InstallDependencies=$true}
 if($AsJson){
     $result=((& $entry setup @options)|Out-String)|ConvertFrom-Json
     if($LASTEXITCODE -ne 0){throw 'Installed onboarding could not begin.'}

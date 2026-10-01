@@ -18,11 +18,11 @@ On macOS, open Terminal in that directory and run:
 bash start.sh
 ```
 
-Mac startup reuses PowerShell if installed, or downloads a pinned, checksum-verified runtime to your user directory. Setup installs HotPl8, registers observation-only background collection, and starts account onboarding. Choose Claude or ChatGPT/Codex only if local discovery cannot determine the provider. Allow any missing integration tools, then complete native sign-in if necessary. HotPl8 does the remaining work.
+Mac startup reuses PowerShell if installed, or downloads a pinned, checksum-verified runtime to your user directory. Setup installs HotPl8, registers observation-only background collection, and starts account onboarding. Choose Claude or ChatGPT/Codex only if local discovery cannot determine the provider. The guided installer prepares the required integration tools, then asks you to complete native sign-in if necessary. HotPl8 does the remaining work.
 
 There are no administrator steps. Windows defaults to `%LOCALAPPDATA%\HotPl8`; Mac defaults to `~/Library/Application Support/HotPl8`. Application code is separate from writable `state`. Native tools remain responsible for authentication. Setup never asks you to paste credentials, run `cswap add`, locate an account directory, choose a slot ID, or edit JSON.
 
-Use `-Provider claude` or `-Provider codex` to express intent up front. `-InstallDependencies` authorizes the selected provider's required tools without another prompt. Agents use `-AsJson`; see [agent onboarding](agent-api.md#connect-an-account). `-NoSchedule` omits the collector, and `-NoPath` omits command registration. `-InstallDirectory` is available for deliberate custom installations.
+Use `-Provider claude` or `-Provider codex` to express intent up front. `-InstallDependencies` supplies dependency authorization for structured callers. The human installer includes required integrations as part of setup. Agents use `-AsJson`; see [agent onboarding](agent-api.md#connect-an-account). `-NoSchedule` omits the collector, and `-NoPath` omits command registration. `-InstallDirectory` is available for deliberate custom installations.
 
 ## Public download entrypoints
 
