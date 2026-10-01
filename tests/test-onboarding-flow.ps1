@@ -128,6 +128,30 @@ try{
         $r=Invoke-Hotpl8Onboarding $script:directory retry $r.operationId
         Assert ((Read-Hotpl8Onboarding $script:directory $r.operationId).action -eq 'login')
     }
+    Check 'collector persists deferred completion while status stays read-only' {
+        $r=BeginFixture deferred codex -NewAccount
+        $op=Read-Hotpl8Onboarding $script:directory $r.operationId
+        $op.phase='pending';$op.selected=Candidate deferred;$op.action='enroll'
+        $op.result=[pscustomobject]@{enrolled=$true;observed=$false;alreadyPresent=$false;status='checking_usage'}
+        Save-Hotpl8Onboarding $script:directory $op
+        $policy=Read-Hotpl8Json (Join-Path $script:directory 'policy.json')
+        $policy.codex.slots=@([pscustomobject]@{id='deferred';home=$op.selected.home;label='Fixture'})
+        $policy.codex.prefer=@('deferred')
+        Write-Hotpl8Text (Join-Path $script:directory 'policy.json') ($policy|ConvertTo-Json -Depth 20)
+        $snapshot=@{providers=@{codex=@{slots=@(@{id='deferred';status='ok';observedAt=[datetimeoffset]::UtcNow.ToString('o')})}}}
+        Write-Hotpl8Text (Join-Path $script:directory 'status.json') ($snapshot|ConvertTo-Json -Depth 12)
+        $path=Get-Hotpl8OnboardingPath $script:directory $r.operationId
+        $before=(Get-FileHash $path).Hash
+        $status=Invoke-Hotpl8Onboarding $script:directory status $r.operationId
+        Assert ($status.phase -eq 'ready' -and (Get-FileHash $path).Hash -eq $before)
+        $lock=[IO.File]::Open(($path+'.worker'),'OpenOrCreate','ReadWrite','None')
+        try{Complete-Hotpl8ObservedOnboarding $script:directory;Assert ((Read-Hotpl8Json $path).phase -eq 'pending') 'collector raced a live worker'}finally{$lock.Dispose()}
+        Complete-Hotpl8ObservedOnboarding $script:directory
+        Assert ((Read-Hotpl8Json $path).phase -eq 'ready') 'collector did not save completion'
+        Remove-Item (Join-Path $script:directory 'status.json')
+        $next=Invoke-Hotpl8Onboarding $script:directory begin '' codex -NewAccount
+        Assert ($next.operationId -ne $r.operationId) 'a later add resumed an already completed account'
+    }
     Check 'invalid requests create no installation state' {
         $absent=Join-Path $lab invalid
         Reject {Invoke-Hotpl8Onboarding $absent begin '../outside' codex}

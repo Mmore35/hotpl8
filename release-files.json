@@ -187,6 +187,7 @@
     "delivery/live_preview.py",
     "delivery/live-preview.ps1",
     "tests/test_live_preview.py",
-    "tests/fixtures/terminal.ps1"
+    "tests/fixtures/terminal.ps1",
+    "src/onboarding-process.ps1"
   ]
 }

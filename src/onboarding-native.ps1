@@ -88,21 +88,19 @@ function Connect-Hotpl8NativeAccount([string]$Directory,$Operation) {
         $captured=Add-Hotpl8NativeClaudeAccount $Directory $Operation
         if($captured){return $captured}
         $exe=Get-Hotpl8ClaudeExecutable
+        Initialize-Hotpl8LoginReader
         $proc=Start-CodexQuotaProcess (New-Hotpl8OnboardingProcess $exe @('auth','login','--claudeai') $native claude)
         $proc.StandardInput.Close()
         $clock=[Diagnostics.Stopwatch]::StartNew();$streams=@()
-        foreach($reader in @($proc.StandardOutput,$proc.StandardError)){$streams+=@{reader=$reader.BaseStream;task=$null;buffer=(New-Object byte[] 4096);text='';done=$false;count=0}}
+        foreach($reader in @($proc.StandardOutput,$proc.StandardError)){$streams+=@{reader=(New-Object HotPl8.NativeLoginReader($reader.BaseStream));text=''}}
         Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' 'Complete Claude sign-in in the browser. HotPl8 will finish automatically.'
         while(-not $proc.HasExited -and $clock.Elapsed.TotalMinutes -lt 15){
             if(Test-Hotpl8OnboardingCanceled $Directory $Operation){return $null}
             foreach($stream in $streams){
-                if($stream.done){continue}
-                if(-not $stream.task){$stream.task=$stream.reader.ReadAsync($stream.buffer,0,$stream.buffer.Length)}
-                if($stream.task.IsCompleted){
-                    $n=$stream.task.GetAwaiter().GetResult();$stream.task=$null
-                    if($n -eq 0){$stream.done=$true;continue}
-                    $stream.count+=$n;if($stream.count -gt 1048576){throw 'Native output exceeded limit.'}
-                    $stream.text+=[Text.Encoding]::UTF8.GetString($stream.buffer,0,$n)
+                if($stream.reader.LimitExceeded){throw 'Native output exceeded limit.'}
+                $bytes=$stream.reader.Take()
+                if($null -ne $bytes){
+                    $stream.text+=[Text.Encoding]::UTF8.GetString($bytes)
                     $match=[regex]::Match($stream.text,'https://(?:claude\.ai|platform\.claude\.com|console\.anthropic\.com)/[^\s\x1b]+')
                     if($match.Success -and -not $Operation.handoff){
                         $Operation.handoff=[pscustomobject]@{url=$match.Value;code=$null;expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15).ToString('o')}

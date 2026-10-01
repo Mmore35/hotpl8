@@ -1,5 +1,6 @@
 # Durable public onboarding. Native tools own credentials; the operation stores only references.
 . (Join-Path $PSScriptRoot 'lifecycle.ps1')
+. (Join-Path $PSScriptRoot 'onboarding-process.ps1')
 function New-Hotpl8PrivateDirectory([string]$Path) {
     $full=Assert-Hotpl8Path $Path
     [void][IO.Directory]::CreateDirectory($full)
@@ -45,6 +46,33 @@ function Get-Hotpl8OnboardingProgress([string]$Directory,[string]$Id) {
         }
     }
     return $op
+}
+function Complete-Hotpl8ObservedOnboarding([string]$Directory) {
+    # The collector owns this write. Read-only status may derive readiness but
+    # must not leave a completed addition resumable after its snapshot goes stale.
+    $folder=Join-Path $Directory 'onboarding'
+    if(-not (Test-Path -LiteralPath $folder -PathType Container)){return}
+    $requestLock=$null
+    try{
+        $requestLock=[IO.File]::Open((Join-Path $folder 'request.lock'),'OpenOrCreate','ReadWrite','None')
+        $accounts=@(Get-Hotpl8ProviderAccounts (Read-Hotpl8Json (Join-Path $Directory 'policy.json')))
+        foreach($file in @(Get-ChildItem -LiteralPath $folder -Filter '*.json'|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 64)){
+            $workerLock=$null
+            try{
+                $saved=Read-Hotpl8Json $file.FullName
+                if($saved.schemaVersion -ne 1 -or $saved.id -cnotmatch '^[0-9a-f]{32}$' -or $file.BaseName -cne $saved.id -or $saved.phase -ne 'pending' -or -not $saved.result.enrolled){continue}
+                if(-not @($accounts|Where-Object {$_.provider -ceq $saved.selected.provider -and [string]$_.slot -ceq [string]$saved.selected.slot}).Count){continue}
+                $workerPath=$file.FullName+'.worker'
+                if(Test-Path -LiteralPath $workerPath){$workerLock=[IO.File]::Open($workerPath,'Open','ReadWrite','None')}
+                $observed=Get-Hotpl8OnboardingProgress $Directory $saved.id
+                if($observed.phase -in @('ready','already_connected')){Save-Hotpl8Onboarding $Directory $observed}
+            }catch{
+                # Busy workers and malformed progress never interrupt collection.
+            }finally{if($workerLock){$workerLock.Dispose()}}
+        }
+    }catch{
+        # An active request wins; the next collection can reconcile completion.
+    }finally{if($requestLock){$requestLock.Dispose()}}
 }
 function Save-Hotpl8Onboarding([string]$Directory,$Operation) {
     if(Test-Path -LiteralPath ((Get-Hotpl8OnboardingPath $Directory $Operation.id)+'.cancel')){
@@ -154,11 +182,10 @@ function Start-Hotpl8OnboardingWorker([string]$Directory,[string]$Id) {
         $workerArgs=@('-c','exec /usr/bin/nohup "$@" </dev/null >/dev/null 2>&1','hotpl8-worker',$shell,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$worker,'-StateDirectory',$Directory,'-OperationId',$Id)
         $psi.FileName='/bin/sh';$psi.Arguments=(@($workerArgs|ForEach-Object{ConvertTo-NativeArgument $_}) -join ' ')
     }else{
-        # A short-lived JSON caller must not lend its response pipes to a login worker.
-        $psi.RedirectStandardInput=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
+        Start-Hotpl8WindowsWorker $shell $psi.Arguments
+        return
     }
     $p=[Diagnostics.Process]::Start($psi)
-    if($env:OS -eq 'Windows_NT'){$p.StandardInput.Close()}
     $p.Dispose()
 }
 function Invoke-Hotpl8Onboarding([string]$Directory,[string]$Action='begin',[string]$Id,[string]$Provider,[string]$CandidateId,[switch]$NewAccount,[switch]$AllowInstall,[switch]$DeviceCode) {
