@@ -36,7 +36,7 @@ function Get-Hotpl8ReleaseFiles([string]$Source) {
 function Remove-Hotpl8App([string]$Path, [switch]$ValidateOnly) {
     $full=Assert-Hotpl8Path $Path
     if(-not (Test-Path -LiteralPath $full)){return}
-    $allowed=@(Get-Hotpl8ReleaseFiles $full)+@('install-state.json','checksums.json')
+    $allowed=@(Get-Hotpl8ReleaseFiles $full)+@('install-state.json','checksums.json','build-info.json')
     foreach($item in Get-ChildItem -LiteralPath $full -Recurse -Force){
         if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Refusing to remove an application containing links.'}
         if(-not $item.PSIsContainer){

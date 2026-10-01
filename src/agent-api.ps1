@@ -12,7 +12,7 @@ function Get-Hotpl8AgentError([string]$Code) {
         unknown_operation='Use an operation listed in the agent API documentation.'
         invalid_arguments='Arguments do not match this operation.'
         request_too_large='Requests must not exceed 64 KiB of UTF-8 JSON.'
-        permission_denied='Pause writes are disabled for this connection.'
+        permission_denied='This operation is disabled for this connection.'
         policy_invalid='No valid policy is available. Use the local setup or doctor command.'
         snapshot_missing='No completed snapshot is available. Use the local refresh command.'
         snapshot_invalid='The cached observation is invalid or unsupported.'
@@ -22,6 +22,8 @@ function Get-Hotpl8AgentError([string]$Code) {
         lease_capacity='The lease ledger is full. Retry after retained records expire.'
         collector_busy='Another state writer is busy. Retry this same request later.'
         state_write_failed='The state change could not be saved. Retry this same request later.'
+        operation_not_found='This setup operation was not found in this installation.'
+        operation_conflict='This setup operation belongs to another request or step.'
         internal_error='The request could not be completed. Inspect local diagnostics.'
     }
     if(-not $messages.ContainsKey($Code)){$Code='internal_error'}
@@ -190,16 +192,27 @@ function Get-Hotpl8AgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$
     $result|Add-Member NoteProperty driver $view.registration.driver -Force
     return $result
 }
-function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause=$true) {
+function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause=$true,[bool]$AllowOnboarding=$true) {
     $operation=$null
     try{
         if($Request -isnot [pscustomobject]){Stop-Hotpl8AgentRequest 'invalid_request'}
         if(@($Request.PSObject.Properties|Where-Object {$_.Name -cnotin @('apiVersion','operation','arguments')}).Count -or -not $Request.PSObject.Properties['apiVersion']){Stop-Hotpl8AgentRequest 'invalid_request'}
         if(-not (Test-Hotpl8Number $Request.apiVersion) -or $Request.apiVersion -ne 1){Stop-Hotpl8AgentRequest 'unsupported_version'}
-        $operations=@('status','explain','capabilities','doctor','accounts','readiness','pause.acquire','pause.release')
+        $operations=@('status','explain','capabilities','doctor','accounts','readiness','pause.acquire','pause.release','onboarding')
         if($Request.operation -isnot [string] -or $Request.operation -cnotin $operations){Stop-Hotpl8AgentRequest 'unknown_operation'}
         $operation=[string]$Request.operation;$a=$Request.arguments
-        if($operation -eq 'readiness'){
+        if($operation -eq 'onboarding'){
+            if(-not $AllowOnboarding){Stop-Hotpl8AgentRequest 'permission_denied'}
+            Assert-Hotpl8AgentArguments $a @('action','operationId','provider','candidateId','newAccount','allowInstall','deviceCode') @('action')
+            if($a.action -isnot [string] -or $a.action -cnotin @('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel')){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            if(($a.action -ne 'begin' -and -not $a.operationId) -or ($a.PSObject.Properties['operationId'] -and ($a.operationId -isnot [string] -or $a.operationId -cnotmatch '^[0-9a-f]{32}$'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            if($a.PSObject.Properties['provider'] -and ($a.provider -isnot [string] -or $a.provider -cnotin @('claude','codex'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            if($a.PSObject.Properties['candidateId'] -and ($a.candidateId -isnot [string] -or $a.candidateId -cnotmatch '^[a-z0-9-]{1,40}$')){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            foreach($key in @('newAccount','allowInstall','deviceCode')){if($a.PSObject.Properties[$key] -and $a.$key -isnot [bool]){Stop-Hotpl8AgentRequest 'invalid_arguments'}}
+            . (Join-Path $PSScriptRoot 'onboarding.ps1')
+            $result=Invoke-Hotpl8Onboarding $Directory $a.action $a.operationId $a.provider $a.candidateId -NewAccount:([bool]$a.newAccount) -AllowInstall:([bool]$a.allowInstall) -DeviceCode:([bool]$a.deviceCode)
+            return New-Hotpl8AgentEnvelope $operation $result ''
+        }elseif($operation -eq 'readiness'){
             Assert-Hotpl8AgentArguments $a @('provider','model') @('provider')
             if($a.provider -isnot [string] -or $a.provider -cnotin @(Get-Hotpl8ProviderCatalog|ForEach-Object id) -or ($a.PSObject.Properties['model'] -and ($a.model -isnot [string] -or $a.model -notmatch '^[a-zA-Z0-9_.-]{1,100}$'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
         }elseif($operation -in @('pause.acquire','pause.release')){
@@ -217,7 +230,7 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
             $providers=[ordered]@{}
             foreach($entry in $doctor.providers.PSObject.Properties){$providers[$entry.Name]=[pscustomobject]@{configured=[bool]$entry.Value.configured;installed=[bool]$entry.Value.installed;driver=[string]$entry.Value.driver}}
             $data|Add-Member NoteProperty providers ([pscustomobject]$providers)
-            if($operation -eq 'capabilities'){$data|Add-Member NoteProperty operations @($operations|Where-Object {$AllowPause -or $_ -notlike 'pause.*'});$data|Add-Member NoteProperty pauseWrites $AllowPause;$data|Add-Member NoteProperty observationMode 'cached';$data|Add-Member NoteProperty readinessScope 'eligibility-only'}
+            if($operation -eq 'capabilities'){$data|Add-Member NoteProperty operations @($operations|Where-Object {($AllowPause -or $_ -notlike 'pause.*') -and ($AllowOnboarding -or $_ -ne 'onboarding')});$data|Add-Member NoteProperty pauseWrites $AllowPause;$data|Add-Member NoteProperty onboardingWrites $AllowOnboarding;$data|Add-Member NoteProperty observationMode 'cached';$data|Add-Member NoteProperty readinessScope 'eligibility-only'}
         }else{
             $policy=Get-Hotpl8AgentPolicy $Directory
             if($operation -eq 'pause.acquire'){$data=Invoke-Hotpl8LeaseAcquire $Directory $a.leaseId $a.owner ([int]$a.minutes) $now}
@@ -239,6 +252,17 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
         return New-Hotpl8AgentEnvelope $operation $data ''
     }catch{
         $code=[string]$_.Exception.Data['Hotpl8Code']
+        if(-not $code -and $operation -eq 'onboarding'){
+            $message=$_.Exception.Message
+            if($message -in @('Onboarding operation missing or unsupported.','Onboarding operation not found.')){$code='operation_not_found'}
+            elseif($message -in @('Operation ID already used for a different request.','Action is not available at this setup step.','Operation provider cannot change.')){$code='operation_conflict'}
+            elseif($message -eq 'Dependency installation needs explicit authorization.'){$code='permission_denied'}
+            elseif($message -in @('Choose an account from this operation.','Provider is required.')){$code='invalid_arguments'}
+            else{
+                $cause=$_.Exception;while($cause.InnerException){$cause=$cause.InnerException}
+                if($cause -is [IO.IOException]){$code='collector_busy'}
+            }
+        }
         if(-not $code){$code='internal_error'}
         return New-Hotpl8AgentEnvelope $operation $null $code
     }
@@ -249,5 +273,6 @@ function Invoke-Hotpl8AgentJson([string]$Json,[string]$Directory) {
     # Treat it as an encoding marker, preserving strict validation of the JSON itself.
     $Json=$Json.TrimStart([char]0xfeff)
     try{$request=ConvertFrom-Json -InputObject $Json -ErrorAction Stop}catch{return New-Hotpl8AgentEnvelope '' $null 'invalid_json'}
+    if($Json.TrimStart() -notmatch '^\{'){return New-Hotpl8AgentEnvelope '' $null 'invalid_request'}
     return Invoke-Hotpl8AgentRequest $request $Directory
 }

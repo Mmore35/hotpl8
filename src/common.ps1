@@ -14,9 +14,13 @@ function Invoke-Hotpl8Process([string]$Executable, [string[]]$Arguments, [int]$T
     }
     $psi.UseShellExecute=$false; $psi.CreateNoWindow=$true
     $psi.RedirectStandardOutput=$true; $psi.RedirectStandardError=$true
+    return Invoke-Hotpl8ProcessInfo $psi $TimeoutMs
+}
+function Invoke-Hotpl8ProcessInfo($StartInfo,[int]$TimeoutMs=20000) {
     $proc=$null; $clock=[Diagnostics.Stopwatch]::StartNew()
     try {
-        $proc=[Diagnostics.Process]::Start($psi)
+        $proc=[Diagnostics.Process]::Start($StartInfo)
+        if($StartInfo.RedirectStandardInput){$proc.StandardInput.Close()}
         $out=New-Object Text.StringBuilder
         $streams=@(
             @{reader=$proc.StandardOutput; buffer=(New-Object char[] 4096); task=$null; done=$false; keep=$true; count=0},
@@ -88,7 +92,12 @@ function Read-Hotpl8Json([string]$Path) {
     finally{if($reader){$reader.Dispose()}elseif($stream){$stream.Dispose()}}
     # Parsing can be much slower than reading. Release the file first so the
     # collector never waits for dashboard JSON conversion to finish.
-    try{return $text|ConvertFrom-Json -ErrorAction Stop}catch{return $null}
+    try{
+        # Core PowerShell otherwise turns JSON timestamps into local DateTime values;
+        # the Windows API contract requires their original strings and UTC suffixes.
+        if($PSVersionTable.PSVersion -ge [version]'7.5'){return ConvertFrom-Json -InputObject $text -DateKind String -ErrorAction Stop}
+        return ConvertFrom-Json -InputObject $text -ErrorAction Stop
+    }catch{return $null}
 }
 function Test-Hotpl8Number($Value) {
     if ($null -eq $Value -or $Value -is [bool] -or $Value -is [string]) { return $false }
@@ -110,6 +119,10 @@ function Resolve-CodexExecutable([string]$Explicit) {
         if (-not (Test-Path -LiteralPath $Explicit -PathType Leaf)) { throw 'codex_missing' }
         if ([IO.Path]::GetExtension($Explicit) -in @('.cmd','.bat','.ps1')) { throw 'native_codex_required' }
         return [IO.Path]::GetFullPath($Explicit)
+    }
+    if($env:HOTPL8_NATIVE_BIN){
+        $managed=Join-Path $env:HOTPL8_NATIVE_BIN $(if($env:OS -eq 'Windows_NT'){'codex.exe'}else{'codex'})
+        if(Test-Path -LiteralPath $managed -PathType Leaf){return $managed}
     }
     $commands = @(Get-Command codex.exe,codex -All -ErrorAction SilentlyContinue)
     foreach ($c in $commands) {
@@ -173,7 +186,7 @@ function Stop-Hotpl8Process($Process) {
                     $k = [Diagnostics.Process]::Start($killer)
                     [void]$k.StandardOutput.ReadToEndAsync(); [void]$k.StandardError.ReadToEndAsync()
                     [void]$k.WaitForExit(1000); $k.Dispose()
-                } else { $Process.Kill() }
+                } else { $Process.Kill($true) }
             }
         }
     } catch { try { $Process.Kill() } catch { } }

@@ -41,15 +41,34 @@ try{
             if($changed){$hook.hooks.SessionStart=$entries;$updates+=@(@{path=$hookPath;value=$hook})}
         }
     }
-    if($installation.scheduled){
+    if($installation.scheduled -and $installation.platform -ne 'macos'){
         $task=Get-ScheduledTask -TaskName ('HotPl8-'+$installation.id) -ErrorAction SilentlyContinue
         if($task -and $task.Description -ne ('HotPl8 owned installation '+$installation.id)){throw 'Task ownership mismatch.'}
         if($task){Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false}
     }
+    if($installation.platform -eq 'macos'){
+        if(-not $IsMacOS){throw 'Use macOS to remove this installation.'}
+        $label='com.hotpl8.collector.'+$installation.id
+        $launch=Join-Path (Get-Hotpl8UserHome) ('Library/LaunchAgents/'+$label+'.plist')
+        if($installation.scheduled -and (Test-Path $launch)){
+            [xml]$job=[IO.File]::ReadAllText($launch)
+            if($job.plist.dict.string -notcontains $label -or $job.plist.dict.array.string -notcontains (Join-Path $root 'app/tick.ps1') -or $job.plist.dict.array.string -notcontains $state){throw 'Collector ownership mismatch.'}
+            $uid=(& /usr/bin/id -u).Trim()
+            & /bin/launchctl bootout ('gui/'+$uid+'/'+$label) 2>$null
+            Remove-Item -LiteralPath $launch
+        }
+        $link=Join-Path (Get-Hotpl8UserHome) '.local/bin/hotpl8'
+        if($installation.pathAdded -and (Test-Path $link)){
+            $item=Get-Item $link -Force
+            if($item.LinkType -ne 'SymbolicLink' -or $item.Target -ne (Join-Path $root 'hotpl8')){throw 'Command ownership mismatch.'}
+            Remove-Item -LiteralPath $link
+        }
+    }
     foreach($update in $updates){Write-Hotpl8Text $update.path ($update.value|ConvertTo-Json -Depth 32) -NoBom}
     Remove-Hotpl8App (Join-Path $root 'previous')
     Remove-Hotpl8App (Join-Path $root 'app')
-    if($installation.pathAdded){Set-Hotpl8UserPath $root $false}
-    foreach($name in @('hotpl8.cmd','installation.json')){Remove-Item -LiteralPath (Join-Path $root $name) -Force}
+    if($installation.pathAdded -and $installation.platform -ne 'macos'){Set-Hotpl8UserPath $root $false}
+    $ownedNames=if($installation.platform -eq 'macos'){@('hotpl8','installation.json')}else{@('hotpl8.cmd','installation.json')}
+    foreach($name in $ownedNames){Remove-Item -LiteralPath (Join-Path $root $name) -Force}
     'Uninstalled HotPl8. Its state directory and all native accounts/conversations were preserved.'
 }finally{$lock.Dispose()}

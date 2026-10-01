@@ -12,7 +12,7 @@ function Test-Hotpl8McpFields($Value, [string[]]$Allowed, [string[]]$Required = 
     return $true
 }
 
-function Get-Hotpl8McpTools([bool]$AllowPause) {
+function Get-Hotpl8McpTools([bool]$AllowPause,[bool]$AllowOnboarding=$false) {
     $outputSchema = @{
         type = 'object'; additionalProperties = $false
         required = @('apiVersion','ok','operation','data','error','computedAt')
@@ -37,6 +37,16 @@ function Get-Hotpl8McpTools([bool]$AllowPause) {
         inputSchema = @{ type = 'object'; additionalProperties = $false; required = @('provider'); properties = @{
             provider = @{ type = 'string'; enum = @(Get-Hotpl8ProviderCatalog|ForEach-Object id) }; model = @{ type = 'string'; minLength = 1; maxLength = 100; pattern = '^[a-zA-Z0-9_.-]{1,100}$' }
         } }; outputSchema = $outputSchema; annotations = $readAnnotations
+    }
+    if($AllowOnboarding){
+        @{
+            name='hotpl8_onboard';description='Set up the first or another native account. Durable progress and private sign-in handoff; installs dependencies only with allowInstall. No inference prompts.'
+            inputSchema=@{type='object';additionalProperties=$false;required=@('action');properties=@{
+                action=@{type='string';enum=@('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel')}
+                operationId=@{type='string';pattern='^[0-9a-f]{32}$'};provider=@{type='string';enum=@('claude','codex')}
+                candidateId=@{type='string';pattern='^[a-z0-9-]{1,40}$'};newAccount=@{type='boolean'};allowInstall=@{type='boolean'};deviceCode=@{type='boolean'}
+            }};outputSchema=$outputSchema;annotations=@{readOnlyHint=$false;destructiveHint=$false;idempotentHint=$true;openWorldHint=$true}
+        }
     }
     if ($AllowPause) {
         $leaseSchema = @{ type = 'string'; format = 'uuid'; pattern = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' }
@@ -86,13 +96,13 @@ function Read-Hotpl8McpLine($Stream) {
     } catch { return @{ error = 'Invalid UTF-8.' } }
 }
 
-function Start-Hotpl8Mcp([string]$Directory, [switch]$AllowAgentPause) {
+function Start-Hotpl8Mcp([string]$Directory, [switch]$AllowAgentPause, [switch]$AllowAgentOnboarding) {
     $stream = [Console]::OpenStandardInput()
     $encoding = New-Object System.Text.UTF8Encoding($false)
     $writer = New-Object IO.StreamWriter([Console]::OpenStandardOutput(), $encoding)
     $writer.NewLine = "`n"
     $initialized = $false; $initializing = $false
-    $tools = @(Get-Hotpl8McpTools ([bool]$AllowAgentPause))
+    $tools = @(Get-Hotpl8McpTools ([bool]$AllowAgentPause) ([bool]$AllowAgentOnboarding))
     try {
         while ($true) {
             $line = Read-Hotpl8McpLine $stream
@@ -100,7 +110,7 @@ function Start-Hotpl8Mcp([string]$Directory, [switch]$AllowAgentPause) {
             if ($line.error) { Write-Hotpl8McpError $writer $null -32700 $line.error; continue }
             try { $request = ConvertFrom-Json -InputObject $line.text -ErrorAction Stop }
             catch { Write-Hotpl8McpError $writer $null -32700 'Parse error.'; continue }
-            if (-not (Test-Hotpl8McpObject $request)) { Write-Hotpl8McpError $writer $null -32600 'Invalid request.'; continue }
+            if ($line.text.TrimStart() -notmatch '^\{' -or -not (Test-Hotpl8McpObject $request)) { Write-Hotpl8McpError $writer $null -32600 'Invalid request.'; continue }
             $hasId = @($request.PSObject.Properties.Name) -ccontains 'id'
             $id = $request.id
             $validId = (-not $hasId -or $id -is [string] -or $id -is [int] -or $id -is [long] -or $id -is [decimal] -or ($id -is [double] -and -not [double]::IsNaN($id) -and -not [double]::IsInfinity($id)))
@@ -145,6 +155,7 @@ function Start-Hotpl8Mcp([string]$Directory, [switch]$AllowAgentPause) {
                         'hotpl8_readiness' { 'readiness' }
                         'hotpl8_pause_acquire' { 'pause.acquire' }
                         'hotpl8_pause_release' { 'pause.release' }
+                        'hotpl8_onboard' { 'onboarding' }
                     }
                     if ($params.name -ceq 'hotpl8_inspect') {
                         if (-not (Test-Hotpl8McpFields $arguments @('view') @('view')) -or $arguments.view -isnot [string] -or $arguments.view -cnotin @('status','explain','capabilities','doctor','accounts')) {
@@ -153,7 +164,7 @@ function Start-Hotpl8Mcp([string]$Directory, [switch]$AllowAgentPause) {
                         $arguments = [pscustomobject]@{}
                     }
                     try {
-                        $envelope = Invoke-Hotpl8AgentRequest -Request ([pscustomobject]@{ apiVersion = 1; operation = $operation; arguments = $arguments }) -Directory $Directory -AllowPause ([bool]$AllowAgentPause)
+                        $envelope = Invoke-Hotpl8AgentRequest -Request ([pscustomobject]@{ apiVersion = 1; operation = $operation; arguments = $arguments }) -Directory $Directory -AllowPause ([bool]$AllowAgentPause) -AllowOnboarding ([bool]$AllowAgentOnboarding)
                     } catch {
                         # Do not leak exception paths, provider output, or lease capabilities.
                         $envelope = [pscustomobject]@{ apiVersion = 1; ok = $false; operation = $operation; data = $null; error = @{ code = 'internal_error'; message = 'The operation could not be completed.'; retryable = $false }; computedAt = [DateTime]::UtcNow.ToString('o') }

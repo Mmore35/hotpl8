@@ -243,6 +243,69 @@
             "operation",
             "arguments"
           ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "apiVersion",
+            "operation",
+            "arguments"
+          ],
+          "properties": {
+            "apiVersion": {
+              "const": 1
+            },
+            "operation": {
+              "const": "onboarding"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "action"
+              ],
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "begin",
+                    "status",
+                    "choose_provider",
+                    "choose_account",
+                    "sign_in",
+                    "install",
+                    "retry",
+                    "cancel"
+                  ]
+                },
+                "operationId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{32}$"
+                },
+                "provider": {
+                  "type": "string",
+                  "enum": [
+                    "claude",
+                    "codex"
+                  ]
+                },
+                "candidateId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]{1,40}$"
+                },
+                "newAccount": {
+                  "type": "boolean"
+                },
+                "allowInstall": {
+                  "type": "boolean"
+                },
+                "deviceCode": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
         }
       ]
     },

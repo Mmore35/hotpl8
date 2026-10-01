@@ -1,52 +1,59 @@
-# Install on Windows
+# Install and connect your first account
 
-This is a release candidate. Use Windows PowerShell 5.1 and a terminal such as Windows Terminal. Mac/Linux source use is experimental. Installation is per-user and requires no administrator rights.
+The current candidate supports guided first-account setup on Windows and macOS 14+. Mac source use requires PowerShell 7.5+; the startup script handles that dependency. The older `v0.1.0-rc.1` release uses [its versioned instructions](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md); it does not include this flow.
 
-Existing Mac state can use [verified main updates](macos-delivery.md).
-That opt-in path creates no schedules by default; collector enrollment is separate. It
-does not make every Windows feature available on macOS.
+An agent can install HotPl8, prepare the selected provider, and finish setup after your native sign-in. No private manager, GitHub account, Git checkout, or preconfigured account roster is required. One account is enough.
 
-1. Install and sign into the native tools for the providers you want. Follow [Codex installation](https://developers.openai.com/codex/cli/) or [Claude Code setup](https://code.claude.com/docs/en/setup). Claude monitoring also requires Python 3.12+ and a compatible [claude-swap](https://github.com/realiti4/claude-swap) installation; its upstream isolated installation instructions are preferred. Codex-only use requires neither Python nor claude-swap.
-2. Download/extract a reviewed HotPl8 archive. Compare `Get-FileHash .\hotpl8-VERSION-windows.zip -Algorithm SHA256` with the release's SHA256SUMS through a trusted release page. Checksums detect mismatch; they do not independently prove publisher identity. Do not weaken global execution policy. Inspect/unblock only the downloaded files you trust if Windows marks them as downloaded.
-3. In the extracted directory run `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1`. Default installation: `%LOCALAPPDATA%\HotPl8`; writable state: its `state` subdirectory. Code lives separately in `app`. Use `-InstallDirectory` and `-StateDirectory` for custom locations. `-NoPath` avoids changing user PATH.
-4. Open a new terminal. `hotpl8 doctor` reports missing dependencies without logging in or collecting quota.
+## From a reviewed candidate or extracted package
 
-## Enroll Codex
-
-Sign into the desired native Codex home first. Open a new terminal after installation, then run:
+On Windows, open PowerShell in the extracted directory and run:
 
 ```powershell
-hotpl8 enroll -Slot main -AccountHome "$env:USERPROFILE\.codex"
-hotpl8 refresh
-hotpl8
-# When you want to launch Codex in this account:
-hotpl8 codex -Slot main
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
-The `enroll` shortcut is in the current source; the v0.1.0-rc.1 ZIP uses [its versioned enrollment instructions](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md#enroll-codex).
+On macOS, open Terminal in that directory and run:
 
-Enrollment runs a quota read to validate native subscription authentication. Do not copy auth.json between homes. Additional independently signed-in homes can be enrolled explicitly. Automatic model routing requires a verified `codex.modelMeters` mapping. A second account is not required for monitoring or explicit-slot launching.
+```bash
+bash start.sh
+```
 
-Hooks are optional: `setup-codex.ps1` supports `-InstallHook`, then native Codex requires reviewing/trusting the handler in `/hooks`. Unrelated handlers are preserved. The general installer already supplies the command; do not use legacy `-InstallCommand` for an installed app.
+Mac startup reuses PowerShell if installed, or downloads a pinned, checksum-verified runtime to your user directory. Setup installs HotPl8, registers observation-only background collection, and starts account onboarding. Choose Claude or ChatGPT/Codex only if local discovery cannot determine the provider. Allow any missing integration tools, then complete native sign-in if necessary. HotPl8 does the remaining work.
 
-## Enroll Claude
+There are no administrator steps. Windows defaults to `%LOCALAPPDATA%\HotPl8`; Mac defaults to `~/Library/Application Support/HotPl8`. Application code is separate from writable `state`. Native tools remain responsible for authentication. Setup never asks you to paste credentials, run `cswap add`, locate an account directory, choose a slot ID, or edit JSON.
 
-Use native Claude login and `cswap add` as documented upstream. Put the chosen numeric slot IDs into state/policy.json's `prefer` array and add non-sensitive display labels. Keep `mode: monitor` while verifying readings. The [configuration guide](configuration.md) explains reserves and experimental automation. HotPl8 does not provide a third-party sign-in flow.
+Use `-Provider claude` or `-Provider codex` to express intent up front. `-InstallDependencies` authorizes the selected provider's required tools without another prompt. Agents use `-AsJson`; see [agent onboarding](agent-api.md#connect-an-account). `-NoSchedule` omits the collector, and `-NoPath` omits command registration. `-InstallDirectory` is available for deliberate custom installations.
 
-On refresh, supported cswap installations automatically detect Claude plan names using Anthropic profile metadata. No plan questionnaire is required. See [plan discovery and capacity conversions](capacity.md); an unavailable profile never blocks quota collection.
+## Public download entrypoints
 
-## Background collection
+After this candidate reaches a passing main build, the repository's `get.ps1` (Windows) and `get.sh` (Mac) entrypoints download the latest passing main package. They require no developer GitHub authentication. Download and inspect the entrypoint from the repository you trust, then run it:
 
-Rerun the installer from the extracted release with `-Schedule`. It registers one hidden, unelevated task that wakes every minute for the signed-in user. Claude's adapter is observed on every healthy wake and manages its own API polling cadence. Codex normally collects every five minutes and can shorten in critical mode. Provider failures retain bounded backoff. Repeated installation updates the owned task. It does not run while the user is signed out. Monitoring policy remains observation-only.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\get.ps1
+```
 
-A source checkout is also portable: run `powershell -NoProfile -ExecutionPolicy Bypass -File .\hotpl8.ps1 init`, enroll accounts, then use the same command with `refresh` in place of `init`. Source checkout state defaults to that directory. An explicit `-StateDirectory` overrides `HOTPL8_STATE_DIRECTORY`, which overrides the installed binding or portable default.
+```bash
+bash get.sh
+```
 
-## First screen
+The bootstrap checks the successful public workflow, release tag, source revision, asset SHA256, file inventory, and individual file checksums before running setup. It installs that tested package as an ordinary installation; continuous main updates remain a separate opt-in. A package predating onboarding produces a clear error rather than silently using the old manual flow. Download failures leave the existing installation intact.
 
-![A fresh HotPl8 installation explains how to enroll an account and refresh](assets/first-run.png)
+## Add another account
 
-After enrollment, `hotpl8 refresh` collects readings. Opening `hotpl8` only displays the cache. If an account needs sign-in, use its native login flow and refresh again. `hotpl8 doctor` gives offline next steps.
+```powershell
+hotpl8 add
+```
 
-## Guided setup in the 0.2 source candidate
+The [account flow](onboarding.md) reuses a single available sign-in or opens the provider login, then enrolls and reads usage automatically. Additional accounts follow the same flow as the first account. An agent can drive both providers through structured operations.
 
-Run `hotpl8 setup -Interactive` after installation for native account enrollment without editing JSON. `hotpl8 setup` prints equivalent noninteractive commands. Existing native sign-in is required; setup does not enable automatic actions. [Account controls and readiness](operations.md). macOS implementation continues from the [Mac handoff](plans/macos-handoff.md).
+The older `enroll`, `accounts`, and `setup-codex.ps1` commands remain available for explicit native-home bindings, labels, reserves, and hooks. They are advanced controls, not prerequisites for starting.
+
+## Background collection and removal
+
+Ordinary guided installation registers one per-user collector: a hidden Windows task or a Mac LaunchAgent. It wakes every minute while the user is signed in; provider cadence and backoff still apply. Codex normally reads every five minutes. The dashboard shows observation freshness; an installed collector does not guarantee a provider is reachable. `-NoSchedule` installations can collect explicitly with `hotpl8 refresh`.
+
+Windows adds its command to user PATH for new terminals. Mac places a command in `~/.local/bin`; setup itself opens the view immediately. If your shell does not include that directory, an agent can use the installed `hotpl8` launcher directly. No terminal restart is required to complete setup.
+
+Rerun the ordinary installer to update its owned application. `rollback.ps1 -InstallDirectory PATH` restores the previous code when compatible. `uninstall.ps1 -InstallDirectory PATH` removes owned code and integration while retaining state, onboarding progress, and native account data. A separately enrolled [main delivery installation](delivery.md) keeps its existing delivery owner; ordinary setup will not overwrite it.
+
+The private Mac bootstrap runtime is retained at `~/Library/Application Support/HotPl8-Runtimes` because installed launchers may reference it. Remove it only after no installation uses it. Claude adapter runtimes remain with preserved state.

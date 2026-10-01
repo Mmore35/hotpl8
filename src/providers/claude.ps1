@@ -389,6 +389,10 @@ function Resolve-CswapExecutable([string]$CswapExecutable) {
     # Probe common installation locations without requiring a particular
     # workstation layout; explicit executable bindings always take precedence.
     $cswap = $CswapExecutable
+    if(-not $cswap -and $env:HOTPL8_NATIVE_BIN){
+        $owned=Join-Path $env:HOTPL8_NATIVE_BIN $(if($env:OS -eq 'Windows_NT'){'cswap.exe'}else{'cswap'})
+        if(Test-Path -LiteralPath $owned -PathType Leaf){$cswap=$owned}
+    }
     if (-not $cswap) { foreach ($c in @((Join-Path $HOME '.local/bin/cswap'), '/usr/local/bin/cswap')) {
         if (Test-Path $c) { $cswap = $c; break }
     }

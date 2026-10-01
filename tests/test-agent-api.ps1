@@ -1,4 +1,4 @@
-# Offline agent contract tests: synthetic state, actual CLI framing, production selectors.
+﻿# Offline agent contract tests: synthetic state, actual CLI framing, production selectors.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 foreach($name in @('common','config','diagnostics','insights','management','agent-api')){. (Join-Path $root ('src/'+$name+'.ps1'))}
@@ -33,7 +33,7 @@ function Request([string]$Operation,$Arguments=@{},[bool]$AllowPause=$true) {
 }
 function Invoke-AgentTestCli([string]$Json,[string]$Command='agent') {
     $psi=New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $psi.FileName=(Get-Process -Id $PID).Path
     $psi.Arguments=(@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'hotpl8.ps1'),$Command,'-StateDirectory',$dir)|ForEach-Object {ConvertTo-NativeArgument $_}) -join ' '
     $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.RedirectStandardInput=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
     $process=[Diagnostics.Process]::Start($psi)
@@ -102,7 +102,7 @@ try{
     }
     Check 'legacy JSON status remains unwrapped' {
         $psi=New-Object Diagnostics.ProcessStartInfo
-        $psi.FileName=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        $psi.FileName=(Get-Process -Id $PID).Path
         $psi.Arguments=(@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'hotpl8.ps1'),'status','-AsJson','-StateDirectory',$dir)|ForEach-Object {ConvertTo-NativeArgument $_}) -join ' '
         $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.RedirectStandardOutput=$true
         $p=[Diagnostics.Process]::Start($psi);try{$raw=$p.StandardOutput.ReadToEnd();$p.WaitForExit();Assert ($p.ExitCode -eq 0);$parsed=$raw|ConvertFrom-Json;Assert ($parsed.schemaVersion -eq 2 -and -not $parsed.PSObject.Properties['apiVersion'])}finally{$p.Dispose()}

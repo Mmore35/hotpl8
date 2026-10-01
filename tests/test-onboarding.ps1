@@ -1,4 +1,4 @@
-# Offline newcomer flow: policy creation, actionable guidance, and no false readiness.
+﻿# Offline newcomer flow: policy creation, actionable guidance, and no false readiness.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
@@ -13,7 +13,7 @@ $dir = Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-onboarding-' + [guid]::NewG
 [void][IO.Directory]::CreateDirectory($dir)
 function Invoke-TestCli([string[]]$Arguments) {
     $psi = New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $psi.FileName = (Get-Process -Id $PID).Path
     $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $root 'hotpl8.ps1')) + $Arguments + @('-StateDirectory', $dir)
     $psi.Arguments = (@($all | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' ')
     $psi.UseShellExecute = $false

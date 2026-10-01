@@ -166,6 +166,23 @@
     "delivery/macos-t3-launch.py",
     "scripts/test-macos-delivery.ps1",
     "tests/test_macos_delivery.py",
-    "docs/macos-delivery.md"
+    "docs/macos-delivery.md",
+    "onboarding-worker.ps1",
+    "src/onboarding.ps1",
+    "src/onboarding-native.ps1",
+    "src/onboarding-install.ps1",
+    "src/onboarding-ui.ps1",
+    "install-macos.ps1",
+    "start.ps1",
+    "tests/test-onboarding-flow.ps1",
+    "tests/test-onboarding-native.ps1",
+    "tests/onboarding-native-fixture.mjs",
+    "tests/test-install-macos.ps1",
+    "start.sh",
+    "get.ps1",
+    "get.sh",
+    "docs/onboarding.md",
+    "tests/test-bootstrap.ps1",
+    "tests/onboarding-claude-fixture.mjs"
   ]
 }

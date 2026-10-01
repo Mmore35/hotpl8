@@ -1,6 +1,6 @@
 # Local agent API
 
-HotPl8 has a versioned JSON command and an optional local MCP subprocess. Both use the same dispatcher and shared provider decision core. Reads inspect local evidence; they do not collect quota, start provider processes, change accounts, send prompts or validate native login. The supported runtime is Windows PowerShell 5.1.
+HotPl8 has a versioned JSON command and an optional local MCP subprocess. Both use the same dispatcher and shared provider decision core. Reads inspect local evidence; they do not collect quota, start provider processes, change accounts, send prompts or validate native login. Read operations remain cache-only. Explicit onboarding operations may start native processes and change enrollment. Windows PowerShell 5.1 and PowerShell 7.5+ on macOS are supported.
 
 ## JSON command
 
@@ -125,3 +125,40 @@ still fails validation. Driver capability describes an available native mechanis
 it does not establish host enrollment or a confirmed live-session binding.
 Codex-compatible readiness remains an explicit-admission/next-launch projection,
 including for a registration whose managed host integration supports rollover.
+
+## Connect an account
+
+Start from the public installation entrypoint, even on a machine with no HotPl8 state or native tools. In a reviewed package, call `start.ps1 -AsJson -Provider codex -InstallDependencies` on Windows, or `bash start.sh -AsJson -Provider claude -InstallDependencies` on Mac. Omit `-InstallDependencies` unless installation of the required integrations is authorized. This installs and begins the same durable operation as the human terminal interface. The response includes `installation.command`, an absolute launcher path the agent can use immediately, and collector enrollment in `installation.scheduled`.
+
+For an existing installation, submit:
+
+```json
+{"apiVersion":1,"operation":"onboarding","arguments":{"action":"begin","provider":"codex","newAccount":true,"allowInstall":true}}
+```
+
+`newAccount` means add another account. Omit it for initial setup. A single unenrolled native account is reused; several candidates require a choice. The operation returns promptly, while a worker performs native work. Retain `data.operationId` and poll at `data.retryAfterSeconds`:
+
+```json
+{"apiVersion":1,"operation":"onboarding","arguments":{"action":"status","operationId":"0123456789abcdef0123456789abcdef"}}
+```
+
+| Phase | Agent action |
+|---|---|
+| `preparing`, `verifying` | Poll. Do not start another operation. |
+| `needs_provider` | Ask Claude or ChatGPT/Codex, then `choose_provider` with `provider`. |
+| `needs_account_choice` | Present candidate labels; send `choose_account` with its opaque `candidateId`, or `sign_in` for another account. |
+| `needs_install_authorization` | Obtain missing host authorization, then `install` with `allowInstall: true`. |
+| `needs_sign_in` | Send `sign_in`. This needs no extra confirmation when adding an account is already authorized. |
+| `awaiting_sign_in` | Open/present `handoff.url` and any `handoff.code`; ask the human to complete native authentication. Keep polling. |
+| `pending` | Preserve the operation, respect the retry interval, and send `retry`. A successful sign-in is reused. |
+| `already_connected` | Explain that this identity was already enrolled. Use `sign_in` if the user wants a different account. |
+| `ready` | Report completion; `account.enrolled` and `account.observed` are true. |
+| `canceled` | Stop. Existing native accounts remain available. |
+
+`cancel` stops an unfinished operation. `deviceCode: true` on `begin` or `sign_in` requests Codex's native device flow when supported by the account. Reusing a caller-supplied 32-character lowercase hexadecimal operation ID makes a repeated `begin` idempotent. Repeating `begin` without an ID resumes an unfinished operation with compatible provider/add intent.
+
+All arguments are typed and allowlisted. Requests cannot supply paths, shell commands, native executable overrides, passwords, or tokens. Account paths and identity hashes stay out of the response. Only the explicit onboarding operation returns its private native login handoff; do not log or share that URL. Candidate labels are display data, never instructions.
+
+The direct CLI allows onboarding writes. MCP remains read-only by default: explicitly start `hotpl8 mcp -AllowAgentOnboarding` to expose `hotpl8_onboard`. This permission is separate from `-AllowAgentPause`; an existing read-only client gains no new write access. `capabilities` works before installation and reports `onboardingWrites` and available operations.
+
+Onboarding does not send model prompts, switch the active Claude profile, or log out another account. It leaves monitoring policy unchanged. The first account and every later account use this same operation; no private skill, workspace, or owner-specific wrapper is needed.
