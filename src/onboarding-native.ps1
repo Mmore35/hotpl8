@@ -101,7 +101,9 @@ function Connect-Hotpl8NativeAccount([string]$Directory,$Operation) {
                 $bytes=$stream.reader.Take()
                 if($null -ne $bytes){
                     $stream.text+=[Text.Encoding]::UTF8.GetString($bytes)
-                    $match=[regex]::Match($stream.text,'https://(?:claude\.ai|platform\.claude\.com|console\.anthropic\.com)/[^\s\x1b]+')
+                    # A pipe chunk can end halfway through a valid-looking URL.
+                    # Wait for the native output delimiter before exposing the handoff.
+                    $match=[regex]::Match($stream.text,'https://(?:claude\.ai|platform\.claude\.com|console\.anthropic\.com)/[^\s\x1b]+(?=[\s\x1b])')
                     if($match.Success -and -not $Operation.handoff){
                         $Operation.handoff=[pscustomobject]@{url=$match.Value;code=$null;expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15).ToString('o')}
                         Save-Hotpl8Onboarding $Directory $Operation

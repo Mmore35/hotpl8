@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 const profile = process.env.CLAUDE_CONFIG_DIR;
 const fixture = JSON.parse(fs.readFileSync(path.join(profile, 'fixture.json'), 'utf8'));
-process.stdout.write('https://claude.ai/oauth/authorize?fixture=true\n');
+// A pipe read may split the URL anywhere; only publish a complete handoff.
+process.stdout.write('https://claude.ai/oauth/authorize?fixture=');
+setTimeout(() => process.stdout.write('true\n'), 400);
 // Bound a live handoff, allowing slow shared Windows runners to service the pipe.
 const deadline = Date.now() + 15000;
 const timer = setInterval(() => {

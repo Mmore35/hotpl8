@@ -82,7 +82,7 @@ try{
         Assert $rejected
         Assert ((Test-Path (Join-Path $h2 'auth.json')) -and @( (Read-Hotpl8Json (Join-Path $d 'policy.json')).codex.slots).Count -eq 1)
     }
-    Check 'Claude URL is available while its native login is still waiting' {
+    Check 'complete Claude URL is available across pipe chunks before native login exits' {
         function Get-Hotpl8ClaudeExecutable {return $script:node}
         function Add-Hotpl8NativeClaudeAccount($Directory,$Operation){
             if(Test-Path (Join-Path $Operation.selected.home 'fixture-auth-completed')){return $Operation.selected}
