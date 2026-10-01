@@ -183,6 +183,10 @@
     "get.sh",
     "docs/onboarding.md",
     "tests/test-bootstrap.ps1",
-    "tests/onboarding-claude-fixture.mjs"
+    "tests/onboarding-claude-fixture.mjs",
+    "delivery/live_preview.py",
+    "delivery/live-preview.ps1",
+    "tests/test_live_preview.py",
+    "tests/fixtures/terminal.ps1"
   ]
 }

@@ -1,4 +1,4 @@
-# refresh observes; tick applies policy. Authentication belongs to native provider tools.
+﻿# refresh observes; tick applies policy. Authentication belongs to native provider tools.
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
@@ -8,6 +8,8 @@ param(
     [string]$Model,
     [string]$StateDirectory,
     [string]$PreviewPolicy,
+    [switch]$Live,
+    [string]$TrustRevision,
     [string]$CodexExecutable,
     [switch]$AsJson,
     [string]$AccountHome,
@@ -43,6 +45,7 @@ param(
 $ErrorActionPreference = 'Stop'
 try {
     . (Join-Path $PSScriptRoot 'src/common.ps1')
+    if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}
     if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}
     . (Join-Path $PSScriptRoot 'src/config.ps1')
     . (Join-Path $PSScriptRoot 'src/diagnostics.ps1')
@@ -107,7 +110,7 @@ try {
         'update-check [-Channel preview] [-Operation dismiss] / update -InstallDirectory PATH'
         'agent [-RequestJson JSON]: versioned local agent request; stdin JSON is also accepted.'
         'delivery: installed, desired and previous commit; update: follow tested main when enrolled.'
-        'preview pr NUMBER: download inert CI dashboard images for an exact PR revision.'
+        'preview pr NUMBER: download CI images. Add -Live -TrustRevision FULL_SHA to execute that reviewed PR dashboard with demo accounts.'
         'mcp [-AllowAgentPause]: local stdio MCP; read tools only unless pause writes are enabled.'
         exit 0
     }
@@ -139,6 +142,10 @@ try {
         if($Command -eq 'preview'){
             if($CodexArguments.Count -ne 2 -or $CodexArguments[0] -ne 'pr' -or $CodexArguments[1] -notmatch '^[1-9][0-9]*$'){throw 'Use hotpl8 preview pr NUMBER.'}
             $forward+=@($CodexArguments[1])
+            if($Live -or $TrustRevision){
+                if(-not $Live -or $TrustRevision -cnotmatch '^[0-9a-f]{40}$'){throw 'Live preview requires -Live -TrustRevision FULL_SHA. This executes trusted PR code locally.'}
+                $forward+=@('--trust-revision',$TrustRevision)
+            }
         }
         & $registration.python @forward
         exit $LASTEXITCODE

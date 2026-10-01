@@ -432,6 +432,12 @@ $lease.Dispose()
 @unittest.skipUnless(sys.platform == 'darwin', 'Native Mac process containment')
 class Guardian(unittest.TestCase):
     def test_interactive_dashboard_renders_and_quits_on_native_pty(self):
+        for mode, terminal, no_color in [('watch', 'iTerm.app', ''), ('nyan', 'Apple_Terminal', ''),
+                                         ('nyan', 'Apple_Terminal', '1')]:
+            with self.subTest(mode=mode, terminal=terminal, no_color=no_color):
+                self.assert_interactive_dashboard_colors(mode, terminal, no_color)
+
+    def assert_interactive_dashboard_colors(self, mode, terminal, no_color):
         import fcntl
         import pty
         import select
@@ -446,7 +452,8 @@ class Guardian(unittest.TestCase):
             pid, master = pty.fork()
             if pid == 0:
                 os.execve(shutil.which('pwsh'), [shutil.which('pwsh'), '-NoProfile', '-File', str(REPO / 'hotpl8.ps1'),
-                          'watch', '-StateDirectory', str(state), '-ReducedMotion'], dict(os.environ, TERM='xterm-256color', NO_COLOR=''))
+                          mode, '-StateDirectory', str(state), '-ReducedMotion'],
+                          dict(os.environ, TERM='xterm-256color', TERM_PROGRAM=terminal, NO_COLOR=no_color))
             fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 35, 100, 0, 0))
             output = b''
             status = None
@@ -469,7 +476,17 @@ class Guardian(unittest.TestCase):
                 self.assertIn(b'hotpl8', output.lower())
                 self.assertIsNotNone(status, output.decode('utf-8', 'replace'))
                 self.assertEqual(os.waitstatus_to_exitcode(status), 0, output.decode('utf-8', 'replace'))
+                if no_color:
+                    self.assertNotRegex(output, rb'\x1b\[(?:38|48);')
+                    return
                 self.assertIn(b'\x1b[?1049h', output)
+                # Include the initial clear, asynchronous frame and exit sequence.
+                if terminal == 'Apple_Terminal':
+                    self.assertIn(b'\x1b[48;5;234m', output)
+                    self.assertNotRegex(output, rb'\x1b\[(?:38|48);2;')
+                else:
+                    self.assertIn(b'\x1b[48;2;18;23;35m', output)
+                    self.assertNotRegex(output, rb'\x1b\[(?:38|48);5;')
             finally:
                 if status is None:
                     os.kill(pid, signal.SIGKILL)

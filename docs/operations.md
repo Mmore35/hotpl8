@@ -118,3 +118,17 @@ A managed T3 bridge can adopt an eligible account at a qualified native request
 boundary; that does not make a CLI recommendation proof that every open session
 switched. New T3 enrollment uses the ordinary provider entry; a legacy alias may
 remain for [gradual manual transition](t3-integration.md).
+
+## Terminal colors
+
+`watch` and `nyan` use the fixed 256-color palette when `TERM_PROGRAM` is
+`Apple_Terminal`, including animated frames and the initial screen clear. Other
+terminals retain RGB output. This prevents unsupported RGB escape sequences from
+corrupting the background and text in Apple Terminal. The artwork and layout are
+unchanged; the indexed palette approximates their colors.
+
+Apple Terminal Nyan uses background-colored cells so font leading cannot create
+holes in the sprite. It selects 10- or 18-row art when the viewport has room;
+smaller windows retain the dashboard without a cropped cat. Windows and other
+RGB terminals retain the existing 5- and 9-row half-block art. See the
+[live PR preview](delivery.md#live-candidate-dashboard) for interactive review.

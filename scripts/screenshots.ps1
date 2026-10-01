@@ -7,6 +7,7 @@ $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/providers/codex.ps1')
 . (Join-Path $root 'src/dashboard.ps1')
 . (Join-Path $root 'tests/fixtures/screenshots.ps1')
+. (Join-Path $root 'tests/fixtures/terminal.ps1')
 if ($env:OS -ne 'Windows_NT') { throw 'Screenshot rendering requires Windows and Consolas.' }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'docs/assets' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -15,8 +16,15 @@ Add-Type -AssemblyName System.Drawing
 $fixture = Get-Hotpl8ScreenshotFixture
 $palette = Get-Hotpl8DashboardPalette
 
-function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [int]$Rows, [int]$Offset=0,[switch]$Nyan) {
-    $frame = @(Get-Hotpl8DashboardFrame $Status $Policy $fixture.now $Columns $Rows $Offset -Nyan:$Nyan -ReducedMotion)
+function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [int]$Rows, [int]$Offset=0,[switch]$Nyan,[switch]$TerminalAnsi) {
+    $frame = @(Get-Hotpl8DashboardFrame $Status $Policy $fixture.now $Columns $Rows $Offset -Nyan:$Nyan -ReducedMotion:(-not $TerminalAnsi))
+    if($TerminalAnsi){
+        $frame=@(foreach($row in $frame){
+            # Exercise the cached live sprite path as well as ordinary styled rows.
+            if($row.live.render -eq 'Get-Hotpl8NyanRow'){$row=Invoke-Hotpl8LiveRow $row 0}
+            New-Hotpl8StyledRow @(ConvertFrom-Hotpl8TestAnsiRow (ConvertTo-Hotpl8AnsiRow $row $palette))
+        })
+    }
     $font = New-Object Drawing.Font('Consolas', 18, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
     if ($font.Name -ne 'Consolas') { $font.Dispose(); throw 'Install Consolas to reproduce documentation images.' }
     $cellWidth = 11; $lineHeight = 24; $padding = 28; $titleHeight = 44
@@ -27,13 +35,17 @@ function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [i
     $format = [Drawing.StringFormat]::GenericTypographic.Clone()
     $format.FormatFlags = $format.FormatFlags -bor [Drawing.StringFormatFlags]::MeasureTrailingSpaces
     try {
-        $graphics.Clear([Drawing.Color]::FromArgb(18, 23, 35))
+        $background='18;23;35'
+        if($TerminalAnsi){$background=@(ConvertFrom-Hotpl8TestAnsiRow ((Get-Hotpl8AnsiColor $script:Hotpl8Background -Background)+' '))[0].background}
+        $rgb=$background.Split(';')
+        $graphics.Clear([Drawing.Color]::FromArgb([int]$rgb[0],[int]$rgb[1],[int]$rgb[2]))
         $graphics.TextRenderingHint = [Drawing.Text.TextRenderingHint]::AntiAliasGridFit
         foreach ($tone in $palette.Keys) {
             $rgb = @($palette[$tone].Split(';') | ForEach-Object { [int]$_ })
             $brushes[$tone] = New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb($rgb[0], $rgb[1], $rgb[2]))
         }
-        $graphics.DrawString('HotPl8  /  fictional accounts', $font, $brushes.muted, [single]$padding, [single]$padding, $format)
+        $caption=if($TerminalAnsi){'HotPl8 / fictional accounts / Apple Terminal 256 colors'}else{'HotPl8  /  fictional accounts'}
+        $graphics.DrawString($caption, $font, $brushes.muted, [single]$padding, [single]$padding, $format)
         for ($row = 0; $row -lt $frame.Count; $row++) {
             # Position glyphs on the terminal cell grid, including wide graphemes.
             $column=0
@@ -48,7 +60,13 @@ function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [i
                         if(-not $brushes.ContainsKey($bg)){$rgb=$bg.Split(';');$brushes[$bg]=New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb([int]$rgb[0],[int]$rgb[1],[int]$rgb[2]))}
                         $graphics.FillRectangle($brushes[$bg],[single]($padding+$column*$cellWidth),[single]($padding+$titleHeight+$row*$lineHeight),[single]($cells*$cellWidth),[single]$lineHeight)
                     }
-                    $graphics.DrawString($glyph,$font,$brushes[$fg],[single]($padding+$column*$cellWidth),[single]($padding+$titleHeight+$row*$lineHeight),$format)
+                    # Block pixels occupy terminal cells, not a font's padded glyph box.
+                    $left=[single]($padding+$column*$cellWidth);$top=[single]($padding+$titleHeight+$row*$lineHeight)
+                    if($glyph -in @('▀','▄','█')){
+                        $dy=if($glyph -eq '▄'){$lineHeight/2}else{0}
+                        $height=if($glyph -eq '█'){$lineHeight}else{$lineHeight/2}
+                        $graphics.FillRectangle($brushes[$fg],$left,($top+$dy),[single]($cells*$cellWidth),[single]$height)
+                    }elseif($glyph -ne ' '){$graphics.DrawString($glyph,$font,$brushes[$fg],$left,$top,$format)}
                     $column+=$cells
                 }
             }
@@ -126,3 +144,11 @@ $session.status.providers.codex.slots[1].buckets.codex.windows.'10080'.remaining
 Write-DashboardImage 'session-capacity.png' $session.status $session.policy 94 42
 
 Write-DashboardImage 'nyan-compact.png' $healthy.status $healthy.policy 48 24 -Nyan
+
+# Same real terminal encoding as Apple Terminal, with a deterministic live frame.
+$previousTerminal=$env:TERM_PROGRAM
+try{
+    $env:TERM_PROGRAM='Apple_Terminal'
+    Write-DashboardImage 'nyan-apple-terminal.png' $healthy.status $healthy.policy 113 33 -Nyan -TerminalAnsi
+    Write-DashboardImage 'nyan-apple-terminal-large.png' $healthy.status $healthy.policy 109 40 -Nyan -TerminalAnsi
+}finally{$env:TERM_PROGRAM=$previousTerminal}

@@ -58,3 +58,11 @@ Claude plan discovery is isolated in `src/providers/claude_plan.py` and `claude-
 T3 integration changes require `node --test tests/test-t3-codex.mjs` and
 `tests/test-t3-routing.ps1`. Fixtures use synthetic credentials and a fake native
 executable. Never print the private broker response: it contains an access token.
+
+## PR preview handoff
+
+Follow [the live PR handoff](docs/delivery.md#required-pr-handoff) for every PR.
+Include the PR URL, exact head SHA, Windows/Mac checks and a runnable, pinned
+live-preview command. The owner tests the candidate before merge. Keep Windows
+and Mac terminal behavior qualified; screenshots alone do not establish native
+terminal rendering. A changed head needs a fresh command and fresh checks.

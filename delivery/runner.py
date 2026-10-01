@@ -395,16 +395,11 @@ def update(root, github=None, adapter=invoke_adapter):
             write(root / "delivery-status.json", status)
 
 
-def preview(root, number, gh=None):
-    root = safe_root(root)
-    config = read(root / "delivery.json")
-    gh = gh or GitHub(config["repository"], config.get("gh", "gh"))
-    pr = gh.api("pulls/" + str(number))
+def preview_revision(config, number, gh, pr=None):
+    pr = pr or gh.api("pulls/" + str(number))
     sha = pr["head"]["sha"]
     if not SHA.fullmatch(sha):
         raise DeliveryError("Invalid PR revision")
-    # These are inert CI renderings. No candidate scripts, HTML or native code
-    # are launched on the host, even for a PR from a fork.
     runs = gh.api("actions/workflows/" + config["previewWorkflow"] + "/runs?event=pull_request&per_page=100")
     def belongs_to_pr(run):
         if any(p.get("number") == number for p in run.get("pull_requests", [])):
@@ -423,8 +418,15 @@ def preview(root, number, gh=None):
                and r.get("head_sha") == sha and belongs_to_pr(r)]
     if not matches:
         raise Deferred("No completed preview for this PR revision yet")
+    return sha, matches[0]
+
+def preview(root, number, gh=None):
+    root = safe_root(root)
+    config = read(root / "delivery.json")
+    gh = gh or GitHub(config["repository"], config.get("gh", "gh"))
+    sha, workflow = preview_revision(config, number, gh)
     target = root / "previews" / ("pr-" + str(number)) / sha
-    artifacts = gh.api("actions/runs/" + str(matches[0]["id"]) + "/artifacts")
+    artifacts = gh.api("actions/runs/" + str(workflow["id"]) + "/artifacts")
     artifacts = [a for a in artifacts.get("artifacts", []) if a.get("name") == "preview-images" and not a.get("expired")]
     if len(artifacts) != 1:
         raise Deferred("Preview images are missing or expired; rerun the PR workflow")
@@ -458,7 +460,9 @@ def preview(root, number, gh=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Local Delivery: tested main updates and inert PR previews")
+    # Keep adapter errors in the same class family when invoked as a script.
+    sys.modules.setdefault("runner", sys.modules[__name__])
+    parser = argparse.ArgumentParser(description="Local Delivery: tested main updates and PR previews")
     parser.add_argument("--install", required=True)
     parser.add_argument("command", choices=["update", "status", "preview", "job", "run"])
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -490,8 +494,18 @@ def main():
                 if current and (root / current["release"] / "src/t3-delivery.ps1").is_file():
                     result["components"] = json.loads(invoke_adapter(config, root / current["release"], "components", root))
         else:
-            if len(args.arguments) != 1 or not args.arguments[0].isdigit() or int(args.arguments[0]) < 1:
+            if not args.arguments or not args.arguments[0].isdigit() or int(args.arguments[0]) < 1:
                 raise DeliveryError("Specify a positive PR number")
+            if len(args.arguments) == 3 and args.arguments[1] == "--trust-revision":
+                # bootstrap.py uses runpy; its sys.path points at the install
+                # root, not this immutable release's delivery directory.
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("hotpl8_live_preview", Path(__file__).with_name("live_preview.py"))
+                candidate_preview = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(candidate_preview)
+                return candidate_preview.launch(root, int(args.arguments[0]), args.arguments[2])
+            if len(args.arguments) != 1:
+                raise DeliveryError("Use preview NUMBER [--trust-revision FULL_SHA]")
             result = preview(root, int(args.arguments[0]))
         print(json.dumps(result, indent=2))
         return 1 if result.get("state") == "error" else 0
