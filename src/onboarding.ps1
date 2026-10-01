@@ -40,7 +40,7 @@ function Get-Hotpl8OnboardingProgress([string]$Directory,[string]$Id) {
     if($op.phase -eq 'pending' -and $op.result.enrolled){
         $snapshot=Read-Hotpl8Json (Join-Path $Directory 'status.json')
         $view=Get-Hotpl8ProviderView $snapshot (Read-Hotpl8Json (Join-Path $Directory 'policy.json')) $op.selected.provider
-        $rows=if($op.provider -eq 'codex'){@($view.snapshot.providers.codex.slots|Where-Object id -EQ $op.selected.slot)}else{@($view.snapshot.slots|Where-Object slot -EQ $op.selected.slot)}
+        $rows=@(if($op.provider -eq 'codex'){$view.snapshot.providers.codex.slots|Where-Object id -EQ $op.selected.slot}else{$view.snapshot.slots|Where-Object slot -EQ $op.selected.slot})
         if($rows.Count -eq 1 -and $rows[0].status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $rows[0].observedAt)){
             $op.phase=$(if($op.result.alreadyPresent){'already_connected'}else{'ready'});$op.message='Account connected. Usage is available in HotPl8.';$op.result.observed=$true;$op.result.status='observed'
         }

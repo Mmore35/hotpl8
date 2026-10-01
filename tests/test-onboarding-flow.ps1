@@ -143,7 +143,8 @@ try{
         $path=Get-Hotpl8OnboardingPath $script:directory $r.operationId
         $before=(Get-FileHash $path).Hash
         $status=Invoke-Hotpl8Onboarding $script:directory status $r.operationId
-        Assert ($status.phase -eq 'ready' -and (Get-FileHash $path).Hash -eq $before)
+        Assert ($status.phase -eq 'ready') ('fresh single account remained '+$status.phase)
+        Assert ((Get-FileHash $path).Hash -eq $before) 'read-only status wrote operation state'
         $lock=[IO.File]::Open(($path+'.worker'),'OpenOrCreate','ReadWrite','None')
         try{Complete-Hotpl8ObservedOnboarding $script:directory;Assert ((Read-Hotpl8Json $path).phase -eq 'pending') 'collector raced a live worker'}finally{$lock.Dispose()}
         Complete-Hotpl8ObservedOnboarding $script:directory

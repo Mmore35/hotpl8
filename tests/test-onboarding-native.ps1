@@ -90,7 +90,11 @@ try{
         }
         $h=Fixture claude;$d=Join-Path $lab claude-state;$op=Operation $d $h;$op.provider='claude';$op.selected.provider='claude'
         Write-Hotpl8Text (Join-Path $h 'fixture.json') (@{operationPath=(Get-Hotpl8OnboardingPath $d $op.id)}|ConvertTo-Json) -NoBom
-        $selected=Connect-Hotpl8NativeAccount $d $op
+        try{$selected=Connect-Hotpl8NativeAccount $d $op}catch{
+            $detail=Read-Hotpl8Json (Join-Path $h 'fixture-failure.json')
+            if($detail){Write-Host ('Synthetic Claude fixture: '+($detail|ConvertTo-Json -Compress -Depth 5))}
+            throw
+        }
         Assert ($selected -and $op.handoff.url -eq 'https://claude.ai/oauth/authorize?fixture=true')
     }
     Check 'detached worker survives the short-lived JSON caller' {
