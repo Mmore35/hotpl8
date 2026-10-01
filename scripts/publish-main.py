@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import time
 
 ASSETS = ("hotpl8-main.zip", "hotpl8-macos-main.zip")
 
@@ -66,6 +67,20 @@ def check(release, tag, sha, hashes):
     return missing
 
 
+def readback(github, tag, sha, hashes, *, complete=False, published=False):
+    # GitHub's release list can lag a successful create/upload/edit. Retry only
+    # reads: never repeat writes or relax identity and immutable-asset checks.
+    for attempt in range(6):
+        release = github.find(tag)
+        if release is not None:
+            missing = check(release, tag, sha, hashes)
+            if (not complete or not missing) and (not published or not release.get("draft")):
+                return release
+        if attempt < 5:
+            time.sleep(2)
+    raise PublicationError("Release write not yet visible; retain the release and rerun")
+
+
 def publish(github, directory, sha):
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise PublicationError("An exact source SHA is required")
@@ -79,7 +94,7 @@ def publish(github, directory, sha):
     release = github.find(tag)
     if release is None:
         github.create(tag, sha)
-        release = github.find(tag)
+        release = readback(github, tag, sha, hashes)
     missing = check(release, tag, sha, hashes)
     if not release.get("draft"):
         if missing:
@@ -87,14 +102,10 @@ def publish(github, directory, sha):
         return "Identical immutable release already published"
     for name in missing:
         github.upload(tag, directory / name)
-    release = github.find(tag)
-    if check(release, tag, sha, hashes):
-        raise PublicationError("Draft is incomplete; refusing publication")
+    release = readback(github, tag, sha, hashes, complete=True)
     if release.get("draft"):
         github.publish(tag)
-    release = github.find(tag)
-    if check(release, tag, sha, hashes) or release.get("draft"):
-        raise PublicationError("Publication not confirmed; inspect and rerun")
+    readback(github, tag, sha, hashes, complete=True, published=True)
     return "Both immutable platform packages published"
 
 
