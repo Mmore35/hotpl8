@@ -12,10 +12,11 @@ function Assert($Value){if(-not $Value){throw 'assertion failed'}}
 function Check([string]$Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
 function Copy-Value($Value){$Value|ConvertTo-Json -Depth 20|ConvertFrom-Json}
 function Render($Value=$s,[int]$Width=100,[int]$Height=100,[int]$Offset=0){@(Get-Hotpl8DashboardFrame $Value $p $now $Width $Height $Offset)}
-Check 'empty policy has enrollment and refresh guidance without implying a running collector' {
+Check 'empty policy leads to guided setup without implying a running collector' {
     $empty=@{mode='monitor';prefer=@();codex=@{slots=@()}}|ConvertTo-Json -Depth 4|ConvertFrom-Json
     $text=((Get-Hotpl8DashboardFrame $null $empty $now 80 24).text)-join "`n"
-    Assert ($text.Contains('hotpl8 enroll') -and $text.Contains('hotpl8 refresh'))
+    Assert ($text.Contains('hotpl8 setup') -and $text.Contains('ask your agent'))
+    Assert (-not $text.Contains('AccountHome') -and -not $text.Contains('hotpl8 refresh'))
     Assert ($text.Contains('no reading') -and -not $text.Contains('LIVE') -and -not $text.Contains('every 5m'))
 }
 Check 'stale and failed readings offer a recovery action' {

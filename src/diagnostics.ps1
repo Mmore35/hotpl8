@@ -1,4 +1,4 @@
-# Diagnostic fields are allowlisted; native credentials and provider output are never exported.
+﻿# Diagnostic fields are allowlisted; native credentials and provider output are never exported.
 function Write-Hotpl8Event([string]$Directory, [string]$Code, $Failure=$null) {
     try {
         $path = Join-Path $Directory 'events.jsonl'
@@ -29,7 +29,7 @@ function Format-Hotpl8Doctor($Report) {
     # Human guidance is separate from the stable, allowlisted JSON contract.
     'HotPl8 ' + $Report.version + ' | PowerShell ' + $Report.runtime
     if (-not $Report.policyPresent) {
-        'SETUP NEEDED: run hotpl8 init, then enroll your native accounts.'
+        'SETUP NEEDED: run hotpl8 setup to connect your first account.'
         return
     }
     if (-not $Report.policyValid) {
@@ -38,23 +38,22 @@ function Format-Hotpl8Doctor($Report) {
     }
     'Mode: ' + $Report.mode
     if (-not $Report.claudeConfigured -and -not $Report.codexConfigured -and -not @($Report.providers.PSObject.Properties|Where-Object {$_.Value.configured}).Count) {
-        'NO ACCOUNTS: sign into native Codex, then run:'
-        '  hotpl8 enroll -Slot main -AccountHome PATH'
-        'Use your signed-in Codex home as PATH. Claude setup: docs/install.md.'
+        'NO ACCOUNTS: run hotpl8 setup, or ask your agent to add an account.'
+        'HotPl8 reuses a native sign-in or opens provider login, then reads usage.'
         return
     }
     $dependenciesReady = $true
     if ($Report.codexConfigured) {
         if ($Report.codexFound) { 'Codex: enrolled; native CLI found.' }
         else {
-            'CODEX MISSING: install the native CLI and open a new terminal. See docs/install.md.'
+            'CODEX MISSING: run hotpl8 setup -Provider codex to prepare the integration.'
             $dependenciesReady = $false
         }
     }
     if ($Report.claudeConfigured) {
         if ($Report.cswapFound) { 'Claude: configured; cswap found (experimental adapter).' }
         else {
-            'CSWAP MISSING: follow the Claude prerequisites in docs/install.md.'
+            'CSWAP MISSING: run hotpl8 setup -Provider claude to prepare the integration.'
             $dependenciesReady = $false
         }
     }

@@ -176,8 +176,8 @@ try {
             throw 'policy.json already exists; it was not overwritten.'
         }
         [IO.File]::Copy((Join-Path $PSScriptRoot 'policy.example.json'), $path, $false)
-        'Created a monitoring policy. Next: hotpl8 enroll -Slot main -AccountHome PATH'
-        'Use the home you signed into with native Codex. For Claude, see docs/install.md.'
+        'Created a monitoring policy. Next: hotpl8 setup'
+        'HotPl8 connects your native account and reads usage automatically.'
         exit 0
     }
     if ($Command -eq 'doctor') {
@@ -267,7 +267,7 @@ try {
     }
     if ($Command -in @('refresh', 'tick')) {
         if (-not @(Get-Hotpl8ProviderAccounts $policy).Count) {
-            throw 'No accounts enrolled. Run hotpl8 enroll -Slot main -AccountHome PATH; Claude setup is in docs/install.md.'
+            throw 'No accounts enrolled. Run hotpl8 setup to connect your first account.'
         }
         & (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $StateDirectory -CodexExecutable $CodexExecutable -ObserveOnly:($Command -eq 'refresh') -Strict
         if ($LASTEXITCODE -ne 0) {
