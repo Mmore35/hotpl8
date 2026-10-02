@@ -40,12 +40,12 @@ function Get-Hotpl8McpTools([bool]$AllowPause,[bool]$AllowOnboarding=$false) {
     }
     if($AllowOnboarding){
         @{
-            name='hotpl8_onboard';description='Set up the first or another native account. Durable progress and private sign-in handoff: show handoff.url to the user; when its kind is paste_code they may paste back a code for submit_code. Installs dependencies only with allowInstall. No inference prompts.'
+            name='hotpl8_onboard';description='Set up the first or another native account. Durable progress and private sign-in handoff: show or open handoff.url for the user; when its kind is paste_code they paste back the code its page shows for submit_code. Installs dependencies only with allowInstall. No inference prompts.'
             inputSchema=@{type='object';additionalProperties=$false;required=@('action');properties=@{
                 action=@{type='string';enum=@('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel','submit_code')}
                 operationId=@{type='string';pattern='^[0-9a-f]{32}$'};provider=@{type='string';enum=@('claude','codex')}
                 candidateId=@{type='string';pattern='^[a-z0-9-]{1,40}$'};newAccount=@{type='boolean'};allowInstall=@{type='boolean'};deviceCode=@{type='boolean'}
-                code=@{type='string';minLength=8;maxLength=4096;description='submit_code only: the code the provider sign-in page shows. Relayed once to the waiting native login; never stored.'}
+                code=@{type='string';minLength=8;maxLength=4096;description='submit_code only: the whole code the sign-in page shows (code#state), or that page''s address. Relayed once to the waiting native login; never stored.'}
             }};outputSchema=$outputSchema;annotations=@{readOnlyHint=$false;destructiveHint=$false;idempotentHint=$true;openWorldHint=$true}
         }
     }

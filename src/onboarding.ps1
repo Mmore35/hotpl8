@@ -236,7 +236,11 @@ function Invoke-Hotpl8Onboarding([string]$Directory,[string]$Action='begin',[str
             # The code is single-use and bound to that process; it is never saved in the operation.
             if($op.phase -ne 'awaiting_sign_in' -or $op.handoff.kind -ne 'paste_code' -or $op.handoff.codeReceived){throw 'Action is not available at this setup step.'}
             $value=([string]$Code).Trim()
-            if($value -cnotmatch '^[!-~]{8,4096}$'){throw 'Paste the complete code shown after sign-in.'}
+            # The callback page's address bar carries the same two parts as its displayed code.
+            $callback=[regex]::Match($value,'^https://platform\.claude\.com/oauth/code/callback\?(?:.*&)?code=([^&#\s]+)&(?:.*&)?state=([^&#\s]+)')
+            if($callback.Success){$value=$callback.Groups[1].Value+'#'+$callback.Groups[2].Value}
+            # Claude's login reads `code#state`; any other shape leaves it waiting silently.
+            if($value.Length -lt 8 -or $value.Length -gt 4096 -or $value -cnotmatch '^[!-"$-~]+#[!-"$-~]+$'){throw 'Paste the complete code shown after sign-in.'}
             Write-Hotpl8Text ($path+'.code') $value -NoBom
             $r=Get-Hotpl8OnboardingResult $op;$r.message='Code received. Finishing sign-in.';$r.nextActions=@('status','cancel')
             return $r

@@ -34,18 +34,14 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                 'awaiting_sign_in'{
                     if($r.handoff.url -and $opened -ne $r.handoff.url){
                         $opened=$r.handoff.url;$typed=''
-                        if($r.handoff.kind -eq 'paste_code'){
-                            # Claude already opened its own browser sign-in; a second tab would compete with it.
-                            'If no browser opened, or you are signing in elsewhere, visit: '+$opened
-                            if('submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){'Then paste the code it shows here and press Enter.'}
-                        }else{
-                            'Sign in here: '+$opened
-                            if($r.handoff.code){'Provider code: '+$r.handoff.code}
-                            try{if($env:OS -eq 'Windows_NT'){Start-Process $opened|Out-Null}else{& /usr/bin/open $opened}}catch{'Open the link above in your browser.'}
-                        }
+                        # Opened from this foreground terminal so the page comes to the front.
+                        'Sign in here: '+$opened
+                        if($r.handoff.code){'Provider code: '+$r.handoff.code}
+                        try{if($env:OS -eq 'Windows_NT'){Start-Process $opened|Out-Null}else{& /usr/bin/open $opened}}catch{'Open the link above in your browser.'}
+                        if($r.handoff.kind -eq 'paste_code' -and 'submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){'After signing in, copy the code the page shows, paste it here, and press Enter.'}
                     }
                     if('submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){
-                        # Read keys without blocking, so a browser sign-in still finishes on its own.
+                        # Read keys without blocking, so a replacement link or finished sign-in still shows.
                         $until=[datetime]::UtcNow.AddSeconds(2);$entered=$null
                         while($null -eq $entered -and [datetime]::UtcNow -lt $until){
                             while($null -eq $entered -and [Console]::KeyAvailable){
@@ -57,7 +53,8 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                             if($null -eq $entered){Start-Sleep -Milliseconds 50}
                         }
                         if($null -ne $entered){
-                            $typed=''
+                            # A terminal's bracketed-paste markers arrive as keys; the escape is already dropped.
+                            $entered=$entered -replace '\[20[01]~','';$typed=''
                             try{$r=Invoke-Hotpl8Onboarding $Directory submit_code $r.operationId -Code $entered}catch{$_.Exception.Message}
                             $entered=$null;continue
                         }

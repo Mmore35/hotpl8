@@ -130,6 +130,11 @@ try{
         Assert ('submit_code' -in (Invoke-Hotpl8Onboarding $script:directory status $r.operationId).nextActions)
         Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'short'}
         Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code "fixture-code`nsecond-line"}
+        # Claude reads only `code#state`; anything else would leave it waiting silently.
+        foreach($partial in @('wrongcode123','fixture-code#','#fixture-state','fixture#code#state','fixture code#state')){
+            Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code $partial}
+        }
+        Assert (-not (Test-Path ((Get-Hotpl8OnboardingPath $script:directory $r.operationId)+'.code'))) 'partial code was handed to the worker'
         $r=Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code ' fixture-code#state '
         $path=Get-Hotpl8OnboardingPath $script:directory $r.operationId
         Assert ($r.message -eq 'Code received. Finishing sign-in.' -and 'submit_code' -notin $r.nextActions)
@@ -139,7 +144,9 @@ try{
         $op.handoff.codeReceived=$true;Save-Hotpl8Onboarding $script:directory $op
         Assert ('submit_code' -notin (Invoke-Hotpl8Onboarding $script:directory status $r.operationId).nextActions)
         Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'fixture-code#state'}
-        $op.handoff.codeReceived=$false
+        $op.handoff.codeReceived=$false;Save-Hotpl8Onboarding $script:directory $op
+        $null=Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'https://platform.claude.com/oauth/code/callback?code=fixture-code&state=fixture-state'
+        Assert ((Get-Content ($path+'.code') -Raw) -ceq 'fixture-code#fixture-state') 'callback address was not read as a code'
         $op.handoff.kind='browser';Save-Hotpl8Onboarding $script:directory $op
         Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'fixture-code#state'}
     }

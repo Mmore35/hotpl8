@@ -25,7 +25,7 @@ If you have neither account, choose a provider and use its official account flow
 
 ## Signing in
 
-Claude opens its sign-in page in your default browser. Finish there and setup continues by itself. Setup also prints a fallback link. Use it when no browser opened or when you sign in on another browser or device. That page shows a code at the end. Paste it into setup and press Enter, or give it to the agent running setup. The code goes once to the waiting `claude` login and is never saved. It is useless without that login. If Claude rejects the code, setup prints a new link to try again.
+For Claude, setup opens the sign-in page in your default browser and also prints the link, so you can use another browser or device instead. After you sign in, the page shows a code. Copy all of it, paste it into setup and press Enter, or give it to the agent running setup. Pasting the page's address works too. Setup checks the code's shape first, so a partial copy is refused before it reaches Claude. The code goes once to the waiting `claude` login and is never saved. It is useless without that login. Claude's own browser launch is turned off; from the background setup process its tab would open behind your other windows. If Claude rejects the code (for example, one from an earlier sign-in page), setup says so and prints a new link.
 
 Signing in to an account that needs sign-in repairs it in place. Setup reports "Signed in again" and refreshes its usage. It does not report the account as a duplicate.
 

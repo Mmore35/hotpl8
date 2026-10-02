@@ -139,10 +139,17 @@ try{
         Assert (-not (Test-Path $r.codePath)) 'relayed code was left on disk'
         Assert (-not ((Get-Content ($r.codePath -replace '\.code$','') -Raw) -match 'fixture-code')) 'code persisted in operation state'
     }
-    Check 'a rejected Claude code starts a fresh native login with a new link' {
+    Check 'a rejected Claude code starts a fresh native login with a new link and says why' {
         $r=ClaudeLogin claude-reject @{paste='reject-once'}
         Assert ($r.selected -and (Get-Content (Join-Path $r.home 'fixture-starts') -Raw).Trim() -eq '2') 'login was not restarted'
         Assert ($r.operation.handoff.url -eq 'https://claude.com/cai/oauth/authorize?fixture=2')
+        Assert ((Get-Content (Join-Path $r.home 'fixture-message-2') -Raw) -like 'Claude did not accept that code.*earlier sign-in page*') 'restart reason not shown'
+    }
+    Check 'an incomplete Claude code reopens the same login for another paste' {
+        $r=ClaudeLogin claude-incomplete @{paste='incomplete-once'}
+        Assert ($r.selected -and (Get-Content (Join-Path $r.home 'fixture-starts') -Raw).Trim() -eq '1') 'login was restarted'
+        Assert ((Get-Content (Join-Path $r.home 'fixture-code-1') -Raw) -ceq "fixture-code-1`nfixture-code-1#state") 'second code was not relayed'
+        Assert ((Get-Content (Join-Path $r.home 'fixture-reopened-message') -Raw) -like 'That code was incomplete.*') 'incomplete code not reported'
     }
     Check 'detached worker survives the short-lived JSON caller' {
         $d=Join-Path $lab detached

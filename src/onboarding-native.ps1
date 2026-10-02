@@ -89,37 +89,56 @@ function Connect-Hotpl8NativeAccount([string]$Directory,$Operation) {
         if($captured){return $captured}
         $exe=Get-Hotpl8ClaudeExecutable
         Initialize-Hotpl8LoginReader
-        # Claude opens the browser itself and also prints a fallback link whose page
-        # shows a code to paste back. Its stdin stays open for that code, which
-        # submit_code delivers through a private file. A rejected code ends the
-        # native login, so a fresh login (with a new link) replaces it.
+        # Claude prints a link whose page shows a code to paste back, and keeps
+        # stdin open for that code, which submit_code delivers through a private
+        # file. Claude would also open a browser itself, but from this hidden
+        # worker that tab lands behind other windows, so BROWSER points at a path
+        # that never exists and the client opens the printed link in front instead.
+        # A rejected code ends the native login; a fresh one (new link) replaces it.
         $clock=[Diagnostics.Stopwatch]::StartNew();$codePath=(Get-Hotpl8OnboardingPath $Directory $Operation.id)+'.code'
-        $credentials=Join-Path $native '.credentials.json';$starts=0
+        $credentials=Join-Path $native '.credentials.json';$starts=0;$failure=$null
         while($true){
             $starts++;$codeSent=$false;$signedInAt=$null;$streams=@()
             if(Test-Path -LiteralPath $codePath){Remove-Item -LiteralPath $codePath -Force}
             $stamp=if(Test-Path -LiteralPath $credentials){(Get-Item -LiteralPath $credentials).LastWriteTimeUtc}else{$null}
-            $proc=Start-CodexQuotaProcess (New-Hotpl8OnboardingProcess $exe @('auth','login','--claudeai') $native claude)
-            foreach($reader in @($proc.StandardOutput,$proc.StandardError)){$streams+=@{reader=(New-Object HotPl8.NativeLoginReader($reader.BaseStream));text=''}}
+            $psi=New-Hotpl8OnboardingProcess $exe @('auth','login','--claudeai') $native claude
+            $psi.EnvironmentVariables['BROWSER']=Join-Path $native 'hotpl8-opens-sign-in'
+            $proc=Start-CodexQuotaProcess $psi
+            foreach($reader in @($proc.StandardOutput,$proc.StandardError)){$streams+=@{reader=(New-Object HotPl8.NativeLoginReader($reader.BaseStream));text='';errors=[object]::ReferenceEquals($reader,$proc.StandardError)}}
             $Operation.handoff=$null
-            Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' $(if($starts -eq 1){'Complete Claude sign-in in the browser. HotPl8 will finish automatically.'}else{'That code was not accepted. Sign in with the new link and paste the full code.'})
-            while(-not $proc.HasExited -and $clock.Elapsed.TotalMinutes -lt 15){
+            Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' $(if($starts -eq 1){'Sign in to Claude in your browser, then paste the code it shows.'}elseif($failure -eq 'rejected'){'Claude did not accept that code. It may have expired or come from an earlier sign-in page. Sign in with the new link and paste its code.'}else{'Claude could not finish that sign-in. Sign in with the new link and paste its code.'})
+            $failure=$null
+            while($clock.Elapsed.TotalMinutes -lt 15){
+                # One last read after exit keeps Claude's final outcome line.
+                $exited=$proc.HasExited;if($exited){Start-Sleep -Milliseconds 300}
                 if(Test-Hotpl8OnboardingCanceled $Directory $Operation){return $null}
                 foreach($stream in $streams){
                     if($stream.reader.LimitExceeded){throw 'Native output exceeded limit.'}
-                    $bytes=$stream.reader.Take()
-                    if($null -ne $bytes){
+                    while($null -ne ($bytes=$stream.reader.Take())){
                         $stream.text+=[Text.Encoding]::UTF8.GetString($bytes)
-                        # A pipe chunk can end halfway through a valid-looking URL.
-                        # Wait for the native output delimiter before exposing the handoff.
-                        $match=[regex]::Match($stream.text,'https://(?:claude\.com|claude\.ai|platform\.claude\.com|console\.anthropic\.com)/[^\s\x1b]+(?=[\s\x1b])')
-                        if($match.Success -and -not $Operation.handoff){
-                            $Operation.handoff=[pscustomobject]@{url=$match.Value;code=$null;kind='paste_code';codeReceived=$false;expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15-$clock.Elapsed.TotalMinutes).ToString('o')}
-                            Save-Hotpl8Onboarding $Directory $Operation
+                        if($stream.errors){
+                            # Only known native outcomes are acted on; error text is never stored.
+                            while(($end=$stream.text.IndexOf("`n")) -ge 0){
+                                $line=$stream.text.Substring(0,$end).Trim();$stream.text=$stream.text.Substring($end+1)
+                                if($codeSent -and $line.StartsWith('Invalid code.')){
+                                    # Claude keeps waiting after a malformed code, so accept another.
+                                    $codeSent=$false;$Operation.handoff.codeReceived=$false
+                                    Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' 'That code was incomplete. Copy the whole code and paste it again.'
+                                }elseif($line.StartsWith('Login failed:')){$failure=$(if($line -match 'status code 400'){'rejected'}else{'failed'})}
+                            }
+                        }else{
+                            # A pipe chunk can end halfway through a valid-looking URL.
+                            # Wait for the native output delimiter before exposing the handoff.
+                            $match=[regex]::Match($stream.text,'https://(?:claude\.com|claude\.ai|platform\.claude\.com|console\.anthropic\.com)/[^\s\x1b]+(?=[\s\x1b])')
+                            if($match.Success -and -not $Operation.handoff){
+                                $Operation.handoff=[pscustomobject]@{url=$match.Value;code=$null;kind='paste_code';codeReceived=$false;expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15-$clock.Elapsed.TotalMinutes).ToString('o')}
+                                Save-Hotpl8Onboarding $Directory $Operation
+                            }
                         }
                         if($stream.text.Length -gt 16384){$stream.text=$stream.text.Substring($stream.text.Length-8192)}
                     }
                 }
+                if($exited){break}
                 if($Operation.handoff -and -not $codeSent -and (Test-Path -LiteralPath $codePath)){
                     $code=[IO.File]::ReadAllText($codePath).Trim();Remove-Item -LiteralPath $codePath -Force
                     $proc.StandardInput.WriteLine($code);$proc.StandardInput.Flush();$code=$null;$codeSent=$true
