@@ -106,7 +106,7 @@ function Connect-Hotpl8NativeAccount([string]$Directory,$Operation) {
             $proc=Start-CodexQuotaProcess $psi
             foreach($reader in @($proc.StandardOutput,$proc.StandardError)){$streams+=@{reader=(New-Object HotPl8.NativeLoginReader($reader.BaseStream));text='';errors=[object]::ReferenceEquals($reader,$proc.StandardError)}}
             $Operation.handoff=$null
-            Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' $(if($starts -eq 1){'Sign in to Claude in your browser, then paste the code it shows.'}elseif($failure -eq 'rejected'){'Claude did not accept that code. It may have expired or come from an earlier sign-in page. Sign in with the new link and paste its code.'}else{'Claude could not finish that sign-in. Sign in with the new link and paste its code.'})
+            Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' $(if($starts -eq 1){'Sign in to Claude in your browser, then paste the code it shows. If the page says a Pro or Max plan is required, that account has no Claude subscription; cancel setup or sign in with another account.'}elseif($failure -eq 'rejected'){'Claude did not accept that code. It may have expired or come from an earlier sign-in page. Sign in with the new link and paste its code.'}else{'Claude could not finish that sign-in. Sign in with the new link and paste its code.'})
             $failure=$null
             while($clock.Elapsed.TotalMinutes -lt 15){
                 # One last read after exit keeps Claude's final outcome line.

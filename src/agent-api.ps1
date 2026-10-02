@@ -258,7 +258,7 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
             if($message -in @('Onboarding operation missing or unsupported.','Onboarding operation not found.')){$code='operation_not_found'}
             elseif($message -in @('Operation ID already used for a different request.','Action is not available at this setup step.','Operation provider cannot change.')){$code='operation_conflict'}
             elseif($message -eq 'Dependency installation needs explicit authorization.'){$code='permission_denied'}
-            elseif($message -in @('Choose an account from this operation.','Provider is required.','Paste the complete code shown after sign-in.')){$code='invalid_arguments'}
+            elseif($message -in @('Choose an account from this operation.','Provider is required.','That is not the whole code. Copy all of it, including the # in the middle.')){$code='invalid_arguments'}
             else{
                 $cause=$_.Exception;while($cause.InnerException){$cause=$cause.InnerException}
                 if($cause -is [IO.IOException]){$code='collector_busy'}

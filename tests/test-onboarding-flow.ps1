@@ -147,6 +147,9 @@ try{
         $op.handoff.codeReceived=$false;Save-Hotpl8Onboarding $script:directory $op
         $null=Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'https://platform.claude.com/oauth/code/callback?code=fixture-code&state=fixture-state'
         Assert ((Get-Content ($path+'.code') -Raw) -ceq 'fixture-code#fixture-state') 'callback address was not read as a code'
+        # Only the shape is checked here; Claude itself judges a short or wrong code.
+        $null=Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'abc#def'
+        Assert ((Get-Content ($path+'.code') -Raw) -ceq 'abc#def') 'a well-formed short code was refused'
         $op.handoff.kind='browser';Save-Hotpl8Onboarding $script:directory $op
         Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'fixture-code#state'}
     }

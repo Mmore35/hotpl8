@@ -143,6 +143,8 @@ try{
         $r=ClaudeLogin claude-reject @{paste='reject-once'}
         Assert ($r.selected -and (Get-Content (Join-Path $r.home 'fixture-starts') -Raw).Trim() -eq '2') 'login was not restarted'
         Assert ($r.operation.handoff.url -eq 'https://claude.com/cai/oauth/authorize?fixture=2')
+        # A plan refusal happens only in the browser and yields no code, so the wait names it.
+        Assert ((Get-Content (Join-Path $r.home 'fixture-message-1') -Raw) -like '*Pro or Max plan is required*cancel setup*') 'plan refusal not explained'
         Assert ((Get-Content (Join-Path $r.home 'fixture-message-2') -Raw) -like 'Claude did not accept that code.*earlier sign-in page*') 'restart reason not shown'
     }
     Check 'an incomplete Claude code reopens the same login for another paste' {

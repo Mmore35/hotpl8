@@ -240,7 +240,7 @@ function Invoke-Hotpl8Onboarding([string]$Directory,[string]$Action='begin',[str
             $callback=[regex]::Match($value,'^https://platform\.claude\.com/oauth/code/callback\?(?:.*&)?code=([^&#\s]+)&(?:.*&)?state=([^&#\s]+)')
             if($callback.Success){$value=$callback.Groups[1].Value+'#'+$callback.Groups[2].Value}
             # Claude's login reads `code#state`; any other shape leaves it waiting silently.
-            if($value.Length -lt 8 -or $value.Length -gt 4096 -or $value -cnotmatch '^[!-"$-~]+#[!-"$-~]+$'){throw 'Paste the complete code shown after sign-in.'}
+            if($value.Length -gt 4096 -or $value -cnotmatch '^[!-"$-~]+#[!-"$-~]+$'){throw 'That is not the whole code. Copy all of it, including the # in the middle.'}
             Write-Hotpl8Text ($path+'.code') $value -NoBom
             $r=Get-Hotpl8OnboardingResult $op;$r.message='Code received. Finishing sign-in.';$r.nextActions=@('status','cancel')
             return $r

@@ -1,7 +1,7 @@
 # Thin terminal client of the same durable operation used by local agents.
 function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$NewAccount,[switch]$AllowInstall) {
     $r=Invoke-Hotpl8Onboarding $Directory begin '' $Provider '' -NewAccount:$NewAccount -AllowInstall:$AllowInstall
-    $last='';$opened='';$typed='';$retries=0
+    $last='';$opened='';$retries=0
     'Connect an account to HotPl8. Your existing sign-ins stay in place.'
     try{
         while($true){
@@ -33,7 +33,7 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                 }
                 'awaiting_sign_in'{
                     if($r.handoff.url -and $opened -ne $r.handoff.url){
-                        $opened=$r.handoff.url;$typed=''
+                        $opened=$r.handoff.url
                         # Opened from this foreground terminal so the page comes to the front.
                         'Sign in here: '+$opened
                         if($r.handoff.code){'Provider code: '+$r.handoff.code}
@@ -41,22 +41,12 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                         if($r.handoff.kind -eq 'paste_code' -and 'submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){'After signing in, copy the code the page shows, paste it here, and press Enter.'}
                     }
                     if('submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){
-                        # Read keys without blocking, so a replacement link or finished sign-in still shows.
-                        $until=[datetime]::UtcNow.AddSeconds(2);$entered=$null
-                        while($null -eq $entered -and [datetime]::UtcNow -lt $until){
-                            while($null -eq $entered -and [Console]::KeyAvailable){
-                                $key=[Console]::ReadKey($true)
-                                if($key.Key -eq 'Enter'){if($typed.Trim()){$entered=$typed};[Console]::WriteLine()}
-                                elseif($key.Key -eq 'Backspace'){if($typed){$typed=$typed.Substring(0,$typed.Length-1);[Console]::Write("`b `b")}}
-                                elseif(-not [char]::IsControl($key.KeyChar)){$typed+=$key.KeyChar;[Console]::Write('*')}
-                            }
-                            if($null -eq $entered){Start-Sleep -Milliseconds 50}
-                        }
-                        if($null -ne $entered){
-                            # A terminal's bracketed-paste markers arrive as keys; the escape is already dropped.
-                            $entered=$entered -replace '\[20[01]~','';$typed=''
+                        # Nothing finishes without the code, so a plain visible line read is safe
+                        # and keeps the terminal's own paste. Enter alone rechecks progress.
+                        $entered=(Read-Host 'Code') -replace '\x1b?\[20[01]~',''
+                        if($entered.Trim()){
                             try{$r=Invoke-Hotpl8Onboarding $Directory submit_code $r.operationId -Code $entered}catch{$_.Exception.Message}
-                            $entered=$null;continue
+                            continue
                         }
                         $r=Invoke-Hotpl8Onboarding $Directory status $r.operationId;continue
                     }
