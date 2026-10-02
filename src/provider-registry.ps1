@@ -4,7 +4,9 @@
 function Copy-Hotpl8ProviderValue($Value) {
     # A wrapper plus the unary comma preserves empty and singleton arrays in
     # Windows PowerShell 5.1 without adding extended array properties.
-    $wrapper=ConvertFrom-Json -InputObject (ConvertTo-Json -InputObject ([pscustomobject]@{item=$Value}) -Depth 32)
+    $json=ConvertTo-Json -InputObject ([pscustomobject]@{item=$Value}) -Depth 32
+    $options=@{};if($PSVersionTable.PSVersion -ge [version]'7.5'){$options.DateKind='String'}
+    $wrapper=ConvertFrom-Json -InputObject $json @options
     return ,$wrapper.item
 }
 

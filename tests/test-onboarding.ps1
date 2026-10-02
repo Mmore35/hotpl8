@@ -1,4 +1,4 @@
-# Offline newcomer flow: policy creation, actionable guidance, and no false readiness.
+﻿# Offline newcomer flow: policy creation, actionable guidance, and no false readiness.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
@@ -13,7 +13,7 @@ $dir = Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-onboarding-' + [guid]::NewG
 [void][IO.Directory]::CreateDirectory($dir)
 function Invoke-TestCli([string[]]$Arguments) {
     $psi = New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $psi.FileName = (Get-Process -Id $PID).Path
     $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $root 'hotpl8.ps1')) + $Arguments + @('-StateDirectory', $dir)
     $psi.Arguments = (@($all | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' ')
     $psi.UseShellExecute = $false
@@ -29,16 +29,16 @@ function Invoke-TestCli([string[]]$Arguments) {
     } finally { $proc.Dispose() }
 }
 try {
-    Check 'fresh setup creates monitor policy and names the enrollment command' {
+    Check 'init creates monitor policy and directs users to guided setup' {
         $r = Invoke-TestCli @('init')
-        Assert ($r.code -eq 0 -and $r.text.Contains('hotpl8 enroll'))
+        Assert ($r.code -eq 0 -and $r.text.Contains('hotpl8 setup'))
         $policy = Read-Hotpl8Json (Join-Path $dir 'policy.json')
         Assert ($policy.mode -eq 'monitor' -and -not $policy.prefer -and -not $policy.codex.slots)
     }
     Check 'doctor explains missing enrollment while retaining JSON contract' {
         $before = (Get-FileHash (Join-Path $dir 'policy.json')).Hash
         $r = Invoke-TestCli @('doctor')
-        Assert ($r.code -eq 0 -and $r.text.Contains('NO ACCOUNTS') -and $r.text.Contains('hotpl8 enroll'))
+        Assert ($r.code -eq 0 -and $r.text.Contains('NO ACCOUNTS') -and $r.text.Contains('hotpl8 setup'))
         $json = Invoke-TestCli @('doctor', '-AsJson')
         $d = $json.text | ConvertFrom-Json
         Assert ($json.code -eq 0 -and $d.policyValid -and -not $d.codexConfigured)

@@ -8,6 +8,9 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/insights.ps1')
 . (Join-Path $PSScriptRoot 'src/provider-runtime.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
+. (Join-Path $PSScriptRoot 'src/onboarding.ps1')
+. (Join-Path $PSScriptRoot 'src/onboarding-install.ps1')
+Initialize-Hotpl8OnboardingTools $StateDirectory
 $lock=$null; $failed=$false
 try {
     $policyPath=Join-Path $StateDirectory 'policy.json'
@@ -88,6 +91,7 @@ try {
         catch{Write-Hotpl8Event $StateDirectory 'compatibility_output_failed' $_}
     }
     Write-Hotpl8Text (Join-Path $StateDirectory 'collector.json') ($collector|ConvertTo-Json -Depth 8)
+    Complete-Hotpl8ObservedOnboarding $StateDirectory
     foreach($action in $actions){ConvertTo-Hotpl8SafeText $action}
 } catch {
     $failed=$true

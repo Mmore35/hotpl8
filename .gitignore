@@ -63,3 +63,8 @@ policy.previous.json
 
 # Cooperative agent pause capabilities
 automation-leases.json
+
+# Private guided setup operations, native profiles, and per-user integration tools
+/onboarding/
+/accounts/
+/runtime/

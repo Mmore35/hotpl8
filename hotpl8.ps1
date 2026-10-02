@@ -2,7 +2,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
+    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'add', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
     [string]$Command = 'watch',
     [string]$Slot,
     [string]$Model,
@@ -31,6 +31,13 @@ param(
     [string]$SourceDigest,
     [string]$RequestJson,
     [switch]$AllowAgentPause,
+    [switch]$AllowAgentOnboarding,
+    [string]$OperationId,
+    [ValidateSet('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel')][string]$OnboardingAction='begin',
+    [string]$CandidateId,
+    [switch]$NewAccount,
+    [switch]$InstallDependencies,
+    [switch]$DeviceCode,
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
     [string[]]$CodexArguments
 )
@@ -46,7 +53,10 @@ try {
     . (Join-Path $PSScriptRoot 'src/providers/codex.ps1')
     . (Join-Path $PSScriptRoot 'src/insights.ps1')
     . (Join-Path $PSScriptRoot 'src/management.ps1')
+    . (Join-Path $PSScriptRoot 'src/onboarding.ps1')
+    . (Join-Path $PSScriptRoot 'src/onboarding-install.ps1')
     $StateDirectory = Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
+    Initialize-Hotpl8OnboardingTools $StateDirectory
 
     if($Command -in @('agent','mcp')){
         . (Join-Path $PSScriptRoot 'src/agent-api.ps1')
@@ -54,7 +64,7 @@ try {
         [Console]::InputEncoding=New-Object Text.UTF8Encoding($false)
         if($Command -eq 'mcp'){
             . (Join-Path $PSScriptRoot 'src/mcp.ps1')
-            Start-Hotpl8Mcp $StateDirectory -AllowAgentPause:$AllowAgentPause
+            Start-Hotpl8Mcp $StateDirectory -AllowAgentPause:$AllowAgentPause -AllowAgentOnboarding:$AllowAgentOnboarding
             exit 0
         }
         if(-not $PSBoundParameters.ContainsKey('RequestJson')){
@@ -79,7 +89,9 @@ try {
     if ($Command -eq 'help') {
         'nyan: dashboard with animated Nyan Cat; -ReducedMotion / -NoColor supported.'
         'accounts -Operation capacity -Provider claude -Slot 1 -CapacityProfile claude-pro -WeeklyCapacity 1 -FiveHourCapacity 0.1 (supply calibrated values). '
-        'hotpl8 [watch|status|refresh|tick|doctor|version|init|enroll|codex]'
+        'hotpl8 [watch|setup|add|status|refresh|tick|doctor|version|init|enroll|codex]'
+        'setup: connect your first account; add: connect another account. Native sign-in only when needed.'
+        'setup/add -AsJson: durable agent onboarding. See docs/onboarding.md.'
         'watch: cached dashboard; Space freezes the view only.'
         'refresh: collect quotas without switching, warming, or recovery prompts.'
         'tick: collect and apply actions enabled by policy; monitor mode prevents actions.'
@@ -102,7 +114,19 @@ try {
         'mcp [-AllowAgentPause]: local stdio MCP; read tools only unless pause writes are enabled.'
         exit 0
     }
-    if($Command -eq 'setup'){Invoke-Hotpl8Setup $StateDirectory $PSScriptRoot -Interactive:$Interactive;exit 0}
+    if($Command -in @('setup','add')){
+        $chosenProvider=if($PSBoundParameters.ContainsKey('Provider')){$Provider}else{''}
+        if($AsJson){
+            Invoke-Hotpl8Onboarding $StateDirectory $OnboardingAction $OperationId $chosenProvider $CandidateId -NewAccount:($NewAccount -or $Command -eq 'add') -AllowInstall:$InstallDependencies -DeviceCode:$DeviceCode|ConvertTo-Json -Depth 16
+        }elseif($Interactive -or -not [Console]::IsInputRedirected){
+            . (Join-Path $PSScriptRoot 'src/onboarding-ui.ps1')
+            Show-Hotpl8Onboarding $StateDirectory $chosenProvider -NewAccount:($NewAccount -or $Command -eq 'add') -AllowInstall:$InstallDependencies
+        }else{
+            'Use hotpl8 setup -Interactive for guided enrollment, or setup -AsJson for an agent.'
+            'No account paths or slot numbers are needed. See docs/onboarding.md.'
+        }
+        exit 0
+    }
     if($Command -eq 'capabilities'){
         $report=Get-Hotpl8Capabilities $StateDirectory
         if($AsJson){$report|ConvertTo-Json -Depth 8}else{$report|ConvertTo-Json -Depth 8}
@@ -152,8 +176,8 @@ try {
             throw 'policy.json already exists; it was not overwritten.'
         }
         [IO.File]::Copy((Join-Path $PSScriptRoot 'policy.example.json'), $path, $false)
-        'Created a monitoring policy. Next: hotpl8 enroll -Slot main -AccountHome PATH'
-        'Use the home you signed into with native Codex. For Claude, see docs/install.md.'
+        'Created a monitoring policy. Next: hotpl8 setup'
+        'HotPl8 connects your native account and reads usage automatically.'
         exit 0
     }
     if ($Command -eq 'doctor') {
@@ -166,7 +190,11 @@ try {
     }
 
     $policy = Read-Hotpl8Json $(if($PreviewPolicy){$PreviewPolicy}else{Join-Path $StateDirectory 'policy.json'})
-    if (-not $policy) { throw 'No valid policy.json. Run hotpl8 init or see docs/install.md.' }
+    if (-not $policy -and $Command -eq 'watch' -and -not [Console]::IsInputRedirected) {
+        . (Join-Path $PSScriptRoot 'src/onboarding-ui.ps1')
+        Show-Hotpl8Onboarding $StateDirectory '';exit 0
+    }
+    if (-not $policy) { throw 'No valid policy.json. Run hotpl8 setup or see docs/install.md.' }
     Assert-Hotpl8Policy $policy
     if($Command -in @('pause','resume')){
         $duration=if($Command -eq 'resume'){0}else{$Minutes}
@@ -227,6 +255,10 @@ try {
     if ($AccountHome -or $Label) { throw '-AccountHome and -Label are enrollment options. Use hotpl8 enroll.' }
 
     if ($Command -in @('watch','nyan')) {
+        if(-not @(Get-Hotpl8ProviderAccounts $policy).Count -and -not [Console]::IsInputRedirected){
+            . (Join-Path $PSScriptRoot 'src/onboarding-ui.ps1')
+            Show-Hotpl8Onboarding $StateDirectory '';exit 0
+        }
         # Nyan is a presentation flag on the installed dashboard. Keep both
         # modes here so every application update reaches both views together.
         . (Join-Path $PSScriptRoot 'src/dashboard.ps1')
@@ -235,7 +267,7 @@ try {
     }
     if ($Command -in @('refresh', 'tick')) {
         if (-not @(Get-Hotpl8ProviderAccounts $policy).Count) {
-            throw 'No accounts enrolled. Run hotpl8 enroll -Slot main -AccountHome PATH; Claude setup is in docs/install.md.'
+            throw 'No accounts enrolled. Run hotpl8 setup to connect your first account.'
         }
         & (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $StateDirectory -CodexExecutable $CodexExecutable -ObserveOnly:($Command -eq 'refresh') -Strict
         if ($LASTEXITCODE -ne 0) {

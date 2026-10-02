@@ -12,7 +12,7 @@
 
 [How the provider bars work](docs/provider-overview.md) · Scroll down for individual quotas, resets and selection details.
 
-Windows preview. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming remains unavailable pending native qualification. [Compatibility and provider boundaries](docs/compatibility.md).
+Windows and macOS candidate. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming remains unavailable pending native qualification. [Compatibility and provider boundaries](docs/compatibility.md).
 
 ## How it chooses
 
@@ -32,11 +32,13 @@ HotPl8 decides; **cswap carries out Claude switches**, and **native Codex launch
 
 ## Get started
 
-**[Download the Windows preview](https://github.com/Mmore35/hotpl8/releases/tag/v0.1.0-rc.1)** and follow its [installation guide](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md). One account is enough. Native tools and subscriptions are installed separately; HotPl8 needs no admin rights or hosted service.
+From a reviewed current candidate, run `start.ps1` on Windows or `bash start.sh` on Mac. HotPl8 prepares missing integrations, reuses native sign-ins, or opens provider login, then enrolls and reads usage automatically. One account is enough. See the [setup guide](docs/install.md) for the public download entrypoints and platform details.
 
-Working from this source? See the [current setup guide](docs/install.md), including guided `hotpl8 setup -Interactive`. [All commands](docs/usage.md) · [Automation settings](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md).
+Once installed, run **`hotpl8 add`** for another account—or ask your agent to add one. You only choose an account when ambiguous and complete any required provider authentication. No account directories, slot IDs, or JSON edits are needed. [The account flow](docs/onboarding.md) · [All commands](docs/usage.md) · [Automation settings](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md).
 
-Current source also includes [decision explanations, pause/work hours, weekly pace and an optional Windows tray](docs/operations.md). Mac implementation has a [ready-to-run handoff](docs/plans/macos-handoff.md).
+The older [v0.1.0-rc.1 Windows download](https://github.com/Mmore35/hotpl8/releases/tag/v0.1.0-rc.1) uses [its versioned manual instructions](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md). It predates this onboarding candidate.
+
+Current source also includes [decision explanations, pause/work hours, weekly pace and an optional Windows tray](docs/operations.md). Existing Mac installations can opt into [verified main delivery](docs/macos-delivery.md).
 
 See [layered capacity, refill countdowns and critical mode](docs/capacity.md). For a little color, run `hotpl8 nyan`.
 
@@ -52,7 +54,7 @@ Independent project; not affiliated with Anthropic or OpenAI. [Third-party notic
 
 ## Agent integration
 
-Use `hotpl8 agent` for a versioned JSON request, or `hotpl8 mcp` for local MCP read tools. Optional cooperative pause leases let jobs pause automation independently. See the [agent API guide](docs/agent-api.md) for contracts, configuration and examples. Existing CLI output formats are preserved.
+Agents can [install and connect the first account](docs/agent-api.md#connect-an-account) with the same public flow. Use `hotpl8 agent` for a versioned JSON request, or `hotpl8 mcp` for local MCP read tools. Optional cooperative pause leases let jobs pause automation independently. See the [agent API guide](docs/agent-api.md) for contracts, configuration and examples. Existing CLI output formats are preserved.
 
 ## T3 Code integration
 

@@ -1,4 +1,4 @@
-# Offline stdio protocol tests: real PowerShell subprocesses, fictional state only.
+﻿# Offline stdio protocol tests: real PowerShell subprocesses, fictional state only.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
@@ -6,7 +6,7 @@ $script:passed = 0; $script:failed = 0
 function Assert($Value) { if (-not $Value) { throw 'assertion failed' } }
 function Check([string]$Name, [scriptblock]$Body) {
     try { & $Body; $script:passed++; 'PASS ' + $Name }
-    catch { $script:failed++; 'FAIL ' + $Name + ': ' + $_.Exception.Message }
+    catch { $script:failed++; 'FAIL ' + $Name + ': ' + $_.Exception.Message + ' at ' + $_.ScriptStackTrace }
 }
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-mcp-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($dir)
@@ -31,7 +31,7 @@ Start-Hotpl8Mcp -Directory $Directory -AllowAgentPause:$AllowAgentPause
 [IO.File]::WriteAllText($marker, 'before')
 function Start-TestMcp([switch]$AllowPause, [switch]$RealCli) {
     $psi = New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $psi.FileName = (Get-Process -Id $PID).Path
     $all = @('-NoProfile','-ExecutionPolicy','Bypass','-File')
     if ($RealCli) { $all += @((Join-Path $root 'hotpl8.ps1'),'mcp','-StateDirectory',(Join-Path $dir 'empty')) }
     else { $all += @($fixture,'-SourceRoot',$root,'-Directory',$dir) }
@@ -225,7 +225,7 @@ try {
     }
     # The test owns only this uniquely named temporary fixture directory.
     $resolved = [IO.Path]::GetFullPath($dir)
-    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
     if (-not $resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Fixture cleanup escaped temp root.' }
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }

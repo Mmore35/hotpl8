@@ -47,6 +47,7 @@ try{
         [void][IO.Directory]::CreateDirectory((Split-Path $target -Parent))
         [IO.File]::Copy((Join-Path $source $file),$target,$false)
     }
+    if(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'build-info.json')){[IO.File]::Copy((Join-Path $PSScriptRoot 'build-info.json'),(Join-Path $stage 'build-info.json'))}
     Write-Hotpl8Text (Join-Path $stage 'install-state.json') (@{stateDirectory=$state}|ConvertTo-Json) -NoBom
     $policyPath=Join-Path $state 'policy.json'
     if(Test-Path -LiteralPath $policyPath){

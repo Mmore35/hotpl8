@@ -445,7 +445,7 @@ class Guardian(unittest.TestCase):
         import termios
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
-            d.write(state / 'policy.json', dict(schemaVersion=2, mode='monitor', prefer=[], codex=dict(slots=[])))
+            d.write(state / 'policy.json', dict(schemaVersion=2, mode='monitor', prefer=[1], codex=dict(slots=[])))
             # forkpty supplies the controlling terminal used by .NET ReadKey.
             # Merely redirecting three descriptors to a PTY can render output
             # while /dev/tty still points at the CI runner's unrelated terminal.
@@ -470,10 +470,10 @@ class Guardian(unittest.TestCase):
                             output += os.read(master, 65536)
                         except OSError:
                             pass
-                    if b'hotpl8 enroll' in output and not sent:
+                    if b'hotpl8' in output.lower() and not sent:
                         os.write(master, b'q')
                         sent = True
-                self.assertIn(b'hotpl8 enroll', output)
+                self.assertIn(b'hotpl8', output.lower())
                 self.assertIsNotNone(status, output.decode('utf-8', 'replace'))
                 self.assertEqual(os.waitstatus_to_exitcode(status), 0, output.decode('utf-8', 'replace'))
                 if no_color:

@@ -117,10 +117,10 @@ function New-DashboardAccountRow([string]$Name,[string]$Id,[string]$Badge,[strin
 function Get-Hotpl8NativeDashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact,[double]$AnimationSeconds=0,[switch]$ReducedMotion,[string]$Family,[string]$ProviderName,[string]$ProviderId,[switch]$SuppressGlobal,[switch]$SuppressRecent,$GlobalStatus=$null) {
     if (-not $Policy.prefer -and -not $Policy.codex.slots -and -not $Status) {
         New-DashboardRow '  No accounts yet.' text
-        New-DashboardRow '  Codex   sign in with the native CLI, then' cyan
-        New-DashboardRow '          hotpl8 enroll -Slot main -AccountHome PATH' text
-        New-DashboardRow '  Claude  follow docs/install.md' peach
-        New-DashboardRow '  then    hotpl8 refresh' mint
+        New-DashboardRow '  Connect your first account: hotpl8 setup' cyan
+        New-DashboardRow '  Or ask your agent to add a Claude or Codex account.' text
+        New-DashboardRow '  Complete provider sign-in only when needed.' peach
+        New-DashboardRow '  HotPl8 connects the account and reads usage for you.' mint
         return
     }
     $age=Get-DashboardAge $Status.generatedAt $Now

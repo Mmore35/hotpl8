@@ -1,4 +1,4 @@
-# Cooperative capabilities, separate from the human-owned pause. Writers hold
+﻿# Cooperative capabilities, separate from the human-owned pause. Writers hold
 # tick.lock, then briefly action-control.lock at publication (never native I/O).
 . (Join-Path $PSScriptRoot 'provider-actions.ps1')
 function Stop-Hotpl8LeaseError([string]$Code, [string]$Message) {
@@ -24,7 +24,7 @@ function Read-Hotpl8LeaseLedger([string]$Directory) {
         catch [System.Management.Automation.ItemNotFoundException] { return [pscustomobject]@{schemaVersion=1;entries=@()} }
         if ($file.PSIsContainer -or $file.Length -gt 262144) { throw 'invalid ledger' }
         $ledger=Read-Hotpl8Json $path
-        if ($ledger -isnot [pscustomobject] -or $ledger.schemaVersion -isnot [int] -or $ledger.schemaVersion -ne 1 -or $ledger.entries -isnot [array] -or $ledger.entries.Count -gt 256) { throw 'invalid ledger' }
+        if ($ledger -isnot [pscustomobject] -or ($ledger.schemaVersion -isnot [int] -and $ledger.schemaVersion -isnot [long]) -or $ledger.schemaVersion -ne 1 -or $ledger.entries -isnot [array] -or $ledger.entries.Count -gt 256) { throw 'invalid ledger' }
         foreach ($property in $ledger.PSObject.Properties) { if ($property.Name -notin @('schemaVersion','entries')) { throw 'invalid ledger field' } }
         $ids=@{}
         foreach ($entry in $ledger.entries) {
@@ -39,7 +39,7 @@ function Read-Hotpl8LeaseLedger([string]$Directory) {
             if ($null -eq $entry.acquiredAt) {
                 if ($null -ne $entry.owner -or $null -ne $entry.minutes -or $null -ne $entry.until -or $null -eq $released -or $retain -lt $released.AddHours(24)) { throw 'invalid tombstone' }
             } else {
-                if (-not (Test-Hotpl8LeaseOwner $entry.owner) -or $entry.minutes -isnot [int] -or $entry.minutes -lt 1 -or $entry.minutes -gt 1440) { throw 'invalid acquisition' }
+                if (-not (Test-Hotpl8LeaseOwner $entry.owner) -or ($entry.minutes -isnot [int] -and $entry.minutes -isnot [long]) -or $entry.minutes -lt 1 -or $entry.minutes -gt 1440) { throw 'invalid acquisition' }
                 $acquired=ConvertFrom-Hotpl8LeaseTime $entry.acquiredAt
                 $until=ConvertFrom-Hotpl8LeaseTime $entry.until
                 if ($until -ne $acquired.AddMinutes($entry.minutes) -or $retain -lt $until.AddHours(24)) { throw 'invalid expiry' }
