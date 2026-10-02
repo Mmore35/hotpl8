@@ -130,8 +130,23 @@ function Get-Hotpl8NativeDashboardRows($Status,$Policy,[datetimeoffset]$Now,[int
     if(-not $globalSnapshot -or -not $globalSnapshot.generatedAt){New-DashboardRow '  no reading yet  ·  hotpl8 refresh' amber}
     elseif($stale){New-DashboardRow '  ! readings stale  ·  hotpl8 refresh' amber}
     $allSlots=@($globalSnapshot.slots)+@(foreach($entry in $globalSnapshot.providers.PSObject.Properties){@($entry.Value.slots|Where-Object {$_ -and -not (Test-Hotpl8CodexReadRetrying $_ $Now)})})
-    $needsHelp = @($allSlots | Where-Object { $_ -and $_.status -notin @('ok','disabled') }).Count -gt 0
-    if ($needsHelp) { New-DashboardRow '  ! account unavailable  ·  hotpl8 doctor' amber }
+    $unavailable = @($allSlots | Where-Object { $_ -and $_.status -notin @('ok','disabled') }).Count
+    # When every unavailable account has been unreadable for over a week, name
+    # it and offer the two real choices instead of a general pointer.
+    $dormant=@($globalSnapshot.parkCandidates|Where-Object {$_ -and $_.reason -eq 'dormant'})
+    $ended=@($globalSnapshot.parkCandidates|Where-Object {$_ -and $_.reason -eq 'canceled'})
+    if ($unavailable -gt 0) {
+        if($dormant.Count -ge $unavailable){
+            $who=if($dormant.Count -eq 1){[string]$dormant[0].label+': '+(Format-Hotpl8ParkReason $dormant[0])}else{[string]$dormant.Count+' accounts unread for over a week'}
+            New-DashboardRow ('  ! '+$who+'  ·  sign in, or hotpl8 park') amber
+        }else{New-DashboardRow '  ! account unavailable  ·  hotpl8 doctor' amber}
+    }
+    if($ended.Count){
+        $who=if($ended.Count -eq 1){[string]$ended[0].label+': '+(Format-Hotpl8ParkReason $ended[0])}else{[string]$ended.Count+' accounts no longer have a paid plan'}
+        New-DashboardRow ('  ! '+$who+'  ·  hotpl8 park') amber
+    }
+    $readable=@(@($globalSnapshot.parkedReadable)+@(foreach($entry in $globalSnapshot.providers.PSObject.Properties){@($entry.Value.parkedReadable)})|Where-Object {$_ -and $_.slot})
+    foreach($account in $readable){New-DashboardRow ('  '+$(if($account.label){[string]$account.label}else{'Slot '+$account.slot})+' is readable again  ·  hotpl8 unpark') cyan}
     if($globalSnapshot.collector){
         $health=Get-Hotpl8Health $globalSnapshot.collector $Now
         if($health -notin @('recent collection completed','collecting')){New-DashboardRow ('  ! '+$health) amber}

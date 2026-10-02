@@ -176,3 +176,38 @@ function Format-Hotpl8Overview($Overview) {
     }
     'Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.'
 }
+# Accounts that look unfunded, from cached evidence only so that doctor and park
+# stay offline. 'canceled' needs a current reading that reports no paid plan.
+# 'dormant' is a sign-in failure that has outlasted a week; it never claims a cause.
+function Get-Hotpl8ParkCandidates($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    if(-not $Snapshot -or -not $Policy -or -not (Test-Hotpl8FreshTimestamp $Snapshot.generatedAt $Now)){return}
+    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
+        $driver=Get-Hotpl8ProviderDriver $r.driver;$part=$r.policy
+        $payload=if($r.id -ceq 'claude' -and -not $Snapshot.providers.claude){$Snapshot}else{$Snapshot.providers.($r.id)}
+        $ids=if($driver.slotKind -eq 'numeric'){@($part.prefer)}else{@($part.slots|Where-Object {$_}|ForEach-Object {$_.id})}
+        foreach($id in @($ids|Where-Object {$null -ne $_ -and $_ -notin @($part.disabled)})){
+            $rows=@($payload.slots|Where-Object {$_ -and $(if($driver.slotKind -eq 'numeric'){[string]$_.slot -eq [string]$id}else{$_.id -ceq $id})})
+            if($rows.Count -ne 1){continue}
+            $row=$rows[0];$reason=$null;$last=$null
+            if($driver.slotKind -eq 'numeric'){
+                # The login in use is never offered, whatever its last reading says.
+                if(-not $row.active -and $row.status -in @('relogin_required','no_credentials')){$reason='dormant';$last=$row.lastGoodAt}
+                $label=if($part.labels.([string]$id)){[string]$part.labels.([string]$id)}else{'Slot '+$id}
+            }else{
+                if($row.status -in @('authentication_required','subscription_login_required')){$reason='dormant';$last=$row.observedAt}
+                elseif($row.status -eq 'ok' -and $row.planType -ceq 'free' -and (Test-Hotpl8FreshTimestamp $row.observedAt $Now)){$reason='canceled';$last=$row.observedAt}
+                $label=[string](@($part.slots|Where-Object id -CEQ $id)[0].label);if(-not $label){$label=[string]$id}
+            }
+            if(-not $reason){continue}
+            $days=$null
+            try{$days=[int][Math]::Floor(($Now-[datetimeoffset]::Parse([string]$last)).TotalDays)}catch{}
+            # No recorded last reading means no evidence of a long absence.
+            if($reason -eq 'dormant' -and ($null -eq $days -or $days -lt 7)){continue}
+            [pscustomobject]@{provider=$r.id;providerName=$r.name;family=$driver.provider;slot=[string]$id;label=$label;reason=$reason;days=$days;lastReadingAt=$last;planType=$row.planType}
+        }
+    }
+}
+function Format-Hotpl8ParkReason($Candidate) {
+    if($Candidate.reason -eq 'canceled'){return 'plan ended (now '+$Candidate.planType+')'}
+    return 'no reading for '+$Candidate.days+' days'
+}

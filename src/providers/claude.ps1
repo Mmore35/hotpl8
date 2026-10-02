@@ -503,6 +503,9 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $acc[[int]$a.number] = @{ n = [int]$a.number; h5 = $h5; h7 = $h7; fresh = $fresh; cold = $cold; obj = $a }
         $entry=$acc[[int]$a.number]
         $entry.identity=Get-Hotpl8Hash ([string]$a.email)
+        # cswap reports how long ago a row without usage last read successfully.
+        # Publish that as a time so cached readers can tell a blip from a long absence.
+        $entry.lastGoodAt=if((Test-Hotpl8Number $a.lastGoodAgeSeconds) -and $a.lastGoodAgeSeconds -ge 0 -and $a.lastGoodAgeSeconds -le 315360000){[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.lastGoodAgeSeconds).ToString('o')}else{$null}
         $entry.observedAt=if($valid -and (Test-Hotpl8Number $a.usageAgeSeconds) -and $a.usageAgeSeconds -ge 0){[datetimeoffset]::UtcNow.AddSeconds(-[double]$a.usageAgeSeconds).ToString('o')}else{$null}
         $entry.modelReason=Get-ClaudeModelBlock $a.usage.scoped $policy ([int]$a.number) ([datetimeoffset]::UtcNow) $entry.observedAt
         $entry.modelBlocked=[bool]$entry.modelReason
@@ -899,6 +902,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
                 cold       = [bool]$e.cold
                 fresh      = [bool]$e.fresh
                 observedAt = $e.observedAt
+                lastGoodAt = $e.lastGoodAt
                 streamKey = Get-Hotpl8Hash ($StateDirectory+'|usage|'+$e.identity)
                 scoped = @($e.obj.usage.scoped)
                 warmOutcome = $outcomes.('claude:'+ $n) | Select-Object schemaVersion,id,provider,slot,meter,sentAt,expiresAt,outcome,observedAt,resetAt
@@ -938,6 +942,14 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $payload | Add-Member NoteProperty actions $actions -Force
     $reasons=@(foreach($n in $prefer){$e=$acc[$n];[pscustomobject]@{slot=$n;rank=([array]::IndexOf($ranked,$n)+1);reason=$(if(-not $e){'not_observed'}elseif(-not $e.fresh){'stale_or_unavailable'}elseif($e.modelBlocked){$e.modelReason}elseif($criticalState.active -and [string]$n -in $criticalState.ranked){'eligible_critical'}elseif(-not (Test-Ok $e $m5 (Get-Margin7dFor $policy $n))){'below_margin_or_unknown'}elseif($n -in @($policy.reserve)){'eligible_reserve'}else{'eligible_work'})}})
     $payload|Add-Member NoteProperty critical $criticalState -Force
+    # A parked account is absent from policy, but the single inventory call above
+    # still returns it. Publish only that it reads again, so the owner can be told.
+    $parkedReadable=@()
+    foreach($record in @((Read-Hotpl8Json (Join-Path $ControlDirectory 'parked.json')).accounts|Where-Object {$_ -and $_.provider -ceq $ProviderId -and [string]$_.slot -match '^[1-9][0-9]{0,3}$'})){
+        $row=@($data.accounts|Where-Object {[string]$_.number -eq [string]$record.slot})
+        if($row.Count -eq 1 -and $row[0].usageStatus -eq 'ok' -and [int]$record.slot -notin $prefer){$parkedReadable+=[pscustomobject]@{slot=[string]$record.slot;label=[string]$record.label}}
+    }
+    $payload|Add-Member NoteProperty parkedReadable $parkedReadable -Force
     $payload|Add-Member NoteProperty decision ([pscustomobject]@{policy=$orderMode;selected=$active;proposed=$target;reason=$(if($hold){'switch held'}elseif(-not $actions.switching){'switching disabled'}elseif($switched){'switched to higher ranked eligible account'}else{'retained current account'});accounts=$reasons}) -Force
     return @{ lines = $lines; payload = $payload; action = $action }
 }

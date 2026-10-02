@@ -15,6 +15,7 @@ Start with `hotpl8 doctor -AsJson`. It is offline and redacted. Run `hotpl8 refr
 | No policy | Run init in the intended state directory; enroll accounts. |
 | Missing cswap/Codex | Install the relevant native dependency; verify PATH in a new terminal. |
 | No accounts | Complete native login and explicit enrollment. |
+| An account stopped being paid for, or has been unreadable for a week | Run `hotpl8 park`; see [canceled and unreadable accounts](operations.md#canceled-and-unreadable-accounts). |
 | Stale reading | Check the collector task in Task Scheduler and local events.jsonl. Offline/sleep periods do not imply refreshed quota. |
 | Collector busy | Another collector/setup holds the state lock. Wait; do not delete live lock files. |
 | Authentication required | Use the native provider login/recovery flow. Do not copy another home's token. |

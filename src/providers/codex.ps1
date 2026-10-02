@@ -30,6 +30,12 @@ function Invoke-CodexRpc($Process, $Clock, [int]$TimeoutMs, [int]$Id, [string]$M
     }
     throw 'timeout'
 }
+# Plan names change faster than releases. Pass a well-formed name through rather
+# than hide a real plan as unknown; anything else stays unknown.
+function ConvertTo-Hotpl8CodexPlanType($Value) {
+    if($Value -is [string] -and $Value -cmatch '^[a-z][a-z0-9_]{0,23}$'){return $Value}
+    return 'unknown'
+}
 # A healthy native read takes 2-4 s; app-server startup alone can pass 5 s on a
 # CPU-saturated machine, where a tighter bound reported every account unavailable.
 function Get-CodexReadBudgetMs { 12000 }
@@ -66,7 +72,7 @@ function Read-CodexQuota([string]$AccountHome, [string]$Executable, [int]$Timeou
         $identity = Get-Hotpl8Hash ([string]$account.account.email + '|' + $workspace)
         $standardTransport = -not $config.config.model_providers.openai.base_url
         if ($config.config.chatgpt_base_url -and [string]$config.config.chatgpt_base_url -notmatch '^https://chatgpt\.com/backend-api/?$') { $standardTransport = $false }
-        $result = [pscustomobject]@{ status = 'ok'; quota = $quota; identityKey = $identity; planType = $(if([string]$account.account.planType -in @('free','plus','pro','team','business','enterprise','edu')){[string]$account.account.planType}else{'unknown'}); model = [string]$config.config.model; modelProvider = [string]$config.config.model_provider; standardTransport = $standardTransport; elapsedMs = $clock.ElapsedMilliseconds }
+        $result = [pscustomobject]@{ status = 'ok'; quota = $quota; identityKey = $identity; planType = (ConvertTo-Hotpl8CodexPlanType $account.account.planType); model = [string]$config.config.model; modelProvider = [string]$config.config.model_provider; standardTransport = $standardTransport; elapsedMs = $clock.ElapsedMilliseconds }
         if($IdentityOnly){
             $verified=[bool]($account.account.email -and $nativeAuth.tokens.account_id)
             $result|Add-Member NoteProperty identityVerified $verified
@@ -237,14 +243,21 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
         if ($read.status -eq 'ok' -and (-not $read.standardTransport -or ($read.modelProvider -and $read.modelProvider -ne 'openai'))) { $read.status = 'unsupported_configuration' }
         $observed = [datetimeoffset]::UtcNow
         $buckets = $old.buckets; $lastSuccess = $old.lastSuccessAt; $identity = $old.identityKey
+        $planType = $old.planType; $previousPlan = $old.previousPlanType; $planChangedAt = $old.planChangedAt
         if ($read.status -eq 'ok') {
-            $priorBuckets = if ($identity -and $identity -eq $read.identityKey) { $old.buckets } else { $null }
+            $sameIdentity = [bool]($identity -and $identity -eq $read.identityKey)
+            $priorBuckets = if ($sameIdentity) { $old.buckets } else { $null }
             $buckets = ConvertTo-CodexBuckets $read.quota $priorBuckets $observed
+            # A plan change on the same subscription is the evidence a lapse leaves
+            # behind. Another login in this home starts a new record instead.
+            if (-not $sameIdentity) { $previousPlan = $null; $planChangedAt = $null }
+            elseif ($planType -and $planType -ne 'unknown' -and $read.planType -ne 'unknown' -and $read.planType -cne $planType) { $previousPlan = $planType; $planChangedAt = $observed.ToString('o') }
+            if ($read.planType -ne 'unknown' -or -not $sameIdentity -or -not $planType) { $planType = $read.planType }
             $lastSuccess = $observed.ToString('o'); $identity = $read.identityKey
         }
         $attempt = if ($read.status -in @('collection_budget','backoff')) { $old.lastAttemptAt } else { $observed.ToString('o') }
         $retry = if ($read.status -eq 'rate_limited') { $observed.AddMinutes(5).ToString('o') } elseif ($read.status -eq 'backoff') { $old.retryAfter } else { $null }
-        $nextState[$id] = [pscustomobject]@{ binding = $binding; identityKey = $identity; lastAttemptAt = $attempt; lastSuccessAt = $lastSuccess; buckets = $buckets; retryAfter = $retry }
+        $nextState[$id] = [pscustomobject]@{ binding = $binding; identityKey = $identity; lastAttemptAt = $attempt; lastSuccessAt = $lastSuccess; buckets = $buckets; retryAfter = $retry; planType = $planType; previousPlanType = $previousPlan; planChangedAt = $planChangedAt }
         $slots += [pscustomobject]@{ id = $id; label = $(if ($slot.label) { [string]$slot.label } else { $id }); status = [string]$read.status; observedAt = $lastSuccess; lastAttemptAt = $attempt; elapsedMs = $read.elapsedMs; buckets = $buckets; planType = $read.planType; defaultModel = [string]$read.model; modelProvider = [string]$read.modelProvider }
         # Status uses a separate local stream pseudonym, never the login-binding key.
         $slots[-1]|Add-Member NoteProperty streamKey (Get-Hotpl8Hash ($StateDirectory+'|usage|'+$identity)) -Force
