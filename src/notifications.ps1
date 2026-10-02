@@ -7,7 +7,7 @@ function Get-Hotpl8NativeAlerts($Snapshot,$Policy,[datetimeoffset]$Now=[datetime
         [pscustomobject]@{key='collector';title='HotPl8 needs attention';text=$health+'. Run hotpl8 doctor.'}
     }
     foreach($s in @($Snapshot.slots)){
-        if($s.status -in @('relogin_required','no_credentials')){[pscustomobject]@{key=('claude/'+$s.slot+'/auth');title='Claude sign-in needed';text=('Slot '+$s.slot+' needs native sign-in.')}}
+        if($s.status -in @('relogin_required','no_credentials')){[pscustomobject]@{key=('claude/'+$s.slot+'/auth');title='Claude sign-in needed';text=('Slot '+$s.slot+' needs sign-in. Run: hotpl8 add -Provider claude')}}
         if($s.fresh -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now) -and $s.forecast -and -not $s.forecast.lastsToReset){
             # Identity and window duration identify the stream; recovery rearms it.
             [pscustomobject]@{key=('claude/'+$s.streamKey+'/weekly');title='Claude weekly quota may run out';text=(Format-Hotpl8Forecast $s.forecast)}

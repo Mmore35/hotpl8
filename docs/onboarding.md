@@ -18,11 +18,18 @@ If you have neither account, choose a provider and use its official account flow
 | One usable native account | Start setup. |
 | Several native accounts | Choose the account. |
 | No native sign-in | Complete provider sign-in. |
+| An account says sign-in needed | Run `hotpl8 add -Provider claude` and sign in as that account. |
 | Missing provider tools | Allow their installation, then sign in if needed. |
 | Both providers | Add each; an agent can manage both operations. |
 | Provider temporarily unavailable | Finish later; the native sign-in is retained. |
 
-Native authentication can require account selection, consent, MFA, or an organization's approval. Those provider steps cannot be bypassed by HotPl8. Never send passwords or tokens to an agent. Native tools own the credentials; HotPl8 stores references and private operation progress.
+## Signing in
+
+Claude opens its sign-in page in your default browser. Finish there and setup continues by itself. Setup also prints a fallback link. Use it when no browser opened or when you sign in on another browser or device. That page shows a code at the end. Paste it into setup and press Enter, or give it to the agent running setup. The code goes once to the waiting `claude` login and is never saved. It is useless without that login. If Claude rejects the code, setup prints a new link to try again.
+
+Signing in to an account that needs sign-in repairs it in place. Setup reports "Signed in again" and refreshes its usage. It does not report the account as a duplicate.
+
+Native authentication can require account selection, consent, MFA, or an organization's approval. Those provider steps cannot be bypassed by HotPl8. Never send passwords or tokens to an agent; the one-time code from Claude's fallback page is the only value setup accepts. Native tools own the credentials; HotPl8 stores references and private operation progress.
 
 ## Close, retry, or cancel
 

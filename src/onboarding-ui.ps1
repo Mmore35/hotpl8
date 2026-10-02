@@ -1,7 +1,7 @@
 # Thin terminal client of the same durable operation used by local agents.
 function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$NewAccount,[switch]$AllowInstall) {
     $r=Invoke-Hotpl8Onboarding $Directory begin '' $Provider '' -NewAccount:$NewAccount -AllowInstall:$AllowInstall
-    $last='';$opened='';$retries=0
+    $last='';$opened='';$typed='';$retries=0
     'Connect an account to HotPl8. Your existing sign-ins stay in place.'
     try{
         while($true){
@@ -33,10 +33,35 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                 }
                 'awaiting_sign_in'{
                     if($r.handoff.url -and $opened -ne $r.handoff.url){
-                        $opened=$r.handoff.url
-                        'Sign in here: '+$opened
-                        if($r.handoff.code){'Provider code: '+$r.handoff.code}
-                        try{if($env:OS -eq 'Windows_NT'){Start-Process $opened|Out-Null}else{& /usr/bin/open $opened}}catch{'Open the link above in your browser.'}
+                        $opened=$r.handoff.url;$typed=''
+                        if($r.handoff.kind -eq 'paste_code'){
+                            # Claude already opened its own browser sign-in; a second tab would compete with it.
+                            'If no browser opened, or you are signing in elsewhere, visit: '+$opened
+                            if('submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){'Then paste the code it shows here and press Enter.'}
+                        }else{
+                            'Sign in here: '+$opened
+                            if($r.handoff.code){'Provider code: '+$r.handoff.code}
+                            try{if($env:OS -eq 'Windows_NT'){Start-Process $opened|Out-Null}else{& /usr/bin/open $opened}}catch{'Open the link above in your browser.'}
+                        }
+                    }
+                    if('submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){
+                        # Read keys without blocking, so a browser sign-in still finishes on its own.
+                        $until=[datetime]::UtcNow.AddSeconds(2);$entered=$null
+                        while($null -eq $entered -and [datetime]::UtcNow -lt $until){
+                            while($null -eq $entered -and [Console]::KeyAvailable){
+                                $key=[Console]::ReadKey($true)
+                                if($key.Key -eq 'Enter'){if($typed.Trim()){$entered=$typed};[Console]::WriteLine()}
+                                elseif($key.Key -eq 'Backspace'){if($typed){$typed=$typed.Substring(0,$typed.Length-1);[Console]::Write("`b `b")}}
+                                elseif(-not [char]::IsControl($key.KeyChar)){$typed+=$key.KeyChar;[Console]::Write('*')}
+                            }
+                            if($null -eq $entered){Start-Sleep -Milliseconds 50}
+                        }
+                        if($null -ne $entered){
+                            $typed=''
+                            try{$r=Invoke-Hotpl8Onboarding $Directory submit_code $r.operationId -Code $entered}catch{$_.Exception.Message}
+                            $entered=$null;continue
+                        }
+                        $r=Invoke-Hotpl8Onboarding $Directory status $r.operationId;continue
                     }
                 }
                 'already_connected'{

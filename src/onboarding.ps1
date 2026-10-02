@@ -14,7 +14,12 @@ function New-Hotpl8PrivateDirectory([string]$Path) {
             $rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow')
             $acl.AddAccessRule($rule)
         }
-        Set-Acl -LiteralPath $full -AclObject $acl
+        # Windows PowerShell's Set-Acl fails with SeSecurityPrivilege when it re-applies
+        # this ACL to an existing protected directory, so every later request failed.
+        # The .NET API writes only the modified owner/DACL sections and is repeatable.
+        $info=New-Object IO.DirectoryInfo $full
+        if($info.PSObject.Methods['SetAccessControl']){$info.SetAccessControl($acl)}
+        else{[IO.FileSystemAclExtensions]::SetAccessControl($info,$acl)}
     }
     return $full
 }
@@ -42,7 +47,7 @@ function Get-Hotpl8OnboardingProgress([string]$Directory,[string]$Id) {
         $view=Get-Hotpl8ProviderView $snapshot (Read-Hotpl8Json (Join-Path $Directory 'policy.json')) $op.selected.provider
         $rows=@(if($op.provider -eq 'codex'){$view.snapshot.providers.codex.slots|Where-Object id -EQ $op.selected.slot}else{$view.snapshot.slots|Where-Object slot -EQ $op.selected.slot})
         if($rows.Count -eq 1 -and $rows[0].status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $rows[0].observedAt)){
-            $op.phase=$(if($op.result.alreadyPresent){'already_connected'}else{'ready'});$op.message='Account connected. Usage is available in HotPl8.';$op.result.observed=$true;$op.result.status='observed'
+            $op.phase=$(if($op.result.alreadyPresent){'already_connected'}else{'ready'});$op.message=$(if($op.result.reconnected){'Signed in again. Usage is available in HotPl8.'}else{'Account connected. Usage is available in HotPl8.'});$op.result.observed=$true;$op.result.status='observed'
         }
     }
     return $op
@@ -92,7 +97,7 @@ function Get-Hotpl8OnboardingResult($Operation) {
         'needs_account_choice'{@('choose_account','sign_in','cancel')}
         'needs_install_authorization'{@('install','cancel')}
         'needs_sign_in'{@('sign_in','cancel')}
-        'awaiting_sign_in'{@('status','cancel')}
+        'awaiting_sign_in'{if($Operation.handoff.kind -eq 'paste_code' -and -not $Operation.handoff.codeReceived){@('status','submit_code','cancel')}else{@('status','cancel')}}
         'pending'{@('retry','cancel')}
         'failed'{@('retry','cancel')}
         'already_connected'{@('sign_in','cancel')}
@@ -188,9 +193,9 @@ function Start-Hotpl8OnboardingWorker([string]$Directory,[string]$Id) {
     $p=[Diagnostics.Process]::Start($psi)
     $p.Dispose()
 }
-function Invoke-Hotpl8Onboarding([string]$Directory,[string]$Action='begin',[string]$Id,[string]$Provider,[string]$CandidateId,[switch]$NewAccount,[switch]$AllowInstall,[switch]$DeviceCode) {
+function Invoke-Hotpl8Onboarding([string]$Directory,[string]$Action='begin',[string]$Id,[string]$Provider,[string]$CandidateId,[switch]$NewAccount,[switch]$AllowInstall,[switch]$DeviceCode,[string]$Code) {
     if($Provider -and $Provider -cnotin @('claude','codex')){throw 'Choose claude or codex.'}
-    if($Action -cnotin @('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel')){throw 'Unsupported onboarding action.'}
+    if($Action -cnotin @('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel','submit_code')){throw 'Unsupported onboarding action.'}
     if($Id){$null=Get-Hotpl8OnboardingPath $Directory $Id}elseif($Action -ne 'begin'){throw 'Operation ID is required.'}
     if($Action -eq 'status'){return Get-Hotpl8OnboardingResult (Get-Hotpl8OnboardingProgress $Directory $Id)}
     Initialize-Hotpl8Onboarding $Directory
@@ -226,6 +231,16 @@ function Invoke-Hotpl8Onboarding([string]$Directory,[string]$Action='begin',[str
             return Get-Hotpl8OnboardingResult $op
         }
         if($op.phase -in @('ready','canceled')){return Get-Hotpl8OnboardingResult $op}
+        if($Action -eq 'submit_code'){
+            # The live worker owns the native login, so this only hands it the code.
+            # The code is single-use and bound to that process; it is never saved in the operation.
+            if($op.phase -ne 'awaiting_sign_in' -or $op.handoff.kind -ne 'paste_code' -or $op.handoff.codeReceived){throw 'Action is not available at this setup step.'}
+            $value=([string]$Code).Trim()
+            if($value -cnotmatch '^[!-~]{8,4096}$'){throw 'Paste the complete code shown after sign-in.'}
+            Write-Hotpl8Text ($path+'.code') $value -NoBom
+            $r=Get-Hotpl8OnboardingResult $op;$r.message='Code received. Finishing sign-in.';$r.nextActions=@('status','cancel')
+            return $r
+        }
         if($Action -ne 'begin'){
             # A live worker owns transitions. Requests may cancel, never overwrite it.
             $probe=$null
