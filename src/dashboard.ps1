@@ -427,6 +427,8 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
         return
     }
     $motionOff=$ReducedMotion -or $Policy.display.reducedMotion -or [bool]$env:HOTPL8_REDUCED_MOTION -or $Plain
+    # Nothing to switch between until an account exists, so first run stays quiet.
+    $automation=if($Status -or @(Get-Hotpl8ProviderAccounts $Policy).Count){Get-Hotpl8AutomationView $Status $Policy $Now}else{$null}
     $rows=@(Get-Hotpl8DashboardRows $Status $Policy $Now $width -Compact:($Height -lt 32) -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff)
     $summary=@(Get-Hotpl8OverviewRows $Status $Policy $Now $inside $AnimationSeconds -ReducedMotion:$motionOff -OverviewOverride $OverviewOverride)
     $nyanRows=@()
@@ -449,7 +451,7 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
     # accounts; Nyan and adaptive compact layouts also change the true viewport.
     if($ResolvedOffset){$ResolvedOffset.Value=$offset}
     New-DashboardRow ('╭'+('─'*$inside)+'╮') border
-    Add-Hotpl8FrameBorder (New-DashboardTitleRow $Status $Now $inside -Paused:$Paused -Nyan:$Nyan -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff -Automation (Get-Hotpl8AutomationView $Status $Policy $Now)) $inside
+    Add-Hotpl8FrameBorder (New-DashboardTitleRow $Status $Now $inside -Paused:$Paused -Nyan:$Nyan -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff -Automation $automation) $inside
     foreach($r in $nyanRows){Add-Hotpl8FrameBorder $r $inside}
     New-DashboardRow ('├'+('─'*$inside)+'┤') border
     foreach($row in $summary){Add-Hotpl8FrameBorder $row $inside}

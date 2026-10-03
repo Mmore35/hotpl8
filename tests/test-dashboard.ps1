@@ -18,6 +18,8 @@ Check 'empty policy leads to guided setup without implying a running collector' 
     Assert ($text.Contains('hotpl8 setup') -and $text.Contains('ask your agent'))
     Assert (-not $text.Contains('AccountHome') -and -not $text.Contains('hotpl8 refresh'))
     Assert ($text.Contains('no reading') -and -not $text.Contains('LIVE') -and -not $text.Contains('every 5m'))
+    # With no account there is nothing to switch between, so the title stays quiet.
+    Assert (-not $text.Contains('auto-switch'))
 }
 Check 'stale and failed readings offer a recovery action' {
     $c=Copy-Value $s;$c.generatedAt=$now.AddHours(-1).ToString('o');$c.slots[0].status='authentication_required'
