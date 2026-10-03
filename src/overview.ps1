@@ -138,6 +138,10 @@ function Get-Hotpl8CodexAccountState($Slot,$Part,$Provider,[datetimeoffset]$Now)
 function Get-Hotpl8CapacityDisplay($ProviderOverview) {
     $p=$ProviderOverview;$c=if($p.immediate){$p.immediate}else{$p.capacity}
     $state=if($c.complete){'{0:0.#}% available now' -f $c.usableNowPercent}elseif($null -eq $c.totalUnits){'Plan allowance unknown; total unavailable'}else{'Partial: '+$c.measured+'/'+$p.accounts+' measured; total unavailable'}
+    if($c.metric -eq 'account-average-quota-headroom'){
+        if($c.complete){$state=('{0:0.#}% average quota remaining' -f $c.usableNowPercent)}
+        $state+=' (equal-account average; not combined capacity)'
+    }
     if($c.metric -eq 'plan-weighted-quota-headroom' -and $c.complete){$state+=' (estimate)'}
     $weeklyUncertain=@($c.accounts|Where-Object {($_.unconvertedConstraints -contains '10080') -and @($_.windows|Where-Object {$_.name -eq '10080' -and $_.remaining -gt 0 -and $_.remaining -le 20}).Count}).Count
     if($weeklyUncertain -and $c.complete){$state=$state.Replace('(estimate)','(weekly cap uncertain)')}
@@ -146,7 +150,7 @@ function Get-Hotpl8CapacityDisplay($ProviderOverview) {
     $stale=@($p.members|Where-Object reason -EQ 'stale').Count
     if($stale){$state+=' / '+$stale+' expired; awaiting update'}
     [pscustomobject]@{
-        title='Available now'
+        title=$(if($c.metric -eq 'account-average-quota-headroom'){'Average quota'}else{'Available now'})
         value=$c.knownUsablePercent
         unknown=$c.unknownPercent
         gain=$c.projectedGainPercent

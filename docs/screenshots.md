@@ -37,3 +37,5 @@ from introducing artificial seams. Apple Terminal Nyan uses whole background
 cells (10 or 18 rows); Windows keeps its 5- or 9-row half-block sprite. The native
 live preview remains required for terminal acceptance; CI images are not native
 Terminal captures.
+
+`unknown.png` exercises accounts without capacity profiles: fresh quota remains visible as a labeled account average while the weighted subscription total stays unknown.

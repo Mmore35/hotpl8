@@ -123,6 +123,22 @@ function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Proj
 function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeoffset]$Now,[string]$Meter='codex',[switch]$QuotaHeadroom) {
     $accounts=@(Get-Hotpl8CapacityAccounts $Snapshot $Part $Provider $Now $Meter -QuotaHeadroom:$QuotaHeadroom)
     $denominatorKnown=$accounts.Count -gt 0 -and @($accounts|Where-Object {$null -eq $_.weekly}).Count -eq 0 -and @($accounts|ForEach-Object weightBasis|Select-Object -Unique).Count -le 1
+    # A missing tier weight prevents a weighted total, not use of measured quota.
+    # Keep the calibrated model unknown; the display can average each account's
+    # lowest remaining window percentage without claiming equal plan capacities.
+    $accountAverage=[bool]($QuotaHeadroom -and $accounts.Count -gt 0 -and -not $denominatorKnown)
+    $unweightedCritical=if($accountAverage){Get-Hotpl8CriticalDecision $accounts $Part $(if($Provider -eq 'claude'){[string]$Snapshot.active}else{[string]$Snapshot.providers.codex.recommendedSlot}) $(if($Provider -eq 'claude'){$Snapshot.critical}else{$Snapshot.providers.codex.critical.$Meter}) $Now}else{$null}
+    if($accountAverage){
+        foreach($account in $accounts){
+            $account.weekly=1
+            $account.weightBasis='account-average'
+            $account.scaled=$account.fresh
+            $account.gross=if($account.fresh){$account.bindingRemaining/100}else{$null}
+            $account.confidence='equal-account average of limiting-window percentages; not combined capacity'
+            foreach($window in $account.windows){$window.full=1}
+        }
+        $denominatorKnown=$true
+    }
     $total=if($denominatorKnown){($accounts|Measure-Object weekly -Sum).Sum}else{$null}
     $complete=$denominatorKnown -and @($accounts|Where-Object {-not $_.scaled -or ($_.blocked -and -not $_.knownZero)}).Count -eq 0
     # A measured zero is known now, but a generic native block may survive reset.
@@ -135,6 +151,7 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     if($pause){try{if([datetimeoffset]::Parse($pause.until) -le $Now){$pause=$null}}catch{}}
     $restricted=$hold -or $pause -or ($Provider -eq 'claude' -and ($Part.mode -eq 'monitor' -or $Part.switchEnabled -eq $false))
     $critical=Get-Hotpl8CriticalDecision $accounts $Part $selected $(if($Provider -eq 'claude'){$Snapshot.critical}else{$Snapshot.providers.codex.critical.$Meter}) $Now
+    if($accountAverage){$critical=$unweightedCritical}
     $resets=@($accounts|Where-Object {$_.fresh -and (-not $_.blocked -or $_.knownZero)}|ForEach-Object {$_.windows}|Where-Object {$_.resetAt -and [datetimeoffset]::Parse($_.resetAt) -gt $Now}|Sort-Object {[datetimeoffset]::Parse($_.resetAt)})
     $next=$null
     $solid=0.0;$future=0.0;$unknown=0.0
@@ -164,5 +181,5 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     }
     $gain=if($next){[math]::Max(0.0,$future-$solid)}else{$null}
     $laterGain=if($later){[math]::Max(0.0,$laterFuture-$solid)}else{$null}
-    [pscustomobject]@{metric=$(if($QuotaHeadroom){'plan-weighted-quota-headroom'}else{'weighted-weekly-capacity'});unit=$(if($QuotaHeadroom){'relative session headroom'}else{'relative weekly allowance'});totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectionHorizonHours=24;projectionComplete=[bool]$projectionComplete;projectedGainPercent=$(if($complete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});laterRefillAt=$(if($later){$later.ToString('o')}else{$null});laterRefillGainPercent=$(if($complete -and $later){[math]::Min(100-100*$solid/$total,100*$laterGain/$total)}else{$null});projectionAssumption='First positive gain within 24h, else the first within 8 days as text; no further consumption; blocked accounts stay blocked unless the block is a quota exhaustion with a confirmed reset; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($QuotaHeadroom){'quota headroom estimate; not a token budget'}elseif($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
+    [pscustomobject]@{metric=$(if($accountAverage){'account-average-quota-headroom'}elseif($QuotaHeadroom){'plan-weighted-quota-headroom'}else{'weighted-weekly-capacity'});unit=$(if($accountAverage){'account quota headroom'}elseif($QuotaHeadroom){'relative session headroom'}else{'relative weekly allowance'});totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectionHorizonHours=24;projectionComplete=[bool]$projectionComplete;projectedGainPercent=$(if($complete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});laterRefillAt=$(if($later){$later.ToString('o')}else{$null});laterRefillGainPercent=$(if($complete -and $later){[math]::Min(100-100*$solid/$total,100*$laterGain/$total)}else{$null});projectionAssumption='First positive gain within 24h, else the first within 8 days as text; no further consumption; blocked accounts stay blocked unless the block is a quota exhaustion with a confirmed reset; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($accountAverage){'equal-account average of limiting-window percentages; not combined capacity'}elseif($QuotaHeadroom){'quota headroom estimate; not a token budget'}elseif($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
 }

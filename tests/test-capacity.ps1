@@ -380,11 +380,73 @@ Check 'refill horizon includes 24h exactly and excludes a second later' {
     Assert ($null -eq $c.projectedGainPercent -and $null -eq $c.nextResetAt)
     Assert (@(Get-Hotpl8OverviewRows $s $p $now 108)[1].text -notmatch '▒')
 }
-Check 'unknown plans remain unknown instead of receiving invented tier weights' {
+Check 'unknown plan capacity stays unknown while measured account quota remains visible' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Assert ($d.title -eq 'Available now' -and -not $d.capacity.complete -and $null -eq $d.gain)
-    Assert ($d.state.Contains('total unavailable') -and $d.value -eq 0)
+    $o=(Get-Hotpl8ProviderOverview $s $p $now).claude
+    $d=Get-Hotpl8CapacityDisplay $o
+    Assert ($d.title -eq 'Average quota' -and $d.capacity.complete)
+    Assert ($d.capacity.metric -eq 'account-average-quota-headroom')
+    Assert ($d.state.Contains('not combined capacity'))
+    Near $d.value 64.5
+    Assert (-not $o.capacity.complete -and $null -eq $o.capacity.totalUnits)
+    Assert (@($d.capacity.accounts|Where-Object profile).Count -eq 0)
+}
+Check 'new native plan names and mixed tiers use measured quota without manual setup' {
+    $p=Policy;$s=Snapshot;$p.codex.PSObject.Properties.Remove('capacity')
+    $before=Select-CodexSlot $s.providers.codex.slots $p.codex codex 'work' $null $now
+    $s.providers.codex.slots[0]|Add-Member NoteProperty planType 'future_plan'
+    $s.providers.codex.slots[1]|Add-Member NoteProperty planType 'plus'
+    $o=(Get-Hotpl8ProviderOverview $s $p $now).codex
+    Assert ($o.immediate.complete -and $o.selected -eq $before)
+    Near $o.immediate.usableNowPercent 35
+    Assert ($null -eq $o.capacity.totalUnits)
+    $s.providers.codex.slots[0].buckets.codex.windows.PSObject.Properties.Remove('300')
+    foreach($slot in $s.providers.codex.slots){$slot.buckets.codex.windows.'10080'.remainingPercent=100;$slot.buckets.codex.windows.'10080'.usedPercent=0;$slot.buckets.codex.windows.'10080'.resetsAt=$null}
+    $s.providers.codex.slots[0].buckets.codex.windows.'10080'.remainingPercent=85
+    $s.providers.codex.slots[0].buckets.codex.windows.'10080'.usedPercent=15
+    $s.providers.codex.slots[0].buckets.codex.windows.'10080'.resetsAt=$now.AddDays(3).ToUnixTimeSeconds()
+    Near (Get-Hotpl8ProviderOverview $s $p $now).codex.immediate.usableNowPercent 92.5
+    $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
+    Assert ($text.Contains('~93% avg') -and $text.Contains('quota average') -and -not $text.Contains('plan unknown')) $text
+    foreach($width in @(46,77,108)){
+        foreach($row in @(Get-Hotpl8OverviewRows $s $p $now $width)){Assert ((Get-DashboardCells $row.text) -le $width)}
+    }
+}
+Check 'account average preserves missing quota, stale reads and provider restrictions' {
+    foreach($failure in @('stale','missing','constraint_unknown','blocked','authentication_required')){
+        $p=Policy;$s=Snapshot;$p.codex.PSObject.Properties.Remove('capacity')
+        $slot=$s.providers.codex.slots[1]
+        switch($failure){
+            'stale'{$slot.observedAt=$now.AddHours(-1).ToString('o')}
+            'missing'{$slot.buckets.codex.windows.'10080'.remainingPercent=$null;$slot.buckets.codex.windows.'10080'.usedPercent=$null}
+            'authentication_required'{$slot.status=$failure}
+            default{$slot.buckets.codex.status=$failure}
+        }
+        $o=(Get-Hotpl8ProviderOverview $s $p $now).codex
+        Assert (-not $o.immediate.complete -and $o.immediate.unknownPercent -eq 50) $failure
+        Assert ($null -eq $o.immediate.usableNowPercent -and $null -eq $o.immediate.projectedGainPercent) $failure
+        Assert ($o.selected -ne 'personal') $failure
+    }
+}
+Check 'account average preserves exclusions, holds, exhausted zero and emergency decisions' {
+    $p=Policy;$s=Snapshot;$p.codex.PSObject.Properties.Remove('capacity')
+    $s.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=0
+    $s.providers.codex.slots[1].buckets.codex.windows.'10080'.usedPercent=100
+    $s.providers.codex.slots[1].buckets.codex.status='blocked'
+    $o=(Get-Hotpl8ProviderOverview $s $p $now).codex
+    Assert ($o.immediate.complete -and -not $o.immediate.projectionComplete)
+    Near $o.immediate.usableNowPercent 29.5
+    $p.codex|Add-Member NoteProperty disabled @('personal') -Force
+    Near (Get-Hotpl8ProviderOverview $s $p $now).codex.immediate.usableNowPercent 74
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    $s|Add-Member NoteProperty hold @{until=$now.AddHours(1).ToString('o')} -Force
+    Near (Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.usableNowPercent 23
+    foreach($slot in $s.slots){$slot.used5h=94;$slot.used7d=94}
+    $o=(Get-Hotpl8ProviderOverview $s $p $now).claude
+    Assert ($o.immediate.critical.selected -eq $o.capacity.critical.selected -and $o.immediate.critical.basis -eq $o.capacity.critical.basis)
+    foreach($slot in $s.slots){$slot|Add-Member NoteProperty streamKey 'same-fixture'}
+    $c=Get-Hotpl8ProviderCapacity $s $p claude $now -QuotaHeadroom
+    Assert ($c.accounts.Count -eq 1 -and $c.totalUnits -eq 1)
 }
 Check 'blocked zero account cannot hide a known refill from another Codex subscription' {
     $p=Policy;$s=Snapshot
@@ -522,7 +584,8 @@ Check 'calibrated mixed tiers normalize against session capacity and preserve th
     foreach($entry in $p.capacity.PSObject.Properties){$entry.Value.weekly*=10;$entry.Value.fiveHour*=10}
     Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
     $s.slots[0]|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
-    Assert (-not (Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.complete)
+    Assert ((Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.metric -eq 'account-average-quota-headroom')
+    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 64.5
     $s.slots[1]|Add-Member NoteProperty plan @{status='detected';profile='claude-max-5x';observedAt=$now.ToString('o')} -Force
     Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
 }

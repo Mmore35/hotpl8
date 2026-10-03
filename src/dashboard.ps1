@@ -280,7 +280,8 @@ function Get-DashboardChips($Status,$Provider,[string]$Name,[datetimeoffset]$Now
     elseif($availability -match '^No accounts'){$chips+=@{text='none enabled';tone='muted'}}
     if($availability -match 'sign-in'){$chips+=@{text='SIGN-IN';tone='amber'}}
     if($p.collectionHealth -and $p.collectionHealth -notin @('manual / no collector evidence','recent collection completed','collecting')){$chips+=@{text=$p.collectionHealth;tone='amber'}}
-    if($p.accounts -and -not $c.complete -and $null -eq $c.totalUnits){$chips+=@{text='plan unknown';tone='amber'}}
+    if($c.metric -eq 'account-average-quota-headroom'){$chips+=@{text='quota average';tone='muted'}}
+    elseif($p.accounts -and -not $c.complete -and $null -eq $c.totalUnits){$chips+=@{text='capacity unweighted';tone='muted'}}
     if($p.accounts -and $p.measured -lt $p.accounts){$chips+=@{text=([string]$p.measured+'/'+$p.accounts+' read');tone='amber'}}
     if($p.disabled){$chips+=@{text=([string]$p.disabled+' off');tone='muted'}}
     if($p.duplicates){$chips+=@{text=([string]$p.duplicates+' dup');tone='muted'}}
@@ -307,8 +308,10 @@ function New-DashboardOverviewBarRow($Overview,[datetimeoffset]$Now,[int]$Width,
     $value=[double]$c.knownUsablePercent
     $gain=if($c.complete -and $null -ne $c.projectedGainPercent -and $c.nextResetAt){[double]$c.projectedGainPercent}else{0}
     $unknown=if($c.complete){0}else{[double]$c.unknownPercent}
-    $estimate=$c.metric -eq 'plan-weighted-quota-headroom'
+    $accountAverage=$c.metric -eq 'account-average-quota-headroom'
+    $estimate=$c.metric -in @('plan-weighted-quota-headroom','account-average-quota-headroom')
     $percent=if($c.complete){$(if($estimate){'~'}else{''})+('{0:0}% now' -f $c.usableNowPercent)}else{'? now'}
+    if($accountAverage){$percent=$percent.Replace(' now',' avg')}
     $refill=''
     # A refill beyond 24h is text only: it never hatches or shimmers the bar.
     $laterGain=if($c.complete -and $null -ne $c.laterRefillGainPercent -and $c.laterRefillAt){[double]$c.laterRefillGainPercent}else{0}
