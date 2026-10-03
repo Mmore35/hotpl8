@@ -391,7 +391,8 @@ Assert (@($snapshot.recentActions|Where-Object provider -CEQ fictional).Count -g
 $note=Get-DashboardActivityNote ([pscustomobject]@{provider='fictional';slot='one';kind='recommendation';at=$at.ToString('o')}) $policy $at
 Assert ($note.text -match '^fictional next' -and $note.text -notmatch '^codex') 'activity mislabeled registered provider'
 $failedSnapshot=Copy-Hotpl8ProviderValue $snapshot;$failedSnapshot.providers.fictional.slots[0].status='authentication_required'
-Assert ((@(Get-Hotpl8DashboardRows $failedSnapshot $policy $at 110 -ReducedMotion).text -join "`n") -match 'account unavailable') 'global warning omitted later registered provider'
+$failedRows=@(Get-Hotpl8DashboardRows $failedSnapshot $policy $at 110 -ReducedMotion).text -join "`n"
+Assert ($failedRows -match 'AUTHENTICATION REQUIRED' -and $failedRows -notmatch 'account unavailable') 'a later registered provider must show its failed account on its own row'
 Assert (@($snapshot.shadow|Where-Object stream -Like 'fictional/codex_bengalfox/*').Count -eq 0) 'shadow comparison invented unsupported registered meter'
 Set-Hotpl8Pause $state 5 'fixture'
 $paused=Request readiness @{provider='fictional'}
