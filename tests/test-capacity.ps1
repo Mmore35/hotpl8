@@ -318,10 +318,12 @@ Check 'detected plan weights estimate current session allowance without inventin
     Assert ($null -ne $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
     Assert ($text.Contains('~42% now') -and $text.Contains('7d 90%') -and -not $text.Contains('Weekly remaining'))
+    # An expired reading drops out of the displayed total and is recorded; the
+    # calibrated model keeps it unknown.
     $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Assert ($d.unknown -gt 0 -and $d.state.Contains('total unavailable') -and $null -eq $d.gain)
-    Assert ($d.state.Contains('expired; awaiting update') -and -not $d.state.Contains('setup needed'))
+    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Get-Hotpl8CapacityDisplay $o.claude
+    Near $d.value 50;Assert ($d.capacity.complete -and $null -eq $o.claude.capacity.usableNowPercent)
+    Assert ((@($o.claude.immediate.coverage.excluded|ForEach-Object {$_.slot+':'+$_.reason}) -join ',') -eq '1:unreadable' -and $o.claude.immediate.coverage.measured -eq 1)
 }
 Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exclusions' {
     $p=Clone $fixture.policy;$s=Snapshot
@@ -335,7 +337,7 @@ Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exc
     Near (Get-Hotpl8ProviderOverview $s $p $now).codex.capacity.usableNowPercent 47.5
     $p.codex|Add-Member NoteProperty disabled @('personal') -Force
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
-    Assert ($text.Contains('95% now') -and $text.Contains('next: work') -and $text.Contains('1 off'))
+    Assert ($text.Contains('95% now') -and $text.Contains('next: Work') -and -not $text.Contains('1 off'))
 }
 Check 'weekly allowance cannot fill the main bar while short windows are exhausted' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
@@ -352,8 +354,8 @@ Check 'weekly allowance cannot fill the main bar while short windows are exhaust
     # Already expired on arrival, so it cannot refill the exhausted fleet.
     $s.slots[0].observedAt=$now.AddSeconds(-20).ToString('o')
     $s.slots[0].reset7d=$now.AddSeconds(-30).ToString('o')
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Assert ($null -eq $d.gain -and $d.state.Contains('total unavailable'))
+    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Get-Hotpl8CapacityDisplay $o.claude
+    Near $d.value 0;Assert ($null -eq $d.gain -and '1' -in @($o.claude.immediate.coverage.excluded.slot))
 }
 Check 'hatching means refill only and is contiguous with the measured fill at every viewport' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
@@ -363,12 +365,14 @@ Check 'hatching means refill only and is contiguous with the measured fill at ev
         Assert ((Get-DashboardCells $rows[1].text) -le $width)
         Assert ($rows[1].text -match '\[█+[▏▎▍▌▋▊▉]?▒+·*\]' -and $rows[1].text.Contains('% in '))
     }
+    # One unreadable account leaves a measured bar, with or without plan weights;
+    # the problem belongs on its account row, not in the header.
     $p=Policy;$s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
     $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
-    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[1].text.Contains('? now') -and $rows[0].text.Contains('1/2 read'))
+    Assert ($rows[1].text -match '\d+% now' -and -not $rows[1].text.Contains('? now') -and -not $rows[0].text.Contains('read'))
     $p.PSObject.Properties.Remove('capacity')
     $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
-    Assert ($rows[1].text -notmatch '[░▒]' -and $rows[1].text.Contains('? now') -and $rows[0].text.Contains('1/2 read'))
+    Assert ($rows[1].text -match '\d+% now' -and -not $rows[1].text.Contains('? now') -and -not $rows[0].text.Contains('read'))
 }
 Check 'refill horizon includes 24h exactly and excludes a second later' {
     $p=Policy;$s=Snapshot
@@ -380,11 +384,32 @@ Check 'refill horizon includes 24h exactly and excludes a second later' {
     Assert ($null -eq $c.projectedGainPercent -and $null -eq $c.nextResetAt)
     Assert (@(Get-Hotpl8OverviewRows $s $p $now 108)[1].text -notmatch '▒')
 }
-Check 'unknown plans remain unknown instead of receiving invented tier weights' {
+Check 'unknown plans stay unknown in the calibrated model while the display counts readable accounts equally' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Assert ($d.title -eq 'Available now' -and -not $d.capacity.complete -and $null -eq $d.gain)
-    Assert ($d.state.Contains('total unavailable') -and $d.value -eq 0)
+    $o=Get-Hotpl8ProviderOverview $s $p $now
+    Assert (-not $o.claude.capacity.complete -and $null -eq $o.claude.capacity.totalUnits -and $null -eq $o.claude.capacity.usableNowPercent)
+    $d=Get-Hotpl8CapacityDisplay $o.claude
+    Assert ($d.title -eq 'Available now' -and $d.capacity.complete -and (@($o.claude.immediate.accounts.weightBasis|Select-Object -Unique) -join ',') -eq 'equal')
+    # Each account counts its current window equally: (62 + 92) / 2.
+    Near $d.value 77
+}
+Check 'the displayed metric survives unreadable accounts, timeouts and switching off' {
+    $p=Policy;$s=Snapshot
+    $base=(Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.usableNowPercent
+    foreach($change in @({$p.mode='monitor'},{$p|Add-Member NoteProperty switchEnabled $false -Force},{$s|Add-Member NoteProperty automationPause @{until=$now.AddHours(1).ToString('o')} -Force})){
+        $p=Policy;$s=Snapshot;& $change
+        Near (Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.usableNowPercent $base
+    }
+    # A hold pins one account on purpose, so it still narrows the displayed metric.
+    $p=Policy;$s=Snapshot;$s.hold=@{until=$now.AddHours(1).ToString('o')}
+    Assert ((Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.usableNowPercent -lt $base)
+    $p=Policy;$s=Snapshot;$s.providers.codex.slots[0].status='timeout';$s.providers.codex.slots[0].observedAt=$now.AddHours(-2).ToString('o')
+    $c=(Get-Hotpl8ProviderOverview $s $p $now).codex.immediate
+    Assert ($c.complete -and $null -ne $c.usableNowPercent -and 'work' -in @($c.coverage.excluded.slot))
+    foreach($slot in $s.slots){$slot.observedAt=$now.AddHours(-2).ToString('o')}
+    $c=(Get-Hotpl8ProviderOverview $s $p $now).claude.immediate
+    Assert (-not $c.complete -and $null -eq $c.usableNowPercent -and $c.coverage.measured -eq 0)
+    Assert ((@(Get-Hotpl8OverviewRows $s $p $now 108)[1].text) -notmatch '% now')
 }
 Check 'blocked zero account cannot hide a known refill from another Codex subscription' {
     $p=Policy;$s=Snapshot
@@ -521,8 +546,10 @@ Check 'calibrated mixed tiers normalize against session capacity and preserve th
     Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
     foreach($entry in $p.capacity.PSObject.Properties){$entry.Value.weekly*=10;$entry.Value.fiveHour*=10}
     Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
+    # Calibrated and plan bases cannot be mixed, so the display falls back to equal weights.
     $s.slots[0]|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
-    Assert (-not (Get-Hotpl8ProviderOverview $s $p $now).claude.immediate.complete)
+    $mixed=(Get-Hotpl8ProviderOverview $s $p $now).claude.immediate
+    Assert ($mixed.complete -and (@($mixed.accounts.weightBasis|Select-Object -Unique) -join ',') -eq 'equal')
     $s.slots[1]|Add-Member NoteProperty plan @{status='detected';profile='claude-max-5x';observedAt=$now.ToString('o')} -Force
     Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
 }

@@ -178,7 +178,7 @@ try{
         Assert ($text.Contains('Parked one is readable again  ·  hotpl8 unpark'))
         $status.parkCandidates=@()
         $text=(@(Get-Hotpl8DashboardRows $status $policy $now)|ForEach-Object {if($_.text){$_.text}else{($_.spans|ForEach-Object text) -join ''}}) -join "`n"
-        Assert ($text.Contains('account unavailable  ·  hotpl8 doctor')) 'a recent failure keeps the general pointer'
+        Assert (-not $text.Contains('account unavailable') -and $text.Contains('SIGN-IN NEEDED')) 'a recent failure stays on its account row'
     }
     Check 'doctor names candidates for people and only counts them in the redacted report' {
         $report=[pscustomobject]@{version='0';runtime='7';policyPresent=$true;policyValid=$true;mode='monitor';claudeConfigured=$true;codexConfigured=$false;cswapFound=$true;codexFound=$false;snapshotAgeSeconds=10;snapshotFresh=$true;collectorBusy=$false;providers=[pscustomobject]@{};parkCandidates=1}
