@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'delivery-policy.ps1')
+. (Join-Path $PSScriptRoot 'parking.ps1')
 function ConvertTo-Hotpl8PolicyV2($Policy) {
     $next=$Policy|ConvertTo-Json -Depth 24|ConvertFrom-Json
     if($Policy.schemaVersion -eq 3){return $next}
@@ -42,7 +43,18 @@ function ConvertTo-Hotpl8PolicyV3($Policy) {
     return $next
 }
 
-function Add-Hotpl8RegisteredAccount([string]$Directory,[string]$Provider,[string]$Slot,[string]$AccountHome,[string]$Label,[string]$Executable,[switch]$MigratePolicy) {
+function Add-Hotpl8RegisteredAccount([string]$Directory,[string]$Provider,[string]$Slot,[string]$AccountHome,[string]$Label,[string]$Executable,[switch]$MigratePolicy,[switch]$KeepLabel) {
+    # Setup, enroll and unpark share this entry, so an account that returns by
+    # any of them gets its parked settings back instead of starting over.
+    $known=Test-Hotpl8AccountEnrolled $Directory $Provider $Slot
+    Add-Hotpl8RegisteredAccountCore $Directory $Provider $Slot $AccountHome $Label $Executable -MigratePolicy:$MigratePolicy
+    if(-not $known -and (Test-Hotpl8AccountEnrolled $Directory $Provider $Slot)){
+        # The enrollment above is complete; a failed restore must not undo or hide it.
+        try{Restore-Hotpl8ParkedAccount $Directory $Provider $Slot $AccountHome $Executable -KeepLabel:$KeepLabel}
+        catch{'The account is enrolled. Its parked settings could not be restored and remain saved.'}
+    }
+}
+function Add-Hotpl8RegisteredAccountCore([string]$Directory,[string]$Provider,[string]$Slot,[string]$AccountHome,[string]$Label,[string]$Executable,[switch]$MigratePolicy) {
     $definition=Get-Hotpl8ProviderDefinition $Provider;$driver=Get-Hotpl8ProviderDriver $definition.driver
     if(-not $definition.capabilities.enrollment){throw 'Provider enrollment is unavailable.'}
     $path=Join-Path $Directory 'policy.json';$hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash

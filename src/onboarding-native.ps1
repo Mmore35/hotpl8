@@ -188,6 +188,9 @@ function Register-Hotpl8OnboardingCodex([string]$Directory,$Operation) {
     $part.prefer=@($part.prefer)+@($candidate.slot)
     if(Test-Hotpl8OnboardingCanceled $Directory $Operation){throw 'setup_canceled'}
     Save-Hotpl8Policy $Directory $policy $hash
+    # A returning subscription gets its parked settings back; never fail a
+    # completed enrollment over that.
+    try{$null=Restore-Hotpl8ParkedAccount $Directory codex $candidate.slot $candidate.home ''}catch{}
 }
 function Complete-Hotpl8OnboardingAccount([string]$Directory,$Operation) {
     if(Test-Hotpl8OnboardingCanceled $Directory $Operation){return}

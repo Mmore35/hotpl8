@@ -544,6 +544,40 @@ run "no_credentials goes stale the same way"          none "QUARANTINE STALE"
 # slot it cannot measure, which is strictly worse than the bug being fixed.
 mkq 2 relogin_required 234000 95 10
 run "a stale-quarantined slot is still NOT selected"  none "QUARANTINE STALE"
+
+echo "== parking evidence (2026-10-01) =="
+# Parking needs to tell a long absence from a blip, so the payload carries the time
+# of the last good reading. A parked account is absent from policy, but the single
+# inventory read still sees it; when it reads again the payload says so.
+statjson() {  # statjson <name> <python expression over status.json as s, true to pass>
+    tick
+    local r="PASS"
+    "$PY_BIN" - "$(winpath "$S/status.json")" "$2" <<'PY' || r="FAIL"
+import io, json, re, sys
+from datetime import datetime, timezone
+s = json.load(io.open(sys.argv[1], encoding="utf-8-sig"))
+now = datetime.now(timezone.utc)
+# PowerShell writes seven fractional digits; older Python accepts at most six.
+ago = lambda v: (now - datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", v.replace("Z", "+00:00")))).total_seconds()
+sys.exit(0 if eval(sys.argv[2]) else 1)
+PY
+    case "$r" in PASS) PASS=$((PASS+1));; *) FAIL=$((FAIL+1));; esac
+    printf '%-42s %s\n' "$1" "$r"
+}
+mkq 2 relogin_required 234000 10 10
+statjson "dead slot publishes its last good reading" "abs(ago([x for x in s['slots'] if x['slot']==1][0]['lastGoodAt']) - 234000) < 120"
+mkq 2 relogin_required none 10 10
+statjson "no last good reading is published as none" "[x for x in s['slots'] if x['slot']==1][0]['lastGoodAt'] is None"
+"$PY_BIN" - "$(winpath "$S/policy.json")" "$(winpath "$S/parked.json")" <<'PY'
+import json, sys
+json.dump({"prefer": [2], "margin5h": 25, "margin7d": 20, "margin7dWork": 5, "hysteresis": 10, "maxUsageAgeS": 900, "warm": False, "reserve": []}, open(sys.argv[1], "w"))
+json.dump({"schemaVersion": 1, "accounts": [{"provider": "claude", "slot": "1", "label": "Parked one"}]}, open(sys.argv[2], "w"))
+PY
+mkq 2 ok none 10 10
+statjson "a parked account that reads again is named" "[x['slot'] for x in s['parkedReadable']] == ['1'] and all(x['slot'] != 1 for x in s['slots'])"
+mkq 2 relogin_required 234000 10 10
+statjson "a parked account still dead is not named" "s['parkedReadable'] == []"
+rm -f "$S/parked.json"
 cp "$HERE/tests/legacy-policy.json" "$S/policy.json" || exit 2
 
 echo "== probe: ACT on a stale quarantine, don't just report it (2026-09-06) =="

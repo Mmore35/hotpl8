@@ -147,7 +147,13 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null) {
         $s|Add-Member NoteProperty automationPause $pause -Force
     }
     if($s -and $PolicyOverride){$s|Add-Member NoteProperty displayPolicy 'explicit reader policy' -Force}
-    if($s){$s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $(if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json (Join-Path $Directory 'policy.json')})) -Force}
+    if($s){
+        $readerPolicy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json (Join-Path $Directory 'policy.json')}
+        $s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $readerPolicy) -Force
+        # Advice only: a detector failure must never cost a reader its snapshot.
+        $candidates=@();try{$candidates=@(Get-Hotpl8ParkCandidates $s $readerPolicy)}catch{}
+        $s|Add-Member NoteProperty parkCandidates $candidates -Force
+    }
     return $s
 }
 function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {

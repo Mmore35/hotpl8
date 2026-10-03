@@ -25,7 +25,7 @@ Doctor prints setup and dependency guidance in human mode. Its `-AsJson` fields 
 
 ## Account operations
 
-The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `explain`, `capabilities`, `pause`/`resume`, `history`, `tray`, `update-check` and `update`. See [commands and operational semantics](operations.md) and [verified updates](upgrading.md). These are not present in the older downloadable preview.
+The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `park`/`unpark`, `explain`, `capabilities`, `pause`/`resume`, `history`, `tray`, `update-check` and `update`. See [commands and operational semantics](operations.md) and [verified updates](upgrading.md). These are not present in the older downloadable preview.
 
 ## Provider overview
 

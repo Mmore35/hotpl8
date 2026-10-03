@@ -25,7 +25,7 @@ function Write-Hotpl8Event([string]$Directory, [string]$Code, $Failure=$null) {
         [IO.File]::AppendAllText($path, $row+[Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     } catch { }
 }
-function Format-Hotpl8Doctor($Report) {
+function Format-Hotpl8Doctor($Report,$ParkCandidates=@()) {
     # Human guidance is separate from the stable, allowlisted JSON contract.
     'HotPl8 ' + $Report.version + ' | PowerShell ' + $Report.runtime
     if (-not $Report.policyPresent) {
@@ -74,6 +74,10 @@ function Format-Hotpl8Doctor($Report) {
             'Recent snapshot found. Run hotpl8 to view per-account status.'
         }
     }
+    foreach($candidate in @($ParkCandidates|Where-Object {$_})){
+        'PARK CANDIDATE: '+$candidate.label+' ('+$candidate.providerName+'), '+(Format-Hotpl8ParkReason $candidate)+'.'
+    }
+    if(@($ParkCandidates|Where-Object {$_}).Count){'Sign in again to keep an account, or run hotpl8 park to set it aside until it returns.'}
     'Doctor is offline: native login and quota availability are checked by hotpl8 refresh.'
 }
 function Get-Hotpl8Doctor([string]$StateDirectory) {
@@ -94,6 +98,9 @@ function Get-Hotpl8Doctor([string]$StateDirectory) {
         catch { $locked=$true }
         finally { if($lock){$lock.Dispose()} }
     }
+    # Count only: labels are private and this report is the redacted export.
+    $parkCandidates=0
+    if($valid){try{$parkCandidates=@(Get-Hotpl8ParkCandidates $status $policy).Count}catch{}}
     $registered=[ordered]@{}
     if($valid){foreach($r in @(Get-Hotpl8ConfiguredProviders $policy -IncludeUnconfigured)){
         $driver=Get-Hotpl8ProviderDriver $r.driver
@@ -113,5 +120,6 @@ function Get-Hotpl8Doctor([string]$StateDirectory) {
         snapshotAgeSeconds=$age
         snapshotFresh=($null -ne $age -and $age -ge -5 -and $age -le 900)
         collectorBusy=$locked
+        parkCandidates=$parkCandidates
     }
 }

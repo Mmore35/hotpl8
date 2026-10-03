@@ -22,6 +22,8 @@ hotpl8 accounts -Slot main -Operation reserve
 hotpl8 accounts -Slot main -Operation work
 hotpl8 accounts -Slot main -Operation disable
 hotpl8 accounts -Slot main -Operation enable
+hotpl8 park
+hotpl8 unpark
 hotpl8 pause -Minutes 120
 hotpl8 resume
 ```
@@ -29,6 +31,41 @@ hotpl8 resume
 Disabled accounts cannot be selected; explicit Codex launch also rejects them. Disabled Codex homes are not polled. Claude inventory is one upstream call, but disabled slots cannot authorize switches, warming or probes. Reserve status changes priority and weekly floors; it does not disable the account. Changes validate the complete policy, reject concurrent edits, save `policy.previous.json`, and atomically replace policy. Cached decisions update on the next collection; native launch rechecks policy immediately.
 
 Pause persists across restarts and suppresses automatic switching, warming and recovery probes. Quota collection and deliberate Codex launches continue. Dashboard Space only freezes the view. Existing hold leases suppress switches separately; they do not mean warming is paused.
+
+## Canceled and unreadable accounts
+
+A subscription you stopped paying for keeps failing collection, leaves the provider total incomplete and keeps a share of the warming schedule. Park it:
+
+```text
+> hotpl8 park
+  Old plan    no reading for 36 days (last: Aug 26)
+  Claude refuses sign-in without a Pro or Max plan, so an account you cannot sign back into is canceled.
+Park 1 account? It disappears from HotPl8 until you unpark it. [Y/n]
+
+Parked Old plan. Still enrolled: Everyday, Spare.
+Undo: hotpl8 unpark -Provider claude -Slot 2
+```
+
+`hotpl8 park` reads only the cached snapshot and asks once for everything it found. It offers two kinds of account:
+
+| Reason | Evidence |
+|---|---|
+| no reading for N days | The native sign-in has failed for at least a week. Claude refuses sign-in to an account without a paid plan, so for Claude this is how a cancellation looks. A Codex account in this state may only be signed out. |
+| plan ended | A current Codex reading reports the `free` plan. |
+
+The Claude login in use and accounts you disabled are never offered. With redirected input and no `-Yes`, the command lists what it found and changes nothing. `-AsJson` returns the candidates without acting. `hotpl8 park -Provider ID -Slot SLOT` parks one account directly. `hotpl8 doctor` names the same candidates, and the dashboard replaces its general "account unavailable" line with the account's name when the only unavailable accounts are week-long failures.
+
+A parked account is removed from policy, so collection, the overview, selection and the warming schedule continue as if it were never enrolled; the remaining accounts share the schedule. Its label, order, reserve and disabled flags, weight, capacity estimate, warming exclusion and Codex home are kept in `parked.json` beside the policy. Native homes, credentials and history are untouched. `hotpl8 accounts` still lists parked accounts.
+
+`hotpl8 unpark` lists parked accounts and restores the one you choose. A Claude account that still needs sign-in asks before returning unreadable; a Codex home must read successfully. Signing a parked account in again through `hotpl8 add` or `hotpl8 enroll` restores its saved settings too, even under a new slot name. When the Claude inventory reads a parked account again, the dashboard says so.
+
+| Operation | Collection and errors | Shown | Schedule | Comes back with its settings |
+|---|---|---|---|---|
+| `disable` | stopped | yes, as DISABLED | keeps its share | yes, `enable` |
+| `park` | stopped | no | shared by the rest | yes, `unpark` or a new sign-in |
+| `remove` | stopped | no | shared by the rest | no |
+
+Codex records each plan change per account in `codex-state.json` (`previousPlanType`, `planChangedAt`). Plan names are shown as reported; a value HotPl8 cannot recognise as a plan name is shown as unknown.
 
 ## Work hours and bounded attempts
 
