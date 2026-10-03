@@ -122,6 +122,26 @@ function Get-Hotpl8CapacityAmount($Account,$Part,[datetimeoffset]$At,[bool]$Proj
 }
 function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeoffset]$Now,[string]$Meter='codex',[switch]$QuotaHeadroom) {
     $accounts=@(Get-Hotpl8CapacityAccounts $Snapshot $Part $Provider $Now $Meter -QuotaHeadroom:$QuotaHeadroom)
+    $coverage=$null
+    if($QuotaHeadroom){
+        # The displayed metric measures what is readable now. An unreadable or
+        # unexplained-block account is recorded in coverage and shown on its own
+        # row; it never blanks the summary. The calibrated model keeps unknowns strict.
+        $usable={param($a) $a.fresh -and (-not $a.blocked -or $a.knownZero)}
+        $excluded=@($accounts|Where-Object {-not (& $usable $_)}|ForEach-Object {[pscustomobject]@{slot=$_.slot;reason=$(if($_.fresh){'blocked'}else{'unreadable'})}})
+        $accounts=@($accounts|Where-Object {& $usable $_})
+        # Without a common plan basis each readable account counts equally on its
+        # current window; other limits still gate it but never cap it unconverted.
+        if(@($accounts|Where-Object {-not $_.scaled -or $null -eq $_.weekly}).Count -or @($accounts|ForEach-Object weightBasis|Select-Object -Unique).Count -gt 1){
+            foreach($a in $accounts){
+                $primary=@($a.windows|Where-Object name -EQ '300'|Select-Object -First 1)
+                if(-not $primary.Count){$primary=@($a.windows|Where-Object name -EQ '10080'|Select-Object -First 1)}
+                foreach($w in $a.windows){$w.full=$(if($primary.Count -and $w -eq $primary[0]){1.0}else{$null})}
+                $a.weekly=1.0;$a.scaled=$true;$a.weightBasis='equal'
+            }
+        }
+        $coverage=[pscustomobject]@{measured=$accounts.Count;excluded=$excluded}
+    }
     $denominatorKnown=$accounts.Count -gt 0 -and @($accounts|Where-Object {$null -eq $_.weekly}).Count -eq 0 -and @($accounts|ForEach-Object weightBasis|Select-Object -Unique).Count -le 1
     $total=if($denominatorKnown){($accounts|Measure-Object weekly -Sum).Sum}else{$null}
     $complete=$denominatorKnown -and @($accounts|Where-Object {-not $_.scaled -or ($_.blocked -and -not $_.knownZero)}).Count -eq 0
@@ -133,7 +153,10 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     if($hold){try{if([datetimeoffset]::Parse($hold.until) -le $Now){$hold=$null}}catch{}}
     $pause=$Snapshot.automationPause
     if($pause){try{if([datetimeoffset]::Parse($pause.until) -le $Now){$pause=$null}}catch{}}
-    $restricted=$hold -or $pause -or ($Provider -eq 'claude' -and ($Part.mode -eq 'monitor' -or $Part.switchEnabled -eq $false))
+    # Monitor mode, switching off or a pause may mean switching by hand or another
+    # tool, so the displayed metric still counts every readable account. A hold
+    # pins one account on purpose.
+    $restricted=if($QuotaHeadroom){[bool]$hold}else{$hold -or $pause -or ($Provider -eq 'claude' -and ($Part.mode -eq 'monitor' -or $Part.switchEnabled -eq $false))}
     $critical=Get-Hotpl8CriticalDecision $accounts $Part $selected $(if($Provider -eq 'claude'){$Snapshot.critical}else{$Snapshot.providers.codex.critical.$Meter}) $Now
     $resets=@($accounts|Where-Object {$_.fresh -and (-not $_.blocked -or $_.knownZero)}|ForEach-Object {$_.windows}|Where-Object {$_.resetAt -and [datetimeoffset]::Parse($_.resetAt) -gt $Now}|Sort-Object {[datetimeoffset]::Parse($_.resetAt)})
     $next=$null
@@ -164,5 +187,5 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
     }
     $gain=if($next){[math]::Max(0.0,$future-$solid)}else{$null}
     $laterGain=if($later){[math]::Max(0.0,$laterFuture-$solid)}else{$null}
-    [pscustomobject]@{metric=$(if($QuotaHeadroom){'plan-weighted-quota-headroom'}else{'weighted-weekly-capacity'});unit=$(if($QuotaHeadroom){'relative session headroom'}else{'relative weekly allowance'});totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectionHorizonHours=24;projectionComplete=[bool]$projectionComplete;projectedGainPercent=$(if($complete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});laterRefillAt=$(if($later){$later.ToString('o')}else{$null});laterRefillGainPercent=$(if($complete -and $later){[math]::Min(100-100*$solid/$total,100*$laterGain/$total)}else{$null});projectionAssumption='First positive gain within 24h, else the first within 8 days as text; no further consumption; blocked accounts stay blocked unless the block is a quota exhaustion with a confirmed reset; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($QuotaHeadroom){'quota headroom estimate; not a token budget'}elseif($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
+    [pscustomobject]@{metric=$(if($QuotaHeadroom){'plan-weighted-quota-headroom'}else{'weighted-weekly-capacity'});unit=$(if($QuotaHeadroom){'relative session headroom'}else{'relative weekly allowance'});totalUnits=$total;complete=[bool]$complete;accounts=$accounts;measured=@($accounts|Where-Object scaled).Count;usableNowPercent=$(if($complete){[math]::Min(100.0,100*$solid/$total)}else{$null});knownUsablePercent=$(if($total){[math]::Min(100.0,100*$solid/$total)}else{0});unknownPercent=$(if($total){100*$unknown/$total}else{100});nextResetAt=$(if($next){$next.ToString('o')}else{$null});projectionHorizonHours=24;projectionComplete=[bool]$projectionComplete;coverage=$coverage;projectedGainPercent=$(if($complete -and $next){[math]::Min(100-100*$solid/$total,100*$gain/$total)}else{$null});laterRefillAt=$(if($later){$later.ToString('o')}else{$null});laterRefillGainPercent=$(if($complete -and $later){[math]::Min(100-100*$solid/$total,100*$laterGain/$total)}else{$null});projectionAssumption='First positive gain within 24h, else the first within 8 days as text; no further consumption; blocked accounts stay blocked unless the block is a quota exhaustion with a confirmed reset; other limits and policy still apply';critical=$critical;restricted=[bool]$restricted;confidence=$(if($QuotaHeadroom){'quota headroom estimate; not a token budget'}elseif($complete){'estimate'}else{'capacity setup or fresh reading needed'})}
 }

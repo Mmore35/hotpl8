@@ -29,7 +29,7 @@ The 0.2 source candidate adds `setup [-Interactive]`, `accounts`, `park`/`unpark
 
 ## Provider overview
 
-The dashboard opens with one **Available now** bar per provider. Solid fill estimates usable allowance across current limits; the patterned extension shows the first positive refill within 24 hours, with its countdown on the right. A refill further out appears as text without a pattern. Weekly remaining is supporting text; Spark is excluded. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, estimates, unknown readings and reserves](provider-overview.md).
+The title bar states whether HotPl8 will switch accounts on its own (`auto-switch on`, `off`, `paused` or `held`, as the collector last applied it) and shows `warming on` only when warming runs. The dashboard opens with one **Available now** bar per provider; account problems appear on each account's own row. Solid fill estimates usable allowance across current limits; the patterned extension shows the first positive refill within 24 hours, with its countdown on the right. A refill further out appears as text without a pattern. Weekly remaining is supporting text; Spark is excluded. Arrow/Page keys scroll account details below the fixed overview; Home/End select the first/last detail page. Space freezes the view only. Resize to at least 48 columns and 15 rows. [Meaning, estimates, unknown readings and reserves](provider-overview.md).
 
 ## Capacity and mascot commands
 
