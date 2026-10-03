@@ -33,12 +33,13 @@ param(
     [switch]$AllowAgentPause,
     [switch]$AllowAgentOnboarding,
     [string]$OperationId,
-    [ValidateSet('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel')][string]$OnboardingAction='begin',
+    [ValidateSet('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel','submit_code')][string]$OnboardingAction='begin',
     [string]$CandidateId,
     [switch]$NewAccount,
     [switch]$InstallDependencies,
     [switch]$DeviceCode,
     [switch]$Yes,
+    [string]$SignInCode,
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
     [string[]]$CodexArguments
 )
@@ -120,7 +121,7 @@ try {
     if($Command -in @('setup','add')){
         $chosenProvider=if($PSBoundParameters.ContainsKey('Provider')){$Provider}else{''}
         if($AsJson){
-            Invoke-Hotpl8Onboarding $StateDirectory $OnboardingAction $OperationId $chosenProvider $CandidateId -NewAccount:($NewAccount -or $Command -eq 'add') -AllowInstall:$InstallDependencies -DeviceCode:$DeviceCode|ConvertTo-Json -Depth 16
+            Invoke-Hotpl8Onboarding $StateDirectory $OnboardingAction $OperationId $chosenProvider $CandidateId -NewAccount:($NewAccount -or $Command -eq 'add') -AllowInstall:$InstallDependencies -DeviceCode:$DeviceCode -Code $SignInCode|ConvertTo-Json -Depth 16
         }elseif($Interactive -or -not [Console]::IsInputRedirected){
             . (Join-Path $PSScriptRoot 'src/onboarding-ui.ps1')
             Show-Hotpl8Onboarding $StateDirectory $chosenProvider -NewAccount:($NewAccount -or $Command -eq 'add') -AllowInstall:$InstallDependencies

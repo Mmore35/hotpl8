@@ -63,7 +63,7 @@ function Connect-Hotpl8NativeAccount([string]$Directory,$Operation) {
             $url=if($Operation.deviceCode){[string]$login.verificationUrl}else{[string]$login.authUrl}
             $uri=[uri]$url
             if($uri.Scheme -ne 'https' -or $uri.Host -notin @('auth.openai.com','chatgpt.com','auth0.openai.com')){throw 'Unexpected native sign-in origin.'}
-            $Operation.handoff=[pscustomobject]@{url=$url;code=$(if($Operation.deviceCode){$login.userCode}else{$null});expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15).ToString('o')}
+            $Operation.handoff=[pscustomobject]@{url=$url;code=$(if($Operation.deviceCode){$login.userCode}else{$null});kind=$(if($Operation.deviceCode){'device_code'}else{'browser'});expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15).ToString('o')}
             Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' 'Complete provider sign-in. HotPl8 is waiting and will finish automatically.'
             $line=$null;$done=$false
             while($clock.Elapsed.TotalMinutes -lt 15){
@@ -89,32 +89,76 @@ function Connect-Hotpl8NativeAccount([string]$Directory,$Operation) {
         if($captured){return $captured}
         $exe=Get-Hotpl8ClaudeExecutable
         Initialize-Hotpl8LoginReader
-        $proc=Start-CodexQuotaProcess (New-Hotpl8OnboardingProcess $exe @('auth','login','--claudeai') $native claude)
-        $proc.StandardInput.Close()
-        $clock=[Diagnostics.Stopwatch]::StartNew();$streams=@()
-        foreach($reader in @($proc.StandardOutput,$proc.StandardError)){$streams+=@{reader=(New-Object HotPl8.NativeLoginReader($reader.BaseStream));text=''}}
-        Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' 'Complete Claude sign-in in the browser. HotPl8 will finish automatically.'
-        while(-not $proc.HasExited -and $clock.Elapsed.TotalMinutes -lt 15){
-            if(Test-Hotpl8OnboardingCanceled $Directory $Operation){return $null}
-            foreach($stream in $streams){
-                if($stream.reader.LimitExceeded){throw 'Native output exceeded limit.'}
-                $bytes=$stream.reader.Take()
-                if($null -ne $bytes){
-                    $stream.text+=[Text.Encoding]::UTF8.GetString($bytes)
-                    # A pipe chunk can end halfway through a valid-looking URL.
-                    # Wait for the native output delimiter before exposing the handoff.
-                    $match=[regex]::Match($stream.text,'https://(?:claude\.ai|platform\.claude\.com|console\.anthropic\.com)/[^\s\x1b]+(?=[\s\x1b])')
-                    if($match.Success -and -not $Operation.handoff){
-                        $Operation.handoff=[pscustomobject]@{url=$match.Value;code=$null;expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15).ToString('o')}
-                        Save-Hotpl8Onboarding $Directory $Operation
+        # Claude prints a link whose page shows a code to paste back, and keeps
+        # stdin open for that code, which submit_code delivers through a private
+        # file. Claude would also open a browser itself, but from this hidden
+        # worker that tab lands behind other windows, so BROWSER points at a path
+        # that never exists and the client opens the printed link in front instead.
+        # A rejected code ends the native login; a fresh one (new link) replaces it.
+        $clock=[Diagnostics.Stopwatch]::StartNew();$codePath=(Get-Hotpl8OnboardingPath $Directory $Operation.id)+'.code'
+        $credentials=Join-Path $native '.credentials.json';$starts=0;$failure=$null
+        while($true){
+            $starts++;$codeSent=$false;$signedInAt=$null;$streams=@()
+            if(Test-Path -LiteralPath $codePath){Remove-Item -LiteralPath $codePath -Force}
+            $stamp=if(Test-Path -LiteralPath $credentials){(Get-Item -LiteralPath $credentials).LastWriteTimeUtc}else{$null}
+            $psi=New-Hotpl8OnboardingProcess $exe @('auth','login','--claudeai') $native claude
+            $psi.EnvironmentVariables['BROWSER']=Join-Path $native 'hotpl8-opens-sign-in'
+            $proc=Start-CodexQuotaProcess $psi
+            foreach($reader in @($proc.StandardOutput,$proc.StandardError)){$streams+=@{reader=(New-Object HotPl8.NativeLoginReader($reader.BaseStream));text='';errors=[object]::ReferenceEquals($reader,$proc.StandardError)}}
+            $Operation.handoff=$null
+            Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' $(if($starts -eq 1){'Sign in to Claude in your browser, then paste the code it shows. If the page says a Pro or Max plan is required, that account has no Claude subscription; cancel setup or sign in with another account.'}elseif($failure -eq 'rejected'){'Claude did not accept that code. It may have expired or come from an earlier sign-in page. Sign in with the new link and paste its code.'}else{'Claude could not finish that sign-in. Sign in with the new link and paste its code.'})
+            $failure=$null
+            while($clock.Elapsed.TotalMinutes -lt 15){
+                # One last read after exit keeps Claude's final outcome line.
+                $exited=$proc.HasExited;if($exited){Start-Sleep -Milliseconds 300}
+                if(Test-Hotpl8OnboardingCanceled $Directory $Operation){return $null}
+                foreach($stream in $streams){
+                    if($stream.reader.LimitExceeded){throw 'Native output exceeded limit.'}
+                    while($null -ne ($bytes=$stream.reader.Take())){
+                        $stream.text+=[Text.Encoding]::UTF8.GetString($bytes)
+                        if($stream.errors){
+                            # Only known native outcomes are acted on; error text is never stored.
+                            while(($end=$stream.text.IndexOf("`n")) -ge 0){
+                                $line=$stream.text.Substring(0,$end).Trim();$stream.text=$stream.text.Substring($end+1)
+                                if($codeSent -and $line.StartsWith('Invalid code.')){
+                                    # Claude keeps waiting after a malformed code, so accept another.
+                                    $codeSent=$false;$Operation.handoff.codeReceived=$false
+                                    Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' 'That code was incomplete. Copy the whole code and paste it again.'
+                                }elseif($line.StartsWith('Login failed:')){$failure=$(if($line -match 'status code 400'){'rejected'}else{'failed'})}
+                            }
+                        }else{
+                            # A pipe chunk can end halfway through a valid-looking URL.
+                            # Wait for the native output delimiter before exposing the handoff.
+                            $match=[regex]::Match($stream.text,'https://(?:claude\.com|claude\.ai|platform\.claude\.com|console\.anthropic\.com)/[^\s\x1b]+(?=[\s\x1b])')
+                            if($match.Success -and -not $Operation.handoff){
+                                $Operation.handoff=[pscustomobject]@{url=$match.Value;code=$null;kind='paste_code';codeReceived=$false;expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15-$clock.Elapsed.TotalMinutes).ToString('o')}
+                                Save-Hotpl8Onboarding $Directory $Operation
+                            }
+                        }
+                        if($stream.text.Length -gt 16384){$stream.text=$stream.text.Substring($stream.text.Length-8192)}
                     }
-                    if($stream.text.Length -gt 16384){$stream.text=$stream.text.Substring($stream.text.Length-8192)}
                 }
+                if($exited){break}
+                if($Operation.handoff -and -not $codeSent -and (Test-Path -LiteralPath $codePath)){
+                    $code=[IO.File]::ReadAllText($codePath).Trim();Remove-Item -LiteralPath $codePath -Force
+                    $proc.StandardInput.WriteLine($code);$proc.StandardInput.Flush();$code=$null;$codeSent=$true
+                    $Operation.handoff.codeReceived=$true
+                    Set-Hotpl8OnboardingPhase $Directory $Operation 'awaiting_sign_in' 'Code received. Finishing sign-in.'
+                }
+                # A finished browser sign-in must not wait on the open code prompt.
+                # Identity is still verified below through `claude auth status`.
+                if((Test-Path -LiteralPath $credentials) -and (Get-Item -LiteralPath $credentials).LastWriteTimeUtc -ne $stamp){
+                    if($null -eq $signedInAt){$signedInAt=$clock.Elapsed.TotalSeconds}elseif($clock.Elapsed.TotalSeconds-$signedInAt -ge 5){break}
+                }
+                Start-Sleep -Milliseconds 100
             }
-            Start-Sleep -Milliseconds 100
+            if($proc.HasExited -and $proc.ExitCode -ne 0 -and $codeSent -and $starts -lt 3 -and $clock.Elapsed.TotalMinutes -lt 15){Stop-Hotpl8Process $proc;continue}
+            break
         }
-        if(-not $proc.HasExited -or $proc.ExitCode -ne 0){throw 'Native sign-in did not complete.'}
-        return Add-Hotpl8NativeClaudeAccount $Directory $Operation
+        if(($proc.HasExited -and $proc.ExitCode -ne 0) -or (-not $proc.HasExited -and $null -eq $signedInAt)){throw 'Native sign-in did not complete.'}
+        $captured=Add-Hotpl8NativeClaudeAccount $Directory $Operation
+        if(-not $captured){throw 'Native sign-in did not complete.'}
+        return $captured
     }finally{Stop-Hotpl8Process $proc}
 }
 function Register-Hotpl8OnboardingCodex([string]$Directory,$Operation) {
@@ -150,7 +194,7 @@ function Register-Hotpl8OnboardingCodex([string]$Directory,$Operation) {
 }
 function Complete-Hotpl8OnboardingAccount([string]$Directory,$Operation) {
     if(Test-Hotpl8OnboardingCanceled $Directory $Operation){return}
-    $commitLock=$null
+    $commitLock=$null;$reconnected=$false
     try{
         $commitLock=[IO.File]::Open((Join-Path $Directory 'onboarding/request.lock'),'OpenOrCreate','ReadWrite','None')
         if(Test-Hotpl8OnboardingCanceled $Directory $Operation){return}
@@ -160,10 +204,14 @@ function Complete-Hotpl8OnboardingAccount([string]$Directory,$Operation) {
         $registrations=@(Get-Hotpl8ConfiguredProviders $policy|Where-Object driver -EQ 'claude-cswap'|ForEach-Object id)
         $existing=@(Get-Hotpl8ProviderAccounts $policy|Where-Object {$_.provider -in $registrations -and [string]$_.slot -eq $Operation.selected.slot})
         if($existing.Count){$Operation.selected.enrolled=$true;$Operation.selected.provider=$existing[0].provider}
+        # Signing in to an enrolled account that needed sign-in repairs it; it is
+        # not a mistaken duplicate. cswap add has already replaced its credential.
+        $before=@($Operation.candidates|Where-Object {$_.provider -eq 'claude' -and [string]$_.slot -eq [string]$Operation.selected.slot})
+        $reconnected=[bool]($existing.Count -and $before.Count -and $before[0].status -in @('relogin_required','no_credentials','authentication_required'))
         if(-not $existing.Count){Add-Hotpl8RegisteredAccount $Directory claude $Operation.selected.slot '' $Operation.selected.label ''|Out-Null}
     }
     }finally{if($commitLock){$commitLock.Dispose()}}
-    $Operation.result=[pscustomobject]@{enrolled=$true;slot=$Operation.selected.slot;provider=$Operation.selected.provider;alreadyPresent=[bool]($Operation.selected.enrolled -and $Operation.newAccount);observed=$false;status='checking_usage'}
+    $Operation.result=[pscustomobject]@{enrolled=$true;slot=$Operation.selected.slot;provider=$Operation.selected.provider;alreadyPresent=[bool]($Operation.selected.enrolled -and $Operation.newAccount -and -not $reconnected);reconnected=[bool]$reconnected;observed=$false;status='checking_usage'}
     Save-Hotpl8Onboarding $Directory $Operation
     if($Operation.result.alreadyPresent){
         $Operation.result.status='already_present'
@@ -176,13 +224,16 @@ function Complete-Hotpl8OnboardingAccount([string]$Directory,$Operation) {
     $null=Invoke-Hotpl8Process $shell @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$script,'refresh','-StateDirectory',$Directory) 90000
     $snapshot=Read-Hotpl8Json (Join-Path $Directory 'status.json')
     $view=Get-Hotpl8ProviderView $snapshot (Read-Hotpl8Json (Join-Path $Directory 'policy.json')) $Operation.selected.provider
-    $rows=if($Operation.provider -eq 'codex'){@($view.snapshot.providers.codex.slots|Where-Object id -EQ $Operation.selected.slot)}else{@($view.snapshot.slots|Where-Object slot -EQ $Operation.selected.slot)}
+    # @() outside the if: a statement's output unrolls a one-row array, and Windows
+    # PowerShell gives a lone object no Count, which left every addition pending.
+    $rows=@(if($Operation.provider -eq 'codex'){$view.snapshot.providers.codex.slots|Where-Object id -EQ $Operation.selected.slot}else{$view.snapshot.slots|Where-Object slot -EQ $Operation.selected.slot})
     if($rows.Count -eq 1 -and $rows[0].status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $rows[0].observedAt)){
         $Operation.result.observed=$true;$Operation.result.status='observed'
         if($Operation.result.alreadyPresent){Set-Hotpl8OnboardingPhase $Directory $Operation 'already_connected' 'This account is already connected. Sign in with another account to add a subscription.'}
+        elseif($reconnected){Set-Hotpl8OnboardingPhase $Directory $Operation 'ready' 'Signed in again. Usage is available in HotPl8.'}
         else{Set-Hotpl8OnboardingPhase $Directory $Operation 'ready' 'Account connected. Usage is available in HotPl8.'}
     }else{
         $Operation.result.status='checking_usage'
-        Set-Hotpl8OnboardingPhase $Directory $Operation 'pending' 'Account connected. Usage is not available yet; retry or let scheduled collection update it.'
+        Set-Hotpl8OnboardingPhase $Directory $Operation 'pending' $(if($reconnected){'Signed in again. Usage is not available yet; retry or let scheduled collection update it.'}else{'Account connected. Usage is not available yet; retry or let scheduled collection update it.'})
     }
 }

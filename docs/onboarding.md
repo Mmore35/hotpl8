@@ -18,11 +18,18 @@ If you have neither account, choose a provider and use its official account flow
 | One usable native account | Start setup. |
 | Several native accounts | Choose the account. |
 | No native sign-in | Complete provider sign-in. |
+| An account says sign-in needed | Run `hotpl8 add -Provider claude` and sign in as that account. |
 | Missing provider tools | Allow their installation, then sign in if needed. |
 | Both providers | Add each; an agent can manage both operations. |
 | Provider temporarily unavailable | Finish later; the native sign-in is retained. |
 
-Native authentication can require account selection, consent, MFA, or an organization's approval. Those provider steps cannot be bypassed by HotPl8. Never send passwords or tokens to an agent. Native tools own the credentials; HotPl8 stores references and private operation progress.
+## Signing in
+
+For Claude, setup opens the sign-in page in your default browser and also prints the link, so you can use another browser or device instead. After you sign in, the page shows a code. Copy all of it, paste it into setup and press Enter, or give it to the agent running setup. The pasted code stays visible so you can check it. Pasting the page's address works too. Setup checks the code's shape first, so a partial copy is refused before it reaches Claude. The code goes once to the waiting `claude` login and is never saved. It is useless without that login. Claude's own browser launch is turned off; from the background setup process its tab would open behind your other windows. If Claude rejects the code (for example, one from an earlier sign-in page), setup says so and prints a new link. If the page says a Pro or Max plan is required, that account has no Claude subscription and no code will appear; cancel setup or sign in with another account.
+
+Signing in to an account that needs sign-in repairs it in place. Setup reports "Signed in again" and refreshes its usage. It does not report the account as a duplicate.
+
+Native authentication can require account selection, consent, MFA, or an organization's approval. Those provider steps cannot be bypassed by HotPl8. Never send passwords or tokens to an agent; the one-time code from Claude's fallback page is the only value setup accepts. Native tools own the credentials; HotPl8 stores references and private operation progress.
 
 ## Close, retry, or cancel
 

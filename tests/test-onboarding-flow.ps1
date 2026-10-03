@@ -120,6 +120,39 @@ try{
         $saved=Read-Hotpl8Onboarding $script:directory $r.operationId
         Assert ($saved.action -eq 'login' -and -not $saved.selected -and $saved.attempt -eq 1)
     }
+    Check 'a pasted sign-in code is handed to the live login once and never stored' {
+        $r=BeginFixture paste claude -NewAccount
+        Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'fixture-code#state'}
+        $op=Read-Hotpl8Onboarding $script:directory $r.operationId
+        $op.phase='awaiting_sign_in';$op.action='login'
+        $op.handoff=[pscustomobject]@{url='https://claude.com/cai/oauth/authorize?fixture=1';code=$null;kind='paste_code';codeReceived=$false;expiresAt=[datetimeoffset]::UtcNow.AddMinutes(15).ToString('o')}
+        Save-Hotpl8Onboarding $script:directory $op
+        Assert ('submit_code' -in (Invoke-Hotpl8Onboarding $script:directory status $r.operationId).nextActions)
+        Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'short'}
+        Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code "fixture-code`nsecond-line"}
+        # Claude reads only `code#state`; anything else would leave it waiting silently.
+        foreach($partial in @('wrongcode123','fixture-code#','#fixture-state','fixture#code#state','fixture code#state')){
+            Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code $partial}
+        }
+        Assert (-not (Test-Path ((Get-Hotpl8OnboardingPath $script:directory $r.operationId)+'.code'))) 'partial code was handed to the worker'
+        $r=Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code ' fixture-code#state '
+        $path=Get-Hotpl8OnboardingPath $script:directory $r.operationId
+        Assert ($r.message -eq 'Code received. Finishing sign-in.' -and 'submit_code' -notin $r.nextActions)
+        Assert ((Get-Content ($path+'.code') -Raw) -ceq 'fixture-code#state') 'code was not handed to the worker'
+        Assert (-not ((Get-Content $path -Raw) -match 'fixture-code')) 'code persisted in operation state'
+        # Once the worker relays a code, a second one would never reach the login.
+        $op.handoff.codeReceived=$true;Save-Hotpl8Onboarding $script:directory $op
+        Assert ('submit_code' -notin (Invoke-Hotpl8Onboarding $script:directory status $r.operationId).nextActions)
+        Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'fixture-code#state'}
+        $op.handoff.codeReceived=$false;Save-Hotpl8Onboarding $script:directory $op
+        $null=Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'https://platform.claude.com/oauth/code/callback?code=fixture-code&state=fixture-state'
+        Assert ((Get-Content ($path+'.code') -Raw) -ceq 'fixture-code#fixture-state') 'callback address was not read as a code'
+        # Only the shape is checked here; Claude itself judges a short or wrong code.
+        $null=Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'abc#def'
+        Assert ((Get-Content ($path+'.code') -Raw) -ceq 'abc#def') 'a well-formed short code was refused'
+        $op.handoff.kind='browser';Save-Hotpl8Onboarding $script:directory $op
+        Reject {Invoke-Hotpl8Onboarding $script:directory submit_code $r.operationId -Code 'fixture-code#state'}
+    }
     Check 'an interrupted login retries its native sign-in before enrollment' {
         $r=BeginFixture interrupted
         $op=Read-Hotpl8Onboarding $script:directory $r.operationId
@@ -172,7 +205,7 @@ try{
         Assert (-not $response.ok -and $response.error.code -eq 'permission_denied')
     }
     Check 'agent rejects arbitrary paths commands and mistyped write authorization' {
-        foreach($argsValue in @(@{action='begin';path='/arbitrary'},@{action='begin';allowInstall='true'},@{action='sign_in'},@{action='begin';provider='shell'})){
+        foreach($argsValue in @(@{action='begin';path='/arbitrary'},@{action='begin';allowInstall='true'},@{action='sign_in'},@{action='begin';provider='shell'},@{action='submit_code';operationId=('a'*32)},@{action='begin';code='fixture-code#state'},@{action='submit_code';operationId=('a'*32);code=12345678})){
             $request=[pscustomobject]@{apiVersion=1;operation='onboarding';arguments=([pscustomobject]$argsValue)}
             $response=Invoke-Hotpl8AgentRequest $request $lab
             Assert (-not $response.ok -and $response.error.code -eq 'invalid_arguments')
