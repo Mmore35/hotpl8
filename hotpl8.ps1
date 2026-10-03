@@ -2,7 +2,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'add', 'explain', 'accounts', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
+    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'add', 'explain', 'accounts', 'park', 'unpark', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
     [string]$Command = 'watch',
     [string]$Slot,
     [string]$Model,
@@ -38,6 +38,7 @@ param(
     [switch]$NewAccount,
     [switch]$InstallDependencies,
     [switch]$DeviceCode,
+    [switch]$Yes,
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
     [string[]]$CodexArguments
 )
@@ -103,6 +104,8 @@ try {
         'All commands accept -StateDirectory PATH. See docs/usage.md.'
         'setup [-Interactive]: guided, monitoring-first enrollment for either provider.'
         'accounts -Provider REGISTERED_ID [-Slot ID -Operation rename|enable|disable|reserve|work -Label NAME]'
+        'park [-Yes]: set aside accounts that lost their plan or have been unreadable for a week; asks once.'
+        'park -Provider ID -Slot SLOT: set one account aside. unpark [-Provider ID -Slot SLOT]: bring one back with its settings.'
         'explain [-AsJson]: recorded selection reasons. capabilities [-AsJson]: offline readiness.'
         'pause [-Minutes 60] / resume: persistent automation pause; collection continues.'
         'history [-Operation clear]: inspect retention or delete local usage history.'
@@ -183,7 +186,11 @@ try {
     if ($Command -eq 'doctor') {
         $report = Get-Hotpl8Doctor $StateDirectory
         if ($AsJson) { $report | ConvertTo-Json -Depth 5 }
-        else { Format-Hotpl8Doctor $report }
+        else {
+            $doctorPolicy=Read-Hotpl8Json (Join-Path $StateDirectory 'policy.json')
+            $parkAdvice=@();if($report.policyValid){try{$parkAdvice=@(Get-Hotpl8ParkCandidates (Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')) $doctorPolicy)}catch{}}
+            Format-Hotpl8Doctor $report $parkAdvice | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
+        }
         # Preserve the JSON/exit contract; human output describes readiness separately.
         if (-not $report.policyValid) { exit 1 }
         exit 0
@@ -207,6 +214,8 @@ try {
     if($Command -eq 'accounts'){
         if($Operation -eq 'list'){
             $rows=@(Get-Hotpl8ProviderAccounts $policy)
+            # Parked accounts are absent everywhere else; this list keeps them findable.
+            $rows+=@(Read-Hotpl8Parked $StateDirectory|ForEach-Object {[pscustomobject]@{provider=$_.provider;slot=$_.slot;label=$_.label;capacity=$_.capacity;disabled=[bool]$_.disabled;reserve=[bool]$_.reserve;parked=$true;reason=$_.reason;parkedAt=$_.parkedAt}})
             if($AsJson){ConvertTo-Json -InputObject $rows -Depth 6}else{$rows}
         }else{
             if(-not $Slot -or $Operation -notin @('rename','enable','disable','reserve','work','capacity','remove') -or ($Operation -eq 'rename' -and -not $Label)){throw 'Account changes require -Slot and a supported operation; rename also requires -Label.'}
@@ -217,6 +226,71 @@ try {
             Save-Hotpl8Policy $StateDirectory $next $hash
             'Account policy updated. The next refresh updates cached decisions.'
         }
+        exit 0
+    }
+    if($Command -in @('park','unpark') -and ($CodexArguments -or $Model)){throw 'park and unpark accept -Provider, -Slot, -Yes and -AsJson.'}
+    if($Command -eq 'park'){
+        $status=Read-Hotpl8Snapshot $StateDirectory
+        if($Slot){
+            $owner=if($PSBoundParameters.ContainsKey('Provider')){$Provider}else{Resolve-Hotpl8ParkProvider @(Get-Hotpl8ProviderAccounts $policy) $Slot}
+            Format-Hotpl8Parked @(Invoke-Hotpl8Park $StateDirectory $owner $Slot 'manual' $null $status)|ForEach-Object {ConvertTo-Hotpl8SafeText $_}
+            exit 0
+        }
+        if(-not $status -or -not (Test-Hotpl8FreshTimestamp $status.generatedAt)){
+            if($AsJson){[pscustomobject]@{stale=$true;candidates=@()}|ConvertTo-Json -Depth 6;exit 0}
+            'Readings are stale, so HotPl8 cannot tell which accounts are gone. Run hotpl8 refresh, then hotpl8 park.'
+            'To set one account aside anyway: hotpl8 park -Provider ID -Slot SLOT'
+            exit 0
+        }
+        $candidates=@($status.parkCandidates|Where-Object {$_})
+        if($AsJson){[pscustomobject]@{stale=$false;candidates=@($candidates|Select-Object provider,slot,label,reason,days,lastReadingAt,planType)}|ConvertTo-Json -Depth 6;exit 0}
+        if(-not $candidates.Count){'Nothing to park. Every enrolled account is readable, or has been unreadable for less than a week.';exit 0}
+        Format-Hotpl8ParkCandidates $candidates|ForEach-Object {ConvertTo-Hotpl8SafeText $_}
+        $one=($candidates.Count -eq 1)
+        if(-not $Yes){
+            if([Console]::IsInputRedirected){'No changes made. To park '+$(if($one){'it'}else{'them'})+': hotpl8 park -Yes';exit 0}
+            $question='Park '+$candidates.Count+' account'+$(if(-not $one){'s'})+'? '+$(if($one){'It disappears from HotPl8 until you unpark it.'}else{'They disappear from HotPl8 until you unpark them.'})+' [Y/n]'
+            if(-not (Read-Hotpl8ParkAnswer $question $true)){'No changes made.';exit 0}
+        }
+        $parkedNow=@(foreach($candidate in $candidates){Invoke-Hotpl8Park $StateDirectory $candidate.provider $candidate.slot $candidate.reason $candidate.lastReadingAt $status})
+        Format-Hotpl8Parked $parkedNow|ForEach-Object {ConvertTo-Hotpl8SafeText $_}
+        exit 0
+    }
+    if($Command -eq 'unpark'){
+        $parked=@(Read-Hotpl8Parked $StateDirectory -Strict)
+        if($AsJson -and -not $Slot){ConvertTo-Json -InputObject @($parked|Select-Object provider,slot,label,reason,parkedAt,lastReadingAt) -Depth 6;exit 0}
+        if(-not $parked.Count){'No parked accounts.';exit 0}
+        $choice=$null
+        if($Slot){
+            $matching=@($parked|Where-Object {$_.slot -ceq $Slot -and (-not $PSBoundParameters.ContainsKey('Provider') -or $_.provider -ceq $Provider)})
+            if($matching.Count -ne 1){throw 'No single parked account matches. Run hotpl8 unpark to list them, then add -Provider.'}
+            $choice=$matching[0]
+        }else{
+            for($i=0;$i -lt $parked.Count;$i++){
+                $since='';try{$since=' since '+[datetimeoffset]::Parse([string]$parked[$i].parkedAt).ToLocalTime().ToString('MMM d',[Globalization.CultureInfo]::InvariantCulture)}catch{}
+                $why=switch([string]$parked[$i].reason){'dormant'{'it stopped reading'}'canceled'{'its plan ended'}default{'set aside by hand'}}
+                ConvertTo-Hotpl8SafeText ('  '+($i+1)+'. '+(Get-Hotpl8ParkName $parked[$i])+'    parked'+$since+', '+$why)
+            }
+            if($parked.Count -gt 1 -and ($Yes -or [Console]::IsInputRedirected)){'No changes made. Choose one: hotpl8 unpark -Provider ID -Slot SLOT';exit 0}
+            if(-not $Yes -and [Console]::IsInputRedirected){'No changes made. To restore it: hotpl8 unpark -Yes';exit 0}
+            if($parked.Count -eq 1){
+                if($Yes -or (Read-Hotpl8ParkAnswer ('Unpark '+(ConvertTo-Hotpl8SafeText (Get-Hotpl8ParkName $parked[0]))+'? [Y/n]') $true)){$choice=$parked[0]}
+            }else{
+                [Console]::Out.Write('Which one? [1-'+$parked.Count+', blank cancels] ')
+                $picked=0;if([int]::TryParse(([string][Console]::In.ReadLine()).Trim(),[ref]$picked) -and $picked -ge 1 -and $picked -le $parked.Count){$choice=$parked[$picked-1]}
+            }
+            if(-not $choice){'No changes made.';exit 0}
+        }
+        $name=ConvertTo-Hotpl8SafeText (Get-Hotpl8ParkName $choice)
+        $result=Invoke-Hotpl8Unpark $StateDirectory $choice.provider $choice.slot $CodexExecutable
+        if($result.needsSignIn){
+            $name+' still needs sign-in, so it would come back unreadable.'
+            'Sign in first: hotpl8 add -Provider '+$choice.provider
+            if($Yes -or [Console]::IsInputRedirected -or -not (Read-Hotpl8ParkAnswer 'Unpark anyway? [y/N]' $false)){'It stays parked.';exit 0}
+            $result=Invoke-Hotpl8Unpark $StateDirectory $choice.provider $choice.slot $CodexExecutable -Force
+        }
+        $result.messages|ForEach-Object {ConvertTo-Hotpl8SafeText ([string]$_)}
+        if($result.enrolled){'Unparked '+$name+'. The next refresh reads it again.'}else{$name+' is still parked.'}
         exit 0
     }
     if($Command -eq 'history'){
@@ -248,13 +322,18 @@ try {
         if(-not $Slot -or $CodexArguments -or $Model -or $AsJson){throw 'Enrollment requires -Slot, driver-specific -AccountHome, and optional -Label.'}
         $enrollmentDriver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver
         if($enrollmentDriver.slotKind -eq 'native-home' -and -not $AccountHome){throw 'Enrollment requires -Slot ID -AccountHome PATH for an existing native account home.'}
-        Add-Hotpl8RegisteredAccount $StateDirectory $Provider $Slot $AccountHome $Label $CodexExecutable -MigratePolicy:$MigratePolicy
+        Add-Hotpl8RegisteredAccount $StateDirectory $Provider $Slot $AccountHome $Label $CodexExecutable -MigratePolicy:$MigratePolicy -KeepLabel:([bool]$Label)
         'Next: hotpl8 refresh, then hotpl8 to open the dashboard.'
         exit 0
     }
     if ($AccountHome -or $Label) { throw '-AccountHome and -Label are enrollment options. Use hotpl8 enroll.' }
 
     if ($Command -in @('watch','nyan')) {
+        if(-not @(Get-Hotpl8ProviderAccounts $policy).Count -and @(Read-Hotpl8Parked $StateDirectory).Count){
+            # Guided setup is for a first account; these already exist.
+            'Every account is parked. Bring one back with hotpl8 unpark, or connect another with hotpl8 add.'
+            exit 0
+        }
         if(-not @(Get-Hotpl8ProviderAccounts $policy).Count -and -not [Console]::IsInputRedirected){
             . (Join-Path $PSScriptRoot 'src/onboarding-ui.ps1')
             Show-Hotpl8Onboarding $StateDirectory '';exit 0
@@ -267,6 +346,7 @@ try {
     }
     if ($Command -in @('refresh', 'tick')) {
         if (-not @(Get-Hotpl8ProviderAccounts $policy).Count) {
+            if(@(Read-Hotpl8Parked $StateDirectory).Count){throw 'Every account is parked. Run hotpl8 unpark to bring one back, or hotpl8 add to connect another.'}
             throw 'No accounts enrolled. Run hotpl8 setup to connect your first account.'
         }
         & (Join-Path $PSScriptRoot 'tick.ps1') -StateDirectory $StateDirectory -CodexExecutable $CodexExecutable -ObserveOnly:($Command -eq 'refresh') -Strict

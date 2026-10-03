@@ -68,6 +68,7 @@
     "src/forecast.ps1",
     "src/insights.ps1",
     "src/management.ps1",
+    "src/parking.ps1",
     "src/notifications.ps1",
     "src/selection.ps1",
     "src/tray.ps1",

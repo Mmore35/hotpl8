@@ -2,6 +2,9 @@
 
 ## Unreleased — shared provider core
 
+- Add `hotpl8 park` and `hotpl8 unpark`. Park finds accounts whose plan ended or whose sign-in has failed for a week, asks once, and removes them from collection, totals, selection and the warming schedule while keeping their settings; unpark or a new sign-in restores them. Doctor and the dashboard name these accounts instead of pointing at each other.
+- Show Codex plan names as reported (for example `prolite`) instead of `unknown`, and record each account's plan change.
+
 - Fix unreadable magenta backgrounds in Apple Terminal by rendering the dashboard and Nyan animation with its fixed 256-color palette. Apple Terminal uses solid background-cell Nyan pixels to avoid font gaps; Windows retains its RGB half-block renderer and sizing.
 - Add an explicitly trusted, commit-pinned live PR dashboard preview with fictional accounts, exact-head CI checks and disposable state. Image previews remain available.
 

@@ -91,6 +91,7 @@ src/
                             Shared estimates, bounded history and activity
   selection.ps1 / replay.ps1 Optional ranking keys and production-selector replay
   management.ps1            Validated account operations and setup
+  parking.ps1               Park/unpark records kept outside policy
   updates.ps1               Release identity and provenance verification
   notifications.ps1 / tray.ps1
                             Optional cache consumer and transition alerts
