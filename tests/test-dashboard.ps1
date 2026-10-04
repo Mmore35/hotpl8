@@ -8,7 +8,7 @@ $now=[datetimeoffset]::Parse('2026-09-10T12:00:00Z')
 $p=@{prefer=@(1,2,3);reserve=@(1);labels=@{'1'='reserve';'2'='work';'3'='work2'};codex=@{slots=@(@{id='main';label='Main'});defaultMeter='codex'}}|ConvertTo-Json -Depth 5|ConvertFrom-Json
 $s=@{generatedAt=$now.ToString('o');active=3;slots=@(1..3|ForEach-Object{@{slot=$_;label='Claude '+$_;status='ok';active=($_ -eq 3);fresh=$true;used5h=25;used7d=50;reset5h=$now.AddHours(2).ToString('o');reset7d=$now.AddDays(2).ToString('o')}});providers=@{codex=@{defaultMeter='codex';recommendedSlot='main';slots=@(@{id='main';label='Main';status='ok';observedAt=$now.ToString('o');buckets=@{codex=@{status='observed';windows=@{'10080'=@{usedPercent=35;remainingPercent=65;resetsAt=$now.AddDays(3).ToUnixTimeSeconds();anchorState='observed-active'}}};codex_bengalfox=@{status='constraint_unknown';windows=@{'300'=@{usedPercent=0;remainingPercent=100;resetsAt=$now.AddHours(5).ToUnixTimeSeconds();anchorState='unconfirmed'}}}}})}}}|ConvertTo-Json -Depth 15|ConvertFrom-Json
 $script:passed=0;$script:failed=0
-function Assert($Value){if(-not $Value){throw 'assertion failed'}}
+function Assert($Value,[string]$Message='assertion failed'){if(-not $Value){throw $Message}}
 function Check([string]$Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
 function Copy-Value($Value){$Value|ConvertTo-Json -Depth 20|ConvertFrom-Json}
 function Render($Value=$s,[int]$Width=100,[int]$Height=100,[int]$Offset=0){@(Get-Hotpl8DashboardFrame $Value $p $now $Width $Height $Offset)}
@@ -18,11 +18,13 @@ Check 'empty policy leads to guided setup without implying a running collector' 
     Assert ($text.Contains('hotpl8 setup') -and $text.Contains('ask your agent'))
     Assert (-not $text.Contains('AccountHome') -and -not $text.Contains('hotpl8 refresh'))
     Assert ($text.Contains('no reading') -and -not $text.Contains('LIVE') -and -not $text.Contains('every 5m'))
+    # With no account there is nothing to switch between, so the title stays quiet.
+    Assert (-not $text.Contains('auto-switch'))
 }
 Check 'stale and failed readings offer a recovery action' {
     $c=Copy-Value $s;$c.generatedAt=$now.AddHours(-1).ToString('o');$c.slots[0].status='authentication_required'
     $text=((Render $c).text)-join "`n"
-    Assert ($text.Contains('hotpl8 refresh') -and $text.Contains('hotpl8 doctor') -and $text.Contains('SIGN-IN NEEDED'))
+    Assert ($text.Contains('hotpl8 refresh') -and $text.Contains('SIGN-IN NEEDED') -and -not $text.Contains('account unavailable'))
 }
 Check 'one busy or slow Codex read retries quietly until its last success ages out' {
     foreach($failure in @('home_busy','timeout')){
@@ -31,17 +33,21 @@ Check 'one busy or slow Codex read retries quietly until its last success ages o
         Assert ($text.Contains('READ RETRYING') -and -not $text.Contains('account unavailable'))
         $c.providers.codex.slots[0].observedAt=$now.AddHours(-1).ToString('o')
         $text=((Render $c).text)-join "`n"
-        Assert (-not $text.Contains('READ RETRYING') -and $text.Contains('account unavailable'))
+        Assert (-not $text.Contains('READ RETRYING') -and $text.Contains($failure.Replace('_',' ').ToUpperInvariant()) -and -not $text.Contains('account unavailable'))
     }
     $c=Copy-Value $s;$c.providers.codex.slots[0].status='transport_failed'
     $text=((Render $c).text)-join "`n"
-    Assert ($text.Contains('TRANSPORT FAILED') -and $text.Contains('account unavailable'))
+    Assert ($text.Contains('TRANSPORT FAILED') -and -not $text.Contains('account unavailable'))
     Assert ((Get-DashboardBadgeTone 'READ RETRYING') -eq 'amber')
 }
-Check 'healthy provider projections do not invent an unavailable account' {
+Check 'an account problem appears on its own row, never as a general line or header chip' {
     Assert (-not (((Render).text)-join "`n").Contains('account unavailable'))
     $c=Copy-Value $s;$c.providers.codex.slots[0].status='authentication_required'
-    Assert ((((Render $c).text)-join "`n").Contains('account unavailable'))
+    $rows=@((Render $c).text)
+    $text=$rows -join "`n"
+    Assert ($text.Contains('AUTHENTICATION REQUIRED') -and -not $text.Contains('account unavailable') -and -not $text.Contains('provider checks incomplete'))
+    $summary=@($rows[3..6]) -join "`n"
+    foreach($word in @('SIGN-IN','read','plan unknown','UNAVAILABLE','PICK MANUALLY','NO LAUNCH','monitor')){Assert (-not $summary.Contains($word)) $word}
 }
 Check 'all accounts remain visible while Spark is excluded from the dashboard' {
     $t=((Render).text)-join "`n"
@@ -90,13 +96,85 @@ Check 'a reset that elapsed after the reading refills the bar instead of breakin
     Assert ($narrow.Contains('awaiting read') -and -not $narrow.Contains('reset · awaiting read'))
     $expired=((Render (Elapsed expired)).text)-join "`n"
     Assert ($expired -match '5h\s+\S+\s+75%')
-    Assert ($expired.Contains('reset due') -and $expired.Contains('? now'))
+    # Nothing readable: the Claude summary stays empty rather than inventing a total.
+    $lines=@($expired -split "`n");$at=[array]::FindIndex($lines,[Predicate[string]]{param($l) $l -match '^│\s+CLAUDE\s'})
+    Assert ($expired.Contains('reset due') -and -not $expired.Contains('? now') -and $at -ge 0 -and $lines[$at+1] -notmatch '% now')
     # A reading that never arrived is not refilled by an elapsed reset: the
     # bar stays the dotted unknown rather than claiming a full window.
     $unreadable=Elapsed rolled
     foreach($a in $unreadable.slots){$a.used5h=$null}
     $text=((Render $unreadable).text)-join "`n"
     Assert ($text.Contains('no reading') -and $text -notmatch '5h\s+\S+\s+100%')
+}
+Check 'the title states auto-switch as the collector last applied it' {
+    function Title($Status,$Policy){(@(@(Get-Hotpl8DashboardFrame $Status $Policy $now 100 40)[1].spans)|ForEach-Object text) -join ''}
+    $on=Copy-Value $p;$on|Add-Member NoteProperty mode 'automate' -Force;$on|Add-Member NoteProperty switchEnabled $true -Force
+    $c=Copy-Value $s;$c|Add-Member NoteProperty actions @{switching=$true;warming=$false;probing=$false} -Force
+    $title=Title $c $on;Assert ($title.Contains('● auto-switch on') -and -not $title.Contains('warming')) $title
+    # An observe-only run reports switching off even though the policy allows it.
+    $c.actions.switching=$false;$title=Title $c $on;Assert ($title.Contains('○ auto-switch off')) $title
+    $c.PSObject.Properties.Remove('actions');$c|Add-Member NoteProperty mode 'monitor' -Force
+    $title=Title $c $on;Assert ($title.Contains('auto-switch off')) $title
+    $monitor=Copy-Value $p;$monitor|Add-Member NoteProperty mode 'monitor' -Force
+    $c.mode='automate';$title=Title $c $monitor;Assert ($title.Contains('auto-switch off')) $title
+    $c=Copy-Value $s;$c|Add-Member NoteProperty actions @{switching=$false;warming=$false;probing=$false} -Force
+    $c|Add-Member NoteProperty automationPause @{until=$now.AddMinutes(42).ToString('o')} -Force
+    $title=Title $c $on;Assert ($title.Contains('◐ auto-switch paused 42m')) $title
+    $c=Copy-Value $s;$c|Add-Member NoteProperty actions @{switching=$true;warming=$true;probing=$false} -Force
+    $c|Add-Member NoteProperty hold @{until=$now.AddHours(2).ToString('o')} -Force
+    $title=Title $c $on;Assert ($title.Contains('◐ auto-switch held 2h 00m') -and $title.Contains('● warming on')) $title
+}
+Check 'the auto-switch state is never dropped at any supported width' {
+    foreach($width in @(48,60,79,100)){
+        $row=@(Get-Hotpl8DashboardFrame $s $p $now $width 40)[1]
+        $text=(@($row.spans)|ForEach-Object text) -join ''
+        # The fixture policy predates modes, so its legacy switching stays on.
+        Assert ($text.Contains('● auto-switch on') -and (Get-DashboardCells $text) -eq $width) ([string]$width+': '+$text)
+    }
+}
+Check 'the title gives way in whole words at narrow widths and keeps the state and any warning' {
+    $on=Copy-Value $p;$on|Add-Member NoteProperty mode 'automate' -Force;$on|Add-Member NoteProperty switchEnabled $true -Force
+    $monitor=Copy-Value $p;$monitor|Add-Member NoteProperty mode 'monitor' -Force
+    $stale=Copy-Value $s;$stale.generatedAt=$now.AddMinutes(-65).ToString('o')
+    $pausedStale=Copy-Value $stale;$pausedStale|Add-Member NoteProperty actions @{switching=$false;warming=$false;probing=$false} -Force
+    $pausedStale|Add-Member NoteProperty automationPause @{until=$now.AddHours(3).ToString('o')} -Force
+    $held=Copy-Value $s;$held|Add-Member NoteProperty actions @{switching=$true;warming=$false;probing=$false} -Force
+    $held|Add-Member NoteProperty hold @{until=$now.AddHours(2).ToString('o')} -Force
+    $previewStale=Copy-Value $stale;$previewStale|Add-Member NoteProperty displayPolicy $true -Force
+    $cases=@(
+        @{name='off, stale';status=$stale;policy=$monitor;frozen=$false;words=@('off','stale');full=@('○ auto-switch off','stale 1h 05m')},
+        @{name='accounts, no snapshot';status=$null;policy=$on;frozen=$false;words=@('on','no reading');full=@('● auto-switch on','no reading')},
+        @{name='frozen';status=$s;policy=$on;frozen=$true;words=@('on','FROZEN');full=@('● auto-switch on','FROZEN · read 0s ago')},
+        @{name='paused, stale';status=$pausedStale;policy=$on;frozen=$false;words=@('paused','stale');full=@('◐ auto-switch paused 3h 00m','stale 1h 05m')},
+        @{name='held';status=$held;policy=$on;frozen=$false;words=@('held','0s');full=@('◐ auto-switch held 2h 00m','read 0s ago')},
+        # Two right-hand statuses: the reading warning outlasts FROZEN.
+        @{name='frozen, stale';status=$stale;policy=$monitor;frozen=$true;words=@('off','stale');full=@('○ auto-switch off','FROZEN · stale 1h 05m')},
+        @{name='frozen, paused, stale';status=$pausedStale;policy=$on;frozen=$true;words=@('paused','stale');full=@('◐ auto-switch paused 3h 00m','FROZEN · stale 1h 05m')},
+        @{name='frozen, no snapshot';status=$null;policy=$on;frozen=$true;words=@('on','no (reading|data)');full=@('● auto-switch on','FROZEN · no reading')},
+        @{name='preview, stale';status=$previewStale;policy=$monitor;frozen=$false;words=@('off','stale');full=@('○ auto-switch off','PREVIEW POLICY · stale 1h 05m')}
+    )
+    foreach($case in $cases){
+        foreach($width in @(48,50,52,56,60,79,100)){
+            $row=@(Get-Hotpl8DashboardFrame $case.status $case.policy $now $width 40 -Paused:$case.frozen -ReducedMotion)[1]
+            $text=(@($row.spans)|ForEach-Object text) -join ''
+            $label=$case.name+' at '+$width+': '+$text
+            # A two-cell margin before the border means nothing was cut to fit.
+            Assert ((Get-DashboardCells $text) -eq $width -and $text -match '  │$') $label
+            Assert ($text -match '\bauto(-switch)? ') $label
+            foreach($word in $case.words){Assert ($text -match ('(^|[\s·])'+$word+'($|[\s·])')) ($label+' lacks '+$word)}
+            if($width -eq 100){foreach($phrase in $case.full){Assert ($text.Contains($phrase)) ($label+' lacks '+$phrase)}}
+        }
+    }
+}
+Check 'Codex next launch is named by its label and recent history never repeats the footer' {
+    $one=Copy-Value $s;$one|Add-Member NoteProperty recentActions @(@{provider='codex';slot='main';kind='recommendation';reason='next_launch_only';at=$now.AddMinutes(-5).ToString('o')}) -Force
+    $text=((Render $one).text)-join "`n"
+    Assert ($text.Contains('next: Main') -and -not $text.Contains('RECENT')) $text
+    # Too narrow for the footer to carry it, so the single event stays listed.
+    $narrow=((Render $one 48).text)-join "`n"
+    Assert ($narrow.Contains('RECENT') -and $narrow.Contains('codex next')) $narrow
+    $two=Copy-Value $one;$two.recentActions=@($one.recentActions[0],$one.recentActions[0])
+    Assert ((((Render $two).text)-join "`n").Contains('RECENT'))
 }
 Check 'a changed bar glides to its new value while the printed number stays exact' {
     # Pure function of the animation clock, so the layout runspace and the
