@@ -16,7 +16,7 @@ function Get-Hotpl8AgentError([string]$Code) {
         policy_invalid='No valid policy is available. Use the local setup or doctor command.'
         snapshot_missing='No completed snapshot is available. Use the local refresh command.'
         snapshot_invalid='The cached observation is invalid or unsupported.'
-        model_unknown='The requested model has no verified quota-meter mapping.'
+        model_unknown='This provider does not support a model override in readiness.'
         lease_state_invalid='Lease state is invalid. Automation remains paused; inspect it locally.'
         lease_conflict='This lease ID was used with different arguments or was already released.'
         lease_capacity='The lease ledger is full. Retry after retained records expire.'
@@ -90,8 +90,8 @@ function Test-Hotpl8AgentCodexObservation($Slot,[string]$Meter) {
 function Get-Hotpl8NativeAgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$Provider,[string]$Model,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,[string]$ControlDirectory) {
     $pause=Get-Hotpl8AgentPause $(if($ControlDirectory){$ControlDirectory}else{$Directory}) $Now
     $part=if($Provider -eq 'claude'){$Policy}else{$Policy.codex}
-    $meter=if($Provider -eq 'claude'){'claude'}elseif($Model){[string]$part.modelMeters.$Model}elseif($part.defaultMeter){[string]$part.defaultMeter}else{'codex'}
-    if($Model -and ($Provider -ne 'codex' -or -not $meter)){Stop-Hotpl8AgentRequest 'model_unknown'}
+    $meter=if($Provider -eq 'claude'){'claude'}elseif($part.defaultMeter){[string]$part.defaultMeter}else{'codex'}
+    if($Model -and $Provider -ne 'codex'){Stop-Hotpl8AgentRequest 'model_unknown'}
     $configured=@(if($Provider -eq 'claude'){$Policy.prefer|ForEach-Object {[string]$_}}else{$part.slots|Where-Object {$_}|ForEach-Object {[string]$_.id}})
     $observations=@(if($Provider -eq 'claude'){$Snapshot.slots}else{$Snapshot.providers.codex.slots})
     $accounts=@();$usable=@();$acc=@{};$identities=@{}
@@ -203,18 +203,19 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
         $operation=[string]$Request.operation;$a=$Request.arguments
         if($operation -eq 'onboarding'){
             if(-not $AllowOnboarding){Stop-Hotpl8AgentRequest 'permission_denied'}
-            Assert-Hotpl8AgentArguments $a @('action','operationId','provider','candidateId','newAccount','allowInstall','deviceCode') @('action')
-            if($a.action -isnot [string] -or $a.action -cnotin @('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel')){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            Assert-Hotpl8AgentArguments $a @('action','operationId','provider','candidateId','newAccount','allowInstall','deviceCode','code') @('action')
+            if($a.action -isnot [string] -or $a.action -cnotin @('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel','submit_code')){Stop-Hotpl8AgentRequest 'invalid_arguments'}
             if(($a.action -ne 'begin' -and -not $a.operationId) -or ($a.PSObject.Properties['operationId'] -and ($a.operationId -isnot [string] -or $a.operationId -cnotmatch '^[0-9a-f]{32}$'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
             if($a.PSObject.Properties['provider'] -and ($a.provider -isnot [string] -or $a.provider -cnotin @('claude','codex'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
             if($a.PSObject.Properties['candidateId'] -and ($a.candidateId -isnot [string] -or $a.candidateId -cnotmatch '^[a-z0-9-]{1,40}$')){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            if(($a.action -eq 'submit_code') -ne [bool]$a.PSObject.Properties['code'] -or ($a.PSObject.Properties['code'] -and ($a.code -isnot [string] -or $a.code.Length -gt 4096))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
             foreach($key in @('newAccount','allowInstall','deviceCode')){if($a.PSObject.Properties[$key] -and $a.$key -isnot [bool]){Stop-Hotpl8AgentRequest 'invalid_arguments'}}
             . (Join-Path $PSScriptRoot 'onboarding.ps1')
-            $result=Invoke-Hotpl8Onboarding $Directory $a.action $a.operationId $a.provider $a.candidateId -NewAccount:([bool]$a.newAccount) -AllowInstall:([bool]$a.allowInstall) -DeviceCode:([bool]$a.deviceCode)
+            $result=Invoke-Hotpl8Onboarding $Directory $a.action $a.operationId $a.provider $a.candidateId -NewAccount:([bool]$a.newAccount) -AllowInstall:([bool]$a.allowInstall) -DeviceCode:([bool]$a.deviceCode) -Code ([string]$a.code)
             return New-Hotpl8AgentEnvelope $operation $result ''
         }elseif($operation -eq 'readiness'){
             Assert-Hotpl8AgentArguments $a @('provider','model') @('provider')
-            if($a.provider -isnot [string] -or $a.provider -cnotin @(Get-Hotpl8ProviderCatalog|ForEach-Object id) -or ($a.PSObject.Properties['model'] -and ($a.model -isnot [string] -or $a.model -notmatch '^[a-zA-Z0-9_.-]{1,100}$'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            if($a.provider -isnot [string] -or $a.provider -cnotin @(Get-Hotpl8ProviderCatalog|ForEach-Object id) -or ($a.PSObject.Properties['model'] -and $a.model -isnot [string])){Stop-Hotpl8AgentRequest 'invalid_arguments'}
         }elseif($operation -in @('pause.acquire','pause.release')){
             if(-not $AllowPause){Stop-Hotpl8AgentRequest 'permission_denied'}
             $keys=if($operation -eq 'pause.acquire'){@('leaseId','owner','minutes')}else{@('leaseId')}
@@ -257,7 +258,7 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
             if($message -in @('Onboarding operation missing or unsupported.','Onboarding operation not found.')){$code='operation_not_found'}
             elseif($message -in @('Operation ID already used for a different request.','Action is not available at this setup step.','Operation provider cannot change.')){$code='operation_conflict'}
             elseif($message -eq 'Dependency installation needs explicit authorization.'){$code='permission_denied'}
-            elseif($message -in @('Choose an account from this operation.','Provider is required.')){$code='invalid_arguments'}
+            elseif($message -in @('Choose an account from this operation.','Provider is required.','That is not the whole code. Copy all of it, including the # in the middle.')){$code='invalid_arguments'}
             else{
                 $cause=$_.Exception;while($cause.InnerException){$cause=$cause.InnerException}
                 if($cause -is [IO.IOException]){$code='collector_busy'}

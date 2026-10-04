@@ -12,10 +12,14 @@
 | `enroll -Slot main -AccountHome PATH` | Enroll a signed-in native Codex home; optional `-Label`. Available in current source; rc.1 uses setup-codex.ps1. |
 | `init` | Create a safe initial policy without overwriting existing configuration. |
 | `codex -Slot main` | Validate native login and launch in that home. Does not guarantee quota. |
-| `codex -Model VERIFIED_MODEL` | Use a current eligible recommendation with a verified model/meter mapping. |
+| `codex -Model NATIVE_MODEL` | Select an eligible account and pass the model unchanged to native Codex. |
 | `codex -Slot main resume` | Resume within the home that owns the conversation. |
 
 All commands accept `-StateDirectory PATH`. Codex native arguments follow its command; use native Codex directly for authentication/configuration/remote/admin commands HotPl8 cannot validate. HotPl8's JSON-output option is `-AsJson`, intentionally distinct from native Codex `--json`.
+
+Omitting `-Model` leaves model selection to native Codex. Account selection uses
+the configured `codex.defaultMeter`; no model registration is needed. Native
+model availability remains an account/provider decision.
 
 Q, Escape, and Ctrl+C exit the dashboard. Space **freezes the view**, not the collector or automation. Arrow/Page/Home/End keys scroll. Set `NO_COLOR=1` for uncolored output. Piped dashboard output prints once and exits.
 

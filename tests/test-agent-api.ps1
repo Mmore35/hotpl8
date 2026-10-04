@@ -16,7 +16,7 @@ function SaveFixture {
     $script:policy.prefer=@(1,2);$script:policy.reserve=@(2)
     $script:policy.labels=Clone @{'1'='SECRET-LABEL';'2'='SECOND-LABEL'}
     $script:policy.codex.slots=@(Clone @{id='work';label='PRIVATE-LABEL';home=(Join-Path $dir 'native-home')})
-    $script:policy.codex.prefer=@('work');$script:policy.codex.modelMeters=Clone @{'model-main'='codex';'model-spark'='codex_bengalfox'}
+    $script:policy.codex.prefer=@('work');$script:policy.codex|Add-Member NoteProperty modelMeters (Clone @{'model-main'='codex';'model-spark'='codex_bengalfox'}) -Force
     $script:snapshot=Clone @{
         schemaVersion=2;generatedAt=$now.ToString('o');active=1
         slots=@(foreach($id in @(1,2)){@{slot=$id;status='ok';fresh=$true;observedAt=$now.ToString('o');used5h=20;used7d=30;reset5h=$now.AddHours(2).ToString('o');reset7d=$now.AddDays(3).ToString('o');label='SECRET-LABEL';identityKey='SECRET-IDENTITY'}})
@@ -51,14 +51,20 @@ try{
         Assert ((Request status).error.code -eq 'policy_invalid')
     }
     SaveFixture
-    Check 'readiness reuses production Codex selector and distinguishes meters' {
+    Check 'readiness reuses the configured account quota basis regardless of model' {
         $main=Request readiness @{provider='codex';model='model-main'}
         Assert $main.ok ($main|ConvertTo-Json -Depth 5)
         $expected=Select-CodexSlot $snapshot.providers.codex.slots $policy.codex 'codex' 'work' $null $now
         Assert ($main.data.eligible -and $main.data.selectedSlot -eq $expected -and $main.data.requiresNativeValidation)
         $spark=Request readiness @{provider='codex';model='model-spark'}
-        Assert ($spark.ok -and -not $spark.data.eligible -and $spark.data.meter -eq 'codex_bengalfox')
-        Assert ((Request readiness @{provider='codex';model='not-mapped'}).error.code -eq 'model_unknown')
+        Assert ($spark.ok -and $spark.data.eligible -and $spark.data.meter -eq 'codex' -and $spark.data.selectedSlot -eq $expected)
+        $future=Request readiness @{provider='codex';model='not-mapped'}
+        Assert ($future.ok -and $future.data.eligible -and $future.data.selectedSlot -eq $expected)
+        foreach($name in @('future/family:revision',('future-'+('x'*200)))){
+            $future=Request readiness @{provider='codex';model=$name}
+            Assert ($future.ok -and $future.data.eligible -and $future.data.selectedSlot -eq $expected)
+        }
+        Assert ((Request readiness @{provider='codex';model=@('malformed')}).error.code -eq 'invalid_arguments')
         Assert ((Request readiness @{provider='claude';model='arbitrary'}).error.code -eq 'model_unknown')
     }
     Check 'inspect responses are compact and omit labels identities paths and raw snapshot fields' {

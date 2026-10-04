@@ -53,7 +53,6 @@ if(-not $instance -or $instance.driver -ne 'codex'){throw 'Choose an existing T3
 if($TargetProviderId -notmatch '^[a-z][a-z0-9-]{0,63}$'){throw 'Use a valid target provider ID.'}
 $inPlace=$TargetProviderId -eq $ProviderId
 function Set-T3HelperDefaults($Settings,$Policy,[string]$Source,[string]$Target,[string]$Model){
-    $codexPolicy=(Get-Hotpl8ConfiguredProvider $Policy 'codex').policy
     $changes=@()
     foreach($key in @('textGenerationModelSelection','sourceControlWriterModelSelection')){
         $present=[bool]$Settings.PSObject.Properties[$key]
@@ -62,7 +61,7 @@ function Set-T3HelperDefaults($Settings,$Policy,[string]$Source,[string]$Target,
         if($key -eq 'sourceControlWriterModelSelection' -and -not $old){continue}
         if($old -and $old.instanceId -ne $Source){continue}
         $selectedModel=if($Model){$Model}elseif($old.model){[string]$old.model}else{[string]$Settings.defaultModelSelection.model}
-        if(-not $selectedModel -or -not $codexPolicy.modelMeters.$selectedModel){throw 'Choose -TextGenerationModel with a verified Codex modelMeters mapping for T3 helper requests.'}
+        if(-not $selectedModel){throw 'Choose a native T3 default model or supply -TextGenerationModel for helper requests.'}
         $next=if($old){$old|ConvertTo-Json -Depth 20|ConvertFrom-Json}else{[pscustomobject]@{instanceId=$Target;model=$selectedModel;options=@([pscustomobject]@{id='reasoningEffort';value='low'})}}
         $next.instanceId=$Target;$next.model=$selectedModel
         $changes+=[pscustomobject]@{key=$key;present=$present;original=$old;installed=$next}
@@ -188,7 +187,7 @@ $instance=$instance|ConvertTo-Json -Depth 30|ConvertFrom-Json
 $originalInstance=$instance|ConvertTo-Json -Depth 30|ConvertFrom-Json
 $originalDefault=$settings.defaultModelSelection|ConvertTo-Json -Depth 20|ConvertFrom-Json
 # Validate every proposed setting before creating binaries or a receipt. A missing
-# helper model mapping must leave an installation that can be retried cleanly.
+# native helper selection must leave an installation that can be retried cleanly.
 $instance.config.binaryPath=$launcher
 if(-not $inPlace){$instance|Add-Member NoteProperty displayName 'HotPl8 Codex' -Force}
 if($settings.providerInstances.PSObject.Properties[$TargetProviderId]){$settings.providerInstances.PSObject.Properties[$TargetProviderId].Value=$instance}else{$settings.providerInstances|Add-Member NoteProperty $TargetProviderId $instance}

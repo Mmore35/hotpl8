@@ -30,7 +30,6 @@
     "margin5h": 25,
     "margin7d": 20,
     "margin7dWork": 5,
-    "modelMeters": {},
     "critical": {
       "enabled": false,
       "enterPercent": 20,

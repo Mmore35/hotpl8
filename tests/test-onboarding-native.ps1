@@ -28,6 +28,22 @@ function Operation($Directory,$NativeHome){
     Save-Hotpl8Onboarding $Directory $op;return $op
 }
 try{
+    Check 'private state directory can be secured again by every later request' {
+        # Each onboarding request re-secures its state folder. Windows PowerShell's
+        # Set-Acl failed that second pass without SeSecurityPrivilege (non-elevated users).
+        $p=Join-Path $lab 'private'
+        foreach($pass in 1..2){$null=New-Hotpl8PrivateDirectory $p}
+        if($env:OS -eq 'Windows_NT'){
+            $acl=Get-Acl -LiteralPath $p
+            $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+            $expected=@([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544')|Sort-Object
+            Assert ($acl.AreAccessRulesProtected -and $rules.Count -eq 3) 'inherited or extra access remains'
+            Assert ((@($rules|ForEach-Object {$_.IdentityReference.Value})|Sort-Object) -join ',' -eq ($expected -join ',')) 'unexpected principal'
+            Assert (-not @($rules|Where-Object {$_.AccessControlType -ne 'Allow' -or $_.FileSystemRights -ne 'FullControl'}).Count)
+        }else{
+            Assert ((Get-Item -LiteralPath $p).UnixFileMode -eq [IO.UnixFileMode]'UserRead,UserWrite,UserExecute')
+        }
+    }
     Check 'identity verification succeeds while quota is unavailable and never requests quota' {
         $h=Fixture identity @{quotaFailure=$true} -Authenticated
         $r=Read-CodexQuota $h '' 5000 -IdentityOnly
@@ -73,6 +89,21 @@ try{
         Complete-Hotpl8OnboardingAccount $d $second
         Assert ($second.phase -eq 'already_connected' -and $second.result.alreadyPresent) 'duplicate must not be announced as a new account'
     }
+    Check 'signing in again to an enrolled Claude account that needed sign-in reconnects it' {
+        # The observe-only refresh is a separate process; supply its fresh snapshot instead.
+        function Invoke-Hotpl8Process {[pscustomobject]@{exitCode=0;output=''}}
+        foreach($case in @(@{status='relogin_required';phase='ready';reconnected=$true},@{status='ok';phase='already_connected';reconnected=$false})){
+            $d=Join-Path $lab ('reconnect-'+$case.status);$op=Operation $d (Join-Path $lab 'unused')
+            $policy=Read-Hotpl8Json (Join-Path $d 'policy.json');$policy.prefer=@('1')
+            Write-Hotpl8Text (Join-Path $d 'policy.json') ($policy|ConvertTo-Json -Depth 20)
+            Write-Hotpl8Text (Join-Path $d 'status.json') (@{slots=@(@{slot='1';status='ok';observedAt=[datetimeoffset]::UtcNow.ToString('o')})}|ConvertTo-Json -Depth 8)
+            $op.provider='claude';$op.newAccount=$true
+            $op|Add-Member NoteProperty candidates @([pscustomobject]@{id='claude-1';provider='claude';label='Claude account 1';home='';slot='1';enrolled=$true;status=$case.status}) -Force
+            $op.selected=[pscustomobject]@{id='claude-1';provider='claude';label='Claude account 1';home='';slot='1';enrolled=$false;status='ok'}
+            Complete-Hotpl8OnboardingAccount $d $op
+            Assert ($op.phase -eq $case.phase -and $op.result.reconnected -eq $case.reconnected -and $op.result.alreadyPresent -ne $case.reconnected) ($case.status+' finished as '+$op.phase)
+        }
+    }
     Check 'uncertain peer identity preserves candidate without adding capacity' {
         $h=Fixture peer @{} -Authenticated;$d=Join-Path $lab pending-state;$op=Operation $d $h
         Register-Hotpl8OnboardingCodex $d $op
@@ -82,20 +113,45 @@ try{
         Assert $rejected
         Assert ((Test-Path (Join-Path $h2 'auth.json')) -and @( (Read-Hotpl8Json (Join-Path $d 'policy.json')).codex.slots).Count -eq 1)
     }
-    Check 'complete Claude URL is available across pipe chunks before native login exits' {
+    function ClaudeLogin([string]$Name,$Options=@{}){
         function Get-Hotpl8ClaudeExecutable {return $script:node}
         function Add-Hotpl8NativeClaudeAccount($Directory,$Operation){
             if(Test-Path (Join-Path $Operation.selected.home 'fixture-auth-completed')){return $Operation.selected}
             return $null
         }
-        $h=Fixture claude;$d=Join-Path $lab claude-state;$op=Operation $d $h;$op.provider='claude';$op.selected.provider='claude'
-        Write-Hotpl8Text (Join-Path $h 'fixture.json') (@{operationPath=(Get-Hotpl8OnboardingPath $d $op.id)}|ConvertTo-Json) -NoBom
+        $h=Fixture $Name;$d=Join-Path $lab ($Name+'-state');$op=Operation $d $h;$op.provider='claude';$op.selected.provider='claude'
+        Write-Hotpl8Text (Join-Path $h 'fixture.json') ((@{operationPath=(Get-Hotpl8OnboardingPath $d $op.id)}+$Options)|ConvertTo-Json) -NoBom
         try{$selected=Connect-Hotpl8NativeAccount $d $op}catch{
             $detail=Read-Hotpl8Json (Join-Path $h 'fixture-failure.json')
             if($detail){Write-Host ('Synthetic Claude fixture: '+($detail|ConvertTo-Json -Compress -Depth 5))}
             throw
         }
-        Assert ($selected -and $op.handoff.url -eq 'https://claude.ai/oauth/authorize?fixture=true')
+        return [pscustomobject]@{selected=$selected;operation=$op;home=$h;codePath=((Get-Hotpl8OnboardingPath $d $op.id)+'.code')}
+    }
+    Check 'complete Claude fallback URL is available across pipe chunks before native login exits' {
+        $r=ClaudeLogin claude
+        Assert ($r.selected -and $r.operation.handoff.url -eq 'https://claude.com/cai/oauth/authorize?fixture=1' -and $r.operation.handoff.kind -eq 'paste_code')
+    }
+    Check 'a pasted Claude code reaches the waiting native login through its open input once' {
+        $r=ClaudeLogin claude-paste @{paste='accept'}
+        Assert ($r.selected -and $r.operation.handoff.codeReceived) 'code was not relayed'
+        Assert ((Get-Content (Join-Path $r.home 'fixture-code-1') -Raw) -ceq 'fixture-code-1#state')
+        Assert (-not (Test-Path $r.codePath)) 'relayed code was left on disk'
+        Assert (-not ((Get-Content ($r.codePath -replace '\.code$','') -Raw) -match 'fixture-code')) 'code persisted in operation state'
+    }
+    Check 'a rejected Claude code starts a fresh native login with a new link and says why' {
+        $r=ClaudeLogin claude-reject @{paste='reject-once'}
+        Assert ($r.selected -and (Get-Content (Join-Path $r.home 'fixture-starts') -Raw).Trim() -eq '2') 'login was not restarted'
+        Assert ($r.operation.handoff.url -eq 'https://claude.com/cai/oauth/authorize?fixture=2')
+        # A plan refusal happens only in the browser and yields no code, so the wait names it.
+        Assert ((Get-Content (Join-Path $r.home 'fixture-message-1') -Raw) -like '*Pro or Max plan is required*cancel setup*') 'plan refusal not explained'
+        Assert ((Get-Content (Join-Path $r.home 'fixture-message-2') -Raw) -like 'Claude did not accept that code.*earlier sign-in page*') 'restart reason not shown'
+    }
+    Check 'an incomplete Claude code reopens the same login for another paste' {
+        $r=ClaudeLogin claude-incomplete @{paste='incomplete-once'}
+        Assert ($r.selected -and (Get-Content (Join-Path $r.home 'fixture-starts') -Raw).Trim() -eq '1') 'login was restarted'
+        Assert ((Get-Content (Join-Path $r.home 'fixture-code-1') -Raw) -ceq "fixture-code-1`nfixture-code-1#state") 'second code was not relayed'
+        Assert ((Get-Content (Join-Path $r.home 'fixture-reopened-message') -Raw) -like 'That code was incomplete.*') 'incomplete code not reported'
     }
     Check 'detached worker survives the short-lived JSON caller' {
         $d=Join-Path $lab detached

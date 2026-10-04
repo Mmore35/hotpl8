@@ -36,14 +36,7 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
     $state=Read-Hotpl8Json (Join-Path $StateDirectory 'codex-state.json')
     $status=(Read-Hotpl8Json (Join-Path $StateDirectory 'status.json')).providers.codex
     $now=[datetimeoffset]::UtcNow
-    $meter=if($Request.model){[string]$part.modelMeters.([string]$Request.model)}else{[string]$part.defaultMeter}
-    if(-not $meter){throw 'routing_model_unknown'}
-    $meters=@($meter)
-    foreach($model in @($Request.models)){
-        if(-not $model){continue};$required=[string]$part.modelMeters.([string]$model)
-        if(-not $required){throw 'routing_model_unknown'}
-        if($required -notin $meters){$meters+=$required}
-    }
+    $meter=if($part.defaultMeter){[string]$part.defaultMeter}else{'codex'}; $meters=@($meter)
     $identities=@{}
     foreach($slot in @($part.slots)){
         $prior=$state.slots.([string]$slot.id)
@@ -120,8 +113,6 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
             $valid=$decision.actionPermitted -and $decision.targetSlot -ceq $selected
         }
         if($valid){
-            $model=if($Request.model){[string]$Request.model}else{[string]$read.model}
-            if(-not $model -or [string]$part.modelMeters.$model -ne $meter){throw 'routing_model_unknown'}
             if(-not $read.auth.accessToken -or -not $read.auth.chatgptAccountId){throw 'routing_auth_unavailable'}
             # Native I/O is outside this short admission boundary. Changes after
             # this authorization govern subsequent actions; never repeat a turn.
@@ -135,7 +126,7 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
             if(-not $authorized.actionPermitted -or $authorized.targetSlot -cne $selected){throw 'routing_state_changed'}
             $critical=$authorized.critical;$critical.selected=$selected
             if($selected -cne $Request.previousSlot -or -not $Request.criticalState.selectedAt){$critical.selectedAt=[datetimeoffset]::UtcNow.ToString('o')}else{$critical.selectedAt=$Request.criticalState.selectedAt}
-            return [pscustomobject]@{slot=$selected;home=[string]$slot.home;model=$model;meter=$meter;criticalState=$critical;authorizationGeneration=$admission.generation;auth=$(if($Request.operation -ne 'exec'){$read.auth}else{$null})}
+            return [pscustomobject]@{slot=$selected;home=[string]$slot.home;meter=$meter;criticalState=$critical;authorizationGeneration=$admission.generation;auth=$(if($Request.operation -ne 'exec'){$read.auth}else{$null})}
         }
         $rows=@($rows|Where-Object id -NE $selected)
         if($refresh){throw 'routing_refresh_failed'}

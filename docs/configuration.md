@@ -16,7 +16,8 @@ Copy the tracked example only for a new installation. The [schema](../policy.sch
 | `pattern`, `weights`, `warmGroup` | maintain (default), even, synced, or clustered; optional positive weights/group size. |
 | `codex.slots` | Explicit id, absolute native home, optional label. Never token contents. |
 | `codex.prefer`, `codex.reserve`, `codex.order` | Provider-specific values consumed by the shared decision core. |
-| `codex.defaultMeter`, `codex.modelMeters` | Default codex bucket and explicitly verified model-to-meter mappings. |
+| `codex.defaultMeter` | Account quota bucket used for selection, independent of model; normally `codex`. |
+| `codex.modelMeters` | Deprecated, ignored compatibility data. No model registration is needed. |
 | `codex.margin5h`, `codex.margin7d`, `codex.margin7dWork` | Codex remaining-percentage eligibility floors. |
 
 Examples in [examples/](../examples/README.md) show provider combinations using fictional slots. Replace all account homes locally. Empty provider sections are disabled. Invalid/unknown quotas cannot authorize automatic use. Explicit version-2 `claudeModels` constrain selection using reported scoped windows; automatic actions remain experimental.
@@ -43,7 +44,7 @@ Do not mix the map with legacy root Claude fields or `codex`. For example:
   "probeEnabled": false,
   "providers": {
     "claude": {"prefer": [], "reserve": []},
-    "codex": {"slots": [], "prefer": [], "reserve": [], "defaultMeter": "codex", "modelMeters": {}}
+    "codex": {"slots": [], "prefer": [], "reserve": [], "defaultMeter": "codex"}
   }
 }
 ```

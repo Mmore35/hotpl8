@@ -197,12 +197,8 @@
         },
         "modelMeters": {
           "type": "object",
-          "additionalProperties": {
-            "enum": [
-              "codex",
-              "codex_bengalfox"
-            ]
-          }
+          "deprecated": true,
+          "description": "Legacy metadata retained for compatibility; native model selection is independent of the account quota basis."
         },
         "margin5h": {
           "type": "number",
@@ -791,12 +787,8 @@
             },
             "modelMeters": {
               "type": "object",
-              "additionalProperties": {
-                "enum": [
-                  "codex",
-                  "codex_bengalfox"
-                ]
-              }
+              "deprecated": true,
+              "description": "Legacy metadata retained for compatibility; native model selection is independent of the account quota basis."
             },
             "margin5h": {
               "type": "number",

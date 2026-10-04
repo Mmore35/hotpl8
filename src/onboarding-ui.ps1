@@ -34,9 +34,21 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                 'awaiting_sign_in'{
                     if($r.handoff.url -and $opened -ne $r.handoff.url){
                         $opened=$r.handoff.url
+                        # Opened from this foreground terminal so the page comes to the front.
                         'Sign in here: '+$opened
                         if($r.handoff.code){'Provider code: '+$r.handoff.code}
                         try{if($env:OS -eq 'Windows_NT'){Start-Process $opened|Out-Null}else{& /usr/bin/open $opened}}catch{'Open the link above in your browser.'}
+                        if($r.handoff.kind -eq 'paste_code' -and 'submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){'After signing in, copy the code the page shows, paste it here, and press Enter.'}
+                    }
+                    if('submit_code' -in $r.nextActions -and -not [Console]::IsInputRedirected){
+                        # Nothing finishes without the code, so a plain visible line read is safe
+                        # and keeps the terminal's own paste. Enter alone rechecks progress.
+                        $entered=(Read-Host 'Code') -replace '\x1b?\[20[01]~',''
+                        if($entered.Trim()){
+                            try{$r=Invoke-Hotpl8Onboarding $Directory submit_code $r.operationId -Code $entered}catch{$_.Exception.Message}
+                            continue
+                        }
+                        $r=Invoke-Hotpl8Onboarding $Directory status $r.operationId;continue
                     }
                 }
                 'already_connected'{

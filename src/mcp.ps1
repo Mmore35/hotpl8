@@ -33,18 +33,19 @@ function Get-Hotpl8McpTools([bool]$AllowPause,[bool]$AllowOnboarding=$false) {
         } }; outputSchema = $outputSchema; annotations = $readAnnotations
     }
     @{
-        name = 'hotpl8_readiness'; description = 'Check current cached account eligibility. Does not reserve capacity, launch work, or validate native authentication. Model mapping depends on the registered native driver.'
+        name = 'hotpl8_readiness'; description = 'Check current cached account eligibility. Does not reserve capacity, launch work, or validate native authentication or model entitlement. Codex account selection is independent of model; Claude model overrides are unsupported.'
         inputSchema = @{ type = 'object'; additionalProperties = $false; required = @('provider'); properties = @{
-            provider = @{ type = 'string'; enum = @(Get-Hotpl8ProviderCatalog|ForEach-Object id) }; model = @{ type = 'string'; minLength = 1; maxLength = 100; pattern = '^[a-zA-Z0-9_.-]{1,100}$' }
+            provider = @{ type = 'string'; enum = @(Get-Hotpl8ProviderCatalog|ForEach-Object id) }; model = @{ type = 'string'; description = 'Compatibility field; ignored for Codex account selection.' }
         } }; outputSchema = $outputSchema; annotations = $readAnnotations
     }
     if($AllowOnboarding){
         @{
-            name='hotpl8_onboard';description='Set up the first or another native account. Durable progress and private sign-in handoff; installs dependencies only with allowInstall. No inference prompts.'
+            name='hotpl8_onboard';description='Set up the first or another native account. Durable progress and private sign-in handoff: show or open handoff.url for the user; when its kind is paste_code they paste back the code its page shows for submit_code. Installs dependencies only with allowInstall. No inference prompts.'
             inputSchema=@{type='object';additionalProperties=$false;required=@('action');properties=@{
-                action=@{type='string';enum=@('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel')}
+                action=@{type='string';enum=@('begin','status','choose_provider','choose_account','sign_in','install','retry','cancel','submit_code')}
                 operationId=@{type='string';pattern='^[0-9a-f]{32}$'};provider=@{type='string';enum=@('claude','codex')}
                 candidateId=@{type='string';pattern='^[a-z0-9-]{1,40}$'};newAccount=@{type='boolean'};allowInstall=@{type='boolean'};deviceCode=@{type='boolean'}
+                code=@{type='string';minLength=3;maxLength=4096;description='submit_code only: the whole code the sign-in page shows (code#state), or that page''s address. Relayed once to the waiting native login; never stored.'}
             }};outputSchema=$outputSchema;annotations=@{readOnlyHint=$false;destructiveHint=$false;idempotentHint=$true;openWorldHint=$true}
         }
     }

@@ -98,7 +98,7 @@ try {
         $readiness = $r.result.tools | Where-Object name -eq 'hotpl8_readiness'
         Assert ($inspect.annotations.readOnlyHint -and -not $inspect.inputSchema.additionalProperties -and $inspect.inputSchema.required -contains 'view')
         Assert ($inspect.inputSchema.properties.view.enum.Count -eq 5 -and $inspect.outputSchema.required.Count -eq 6)
-        Assert ($readiness.inputSchema.properties.provider.enum -contains 'codex' -and $readiness.inputSchema.properties.model.maxLength -eq 100)
+        Assert ($readiness.inputSchema.properties.provider.enum -contains 'codex' -and $readiness.inputSchema.properties.model.type -eq 'string' -and -not $readiness.inputSchema.properties.model.pattern)
         Assert ((Request-Mcp $proc 'tools/call' @{ name = 'hotpl8_pause_release'; arguments = @{ leaseId = [guid]::NewGuid().ToString() } }).error.code -eq -32602)
     }
     Check 'successful results carry matching structured JSON text and string IDs' {
@@ -187,8 +187,8 @@ try {
         Assert ($r.result.structuredContent.apiVersion -eq 1 -and $r.result.structuredContent.ok -and -not $r.result.isError)
         $r = Request-Mcp $real 'tools/call' @{ name = 'hotpl8_inspect'; arguments = @{ view = 'doctor' } }
         Assert ($r.result.structuredContent.ok)
-        $r = Request-Mcp $real 'tools/call' @{ name = 'hotpl8_readiness'; arguments = @{ provider = 'codex'; model = 'bad/model' } }
-        Assert ($r.result.isError -and $r.result.structuredContent.error.code -eq 'invalid_arguments')
+        $r = Request-Mcp $real 'tools/call' @{ name = 'hotpl8_readiness'; arguments = @{ provider = 'codex'; model = 'future/family:revision' } }
+        Assert ($r.result.isError -and $r.result.structuredContent.error.code -eq 'policy_invalid')
         $r = Request-Mcp $real 'tools/call' @{ name = 'hotpl8_readiness'; arguments = @{ provider = @('codex') } }
         Assert ($r.result.isError -and $r.result.structuredContent.error.code -eq 'invalid_arguments')
         Assert (-not (Test-Path (Join-Path $dir 'empty')) -or @(Get-ChildItem (Join-Path $dir 'empty') -Force).Count -eq 0)

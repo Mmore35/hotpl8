@@ -752,7 +752,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
 
     $verdict = ''
     $calls = @()
-    if ($reallyBroken.Count -gt 0) { $calls += "slot $($reallyBroken -join '+') NEEDS RE-LOGIN -> cswap add" }
+    if ($reallyBroken.Count -gt 0) { $calls += "slot $($reallyBroken -join '+') NEEDS RE-LOGIN -> hotpl8 add -Provider claude" }
     # State that polling stopped and identify the bounded verification path.
     if ($stuck.Count -gt 0) {
         $hrs = [int](($staleS) / 3600)
