@@ -100,7 +100,8 @@ hotpl8 preview pr NUMBER -Live -TrustRevision FULL_40_CHARACTER_HEAD_SHA
 ```
 
 The command prints the PR URL, exact revision and **fictional accounts** data mode,
-then runs the actual PR dashboard and animation in your terminal. Space freezes
+then runs the actual PR dashboard and animation in your terminal. The Codex demo
+uses a fictional new plan without configured capacity weights to show the quota-average fallback. Space freezes
 or resumes, arrows scroll, Q exits; resize the window to inspect layout. It uses
 fresh demo timestamps and disposable state, never a second collector or real
 account cache. This tests presentation and interaction, not provider actions.

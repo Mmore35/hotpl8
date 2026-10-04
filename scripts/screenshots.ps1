@@ -109,6 +109,8 @@ foreach($slot in $critical.status.slots){$slot.used5h=94;$slot.used7d=94}
 Write-DashboardImage 'critical.png' $critical.status $critical.policy 94 25
 $unknown=Get-Hotpl8ScreenshotFixture
 $unknown.policy.PSObject.Properties.Remove('capacity')
+$unknown.policy.codex.PSObject.Properties.Remove('capacity')
+foreach($slot in $unknown.status.providers.codex.slots){$slot|Add-Member NoteProperty planType 'new_plan' -Force}
 Write-DashboardImage 'unknown.png' $unknown.status $unknown.policy 79 24
 Write-DashboardImage 'narrow.png' $healthy.status $healthy.policy 50 18
 

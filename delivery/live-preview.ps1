@@ -10,6 +10,9 @@ $source = [IO.Path]::GetFullPath($SourceDirectory)
 . (Join-Path $source 'src/dashboard.ps1')
 . (Join-Path $source 'tests/fixtures/screenshots.ps1')
 $fixture = Get-Hotpl8ScreenshotFixture
+# Demonstrate newly recognized plans without requiring a configured capacity.
+$fixture.policy.codex.PSObject.Properties.Remove('capacity')
+foreach($slot in $fixture.status.providers.codex.slots){$slot|Add-Member NoteProperty planType 'new_plan' -Force}
 $now = [datetimeoffset]::UtcNow
 $delta = $now - $fixture.now
 $fixture.status.generatedAt = $now.AddSeconds(-42).ToString('o')
