@@ -8,7 +8,7 @@
 | Claude switching/warming/probes | Experimental; off in new policy. Legacy configs preserve enabled behavior. No guarantee that prompts open a useful quota window. |
 | Codex | Native app-server API; prior live account evidence used CLI 0.153.4. Synthetic local HTTP/WebSocket rollover, including the real shared policy/broker chain, is qualified separately on CLI 0.155.1. |
 | Codex meters/windows | codex and codex_bengalfox; 300/10080-minute windows. Unknown shapes/constraints block automatic use. |
-| Codex model selection | Requires an explicitly verified modelMeters mapping. Explicit-slot launch is separate from a quota guarantee. |
+| Codex model selection | Native owns model choice and entitlement; HotPl8 uses the configured account quota basis without model registration. Explicit-slot launch is separate from a quota guarantee. |
 | Codex warming | Unavailable after the conditional native investigation; see the [evidence gate](plans/codex-warming.md). |
 | Multi-account live routing / native refresh contention | Offline mechanics covered; release acceptance still pending with independent native accounts. |
 | T3 Code | Optional Windows adapter; native Codex 0.155.1 first/resumed turns and synthetic HTTP/WebSocket same-turn rollover with follow-ups qualified. Real multi-account billing, exhaustive child/retry races and multi-day refresh promotion remain pending. [Scope and setup](t3-integration.md). |

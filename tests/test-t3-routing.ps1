@@ -136,9 +136,9 @@ try{
     [IO.File]::Delete((Join-Path $dir 'a/used-percent'))
     $policy.codex.modelMeters['other-model']='codex_bengalfox';Save 'policy.json' $policy
     $ongoing.models=@('fixture-model','other-model')
-    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_unavailable'
+    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).meter -eq 'codex') 'legacy child model maps do not change account quota basis'
     $ongoing.models=@('unmapped')
-    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_model_unknown'
+    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).meter -eq 'codex') 'unfamiliar child model does not block account selection'
     $policy.codex.modelMeters.Remove('other-model');Save 'policy.json' $policy
     [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
     $route=Get-Hotpl8CodexRoute $request $dir $exe
@@ -183,7 +183,8 @@ try{
     $status.observedAt=$now.AddHours(-1).ToString('o');Save 'status.json' @{providers=@{codex=$status}}
     Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_stale'
     $status.observedAt=$now.ToString('o');Save 'status.json' @{providers=@{codex=$status}}
-    $request.model='unmapped';Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_model_unknown';$request.model='fixture-model'
+    $request.model='unmapped';Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'b') 'unfamiliar model uses healthy account';$request.model='fixture-model'
+    $policy.codex.Remove('modelMeters');Save 'policy.json' $policy
     $oldIdentity=$bindings.b.identityKey;$bindings.b.identityKey=$bindings.a.identityKey;Save 'codex-state.json' @{slots=$bindings}
     Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_duplicate_identity'
     $bindings.b.identityKey=$oldIdentity;Save 'codex-state.json' @{slots=$bindings}
@@ -203,16 +204,25 @@ try{
     # Hosted Windows needs ~23s for first-use PowerShell/module initialization in
     # an isolated profile (also covered by test-onboarding.ps1). This installer
     # harness allowance does not change any native quota or routing timeout.
-    $rejected=Invoke-Hotpl8Process $ps @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$setup,'-Operation','install','-StateDirectory',$dir,'-SettingsPath',$settingsPath,'-IntegrationDirectory',$integration,'-CodexExecutable',$exe,'-TargetProviderId','hotpl8-codex','-MakeDefault','-TextGenerationModel','unmapped') 45000
-    Assert ($rejected.exitCode -ne 0 -and -not (Test-Path -LiteralPath $integration)) 'unknown helper model rejects setup before creating files'
-    Assert ([IO.File]::ReadAllText($settingsPath) -ceq $beforeSettings) 'rejected helper configuration preserves all T3 settings'
+    $settings.defaultModelSelection.model='';Save 'settings.json' $settings
+    $missingModelSettings=[IO.File]::ReadAllText($settingsPath)
+    $rejected=Invoke-Hotpl8Process $ps @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$setup,'-Operation','install','-StateDirectory',$dir,'-SettingsPath',$settingsPath,'-IntegrationDirectory',$integration,'-CodexExecutable',$exe,'-TargetProviderId','hotpl8-codex','-MakeDefault') 45000
+    Assert ($rejected.exitCode -ne 0 -and -not (Test-Path -LiteralPath $integration)) 'missing native helper selection rejects setup before creating files'
+    Assert ([IO.File]::ReadAllText($settingsPath) -ceq $missingModelSettings) 'rejected helper configuration preserves all T3 settings'
+    Write-Hotpl8Text $settingsPath $beforeSettings
+    $futureIntegration=$integration+' future'
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation install -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $futureIntegration -CodexExecutable $exe -TargetProviderId hotpl8-codex -MakeDefault -TextGenerationModel 'future/helper:revision'
+    Assert ($LASTEXITCODE -eq 0) 'unregistered explicit native helper installs without a model map'
+    Assert ((Read-Hotpl8Json $settingsPath).textGenerationModelSelection.model -ceq 'future/helper:revision') 'explicit helper model is preserved exactly'
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation remove -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $futureIntegration
+    Assert ($LASTEXITCODE -eq 0 -and -not (Read-Hotpl8Json $settingsPath).PSObject.Properties['textGenerationModelSelection']) 'removing explicit helper restores its original absence'
     & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation install -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $integration -CodexExecutable $exe -TargetProviderId hotpl8-codex -MakeDefault
     Assert ($LASTEXITCODE -eq 0) 'setup succeeds in isolated fixture'
     $installed=Read-Hotpl8Json $settingsPath
     Assert ($installed.providerInstances.codex.config.binaryPath -eq 'codex') 'active original provider not replaced'
     Assert ($installed.defaultModelSelection.instanceId -eq 'hotpl8-codex' -and $installed.defaultModelSelection.model -eq 'fixture-model') 'default routes new chats while preserving model'
     Assert ($installed.providerInstances.'hotpl8-codex'.config.homePath -eq $shared) 'new provider shares conversation home'
-    Assert ($installed.textGenerationModelSelection.instanceId -eq 'hotpl8-codex' -and $installed.textGenerationModelSelection.model -eq 'fixture-model') 'implicit T3 helper default routes through a verified model'
+    Assert ($installed.textGenerationModelSelection.instanceId -eq 'hotpl8-codex' -and $installed.textGenerationModelSelection.model -eq 'fixture-model') 'implicit T3 helper default routes through a native default model'
     Assert ($installed.textGenerationModelSelection.options[0].value -eq 'low') 'helper default uses low reasoning'
     $launcher=Join-Path $integration 'hotpl8-codex.exe'
     Assert ((& $launcher --version) -eq 'codex-cli fixture') 'native launcher version/stdio passthrough'
@@ -239,7 +249,7 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     # the same healthy home. This is T3's concurrent first-message launch shape.
     $gate=Join-Path $dir 'b/quota-gate';[IO.File]::WriteAllText($gate,'fixture')
     $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'title.json'
-    $titlePsi=New-CodexProcessInfo $launcher $shared @('exec','--model','fixture-model','-s','read-only','-') $dir
+    $titlePsi=New-CodexProcessInfo $launcher $shared @('exec','--model','future-helper-model','-s','read-only','-') $dir
     $titlePsi.RedirectStandardInput=$true;$titlePsi.RedirectStandardOutput=$true;$titlePsi.RedirectStandardError=$true;$titlePsi.CreateNoWindow=$true
     $titleProc=Start-CodexQuotaProcess $titlePsi
     $null=$titleProc.StandardOutput.ReadToEndAsync();$null=$titleProc.StandardError.ReadToEndAsync()
@@ -269,8 +279,9 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     $clock=[Diagnostics.Stopwatch]::StartNew()
     $null=Invoke-CodexRpc $proc $clock 20000 2 'thread/start' @{model='fixture-model';cwd=$dir}
     [IO.File]::WriteAllText((Join-Path $shared 'keep-active'),'fixture')
-    $turn=Invoke-CodexRpc $proc $clock 20000 3 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
+    $turn=Invoke-CodexRpc $proc $clock 20000 3 'turn/start' @{threadId='thread-fixture';model='future-chat-model';input=@()}
     Assert ($turn.account -eq 'b') 'real launcher/proxy/broker chooses healthy account for turn'
+    Assert ($turn.requestModel -eq 'future-chat-model') 'unregistered model reaches native unchanged'
     # Collector publication may validate a preferred peer, but applying its auth
     # while a turn runs revokes native network permission. Defer until idle.
     [IO.File]::Delete((Join-Path $dir 'a/exhausted'))
@@ -287,24 +298,24 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     }
     Assert $validatedPeer 'collector publication validates the preferred peer'
     $followClock=[Diagnostics.Stopwatch]::StartNew()
-    $follow=Invoke-CodexRpc $proc $followClock 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@(@{type='text';text='fixture followup'})}
+    $follow=Invoke-CodexRpc $proc $followClock 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='future-chat-model';input=@(@{type='text';text='fixture followup'})}
     Assert ($follow.account -eq 'b' -and $follow.turn.id -eq $turn.turn.id -and $follow.toolExecutions -eq 1) 'followup keeps active account turn and executed effects'
     Assert (-not (Test-Path (Join-Path $shared 'network-revoked'))) 'no live auth change revokes native network permission'
     [IO.File]::Delete((Join-Path $shared 'keep-active'))
     $finish=Invoke-CodexRpc $proc ([Diagnostics.Stopwatch]::StartNew()) 5000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';input=@()}
     Assert ($finish.account -eq 'b' -and $finish.toolExecutions -eq 1) 'original work completes under the original account'
-    $next=Invoke-CodexRpc $proc ([Diagnostics.Stopwatch]::StartNew()) 15000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='fixture-model';input=@()}
+    $next=Invoke-CodexRpc $proc ([Diagnostics.Stopwatch]::StartNew()) 15000 (++$rpcId) 'turn/start' @{threadId='thread-fixture';model='future-chat-model';input=@()}
     Assert ($next.account -eq 'a' -and $next.toolExecutions -eq 2) 'next idle admission switches accounts without replaying prior work'
     [IO.File]::Delete((Join-Path $dir 'b/used-percent'))
     [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
     Stop-Hotpl8Process $proc;$proc=$null
     $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'exec.json'
-    $execPsi=New-CodexProcessInfo $launcher $shared @('exec','--model','fixture-model','-s','read-only','--output-last-message','space & % fixture.json','-') $dir
+    $execPsi=New-CodexProcessInfo $launcher $shared @('exec','-s','read-only','--output-last-message','space & % fixture.json','-') $dir
     $execPsi.RedirectStandardInput=$true;$execPsi.RedirectStandardOutput=$true;$execPsi.RedirectStandardError=$true;$execPsi.CreateNoWindow=$true
     $proc=Start-CodexQuotaProcess $execPsi;$proc.StandardInput.Write('fixture prompt');$proc.StandardInput.Close();$proc.WaitForExit()
     Assert ($proc.ExitCode -eq 7) 'exec native exit code propagated'
     $trace=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH
-    Assert ($trace.home -eq (Join-Path $dir 'b') -and $trace.input -eq 'fixture prompt' -and $trace.args[6] -eq 'space & % fixture.json') 'exec home, stdin and argument boundaries preserved'
+    Assert ($trace.home -eq (Join-Path $dir 'b') -and $trace.input -eq 'fixture prompt' -and ($trace.args -join '|') -ceq 'exec|-s|read-only|--output-last-message|space & % fixture.json|-') 'exec home, stdin and argument boundaries preserved'
     Stop-Hotpl8Process $proc;$proc=$null
     Assert ([IO.File]::ReadAllText((Join-Path $shared 'auth.json')) -eq 'original-auth-sentinel') 'shared native auth unchanged'
     Assert ([IO.File]::ReadAllText((Join-Path $shared 'config.toml')) -eq 'original-config-sentinel') 'shared native config unchanged'
@@ -338,7 +349,7 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     Assert (@($one.providerInstances.PSObject.Properties).Count -eq 1 -and -not $one.providerInstances.PSObject.Properties['hotpl8-codex']) 'no duplicate provider or model catalog'
     Assert ($one.defaultModelSelection.instanceId -eq 'codex' -and $one.providerInstances.codex.config.homePath -eq $shared) 'existing conversation ID and home retained'
     Assert ($one.providerInstances.codex.config.binaryPath -eq (Join-Path $single 'hotpl8-codex.exe')) 'ordinary Codex routes through the bridge'
-    Assert (-not $one.providerInstances.codex.displayName -and $one.textGenerationModelSelection.instanceId -eq 'codex' -and $one.textGenerationModelSelection.model -eq 'fixture-model') 'normal provider label and verified helper model retained'
+    Assert (-not $one.providerInstances.codex.displayName -and $one.textGenerationModelSelection.instanceId -eq 'codex' -and $one.textGenerationModelSelection.model -eq 'fixture-model') 'normal provider label and native helper model retained'
     & $ps -NoProfile -ExecutionPolicy Bypass -File $setup -Operation remove -StateDirectory $dir -SettingsPath $settingsPath -IntegrationDirectory $single
     Assert ($LASTEXITCODE -eq 0) 'in-place removal succeeds'
     Assert (((Read-Hotpl8Json $settingsPath)|ConvertTo-Json -Depth 50 -Compress) -ceq $beforeSingle) 'in-place removal restores original settings exactly'

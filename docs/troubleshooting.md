@@ -19,7 +19,9 @@ Start with `hotpl8 doctor -AsJson`. It is offline and redacted. Run `hotpl8 refr
 | Stale reading | Check the collector task in Task Scheduler and local events.jsonl. Offline/sleep periods do not imply refreshed quota. |
 | Collector busy | Another collector/setup holds the state lock. Wait; do not delete live lock files. |
 | Authentication required | Use the native provider login/recovery flow. Do not copy another home's token. |
-| Unknown meter/model/constraint | Use a supported mapping or explicit native tools; do not interpret unknown as unlimited. |
+| Unknown quota meter/constraint | Inspect native quota and the configured account basis; unknown evidence is not unlimited. |
+| `routing_model_unknown` | An older loaded T3 bridge still requires model registration. Check component delivery/running revisions and reopen the provider after active work finishes. |
+| Native model unavailable | Inspect native model availability for that account; HotPl8 forwards the native error without substituting or replaying work. |
 | Failed refresh | Nonzero exit means incomplete collection. Review fixed event codes; the previous cache is not fresh evidence. |
 | Hook absent | Review/trust the exact SessionStart handler in native Codex /hooks. |
 | Installation refuses directory | Choose an empty per-user directory; the installer refuses unrelated files and junctions. |

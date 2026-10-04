@@ -60,7 +60,9 @@ Agents can [install and connect the first account](docs/agent-api.md#connect-an-
 
 The optional [Codex account routing for T3](docs/t3-integration.md) routes new
 turns and auxiliary commands through enrolled subscriptions while keeping T3
-conversation state in its existing home. First-time setup runs with T3 closed and
+conversation state in its existing home. New or unfamiliar native models need no
+HotPl8 registration: account policy selects the account, and Codex validates the
+model. First-time setup runs with T3 closed and
 reuses its normal Codex provider; removal restores the original configuration.
 Managed updates preserve active sessions and select the current release for new
 processes. Existing two-provider installations can transition the ordinary entry

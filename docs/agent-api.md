@@ -33,7 +33,7 @@ The envelope is stable v1. Exit 0 means the request succeeded, which includes a 
 | `doctor` | `{}` | Policy validity, CLI presence, cached snapshot freshness and collector lock state; works before setup. |
 | `capabilities` | `{}` | Doctor fields plus the connection's available operations, pause permission and cached-read limitations. |
 | `accounts` | `{}` | Enrolled slot IDs, provider, disabled and reserve flags. No labels or account paths. |
-| `readiness` | `provider: REGISTERED_ID`; optional `model` | One provider's current cached eligibility and blockers. Model overrides require a verified mapping supported by the native driver. |
+| `readiness` | `provider: REGISTERED_ID`; optional `model` | One provider's current cached eligibility and blockers. Codex model names do not affect account readiness; Claude model overrides are unsupported. |
 | `pause.acquire` | `leaseId`, `owner`, `minutes` | Lease capability, original expiry, active and released flags. |
 | `pause.release` | `leaseId` | That lease's expiry, active=false and released=true. |
 
@@ -41,7 +41,7 @@ The envelope is stable v1. Exit 0 means the request succeeded, which includes a 
 
 - `eligible` describes the selected account under the current cached policy decision. `selectedSlot` may be null even when an alternative has quota. Inspect `accounts[].eligible`, `proposedSlot`, `requiresSelection`, `selectionHeld` and `switchingPermitted` to understand why.
 - Claude has `activeSlot` and `proposedSlot`: paused, held or monitor-only automation cannot claim a switch occurred. A proposal never moves an existing session. `requiresSelection` identifies a proposed change.
-- Codex scope is `next-launch`. `meter` comes from the requested model's verified `codex.modelMeters` entry or the configured default. Missing mappings fail with `model_unknown`; an unrelated meter never substitutes for the requested one.
+- Codex scope is `next-launch`. `meter` is the configured account `defaultMeter`, independent of the optional model. Eligibility does not establish model entitlement; native Codex validates that at execution.
 - Each account includes `observedAt`, `ageSeconds`, quota windows, a reason code and reserve status. Stale, future-dated, duplicate, malformed, removed and disabled observations cannot authorize selection. Normal and critical selection reuse production functions. Configured Claude model scopes remain constraints.
 - `automationPaused` is independent from quota eligibility. Pauses stop HotPl8 automatic actions, not running work or explicit native launches. `requiresNativeValidation` is always true: launch still owns native account and configuration validation.
 - `nextObservedResetAt` is the earliest future reset among projected windows, not an assurance of refill or readiness at that time. `computedAt` is the response clock, never the quota observation time. No API field promises remaining tokens, task completion, time-to-completion or reserved provider quota.
@@ -55,7 +55,7 @@ The envelope is stable v1. Exit 0 means the request succeeded, which includes a 
 | `invalid_json`, `invalid_request`, `invalid_arguments`, `request_too_large` | Correct the request. |
 | `unsupported_version`, `unknown_operation` | Use documented v1 operations. |
 | `policy_invalid`, `snapshot_missing`, `snapshot_invalid` | Inspect/setup/refresh through the existing local CLI; a read does not repair state. |
-| `model_unknown` | Supply a verified mapping; this is not a request to guess a model meter. |
+| `model_unknown` | This provider does not support a model override in readiness (currently Claude). Omit the override. |
 | `permission_denied` | This MCP process did not enable pause writes. |
 | `lease_conflict` | Lease ID is already associated with different parameters or was released before acquisition. |
 | `lease_state_invalid` | Lease state cannot be trusted. Automation stays paused; inspect it locally. |

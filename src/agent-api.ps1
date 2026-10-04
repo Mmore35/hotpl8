@@ -16,7 +16,7 @@ function Get-Hotpl8AgentError([string]$Code) {
         policy_invalid='No valid policy is available. Use the local setup or doctor command.'
         snapshot_missing='No completed snapshot is available. Use the local refresh command.'
         snapshot_invalid='The cached observation is invalid or unsupported.'
-        model_unknown='The requested model has no verified quota-meter mapping.'
+        model_unknown='This provider does not support a model override in readiness.'
         lease_state_invalid='Lease state is invalid. Automation remains paused; inspect it locally.'
         lease_conflict='This lease ID was used with different arguments or was already released.'
         lease_capacity='The lease ledger is full. Retry after retained records expire.'
@@ -90,8 +90,8 @@ function Test-Hotpl8AgentCodexObservation($Slot,[string]$Meter) {
 function Get-Hotpl8NativeAgentReadiness($Policy,$Snapshot,[string]$Directory,[string]$Provider,[string]$Model,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,[string]$ControlDirectory) {
     $pause=Get-Hotpl8AgentPause $(if($ControlDirectory){$ControlDirectory}else{$Directory}) $Now
     $part=if($Provider -eq 'claude'){$Policy}else{$Policy.codex}
-    $meter=if($Provider -eq 'claude'){'claude'}elseif($Model){[string]$part.modelMeters.$Model}elseif($part.defaultMeter){[string]$part.defaultMeter}else{'codex'}
-    if($Model -and ($Provider -ne 'codex' -or -not $meter)){Stop-Hotpl8AgentRequest 'model_unknown'}
+    $meter=if($Provider -eq 'claude'){'claude'}elseif($part.defaultMeter){[string]$part.defaultMeter}else{'codex'}
+    if($Model -and $Provider -ne 'codex'){Stop-Hotpl8AgentRequest 'model_unknown'}
     $configured=@(if($Provider -eq 'claude'){$Policy.prefer|ForEach-Object {[string]$_}}else{$part.slots|Where-Object {$_}|ForEach-Object {[string]$_.id}})
     $observations=@(if($Provider -eq 'claude'){$Snapshot.slots}else{$Snapshot.providers.codex.slots})
     $accounts=@();$usable=@();$acc=@{};$identities=@{}
@@ -215,7 +215,7 @@ function Invoke-Hotpl8AgentRequest($Request,[string]$Directory,[bool]$AllowPause
             return New-Hotpl8AgentEnvelope $operation $result ''
         }elseif($operation -eq 'readiness'){
             Assert-Hotpl8AgentArguments $a @('provider','model') @('provider')
-            if($a.provider -isnot [string] -or $a.provider -cnotin @(Get-Hotpl8ProviderCatalog|ForEach-Object id) -or ($a.PSObject.Properties['model'] -and ($a.model -isnot [string] -or $a.model -notmatch '^[a-zA-Z0-9_.-]{1,100}$'))){Stop-Hotpl8AgentRequest 'invalid_arguments'}
+            if($a.provider -isnot [string] -or $a.provider -cnotin @(Get-Hotpl8ProviderCatalog|ForEach-Object id) -or ($a.PSObject.Properties['model'] -and $a.model -isnot [string])){Stop-Hotpl8AgentRequest 'invalid_arguments'}
         }elseif($operation -in @('pause.acquire','pause.release')){
             if(-not $AllowPause){Stop-Hotpl8AgentRequest 'permission_denied'}
             $keys=if($operation -eq 'pause.acquire'){@('leaseId','owner','minutes')}else{@('leaseId')}

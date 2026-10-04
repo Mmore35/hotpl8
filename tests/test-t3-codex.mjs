@@ -10,7 +10,7 @@ function harness() {
     requests.push(request);
     if (reject) throw Object.assign(new Error(), { code: 'routing_unavailable' });
     const slot = request.operation === 'refresh' ? request.previousSlot : selected;
-    return { slot, home: `fixture/${slot}`, model: request.model || 'fixture-model', meter: 'codex', auth: { accessToken: `SECRET-${slot}`, chatgptAccountId: slot } };
+    return { slot, home: `fixture/${slot}`, meter: 'codex', auth: { accessToken: `SECRET-${slot}`, chatgptAccountId: slot } };
   };
   const bridge = new CodexBridge({ broker, cwd: 'fixture', toClient: msg => client.push(msg), toNative: msg => {
     native.push(msg);
@@ -55,7 +55,7 @@ test('failed native apply invalidates the binding receipt without replaying work
     } else send(message);
   };
   const count = h.native.filter(m => m.method === 'turn/start').length;
-  h.select('b'); await assert.rejects(h.bridge.select('fixture-model'), /routing_native_rejected/);
+  h.select('b'); await assert.rejects(h.bridge.select(), /routing_native_rejected/);
   assert.equal(h.bridge.route, null);
   assert.equal(h.native.filter(m => m.method === 'turn/start').length, count);
   assert.equal(h.bridge.active.size, 0);
@@ -74,7 +74,8 @@ test('new and resumed turns route at admission while keeping thread identity', a
   const h = harness(); await opened(h); h.select('b');
   await h.bridge.client({ id: 3, method: 'turn/start', params: { threadId: 't', model: 'other-model', input: [{ type: 'text', text: 'hello' }] } });
   assert.equal(h.bridge.route.slot, 'b');
-  assert.equal(h.requests.at(-1).model, 'other-model');
+  assert.equal('model' in h.requests.at(-1), false);
+  assert.equal(h.native.at(-1).params.model, 'other-model');
   assert.equal(h.native.at(-1).params.threadId, 't');
   assert.deepEqual(h.native.at(-1).params.input, [{ type: 'text', text: 'hello' }]);
   h.bridge.close();
@@ -112,9 +113,9 @@ test('ongoing child work defers account changes even after parent completion', a
   h.bridge.native({ method: 'turn/completed', params: { threadId: 't' } });
   h.select('b'); await h.bridge.observe();
   assert.equal(h.bridge.route.slot, 'a'); assert.equal(h.bridge.active.has('child'), true);
-  assert.deepEqual(h.requests.at(-1).models, ['fixture-model']);
+  assert.equal('models' in h.requests.at(-1), false);
   h.bridge.native({ method: 'turn/completed', params: { threadId: 'child' } });
-  await h.bridge.select('fixture-model');
+  await h.bridge.select();
   assert.equal(h.bridge.route.slot, 'b'); h.bridge.close();
 });
 test('quota failure blocks inference with fixed error and no fallback to native shared auth', async () => {
@@ -294,22 +295,22 @@ test('observation bursts coalesce, and shutdown prevents late authentication', a
   assert.equal(h.native.length, before); assert.equal(h.bridge.route, null);
 });
 
-test('an account selection must include models in other active threads', async () => {
+test('active sibling models do not affect account selection or permit rebinding', async () => {
   const h = harness(); await opened(h); started(h);
   h.bridge.threads.set('sibling', { model: 'other-model', cwd: 'fixture' }); started(h, 'sibling');
   h.select('b'); await h.bridge.observe();
-  assert.deepEqual(h.requests.at(-1).models, ['fixture-model', 'other-model']); h.bridge.close();
+  assert.equal('models' in h.requests.at(-1), false); assert.equal(h.bridge.route.slot, 'a'); h.bridge.close();
 });
 
 test('the native first-party base URL cannot redirect subscription auth', () => {
   assert.throws(() => assertConfig({ openai_base_url: 'https://fixture.invalid' }), /routing_config_conflict/);
 });
 
-test('unknown child metadata and model changes during validation defer auth safely', async () => {
+test('unknown child metadata and new children retain the active account without model discovery', async () => {
   const h = harness(); await opened(h); started(h, 'unknown-child'); h.select('b');
   const errors = []; h.bridge.onRoutingError = code => errors.push(code);
   await h.bridge.observe();
-  assert.deepEqual(errors, ['routing_model_unknown']); assert.equal(h.bridge.route.slot, 'a');
+  assert.deepEqual(errors, []); assert.equal(h.native.some(m => m.method === 'thread/read'), false); assert.equal(h.bridge.route.slot, 'a');
   h.bridge.active.clear(); started(h);
   const broker = h.bridge.broker;
   h.bridge.broker = async request => {
@@ -317,14 +318,15 @@ test('unknown child metadata and model changes during validation defer auth safe
     return broker(request);
   };
   await h.bridge.observe();
-  assert.equal(errors.at(-1), 'routing_model_changed'); assert.equal(h.bridge.route.slot, 'a'); h.bridge.close();
+  assert.deepEqual(errors, []); assert.equal(h.native.filter(m => m.method === 'account/login/start').length, 1); assert.equal(h.bridge.route.slot, 'a'); h.bridge.close();
 });
 
 test('rejected model changes preserve the native active model and reservation ownership', async () => {
   const h = harness(); await opened(h); started(h);
   await h.bridge.client({ id: 7, method: 'turn/start', params: { threadId: 't', model: 'different-model' } });
   await h.bridge.observe();
-  assert.deepEqual(new Set(h.requests.at(-1).models), new Set(['fixture-model', 'different-model']));
+  assert.equal('models' in h.requests.at(-1), false);
+  assert.equal(h.native.find(m => m.id === 7).params.model, 'different-model');
   h.bridge.native({ id: 7, error: { code: 1 } });
   assert.equal(h.bridge.threads.get('t').model, 'fixture-model');
   assert.equal(h.bridge.active.get('t'), 'one'); assert.equal(h.bridge.reservations.size, 0); h.bridge.close();
@@ -338,29 +340,28 @@ test('late refresh cannot restore the account replaced by a rollover', async () 
     return broker(request);
   };
   const refresh = h.bridge.refresh({ id: 91, params: { previousAccountId: 'a' } });
-  h.select('b'); await h.bridge.select('fixture-model'); release(); await refresh;
+  h.select('b'); await h.bridge.select(); release(); await refresh;
   assert.equal(h.bridge.route.slot, 'b'); assert.match(h.native.at(-1).error.message, /routing_refresh_failed/); h.bridge.close();
 });
 
-test('completed latest-admitted model cannot block surviving work on another meter', async () => {
+test('completed child model cannot affect account selection for surviving work', async () => {
   const h = harness(); await opened(h); started(h);
   h.bridge.threads.set('finishing', { model: 'finished-model', cwd: 'fixture' });
   await h.bridge.client({ id: 7, method: 'turn/start', params: { threadId: 'finishing' } });
   h.bridge.native({ id: 7, result: { turn: { id: 'done' } } }); started(h, 'finishing', 'done');
-  assert.equal(h.bridge.route.model, 'finished-model');
+  assert.equal('model' in h.bridge.route, false);
   h.bridge.native({ method: 'turn/completed', params: { threadId: 'finishing', turn: { id: 'done' } } });
   const broker = h.bridge.broker;
-  const meters = { 'fixture-model': 'codex', 'finished-model': 'codex_bengalfox' };
   h.bridge.broker = request => {
-    if (request.models.some(model => meters[model] === 'codex_bengalfox')) throw Object.assign(new Error(), { code: 'routing_unavailable' });
+    assert.equal('model' in request, false); assert.equal('models' in request, false);
     return broker(request);
   };
   await h.bridge.observe();
-  assert.equal(h.bridge.route.slot, 'a'); assert.equal(h.bridge.route.model, 'fixture-model');
-  assert.deepEqual(h.requests.at(-1).models, ['fixture-model']); h.bridge.close();
+  assert.equal(h.bridge.route.slot, 'a'); assert.equal(h.bridge.active.get('t'), 'one');
+  assert.equal('models' in h.requests.at(-1), false); h.bridge.close();
 });
 
-test('queued observation derives its models when execution starts and ignores completed work', async () => {
+test('queued observation retains active ownership and ignores completed work', async () => {
   const h = harness(); await opened(h); started(h);
   h.bridge.threads.set('finishing', { model: 'finished-model', cwd: 'fixture' }); started(h, 'finishing', 'done');
   let release;
@@ -368,7 +369,7 @@ test('queued observation derives its models when execution starts and ignores co
   const observation = h.bridge.observe();
   h.bridge.native({ method: 'turn/completed', params: { threadId: 'finishing', turn: { id: 'done' } } });
   h.select('b'); release(); await observation;
-  assert.equal(h.bridge.route.slot, 'a'); assert.deepEqual(h.requests.at(-1).models, ['fixture-model']);
+  assert.equal(h.bridge.route.slot, 'a'); assert.equal('models' in h.requests.at(-1), false);
   const before = h.requests.length;
   h.bridge.routing = new Promise(done => { release = done; });
   const idleObservation = h.bridge.observe();
@@ -381,4 +382,37 @@ test('initialization still admits the native default when configuration omits mo
   const h = harness(); h.config({ cli_auth_credentials_store: 'ephemeral' }); await opened(h);
   assert.equal(h.bridge.route.slot, 'a');
   assert.equal(h.native.filter(m => m.method === 'account/login/start').length, 1); h.bridge.close();
+});
+
+test('unseen models and native options pass through unchanged and failures are never replayed', async () => {
+  const h = harness(); await opened(h);
+  const variants = [{}, { model: null }, ...Array.from({ length: 200 }, (_, n) => ({
+    model: `future-family-${n}`, serviceTier: n % 2 ? 'priority' : null, effort: 'high'
+  }))];
+  try {
+    for (const [index, options] of variants.entries()) {
+      const message = { id: index + 100, method: 'turn/start', params: { threadId: 't', input: [], ...options } };
+      await h.bridge.client(message);
+      assert.deepEqual(h.native.at(-1), message);
+      assert.equal('model' in h.requests.at(-1), false);
+      assert.equal('models' in h.requests.at(-1), false);
+      const failure = { id: message.id, error: { code: -32602, message: 'Synthetic native model unavailable' } };
+      h.bridge.native(failure);
+      assert.deepEqual(h.client.at(-1), failure);
+      assert.equal(h.native.filter(m => m.id === message.id).length, 1);
+    }
+    assert.equal(h.bridge.reservations.size, 0);
+  } finally { h.bridge.close(); }
+});
+
+test('native model rerouting is forwarded without a new account decision', async () => {
+  const h = harness(); await opened(h); started(h);
+  const before = h.requests.length;
+  const notification = { method: 'model/rerouted', params: { threadId: 't', turnId: 'one', toModel: 'future-native-fallback' } };
+  h.bridge.native(notification);
+  await new Promise(done => setImmediate(done));
+  assert.deepEqual(h.client.at(-1), notification);
+  assert.equal(h.requests.length, before);
+  assert.equal(h.bridge.route.slot, 'a');
+  assert.equal(h.bridge.active.get('t'), 'one'); h.bridge.close();
 });

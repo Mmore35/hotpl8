@@ -202,7 +202,8 @@ function Assert-CodexPolicy($Policy) {
     }
     if ($Policy.defaultMeter -and $Policy.defaultMeter -notin @('codex','codex_bengalfox')) { throw 'invalid_meter' }
     if ($Policy.order -and $Policy.order -notin @('prefer','soonest-reset','weekly-expiry','balanced')) { throw 'invalid_order' }
-    foreach($entry in $Policy.modelMeters.PSObject.Properties){if($entry.Name -notmatch '^[a-zA-Z0-9_.-]{1,100}$' -or $entry.Value -notin @('codex','codex_bengalfox')){throw 'invalid_model_meter'}}
+    # Legacy maps are inert compatibility data; native owns model availability.
+    if($Policy.PSObject.Properties['modelMeters'] -and $Policy.modelMeters -isnot [pscustomobject]){throw 'invalid_model_meter'}
     if($null -ne $Policy.resetLeadMin -and (-not (Test-Hotpl8Number $Policy.resetLeadMin) -or $Policy.resetLeadMin -lt 0 -or $Policy.resetLeadMin -gt 604800)){throw 'invalid_reset_lead'}
     foreach($id in @($Policy.disabled)){if($id -and -not $ids.ContainsKey([string]$id)){throw 'invalid_disabled_slot'}}
 }
@@ -350,11 +351,7 @@ function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, 
         if (-not $SlotId) { throw 'Resume/fork requires -Slot naming the home that owns the conversation.' }
     }
     $explicit = -not [string]::IsNullOrWhiteSpace($SlotId)
-    $meter = $null
-    if ($Model) {
-        $meter = [string]$Policy.modelMeters.$Model
-        if (-not $meter) { throw 'Model quota meter is not verified in codex.modelMeters.' }
-    } else { $meter = if ($Policy.defaultMeter) { [string]$Policy.defaultMeter } else { 'codex' } }
+    $meter = if ($Policy.defaultMeter) { [string]$Policy.defaultMeter } else { 'codex' }
     if (-not $explicit) {
         try { $age = ($Now - [datetimeoffset]::Parse($Status.observedAt)).TotalSeconds } catch { throw 'No current Codex status. Run hotpl8 refresh first or choose -Slot.' }
         if ($age -lt -5 -or $age -gt 900) { throw 'Codex status is stale. Refresh it or choose -Slot.' }
@@ -377,9 +374,6 @@ function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, 
     if ($matches.Count -ne 1) { throw 'Unknown or duplicate Codex slot.' }
     $slot = $matches[0]
     if($slot.id -in @($Policy.disabled)){throw 'This Codex slot is disabled. Enable it before launch.'}
-    $observed = @($Status.slots | Where-Object id -EQ $SlotId | Select-Object -First 1)
-    if (-not $Model -and $observed.Count) { $Model = [string]$observed[0].defaultModel }
-    if (-not $explicit -and (-not $Model -or [string]$Policy.modelMeters.$Model -ne $meter)) { throw 'Default model quota mapping is unverified. Configure codex.modelMeters or launch an explicit -Slot.' }
     return [pscustomobject]@{ policy = $Policy; slot = $slot; model = $Model; meter = $meter; automatic = (-not $explicit); emergency=[bool]$decision.critical.active; arguments = @($Arguments);observations=$observations;context=$Context;status=$Status }
 }
 function Invoke-Hotpl8Codex($Plan, [string]$StateDirectory, [string]$Executable, [string]$WorkingDirectory,[string]$ControlDirectory,[string]$ProviderId='codex') {

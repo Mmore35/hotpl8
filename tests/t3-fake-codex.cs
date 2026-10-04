@@ -47,7 +47,7 @@ public class T3FakeCodex {
             if(method=="thread/start" || method=="thread/resume") result=new {thread=new {id="thread-fixture"}};
             if(method=="turn/start") {
                 if(!active) { active=true; toolExecutions++; Send(new {method="turn/started",@params=new {threadId="thread-fixture",turn=new {id="turn-fixture"}}}); }
-                Send(new {id=id,result=new {turn=new {id="turn-fixture"},account=account,toolExecutions=toolExecutions}});
+                Send(new {id=id,result=new {turn=new {id="turn-fixture"},account=account,toolExecutions=toolExecutions,requestModel=p.ContainsKey("model")?p["model"]:null}});
                 if(!File.Exists(Path.Combine(home,"keep-active"))) { active=false; Send(new {method="turn/completed",@params=new {threadId="thread-fixture",turn=new {id="turn-fixture",status="completed"}}}); }
                 continue;
             }

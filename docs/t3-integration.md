@@ -25,8 +25,8 @@ picker shows Codex once; models such as Astra are unchanged. Removal restores th
 recorded original provider configuration. First-time setup requires T3 to be
 closed because T3 can tear down sessions when provider configuration changes.
 
-`-MakeDefault` verifies helper model mappings and supplies an explicit mapped
-helper model when absent; `-TextGenerationModel` chooses that model. Existing
+`-MakeDefault` supplies T3's existing native default model for helpers when absent;
+`-TextGenerationModel` chooses that model. No model registration is required. Existing
 helper models are preserved unless explicitly overridden. An explicit distinct
 `-TargetProviderId` still supports an opt-in provider for isolated qualification;
 in that mode `-MakeDefault` also moves matching default selections. Ordinary
@@ -119,7 +119,7 @@ move its thread selections back before removal.
 2. The bridge starts Codex against T3's existing shared home, forcing ephemeral
    credential storage. It validates the effective provider/transport configuration.
 3. A private PowerShell broker reuses HotPl8's selectors, reserves, critical policy,
-   holds, model-to-meter mapping, freshness checks and canonical identity bindings.
+   holds, the configured account quota basis, freshness checks and canonical identity bindings.
    It validates the selected home through native account/quota reads. A newly
    exhausted candidate is excluded and another fresh eligible candidate can win.
    Concurrent title helpers and chat sessions may briefly contend for the same
@@ -136,7 +136,7 @@ move its thread selections back before removal.
    permission for existing work, so a validated alternative is adopted only
    between turns. The bridge never replays the previous turn.
    Account changes serialize independently of follow-ups, steering, interrupts,
-   approvals and tool replies. Observed active child models participate in selection.
+   approvals and tool replies. Parent and child model names do not affect selection.
 6. An external-token refresh request is answered only for the matching account.
    Native Codex refreshes that canonical home under HotPl8's per-home lock. A
    failed refresh or changed identity fails closed; it never refreshes another
@@ -147,7 +147,7 @@ move its thread selections back before removal.
 
 Authentication files are never copied, overwritten or symlinked. Native Codex
 still owns ordinary session/database writes in the shared home. Billing/API-key,
-custom transport, unknown model mappings and missing quota evidence are rejected.
+custom transport and missing quota evidence are rejected.
 Keyring-only accounts are not supported by this adapter. Native enrollment remains
 the place to sign in/out; account mutations and credit redemption through the
 managed T3 provider are intentionally unavailable.
@@ -163,10 +163,21 @@ settings; enabling them also affects Claude actions. The upgrade does not silent
 change them. Account changes remain deferred until active work drains, regardless
 of the automation controls.
 
+## Models and account quota
+
+HotPl8 selects accounts using `codex.defaultMeter` (normally `codex`) and the
+existing account policy. Native Codex selects and validates models. Unfamiliar
+model names pass through unchanged; omitted/null choices stay omitted/null.
+Native model errors are forwarded once, with no substitution or replay.
+
+Legacy `modelMeters` objects remain readable and are preserved, but are ignored.
+Per-model meter selection is retired; an explicitly configured `defaultMeter`
+is preserved. A quota recommendation is not proof of model entitlement, remote
+acceptance, or reserved allowance. See [the design and migration notes](plans/model-independent-routing.md).
+
 ## Errors and recovery
 
 Errors have fixed `routing_*` codes. `routing_stale` means refresh the collector;
-`routing_model_unknown` requires a verified model-meter mapping;
 `routing_unavailable` means no validated eligible account was found;
 `routing_binding_changed` requires rechecking enrollment;
 `routing_refresh_failed` requires native authentication inspection;
@@ -174,9 +185,11 @@ Errors have fixed `routing_*` codes. `routing_stale` means refresh the collector
 and `routing_selection_held` explain suppressed autonomous rollover;
 `routing_state_changed` means controls changed during validation and selection must
 be prepared again. These codes never authorize replaying an admitted turn.
-Older loaded bridges can still report `routing_busy` for active follow-ups.
+Older loaded bridges can still report `routing_model_unknown`, `routing_model_changed`
+or `routing_busy`. Model-map errors require adopting the updated bridge, not
+registering each new model. Check component delivery/running revisions and reopen
+the provider after active work finishes. Older bridges can reject active follow-ups.
 Check their running revision; this implementation removes that blanket rejection.
-`routing_model_changed` defers a switch when active models change during validation;
 `routing_observation_failed` means the collector subscription failed. Native quota
 notifications remain an additional wakeup. See the
 [rollover design and evidence](plans/t3-active-turn-admission.md).

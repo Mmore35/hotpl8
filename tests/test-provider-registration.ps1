@@ -57,16 +57,16 @@ try{
         $d=Get-Hotpl8ProviderDefinition claude $catalog;$d.id='codex'
         Reject {Assert-Hotpl8ProviderDefinition $d}
     }
-    Check 'meter and model constraints cannot escape a driver contract' {
+    Check 'meter constraints stay enforced while legacy model maps are inert' {
         foreach($meters in @(@('codex','codex'),@('unverified'))){
             $d=Get-Hotpl8ProviderDefinition codex $catalog;$d.meters=$meters
             Reject {Assert-Hotpl8ProviderDefinition $d}
         }
         $d=Get-Hotpl8ProviderDefinition codex $catalog;$d.defaultMeter='unknown'
         Reject {Assert-Hotpl8ProviderDefinition $d}
-        $d=Get-Hotpl8ProviderDefinition codex $catalog;$d.modelMeters=[pscustomobject]@{'fictional-model'='unknown'}
-        Reject {Assert-Hotpl8ProviderDefinition $d}
-        $d.modelMeters=[pscustomobject]@{'bad/name'='codex'};Reject {Assert-Hotpl8ProviderDefinition $d}
+        $d=Get-Hotpl8ProviderDefinition codex $catalog;$d|Add-Member NoteProperty modelMeters ([pscustomobject]@{'fictional-model'='unknown';'bad/name'='retired-meter'})
+        Assert-Hotpl8ProviderDefinition $d
+        $d.modelMeters=@('malformed');Reject {Assert-Hotpl8ProviderDefinition $d}
         $d=Get-Hotpl8ProviderDefinition codex $catalog;$d.meters='codex';Reject {Assert-Hotpl8ProviderDefinition $d}
     }
     Check 'native window applicability cannot be weakened or invented in a definition' {
@@ -180,13 +180,16 @@ try{
         }
         $p='{"schemaVersion":2,"codex":[]}'|ConvertFrom-Json;Reject {Get-Hotpl8ConfiguredProviders $p $catalog}
     }
-    Check 'descriptor defaults for model mappings merge without widening supported meters' {
+    Check 'legacy model maps are not merged and cannot change the configured quota basis' {
         $d=Get-Hotpl8ProviderDefinition codex $catalog;$d.id='fictional';$d.meters=@('codex')
-        $d.modelMeters=[pscustomobject]@{'fictional-default'='codex'}
+        $d|Add-Member NoteProperty modelMeters ([pscustomobject]@{'fictional-default'='codex'})
         $p='{"schemaVersion":3,"providers":{"fictional":{"slots":[],"modelMeters":{"fictional-explicit":"codex"}}}}'|ConvertFrom-Json
         $r=@(Get-Hotpl8ConfiguredProviders $p @($d))[0]
-        Assert ($r.policy.modelMeters.'fictional-default' -eq 'codex' -and $r.policy.modelMeters.'fictional-explicit' -eq 'codex')
-        $p.providers.fictional.modelMeters.'fictional-explicit'='codex_bengalfox';Reject {Get-Hotpl8ConfiguredProviders $p @($d)}
+        Assert (-not $r.policy.modelMeters.'fictional-default' -and $r.policy.modelMeters.'fictional-explicit' -eq 'codex' -and $r.policy.defaultMeter -eq 'codex')
+        $p.providers.fictional.modelMeters.'fictional-explicit'='retired-meter';$r=@(Get-Hotpl8ConfiguredProviders $p @($d))[0];Assert ($r.policy.defaultMeter -eq 'codex')
+        foreach($n in 1..300){$p.providers.fictional.modelMeters|Add-Member NoteProperty ('retired-'+$n) 'codex'}
+        $r=@(Get-Hotpl8ConfiguredProviders $p @($d))[0];Assert ($r.policy.defaultMeter -eq 'codex' -and @($r.policy.modelMeters.PSObject.Properties).Count -eq 301)
+        $p.providers.fictional.modelMeters=@('malformed');Reject {Get-Hotpl8ConfiguredProviders $p @($d)}
         $p.providers.fictional.modelMeters=[pscustomobject]@{}
         $p.providers.fictional|Add-Member NoteProperty defaultMeter 'codex_bengalfox';Reject {Get-Hotpl8ConfiguredProviders $p @($d)}
     }
@@ -379,7 +382,7 @@ Assert ($historyCli.exitCode -eq 0 -and $history.samples -eq 5 -and $history.sto
 $clearCli=Invoke-Hotpl8Process $ps @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Package 'hotpl8.ps1'),'history','-Operation','clear','-StateDirectory',$state) 90000
 Assert ($clearCli.exitCode -eq 0 -and @((Read-Hotpl8Json (Join-Path $aliasState 'usage-history.json')).samples).Count -eq 0 -and @((Read-Hotpl8Json (Join-Path $state 'usage-history.json')).samples).Count -eq 0) 'history clear missed configured stores'
 Assert (@((Read-Hotpl8Json (Join-Path $orphanState 'usage-history.json')).samples).Count -eq 1) 'history clear deleted unregistered residual state'
-$narrow=Get-Hotpl8ProviderDefinition fictional;$narrow.meters=@('codex');$narrow.modelMeters=[pscustomobject]@{}
+$narrow=Get-Hotpl8ProviderDefinition fictional;$narrow.meters=@('codex')
 Write-Hotpl8Text (Join-Path $Package 'data/providers/fictional.json') ($narrow|ConvertTo-Json -Depth 12)
 $narrowReplay=Invoke-Hotpl8Replay @($snapshot) $policy
 Assert (@($narrowReplay.decisions|Where-Object stream -Like 'fictional/*').Count -eq 4 -and @($narrowReplay.summary|Where-Object stream -Like 'fictional/codex_bengalfox/*').Count -eq 0) 'replay invented unsupported registered meter'
