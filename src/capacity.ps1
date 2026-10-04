@@ -138,6 +138,10 @@ function Get-Hotpl8ProviderCapacity($Snapshot,$Part,[string]$Provider,[datetimeo
                 if(-not $primary.Count){$primary=@($a.windows|Where-Object name -EQ '10080'|Select-Object -First 1)}
                 foreach($w in $a.windows){$w.full=$(if($primary.Count -and $w -eq $primary[0]){1.0}else{$null})}
                 $a.weekly=1.0;$a.scaled=$true;$a.weightBasis='equal'
+                # Derived fields follow the new basis, so an unconverted weekly limit is still reported as one.
+                $a.unconvertedConstraints=@($a.windows|Where-Object {$null -eq $_.full}|ForEach-Object name)
+                $a.gross=($a.windows|Where-Object {$null -ne $_.full}|ForEach-Object {$_.full*$_.remaining/100}|Measure-Object -Minimum).Minimum
+                $a.confidence=if($a.unconvertedConstraints.Count){'weekly/model conversion unavailable'}else{'equal-weight current-window estimate'}
             }
         }
         $coverage=[pscustomobject]@{measured=$accounts.Count;excluded=$excluded}

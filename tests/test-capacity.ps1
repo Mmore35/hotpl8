@@ -550,6 +550,12 @@ Check 'calibrated mixed tiers normalize against session capacity and preserve th
     $s.slots[0]|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
     $mixed=(Get-Hotpl8ProviderOverview $s $p $now).claude.immediate
     Assert ($mixed.complete -and (@($mixed.accounts.weightBasis|Select-Object -Unique) -join ',') -eq 'equal')
+    # The fallback's derived fields follow the equal basis: a low weekly balance
+    # is unconverted again, so the display still says the cap is uncertain.
+    $low=Clone $s;$low.slots[1].used5h=0;$low.slots[1].used7d=90
+    $o=Get-Hotpl8ProviderOverview $low $p $now
+    Assert (@($o.claude.immediate.accounts|Where-Object {$_.unconvertedConstraints -notcontains '10080' -or $_.confidence -ne 'weekly/model conversion unavailable'}).Count -eq 0)
+    Assert ((Get-Hotpl8CapacityDisplay $o.claude).state.Contains('(weekly cap uncertain)'))
     $s.slots[1]|Add-Member NoteProperty plan @{status='detected';profile='claude-max-5x';observedAt=$now.ToString('o')} -Force
     Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
 }

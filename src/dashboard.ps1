@@ -235,7 +235,7 @@ function Get-Hotpl8NativeDashboardRows($Status,$Policy,[datetimeoffset]$Now,[int
         }
     }
 }
-function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact,[double]$AnimationSeconds=0,[switch]$ReducedMotion) {
+function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[switch]$Compact,[double]$AnimationSeconds=0,[switch]$ReducedMotion,[switch]$ListLoneEvent) {
     if(-not $Policy){$Policy=[pscustomobject]@{}}
     if(-not @(Get-Hotpl8ProviderAccounts $Policy).Count -and -not $Status){
         Get-Hotpl8NativeDashboardRows $Status ([pscustomobject]@{}) $Now $Width -Compact:$Compact -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion
@@ -247,8 +247,10 @@ function Get-Hotpl8DashboardRows($Status,$Policy,[datetimeoffset]$Now,[int]$Widt
         Get-Hotpl8NativeDashboardRows $v.snapshot $v.policy $Now $Width -Compact:$Compact -AnimationSeconds $AnimationSeconds -ReducedMotion:$ReducedMotion -Family $v.provider -ProviderName $r.name -ProviderId $r.id -SuppressGlobal:(-not $first) -SuppressRecent -GlobalStatus $Status
         $first=$false
     }
-    # The footer already shows the latest event; list history only when there is more.
-    if(-not $Compact -and @($Status.recentActions|Where-Object {$_}).Count -gt 1){
+    # The footer shows the latest event when it has room; list history when there
+    # is more than that, or when the caller found no room for a single event.
+    $recorded=@($Status.recentActions|Where-Object {$_}).Count
+    if(-not $Compact -and ($recorded -gt 1 -or ($recorded -eq 1 -and $ListLoneEvent))){
         New-DashboardRow '  RECENT' muted
         foreach($event in @($Status.recentActions|Select-Object -Last 3)){
             $note=Get-DashboardActivityNote $event $Policy $Now
@@ -375,34 +377,46 @@ function Get-Hotpl8AutomationView($Status,$Policy,[datetimeoffset]$Now) {
     $state=if($paused -and $configured.switching -and $Status.mode -ne 'monitor'){'paused'}elseif(-not $actions.switching){'off'}elseif($held){'held'}else{'on'}
     [pscustomobject]@{switching=$state;until=$(if($state -eq 'paused'){$pause.until}elseif($state -eq 'held'){$Status.hold.until}else{$null});warming=[bool]$actions.warming}
 }
-function Get-Hotpl8AutomationTitleSpans($View,[datetimeoffset]$Now,[switch]$Warming) {
+function Get-Hotpl8AutomationTitleSpans($View,[datetimeoffset]$Now,[switch]$Warming,[switch]$NoDuration,[switch]$Short) {
     # Plain words in neutral tones: being off is a choice, not a fault.
     $left=''
-    if($View.until){$age=Get-DashboardAge $View.until $Now;if($null -ne $age -and $age -lt 0){$left=' '+(Format-DashboardAge (-$age))}}
+    if($View.until -and -not $NoDuration){$age=Get-DashboardAge $View.until $Now;if($null -ne $age -and $age -lt 0){$left=' '+(Format-DashboardAge (-$age))}}
     $glyph=switch($View.switching){'on'{'●'}'off'{'○'}default{'◐'}}
     New-Hotpl8Span ($glyph+' ') $(if($View.switching -eq 'on'){'mint'}else{'muted'})
-    New-Hotpl8Span ('auto-switch '+$View.switching+$left) 'muted'
+    New-Hotpl8Span ($(if($Short){'auto '}else{'auto-switch '})+$View.switching+$left) 'muted'
     if($Warming -and $View.warming){New-Hotpl8Span '   ● ' 'mint';New-Hotpl8Span 'warming on' 'muted'}
 }
 function New-DashboardTitleRow($Status,[datetimeoffset]$Now,[int]$Width,[switch]$Paused,[switch]$Nyan,[double]$AnimationSeconds=0,[switch]$ReducedMotion,$Automation=$null) {
     $left=if($Nyan){'  hotpl8  ·  nyan'}else{'  '+(Get-Hotpl8Cat $AnimationSeconds -ReducedMotion:$ReducedMotion)+'  hotpl8'}
     $meta=@()
-    if($Status.displayPolicy){$meta+=@{text='PREVIEW POLICY';tone='lavender'}}
+    if($Status.displayPolicy){$meta+=@{text='PREVIEW POLICY';tone='lavender';short='PREVIEW'}}
     if($Paused){$meta+=@{text='FROZEN';tone='amber'}}
     $age=Get-DashboardAge $Status.generatedAt $Now
     if($null -eq $age){$meta+=@{text='no reading';tone='amber'}}
-    elseif($age -lt -5){$meta+=@{text='clock mismatch';tone='amber'}}
-    elseif($age -gt 900){$meta+=@{text=('stale '+(Format-DashboardAge $age));tone='amber'}}
-    else{$meta+=@{text=('read '+(Format-DashboardAge $age)+' ago');tone='muted'}}
-    $length=0;foreach($m in $meta){$length+=$m.text.Length+3};$length-=3
+    elseif($age -lt -5){$meta+=@{text='clock mismatch';tone='amber';short='clock'}}
+    elseif($age -gt 900){$meta+=@{text=('stale '+(Format-DashboardAge $age));tone='amber';short='stale'}}
+    else{$meta+=@{text=('read '+(Format-DashboardAge $age)+' ago');tone='muted';short=(Format-DashboardAge $age);age=$true}}
+    $measure={$n=0;foreach($m in $meta){$n+=$m.text.Length+3};[math]::Max(0,$n-3)}
     $auto=@()
     if($Automation){
-        # The auto-switch state is never dropped: omit warming first, then shorten the reading age.
-        $room={param($items) $n=3;foreach($s in $items){$n+=$s.text.Length};$Width-2-$left.Length-$length-$n -ge 2}
-        $auto=@(Get-Hotpl8AutomationTitleSpans $Automation $Now -Warming)
-        if(-not (& $room $auto)){$auto=@(Get-Hotpl8AutomationTitleSpans $Automation $Now)}
-        if(-not (& $room $auto) -and $meta.Count -eq 1 -and $meta[0].tone -eq 'muted'){$meta[0].text=$meta[0].text -replace '^read (.+) ago$','$1';$length=$meta[0].text.Length}
+        # When both sides cannot fit, content gives way in a fixed order so that
+        # nothing is cut mid-word and neither the state nor a warning is lost:
+        # warming, the reading-age wording, the pause or hold duration, the
+        # reading age, warning detail, and last the word "auto-switch" itself.
+        $fits={param($items) $n=3;foreach($s in $items){$n+=$s.text.Length};$Width-2-$left.Length-(& $measure)-$n -ge 2}
+        $warming=$true;$duration=$true;$short=$false
+        for($level=0;$level -le 6;$level++){
+            if($level -eq 1){$warming=$false}
+            elseif($level -eq 2){foreach($m in $meta){if($m.age){$m.text=$m.short}}}
+            elseif($level -eq 3){$duration=$false}
+            elseif($level -eq 4){if($meta.Count -gt 1){$meta=@($meta|Where-Object {-not $_.age})}}
+            elseif($level -eq 5){foreach($m in $meta){if($m.short -and -not $m.age){$m.text=$m.short}}}
+            elseif($level -eq 6){$short=$true}
+            $auto=@(Get-Hotpl8AutomationTitleSpans $Automation $Now -Warming:$warming -NoDuration:(-not $duration) -Short:$short)
+            if(& $fits $auto){break}
+        }
     }
+    $length=& $measure
     $used=$left.Length;if($auto.Count){$used+=3;foreach($s in $auto){$used+=$s.text.Length}}
     $spans=@(New-Hotpl8Span $left 'rose')
     if($auto.Count){$spans+=New-Hotpl8Span '   ';$spans+=$auto}
@@ -418,6 +432,21 @@ function Get-Hotpl8NyanRow([int]$Index,[int]$Width,[double]$AnimationSeconds=0,[
         $script:Hotpl8NyanLast=@{at=$AnimationSeconds;width=$Width;height=$Rows;colorMode=(Get-Hotpl8TerminalColorMode);rows=@(Get-Hotpl8NyanAnsiRows $AnimationSeconds $Width (Get-Hotpl8DashboardPalette) $Rows)}
     }
     return $script:Hotpl8NyanLast.rows[$Index]
+}
+function Get-DashboardFooterParts($Status,$Policy,[datetimeoffset]$Now,[int]$Inside,[string]$Page) {
+    # Narrow frames drop key hints before they can crowd the page indicator.
+    $keys='  q  ·  ↑↓'
+    foreach($candidate in @('  q quit  ·  space freeze  ·  ↑↓ scroll','  q quit  ·  ↑↓ scroll')){if($candidate.Length+$Page.Length+4 -le $Inside){$keys=$candidate;break}}
+    $gap=[math]::Max(2,$Inside-2-$keys.Length-$Page.Length)
+    # The latest automation event sits beside the page indicator when it fits.
+    $activity=$null;$tone=$null
+    $recent=@($Status.recentActions|Where-Object {$_}|Select-Object -Last 1)
+    if($recent.Count){
+        $note=Get-DashboardActivityNote $recent[0] $Policy $Now
+        $text=$note.text+$(if($note.age){'  ·  '+$note.age+' ago'})
+        if($text.Length+4 -le $gap){$activity=$text;$tone=$note.tone}
+    }
+    [pscustomobject]@{keys=$keys;gap=$gap;activity=$activity;tone=$tone}
 }
 function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Width=100,[int]$Height=40,[int]$Offset=0,[switch]$Paused,[double]$AnimationSeconds=0,[switch]$Nyan,[switch]$ReducedMotion,$OverviewOverride=$null,[switch]$Plain,$ResolvedOffset=$null) {
     $width=[Math]::Max(1,[Math]::Min(110,$Width)); $inside=$width-2
@@ -438,6 +467,14 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
         if(-not $motionOff){for($i=0;$i -lt $nyanRows.Count;$i++){$nyanRows[$i]=New-Hotpl8StyledRow $nyanRows[$i].spans (New-Hotpl8Live 'Get-Hotpl8NyanRow' @{Index=$i;Width=$inside;Rows=$nyanHeight} 0 -Loop -Rate 42)}}
     }
     $available=[Math]::Max(1,$Height-7-$summary.Count-$nyanRows.Count)
+    $pageOf={param($count,$at) if($count -gt $available){'['+($at+1)+'-'+[Math]::Min($count,$at+$available)+'/'+$count+']'}else{''}}
+    # A single recent event must appear somewhere: list it when the footer has no room.
+    if($Height -ge 32 -and @($Status.recentActions|Where-Object {$_}).Count -eq 1){
+        $at=[Math]::Max(0,[Math]::Min($Offset,[Math]::Max(0,$rows.Count-$available)))
+        if(-not (Get-DashboardFooterParts $Status $Policy $Now $inside (& $pageOf $rows.Count $at)).activity){
+            $rows=@(Get-Hotpl8DashboardRows $Status $Policy $Now $width -AnimationSeconds $AnimationSeconds -ReducedMotion:$motionOff -ListLoneEvent)
+        }
+    }
     # Prefer showing every account over spending the viewport on forecasts and
     # other optional lines above an account that would otherwise disappear below
     # the fold. Base this on actual content, not just a fixed terminal height.
@@ -468,19 +505,11 @@ function Get-Hotpl8DashboardFrame($Status,$Policy,[datetimeoffset]$Now,[int]$Wid
         else{Add-Hotpl8FrameBorder $visible[$i] $inside}
     }
     New-DashboardRow ('├'+('─'*$inside)+'┤') border
-    $page=if($rows.Count -gt $available){'['+($offset+1)+'-'+[Math]::Min($rows.Count,$offset+$available)+'/'+$rows.Count+']'}else{''}
-    # Narrow frames drop key hints before they can crowd the page indicator.
-    $keys='  q  ·  ↑↓'
-    foreach($candidate in @('  q quit  ·  space freeze  ·  ↑↓ scroll','  q quit  ·  ↑↓ scroll')){if($candidate.Length+$page.Length+4 -le $inside){$keys=$candidate;break}}
-    # The latest automation event sits beside the page indicator when it fits.
-    $footer=@(New-Hotpl8Span $keys 'muted')
-    $recent=@($Status.recentActions|Where-Object {$_}|Select-Object -Last 1)
-    $gap=[math]::Max(2,$inside-2-$keys.Length-$page.Length)
-    if($recent.Count){
-        $note=Get-DashboardActivityNote $recent[0] $Policy $Now
-        $activity=$note.text+$(if($note.age){'  ·  '+$note.age+' ago'})
-        if($activity.Length+4 -le $gap){$footer+=New-Hotpl8Span (' '*($gap-$activity.Length-$(if($page){2}else{0})));$footer+=New-Hotpl8Span $activity $note.tone;$gap=$(if($page){2}else{0})}
-    }
+    $page=& $pageOf $rows.Count $offset
+    $parts=Get-DashboardFooterParts $Status $Policy $Now $inside $page
+    $footer=@(New-Hotpl8Span $parts.keys 'muted')
+    $gap=$parts.gap
+    if($parts.activity){$footer+=New-Hotpl8Span (' '*($gap-$parts.activity.Length-$(if($page){2}else{0})));$footer+=New-Hotpl8Span $parts.activity $parts.tone;$gap=$(if($page){2}else{0})}
     if($gap){$footer+=New-Hotpl8Span (' '*$gap)}
     if($page){$footer+=New-Hotpl8Span $page 'muted'}
     Add-Hotpl8FrameBorder (New-Hotpl8StyledRow $footer) $inside

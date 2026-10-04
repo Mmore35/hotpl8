@@ -132,10 +132,41 @@ Check 'the auto-switch state is never dropped at any supported width' {
         Assert ($text.Contains('● auto-switch on') -and (Get-DashboardCells $text) -eq $width) ([string]$width+': '+$text)
     }
 }
+Check 'the title gives way in whole words at narrow widths and keeps the state and any warning' {
+    $on=Copy-Value $p;$on|Add-Member NoteProperty mode 'automate' -Force;$on|Add-Member NoteProperty switchEnabled $true -Force
+    $monitor=Copy-Value $p;$monitor|Add-Member NoteProperty mode 'monitor' -Force
+    $stale=Copy-Value $s;$stale.generatedAt=$now.AddMinutes(-65).ToString('o')
+    $pausedStale=Copy-Value $stale;$pausedStale|Add-Member NoteProperty actions @{switching=$false;warming=$false;probing=$false} -Force
+    $pausedStale|Add-Member NoteProperty automationPause @{until=$now.AddHours(3).ToString('o')} -Force
+    $held=Copy-Value $s;$held|Add-Member NoteProperty actions @{switching=$true;warming=$false;probing=$false} -Force
+    $held|Add-Member NoteProperty hold @{until=$now.AddHours(2).ToString('o')} -Force
+    $cases=@(
+        @{name='off, stale';status=$stale;policy=$monitor;frozen=$false;words=@('off','stale');full=@('○ auto-switch off','stale 1h 05m')},
+        @{name='accounts, no snapshot';status=$null;policy=$on;frozen=$false;words=@('on','no reading');full=@('● auto-switch on','no reading')},
+        @{name='frozen';status=$s;policy=$on;frozen=$true;words=@('on','FROZEN');full=@('● auto-switch on','FROZEN · read 0s ago')},
+        @{name='paused, stale';status=$pausedStale;policy=$on;frozen=$false;words=@('paused','stale');full=@('◐ auto-switch paused 3h 00m','stale 1h 05m')},
+        @{name='held';status=$held;policy=$on;frozen=$false;words=@('held','0s');full=@('◐ auto-switch held 2h 00m','read 0s ago')}
+    )
+    foreach($case in $cases){
+        foreach($width in @(48,50,60,79,100)){
+            $row=@(Get-Hotpl8DashboardFrame $case.status $case.policy $now $width 40 -Paused:$case.frozen -ReducedMotion)[1]
+            $text=(@($row.spans)|ForEach-Object text) -join ''
+            $label=$case.name+' at '+$width+': '+$text
+            # A two-cell margin before the border means nothing was cut to fit.
+            Assert ((Get-DashboardCells $text) -eq $width -and $text -match '  │$') $label
+            Assert ($text -match '\bauto(-switch)? ') $label
+            foreach($word in $case.words){Assert ($text -match ('(^|[\s·])'+[regex]::Escape($word)+'($|[\s·])')) ($label+' lacks '+$word)}
+            if($width -eq 100){foreach($phrase in $case.full){Assert ($text.Contains($phrase)) ($label+' lacks '+$phrase)}}
+        }
+    }
+}
 Check 'Codex next launch is named by its label and recent history never repeats the footer' {
     $one=Copy-Value $s;$one|Add-Member NoteProperty recentActions @(@{provider='codex';slot='main';kind='recommendation';reason='next_launch_only';at=$now.AddMinutes(-5).ToString('o')}) -Force
     $text=((Render $one).text)-join "`n"
     Assert ($text.Contains('next: Main') -and -not $text.Contains('RECENT')) $text
+    # Too narrow for the footer to carry it, so the single event stays listed.
+    $narrow=((Render $one 48).text)-join "`n"
+    Assert ($narrow.Contains('RECENT') -and $narrow.Contains('codex next')) $narrow
     $two=Copy-Value $one;$two.recentActions=@($one.recentActions[0],$one.recentActions[0])
     Assert ((((Render $two).text)-join "`n").Contains('RECENT'))
 }
