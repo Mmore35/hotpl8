@@ -357,7 +357,7 @@ try {
         $Command = 'status'
     }
 
-    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy})
+    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -SkipDisplay:($Command -eq 'codex')
     if($Command -eq 'explain'){
         if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory) -Force}
         if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}

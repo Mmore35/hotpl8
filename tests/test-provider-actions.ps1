@@ -45,6 +45,23 @@ try {
     $null=Get-Hotpl8ProviderActionContext $policy $dir $base
     $after=@(Get-ChildItem -LiteralPath $dir -File|ForEach-Object { $_.Name+':'+(Get-FileHash -LiteralPath $_.FullName).Hash }) -join '|'
     Assert ($before -ceq $after) 'building decision context is read-only'
+    # The generation must stay byte-for-byte what Get-Item + Get-FileHash produced.
+    function ReferenceGeneration([string]$Directory){
+        $parts=@(foreach($name in @('policy.json','hold.json','automation-pause.json','automation-leases.json')){
+            $path=Join-Path $Directory $name
+            if(Test-Path -LiteralPath $path -PathType Leaf){$name+':'+(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}else{$name+':absent'}
+        })
+        return (Get-Hotpl8Hash ($parts -join '|'))
+    }
+    Assert ((Get-Hotpl8ControlGeneration $dir) -ceq (ReferenceGeneration $dir)) 'generation matches the reference digest for present and absent control files'
+    [IO.File]::WriteAllBytes((Join-Path $dir 'automation-leases.json'),[byte[]]@())
+    [IO.File]::WriteAllBytes((Join-Path $dir 'automation-pause.json'),[byte[]]@(0xEF,0xBB,0xBF,0x7B,0x7D))
+    Assert ((Get-Hotpl8ControlGeneration $dir) -ceq (ReferenceGeneration $dir)) 'empty and byte-order-marked control files are hashed by exact bytes'
+    $absent=Join-Path $dir 'no-such-state'
+    Assert ((Get-Hotpl8ControlGeneration $absent) -ceq (ReferenceGeneration $absent)) 'a missing state directory reads as every control file absent'
+    [IO.File]::Delete((Join-Path $dir 'automation-leases.json'))
+    [void][IO.Directory]::CreateDirectory((Join-Path $dir 'automation-leases.json'))
+    Reject {Get-Hotpl8ControlGeneration $dir} 'action_state_unavailable'
     'passed='+$passed+' failed=0'
 } finally {
     $resolved=[IO.Path]::GetFullPath($dir)

@@ -22,9 +22,16 @@ function Get-Hotpl8ControlGeneration([string]$Directory) {
     # Hash exact bytes so an uncooperative external edit is also detected on reread.
     $parts=@(foreach($name in @('policy.json','hold.json','automation-pause.json','automation-leases.json')){
         $path=Join-Path $Directory $name
-        try {$item=Get-Item -LiteralPath $path -ErrorAction Stop}
-        catch [System.Management.Automation.ItemNotFoundException] {$item=$null}
-        if($item){if($item.PSIsContainer){throw 'action_state_unavailable'};$name+':'+(Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash}
+        # Same result as Get-Item + Get-FileHash, without loading those cmdlets in
+        # every process: only a missing file is absent; any other failure stops.
+        try {$attributes=[IO.File]::GetAttributes($path)}
+        catch [IO.FileNotFoundException],[IO.DirectoryNotFoundException] {$attributes=$null}
+        if($null -ne $attributes){
+            if($attributes -band [IO.FileAttributes]::Directory){throw 'action_state_unavailable'}
+            $sha=[Security.Cryptography.SHA256]::Create()
+            try {$name+':'+([BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($path))) -replace '-','')}
+            finally {$sha.Dispose()}
+        }
         else {$name+':absent'}
     })
     return (Get-Hotpl8Hash ($parts -join '|'))
