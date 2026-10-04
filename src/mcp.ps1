@@ -33,9 +33,9 @@ function Get-Hotpl8McpTools([bool]$AllowPause,[bool]$AllowOnboarding=$false) {
         } }; outputSchema = $outputSchema; annotations = $readAnnotations
     }
     @{
-        name = 'hotpl8_readiness'; description = 'Check current cached account eligibility. Does not reserve capacity, launch work, or validate native authentication. Model mapping depends on the registered native driver.'
+        name = 'hotpl8_readiness'; description = 'Check current cached account eligibility. Does not reserve capacity, launch work, or validate native authentication or model entitlement. Codex account selection is independent of model; Claude model overrides are unsupported.'
         inputSchema = @{ type = 'object'; additionalProperties = $false; required = @('provider'); properties = @{
-            provider = @{ type = 'string'; enum = @(Get-Hotpl8ProviderCatalog|ForEach-Object id) }; model = @{ type = 'string'; minLength = 1; maxLength = 100; pattern = '^[a-zA-Z0-9_.-]{1,100}$' }
+            provider = @{ type = 'string'; enum = @(Get-Hotpl8ProviderCatalog|ForEach-Object id) }; model = @{ type = 'string'; description = 'Compatibility field; ignored for Codex account selection.' }
         } }; outputSchema = $outputSchema; annotations = $readAnnotations
     }
     if($AllowOnboarding){

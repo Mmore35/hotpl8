@@ -107,7 +107,7 @@ export function createBroker(config) {
         const result = JSON.parse(output.replace(/^\uFEFF/, ''));
         output = '';
         if (code !== 0 || result.error) throw error(/^routing_[a-z_]+$/.test(result.error) ? result.error : 'routing_broker_failed');
-        if (!result.slot || !result.home || !result.model || !result.meter) throw error('routing_broker_failed');
+        if (!result.slot || !result.home || !result.meter) throw error('routing_broker_failed');
         resolveRoute(result);
       } catch (err) { reject(err.code ? err : error('routing_broker_failed')); }
     });
@@ -123,7 +123,7 @@ export class CodexBridge {
     this.active = new Map(); this.reservations = new Map(); this.route = null; this.initialized = false; this.closed = false;
     this.counter = 0; this.serial = Promise.resolve();
     this.routing = Promise.resolve(); this.observing = null; this.observationPending = false;
-    this.rebinding = null; this.executingModels = new Map();
+    this.rebinding = null;
   }
   rpc(method, params) {
     const id = `hotpl8-internal-${++this.counter}`;
@@ -150,37 +150,17 @@ export class CodexBridge {
     this.serial = this.serial.then(() => this.dispatch(message)).catch(err => this.fail(message, err.code || 'routing_failed'));
     return this.serial;
   }
-  select(model, cwd = this.cwd, background = false) {
-    const operation = this.routing.then(() => this.selectNow(model, cwd, background));
+  select(cwd = this.cwd, background = false) {
+    const operation = this.routing.then(() => this.selectNow(cwd, background));
     this.routing = operation.catch(() => {});
     return operation;
   }
-  async selectNow(model, cwd, background) {
+  async selectNow(cwd, background) {
     if (this.closed) throw error('routing_closed');
-    // Authentication is process-wide, including native children. Unknown child
-    // models need a native snapshot; role configurations can override the parent.
-    const ids = new Set([...this.active.keys(), ...this.reservations.values()]);
-    for (const id of ids) {
-      if (!this.threads.get(id)?.model) {
-        const snapshot = await this.rpc('thread/read', { threadId: id, includeTurns: false });
-        if (!snapshot.thread?.model || snapshot.thread.modelProvider !== 'openai') throw error('routing_model_unknown');
-        this.threads.set(id, { model: snapshot.thread.model, cwd: snapshot.thread.cwd || this.cwd });
-      }
-    }
-    const activeModels = () => [...new Set([
-      ...[...new Set([...this.active.keys(), ...this.reservations.values()])]
-        .flatMap(id => [this.threads.get(id)?.model, this.executingModels.get(id)]),
-      ...[...this.reservations.keys()].map(key => this.pending.get(key)?.model)
-    ].filter(Boolean))];
-    const models = [...new Set([model, ...activeModels()].filter(Boolean))];
-    // Background observations have no new inference to admit. Select only for
-    // work still present when this serialized operation runs, not the model of
-    // whichever (possibly completed) thread last changed the selected account.
-    if (background && !models.length) return this.route;
+    if (background && !(this.active.size || this.reservations.size)) return this.route;
     const route = await this.broker({ operation: 'select', intent: background ? 'rebind' : 'admit',
-      model: model || models[0], models, cwd, previousSlot: this.route?.slot, criticalState: this.route?.criticalState });
+      cwd, previousSlot: this.route?.slot, criticalState: this.route?.criticalState });
     if (this.closed) throw error('routing_closed');
-    if ([...this.active.keys()].some(id => !this.threads.get(id)?.model) || activeModels().some(m => !models.includes(m))) throw error('routing_model_changed');
     if (!route.auth?.accessToken || !route.auth?.chatgptAccountId) throw error('routing_auth_unavailable');
     const changed = this.route?.accountId !== route.auth.chatgptAccountId || this.route?.slot !== route.slot;
     // Native account/login/start can revoke the old application's network
@@ -194,7 +174,7 @@ export class CodexBridge {
     if (changed) {
       // Only change the process-wide account between turns, after child work and
       // pending admissions have also drained. Never replay an interrupted turn.
-      this.rebinding = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId };
+      this.rebinding = { slot: route.slot, meter: route.meter, accountId: route.auth.chatgptAccountId };
       try { await this.rpc('account/login/start', { type: 'chatgptAuthTokens', ...route.auth }); }
       catch (err) {
         // Any failed apply has an unknown binding. Do not reuse the old receipt
@@ -209,7 +189,7 @@ export class CodexBridge {
     // Retain account identity, not a second access-token cache.
     const criticalState = route.criticalState && { ...route.criticalState, selected: route.slot,
       selectedAt: changed ? new Date().toISOString() : (this.route?.criticalState?.selectedAt || route.criticalState.selectedAt) };
-    this.route = { slot: route.slot, model: route.model, meter: route.meter, accountId: route.auth.chatgptAccountId,
+    this.route = { slot: route.slot, meter: route.meter, accountId: route.auth.chatgptAccountId,
       criticalState };
     return route;
   }
@@ -220,7 +200,7 @@ export class CodexBridge {
     this.observing = (async () => {
       while (this.observationPending && !this.closed) {
         this.observationPending = false;
-        try { await this.select(undefined, this.cwd, true); }
+        try { await this.select(this.cwd, true); }
         catch (err) { if (!this.closed) this.onRoutingError(/^routing_[a-z_]+$/.test(err.code) ? err.code : 'routing_failed'); }
       }
     })().finally(() => { this.observing = null; });
@@ -239,8 +219,8 @@ export class CodexBridge {
       if (this.initialized) throw error('routing_already_initialized');
       const result = await this.rpc('initialize', { ...params, capabilities: { ...params.capabilities, experimentalApi: true } });
       this.toNative({ method: 'initialized' });
-      const config = await this.checkConfig();
-      await this.select(config.model);
+      await this.checkConfig();
+      await this.select();
       this.initialized = true;
       this.toClient({ id: message.id, result });
       return;
@@ -257,8 +237,8 @@ export class CodexBridge {
       if (params.config && Object.keys(params.config).some(k => !['model_reasoning_effort', 'model_reasoning_summary', 'service_tier', 'mcp_servers'].includes(k))) throw error('routing_config_conflict');
       const config = await this.checkConfig(params.cwd || this.cwd);
       const model = params.model || config.model;
-      // No inference is sent while opening/resuming a thread; model admission happens
-      // on turn/start, where T3 can choose a different model than the initial one.
+      // Keep native thread metadata for active follow-ups; account selection
+      // does not depend on the model chosen when opening or resuming a thread.
       this.pending.set(idKey(message.id), { method, model, cwd: params.cwd || this.cwd });
     }
     if (method === 'turn/start' || method === 'thread/compact/start') {
@@ -273,10 +253,9 @@ export class CodexBridge {
       }
       const config = await this.checkConfig(params.cwd || thread.cwd);
       const model = params.model || thread.model || config.model;
-      const route = await this.select(model, params.cwd || thread.cwd);
+      await this.select(params.cwd || thread.cwd);
       this.reservations.set(idKey(message.id), params.threadId);
-      this.pending.set(idKey(message.id), { method, threadId: params.threadId, model: route.model });
-      if (method === 'turn/start') message = { ...message, params: { ...params, model: route.model } };
+      this.pending.set(idKey(message.id), { method, threadId: params.threadId, model });
     }
     this.toNative(message);
   }
@@ -302,14 +281,10 @@ export class CodexBridge {
       const thread = message.params.thread;
       this.threads.set(thread.id, { model: thread.model, cwd: thread.cwd || this.cwd });
     }
-    if (message.method === 'model/rerouted' && this.active.get(message.params?.threadId) === message.params?.turnId) {
-      this.executingModels.set(message.params.threadId, message.params.toModel);
-      void this.observe();
-    }
     if (message.method === 'turn/started' && message.params?.threadId) this.active.set(message.params.threadId, message.params.turn?.id || null);
     if (message.method === 'turn/completed' && message.params?.threadId &&
         (!this.active.get(message.params.threadId) || this.active.get(message.params.threadId) === message.params.turn?.id)) {
-      this.active.delete(message.params.threadId); this.executingModels.delete(message.params.threadId);
+      this.active.delete(message.params.threadId);
     }
     if (message.method === 'thread/status/changed' && message.params?.threadId) {
       if (message.params.status?.type === 'active' && !this.active.has(message.params.threadId)) this.active.set(message.params.threadId, null);
@@ -326,7 +301,7 @@ export class CodexBridge {
     const route = this.rebinding || this.route;
     try {
       if (!route || message.params?.previousAccountId !== route.accountId) throw error('routing_binding_changed');
-      const fresh = await this.broker({ operation: 'refresh', previousSlot: route.slot, accountId: route.accountId, model: route.model, cwd: this.cwd });
+      const fresh = await this.broker({ operation: 'refresh', previousSlot: route.slot, accountId: route.accountId, cwd: this.cwd });
       if (fresh.auth?.chatgptAccountId !== route.accountId || (this.rebinding || this.route)?.accountId !== route.accountId) throw error('routing_binding_changed');
       this.toNative({ id: message.id, result: fresh.auth });
     } catch {
@@ -336,7 +311,7 @@ export class CodexBridge {
   close() {
     this.closed = true;
     for (const pending of this.internal.values()) { clearTimeout(pending.timer); pending.reject(error('routing_closed')); }
-    this.internal.clear(); this.route = null; this.rebinding = null; this.executingModels.clear();
+    this.internal.clear(); this.route = null; this.rebinding = null;
     this.active.clear(); this.reservations.clear(); this.observationPending = false;
   }
 }
@@ -353,9 +328,8 @@ export async function main(config, args) {
   assertEnvironment(process.env);
   assertSharedHome(config.sharedHome, process.env.CODEX_HOME);
   if (verb === 'exec') {
-    const { model } = validateArgs(args.slice(1), true);
-    if (!model) throw error('routing_model_unknown');
-    const route = await broker({ operation: 'exec', model, cwd: process.cwd() });
+    validateArgs(args.slice(1), true);
+    const route = await broker({ operation: 'exec', cwd: process.cwd() });
     const child = spawn(config.codex, args, { env: { ...process.env, CODEX_HOME: route.home, HOTPL8_SLOT: route.slot }, stdio: 'inherit', windowsHide: true });
     await new Promise((done, fail) => { child.on('error', fail); child.on('exit', code => { process.exitCode = code ?? 1; done(); }); });
     return;

@@ -27,7 +27,7 @@ try{
     [IO.File]::WriteAllText((Join-Path $fixtureRoot 'threads.db'),'conversation-sentinel')
     $exe=Join-Path $fixtureRoot 'fake-codex.exe'
     Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 't3-fake-codex.cs'))) -ReferencedAssemblies System.Web.Extensions -OutputAssembly $exe -OutputType ConsoleApplication
-    Save (Join-Path $fixtureRoot 'policy.json') @{schemaVersion=2;mode='monitor';prefer=@();codex=@{slots=@(@{id='a';home=$fixtureHome;label='fixture'});prefer=@('a');reserve=@();defaultMeter='codex';modelMeters=@{'fixture-model'='codex'};margin7d=20;margin7dWork=5}}
+    Save (Join-Path $fixtureRoot 'policy.json') @{schemaVersion=2;mode='monitor';prefer=@();codex=@{slots=@(@{id='a';home=$fixtureHome;label='fixture'});prefer=@('a');reserve=@();defaultMeter='codex';margin7d=20;margin7dWork=5}}
     $original=Clone @{unrelated='preserve';defaultModelSelection=@{instanceId='codex';model='fixture-model';options=@(@{id='reasoningEffort';value='high'})};providerInstances=@{codex=@{driver='codex';displayName='Codex';enabled=$true;config=@{binaryPath='codex';homePath=$fixtureHome;shadowHomePath='';launchArgs=''}}}}
     Save $settingsPath $original
     $legacy=Join-Path $fixtureRoot 't3-codex'

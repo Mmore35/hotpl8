@@ -51,7 +51,14 @@ try {
         Assert ((Select-CodexSlot @($a,$b) $p codex a $null $now) -eq 'b')
     }
     Check 'weekly-only shape has no fabricated 5h' { $b=ConvertTo-CodexBuckets (Fixture) $null $now; Assert ($b.codex.status -eq 'observed'); Assert ($null -eq $b.codex.windows.'300') }
-    Check 'separate additional meter retained' { $q=Fixture; $spark=Copy-Value $q.rateLimits; $spark.limitId='codex_bengalfox'; $spark.primary.windowDurationMins=300; $q | Add-Member NoteProperty rateLimitsByLimitId ([pscustomobject]@{ codex=$q.rateLimits; codex_bengalfox=$spark }); $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex_bengalfox.windows.'300'.remainingPercent -eq 90) }
+    Check 'native additional meter retains unknown spend constraint without blocking the account basis' {
+        # Native 0.155.1 and 0.160.0 report null spend control for additional pools.
+        $q=Fixture; $spark=Copy-Value $q.rateLimits; $spark.limitId='codex_bengalfox'; $spark.primary.windowDurationMins=300; $spark.spendControlReached=$null
+        $q | Add-Member NoteProperty rateLimitsByLimitId ([pscustomobject]@{ codex=$q.rateLimits; codex_bengalfox=$spark })
+        $b=ConvertTo-CodexBuckets $q $null $now
+        Assert ($b.codex.status -eq 'observed' -and $b.codex_bengalfox.status -eq 'constraint_unknown')
+        Assert ($b.codex_bengalfox.windows.'300'.remainingPercent -eq 90)
+    }
     Check 'explicit secondary null is valid' { Assert ((ConvertTo-CodexBuckets (Fixture) $null $now).codex.status -eq 'observed') }
     Check 'missing secondary is unsupported' { $q=Fixture; $q.rateLimits.PSObject.Properties.Remove('secondary'); Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
     Check 'swapped primary/secondary have equal meaning' { $q=Fixture; $q.rateLimits.secondary=$q.rateLimits.primary; $q.rateLimits.primary=$null; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.windows.'10080'.usedPercent -eq 10) }
@@ -204,9 +211,23 @@ try {
     }
     Check 'stale automatic launch rejected' { $s=Copy-Value $status; $s.observedAt=$now.AddHours(-1).ToString('o'); $threw=$false; try { Get-CodexLaunchPlan $policy $s '' '' @() $now | Out-Null } catch { $threw=$true }; Assert $threw }
     Check 'explicit launch works without cached recommendation' { $p=Get-CodexLaunchPlan $policy $null b '' @() $now; Assert ($p.slot.id -eq 'b'); Assert (-not $p.automatic) }
+    Check 'nondefault account basis is preserved and cannot borrow ordinary quota' {
+        $special=Copy-Value $policy; $special.defaultMeter='codex_bengalfox'
+        $threw=$false;try { Get-CodexLaunchPlan $special $status '' 'future-model' @() $now | Out-Null } catch { $threw=$true }; Assert $threw
+        $p=Get-CodexLaunchPlan $special $null b 'future-model' @() $now
+        Assert ($p.meter -eq 'codex_bengalfox' -and $p.model -eq 'future-model' -and -not $p.automatic)
+    }
     Check 'resume requires owning slot' { $threw=$false; try { Get-CodexLaunchPlan $policy $status '' '' @('resume','abc') $now | Out-Null } catch { $threw=$true }; Assert $threw }
     Check 'resume explicit owner retained' { $p=Get-CodexLaunchPlan $policy $status b '' @('resume','abc') $now; Assert ($p.slot.id -eq 'b'); Assert ($p.arguments[0] -eq 'resume') }
-    Check 'unknown model cannot borrow default meter' { $threw=$false; try { Get-CodexLaunchPlan $policy $status '' unknown @() $now | Out-Null } catch { $threw=$true }; Assert $threw }
+    Check 'unfamiliar and omitted models use the configured account quota basis' {
+        $p=Get-CodexLaunchPlan $policy $status '' 'future-model' @() $now; Assert ($p.slot.id -eq 'a' -and $p.model -eq 'future-model')
+        $p=Get-CodexLaunchPlan $policy $status '' '' @() $now; Assert (-not $p.model)
+        $unmapped=Copy-Value $policy; $unmapped.PSObject.Properties.Remove('modelMeters'); Assert-CodexPolicy $unmapped
+        $p=Get-CodexLaunchPlan $unmapped $status '' 'future-model' @() $now; Assert ($p.slot.id -eq 'a')
+        $legacy=Copy-Value $policy
+        foreach($n in 1..300){$legacy.modelMeters|Add-Member NoteProperty ('retired-'+$n) 'codex'}
+        $p=Get-CodexLaunchPlan $legacy $status '' 'future-model' @() $now; Assert ($p.slot.id -eq 'a') 'ignored legacy maps acquire no new size gate'
+    }
     Check 'API auth override detected without printing secret' { $env:OPENAI_API_KEY='SECRET_DO_NOT_LOG'; try { $threw=$false; try { Get-CodexLaunchPlan $policy $status '' '' @() $now | Out-Null } catch { $threw=$true; Assert (-not $_.Exception.Message.Contains('SECRET_DO_NOT_LOG')) }; Assert $threw } finally { $env:OPENAI_API_KEY=$null } }
     Check 'native config override cannot bypass quota choice' { $threw=$false; try { Get-CodexLaunchPlan $policy $status a '' @('--config=model_provider="other"') $now | Out-Null } catch { $threw=$true }; Assert $threw }
     Check 'native argument quoting and child home preserved' {
@@ -217,7 +238,7 @@ try {
         $code=Invoke-Hotpl8Codex $p $dir $fake $homeA
         $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH
         Assert ($code -eq 7); Assert ($record.home -eq $homeB); Assert ($record.cwd -eq $homeA); Assert ($env:CODEX_HOME -eq $original)
-        $actual=@($record.args | Select-Object -Skip 2)
+        $actual=@($record.args)
         Assert ($actual.Count -eq $argsToTest.Count) ('argument count '+$actual.Count)
         for ($i=0; $i -lt $actual.Count; $i++) { Assert ($actual[$i] -ceq $argsToTest[$i]) ('argument '+$i) }
     }
@@ -290,6 +311,7 @@ try {
         & powershell @setupArgs | Out-Null;Assert ($LASTEXITCODE -eq 0)
         & powershell @setupArgs | Out-Null;Assert ($LASTEXITCODE -eq 0)
         $p=Read-Hotpl8Json (Join-Path $configDir 'policy.json');$h=Read-Hotpl8Json (Join-Path $homeA 'hooks.json')
+        Assert (-not $p.codex.PSObject.Properties['modelMeters']) 'legacy setup -Model creates no model registry'
         Assert ($p.prefer.Count -eq 3);Assert $p.warm;Assert ($p.codex.slots.Count -eq 1);Assert ($h.hooks.Stop[0].hooks[0].command -eq 'echo existing');Assert ($h.hooks.SessionStart.Count -eq 1);Assert ([IO.File]::ReadAllBytes((Join-Path $homeA 'hooks.json'))[0] -eq 123)
     }
     Check 'enroll command validates the native home and preserves monitoring on repeat' {
@@ -319,7 +341,7 @@ try {
         Assert ($LASTEXITCODE -eq 7)
         $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH
         Assert ($record.home -eq $homeA); Assert ($record.cwd -eq (Get-Location).Path)
-        Assert (($record.args -join '|') -eq '--model|fixture-model|exec|--json|fixture prompt')
+        Assert (($record.args -join '|') -eq 'exec|--json|fixture prompt')
     }
     Check 'policy drift between planning and native launch is refused before dispatch' {
         $path=Join-Path $dir 'policy.json';$before=[IO.File]::ReadAllText($path)

@@ -36,7 +36,7 @@ $read=Read-CodexQuota $homePath $CodexExecutable 5000
 if ($read.status -ne 'ok') { throw ('Native login is not ready: '+$read.status+'. Sign in with native Codex in this home first.') }
 if (-not $read.standardTransport -or ($read.modelProvider -and $read.modelProvider -ne 'openai')) { throw 'Custom provider/endpoint needs separate validation; subscription setup stopped.' }
 if (-not $policy.codex) {
-    $policy | Add-Member NoteProperty codex ([pscustomobject]@{slots=@();prefer=@();reserve=@();order='soonest-reset';margin5h=25;margin7d=20;margin7dWork=5;defaultMeter=$Meter;modelMeters=[pscustomobject]@{}})
+    $policy | Add-Member NoteProperty codex ([pscustomobject]@{slots=@();prefer=@();reserve=@();order='soonest-reset';margin5h=25;margin7d=20;margin7dWork=5;defaultMeter=$Meter})
 }
 $existing=@($policy.codex.slots|Where-Object id -EQ $Slot)
 if ($existing.Count -and [IO.Path]::GetFullPath([string]$existing[0].home) -ne $homePath) { throw 'That slot already names a different home. Edit the mapping deliberately; setup will not replace it.' }
@@ -54,11 +54,7 @@ if (-not $existing.Count) {
     $policy.codex.slots=@($policy.codex.slots)+@($entry)
     $policy.codex.prefer=@($policy.codex.prefer)+@($Slot)
 }
-if ($Model) {
-    # The caller supplies an explicit mapping after verifying the model's meter.
-    if (-not $policy.codex.modelMeters) { $policy.codex | Add-Member NoteProperty modelMeters ([pscustomobject]@{}) -Force }
-    $policy.codex.modelMeters | Add-Member NoteProperty $Model $Meter -Force
-}
+if ($Model) { Write-Host 'Model registration is no longer needed. Select the model in native Codex or T3.' }
 Assert-Hotpl8Policy $policy
 Assert-CodexPolicy $policy.codex
 # Validate the hook merge before changing either local file.

@@ -75,7 +75,7 @@ function Add-Hotpl8RegisteredAccountCore([string]$Directory,[string]$Provider,[s
         $part=Copy-Hotpl8ProviderValue $definition.policyDefaults
         $part|Add-Member NoteProperty prefer @();$part|Add-Member NoteProperty reserve @()
         if($driver.slotKind -eq 'numeric'){$part|Add-Member NoteProperty labels ([pscustomobject]@{})}
-        else{$part|Add-Member NoteProperty slots @();$part|Add-Member NoteProperty defaultMeter $definition.defaultMeter;$part|Add-Member NoteProperty modelMeters (Copy-Hotpl8ProviderValue $definition.modelMeters)}
+        else{$part|Add-Member NoteProperty slots @();$part|Add-Member NoteProperty defaultMeter $definition.defaultMeter}
         $policy.providers|Add-Member NoteProperty $Provider $part
     }
     $part=$policy.providers.$Provider

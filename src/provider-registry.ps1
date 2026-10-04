@@ -52,7 +52,7 @@ function Test-Hotpl8ProviderNumber($Value) {
 
 function Assert-Hotpl8ProviderDefinition($Definition) {
     $fields=@('schemaVersion','id','name','driver','defaultMeter','meters','windows','policyDefaults','modelMeters','capabilities','integrations','display')
-    Assert-Hotpl8ProviderObject $Definition $fields $fields
+    Assert-Hotpl8ProviderObject $Definition $fields @($fields|Where-Object {$_ -ne 'modelMeters'})
     if(-not (Test-Hotpl8ProviderNumber $Definition.schemaVersion) -or $Definition.schemaVersion -ne 1){throw 'Invalid provider definition version.'}
     if($Definition.id -isnot [string] -or $Definition.id -cnotmatch '^[a-z][a-z0-9-]{0,39}$'){throw 'Invalid provider ID.'}
     if($Definition.name -isnot [string] -or -not $Definition.name.Trim() -or $Definition.name.Length -gt 80 -or $Definition.name -match '[\x00-\x1f\x7f]'){throw 'Invalid provider display name.'}
@@ -84,10 +84,8 @@ function Assert-Hotpl8ProviderDefinition($Definition) {
             if(-not (Test-Hotpl8ProviderNumber $p.Value) -or $p.Value -lt 0 -or $p.Value -gt $max){throw 'Invalid provider default threshold.'}
         }
     }
-    if($Definition.modelMeters -isnot [pscustomobject] -or @($Definition.modelMeters.PSObject.Properties).Count -gt 256){throw 'Invalid provider model mappings.'}
-    foreach($p in $Definition.modelMeters.PSObject.Properties){
-        if($p.Name -cnotmatch '^[a-zA-Z0-9_.-]{1,100}$' -or $p.Value -isnot [string] -or $p.Value -cnotin $Definition.meters){throw 'Invalid provider model mapping.'}
-    }
+    # Optional legacy metadata is never used for native account selection.
+    if($Definition.PSObject.Properties['modelMeters'] -and ($Definition.modelMeters -isnot [pscustomobject] -or @($Definition.modelMeters.PSObject.Properties).Count -gt 256)){throw 'Invalid provider model mappings.'}
     $capabilities=@($driver.capabilities.PSObject.Properties|ForEach-Object Name)
     Assert-Hotpl8ProviderObject $Definition.capabilities $capabilities $capabilities
     foreach($p in $Definition.capabilities.PSObject.Properties){
@@ -160,13 +158,9 @@ function Get-Hotpl8ConfiguredProviders($Policy,$Catalog=$null,[switch]$IncludeUn
             foreach($p in $entry.Value.PSObject.Properties){$part|Add-Member NoteProperty $p.Name (Copy-Hotpl8ProviderValue $p.Value) -Force}
             $driver=Get-Hotpl8ProviderDriver $definition.driver
             if($driver.provider -eq 'codex'){
+                if($part.PSObject.Properties['modelMeters'] -and $part.modelMeters -isnot [pscustomobject]){throw 'Invalid provider model mappings.'}
                 if(-not $part.PSObject.Properties['defaultMeter']){$part|Add-Member NoteProperty defaultMeter $definition.defaultMeter}
-                $models=Copy-Hotpl8ProviderValue $definition.modelMeters
-                if($part.PSObject.Properties['modelMeters'] -and $part.modelMeters -isnot [pscustomobject]){throw 'Provider model mappings must be an object.'}
-                foreach($m in $part.modelMeters.PSObject.Properties){$models|Add-Member NoteProperty $m.Name (Copy-Hotpl8ProviderValue $m.Value) -Force}
-                $part|Add-Member NoteProperty modelMeters $models -Force
                 if($part.defaultMeter -isnot [string] -or $part.defaultMeter -cnotin $definition.meters){throw 'Configured meter is not supported by the provider definition.'}
-                foreach($m in $part.modelMeters.PSObject.Properties){if($m.Value -isnot [string] -or $m.Value -cnotin $definition.meters){throw 'Configured model meter is not supported by the provider definition.'}}
             }
             $configured[$entry.Name]=$part
         }

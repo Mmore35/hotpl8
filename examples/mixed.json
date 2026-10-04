@@ -23,7 +23,6 @@
     "slots": [],
     "prefer": [],
     "reserve": [],
-    "defaultMeter": "codex",
-    "modelMeters": {}
+    "defaultMeter": "codex"
   }
 }

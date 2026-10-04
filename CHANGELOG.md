@@ -2,6 +2,8 @@
 
 ## Unreleased — shared provider core
 
+- Remove Codex model registration from T3 routing, helper setup, CLI launches and cached readiness. Account selection uses the configured quota basis; native model/options pass through unchanged, including omitted defaults. Legacy model maps remain readable but are ignored. Active-work ownership and quota/account controls are preserved.
+
 - Add `hotpl8 park` and `hotpl8 unpark`. Park finds accounts whose plan ended or whose sign-in has failed for a week, asks once, and removes them from collection, totals, selection and the warming schedule while keeping their settings; unpark or a new sign-in restores them. Doctor and the dashboard name these accounts instead of pointing at each other.
 - Show Codex plan names as reported (for example `prolite`) instead of `unknown`, and record each account's plan change.
 
