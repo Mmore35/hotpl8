@@ -389,10 +389,10 @@ function Get-Hotpl8AutomationTitleSpans($View,[datetimeoffset]$Now,[switch]$Warm
 function New-DashboardTitleRow($Status,[datetimeoffset]$Now,[int]$Width,[switch]$Paused,[switch]$Nyan,[double]$AnimationSeconds=0,[switch]$ReducedMotion,$Automation=$null) {
     $left=if($Nyan){'  hotpl8  ·  nyan'}else{'  '+(Get-Hotpl8Cat $AnimationSeconds -ReducedMotion:$ReducedMotion)+'  hotpl8'}
     $meta=@()
-    if($Status.displayPolicy){$meta+=@{text='PREVIEW POLICY';tone='lavender';short='PREVIEW'}}
-    if($Paused){$meta+=@{text='FROZEN';tone='amber'}}
+    if($Status.displayPolicy){$meta+=@{text='PREVIEW POLICY';tone='lavender';short='PREVIEW';kind='preview'}}
+    if($Paused){$meta+=@{text='FROZEN';tone='amber';kind='frozen'}}
     $age=Get-DashboardAge $Status.generatedAt $Now
-    if($null -eq $age){$meta+=@{text='no reading';tone='amber'}}
+    if($null -eq $age){$meta+=@{text='no reading';tone='amber';last='no data'}}
     elseif($age -lt -5){$meta+=@{text='clock mismatch';tone='amber';short='clock'}}
     elseif($age -gt 900){$meta+=@{text=('stale '+(Format-DashboardAge $age));tone='amber';short='stale'}}
     else{$meta+=@{text=('read '+(Format-DashboardAge $age)+' ago');tone='muted';short=(Format-DashboardAge $age);age=$true}}
@@ -400,20 +400,30 @@ function New-DashboardTitleRow($Status,[datetimeoffset]$Now,[int]$Width,[switch]
     $auto=@()
     if($Automation){
         # When both sides cannot fit, content gives way in a fixed order so that
-        # nothing is cut mid-word and neither the state nor a warning is lost:
-        # warming, the reading-age wording, the pause or hold duration, the
-        # reading age, warning detail, and last the word "auto-switch" itself.
+        # nothing is cut mid-word and neither the state nor a reading warning is
+        # lost: warming, the reading-age wording, the pause or hold duration, the
+        # reading age, warning detail, the word "auto-switch", then "no reading"
+        # shortens. Only if
+        # that is still too wide do FROZEN and then PREVIEW POLICY step aside, and
+        # the rest is fitted again at full detail.
         $fits={param($items) $n=3;foreach($s in $items){$n+=$s.text.Length};$Width-2-$left.Length-(& $measure)-$n -ge 2}
-        $warming=$true;$duration=$true;$short=$false
-        for($level=0;$level -le 6;$level++){
-            if($level -eq 1){$warming=$false}
-            elseif($level -eq 2){foreach($m in $meta){if($m.age){$m.text=$m.short}}}
-            elseif($level -eq 3){$duration=$false}
-            elseif($level -eq 4){if($meta.Count -gt 1){$meta=@($meta|Where-Object {-not $_.age})}}
-            elseif($level -eq 5){foreach($m in $meta){if($m.short -and -not $m.age){$m.text=$m.short}}}
-            elseif($level -eq 6){$short=$true}
-            $auto=@(Get-Hotpl8AutomationTitleSpans $Automation $Now -Warming:$warming -NoDuration:(-not $duration) -Short:$short)
-            if(& $fits $auto){break}
+        $all=$meta;$done=$false
+        foreach($without in @(@(),@('frozen'),@('frozen','preview'))){
+            $meta=@($all|Where-Object {$_.kind -notin $without}|ForEach-Object {$_.Clone()})
+            if($without.Count -and $meta.Count -eq @($all|Where-Object {$_.kind -notin @($without|Select-Object -SkipLast 1)}).Count){continue}
+            $warming=$true;$duration=$true;$short=$false
+            for($level=0;$level -le 7;$level++){
+                if($level -eq 1){$warming=$false}
+                elseif($level -eq 2){foreach($m in $meta){if($m.age){$m.text=$m.short}}}
+                elseif($level -eq 3){$duration=$false}
+                elseif($level -eq 4){if($meta.Count -gt 1){$meta=@($meta|Where-Object {-not $_.age})}}
+                elseif($level -eq 5){foreach($m in $meta){if($m.short -and -not $m.age){$m.text=$m.short}}}
+                elseif($level -eq 6){$short=$true}
+                elseif($level -eq 7){foreach($m in $meta){if($m.last){$m.text=$m.last}}}
+                $auto=@(Get-Hotpl8AutomationTitleSpans $Automation $Now -Warming:$warming -NoDuration:(-not $duration) -Short:$short)
+                if(& $fits $auto){$done=$true;break}
+            }
+            if($done){break}
         }
     }
     $length=& $measure

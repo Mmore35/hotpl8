@@ -140,22 +140,28 @@ Check 'the title gives way in whole words at narrow widths and keeps the state a
     $pausedStale|Add-Member NoteProperty automationPause @{until=$now.AddHours(3).ToString('o')} -Force
     $held=Copy-Value $s;$held|Add-Member NoteProperty actions @{switching=$true;warming=$false;probing=$false} -Force
     $held|Add-Member NoteProperty hold @{until=$now.AddHours(2).ToString('o')} -Force
+    $previewStale=Copy-Value $stale;$previewStale|Add-Member NoteProperty displayPolicy $true -Force
     $cases=@(
         @{name='off, stale';status=$stale;policy=$monitor;frozen=$false;words=@('off','stale');full=@('○ auto-switch off','stale 1h 05m')},
         @{name='accounts, no snapshot';status=$null;policy=$on;frozen=$false;words=@('on','no reading');full=@('● auto-switch on','no reading')},
         @{name='frozen';status=$s;policy=$on;frozen=$true;words=@('on','FROZEN');full=@('● auto-switch on','FROZEN · read 0s ago')},
         @{name='paused, stale';status=$pausedStale;policy=$on;frozen=$false;words=@('paused','stale');full=@('◐ auto-switch paused 3h 00m','stale 1h 05m')},
-        @{name='held';status=$held;policy=$on;frozen=$false;words=@('held','0s');full=@('◐ auto-switch held 2h 00m','read 0s ago')}
+        @{name='held';status=$held;policy=$on;frozen=$false;words=@('held','0s');full=@('◐ auto-switch held 2h 00m','read 0s ago')},
+        # Two right-hand statuses: the reading warning outlasts FROZEN.
+        @{name='frozen, stale';status=$stale;policy=$monitor;frozen=$true;words=@('off','stale');full=@('○ auto-switch off','FROZEN · stale 1h 05m')},
+        @{name='frozen, paused, stale';status=$pausedStale;policy=$on;frozen=$true;words=@('paused','stale');full=@('◐ auto-switch paused 3h 00m','FROZEN · stale 1h 05m')},
+        @{name='frozen, no snapshot';status=$null;policy=$on;frozen=$true;words=@('on','no (reading|data)');full=@('● auto-switch on','FROZEN · no reading')},
+        @{name='preview, stale';status=$previewStale;policy=$monitor;frozen=$false;words=@('off','stale');full=@('○ auto-switch off','PREVIEW POLICY · stale 1h 05m')}
     )
     foreach($case in $cases){
-        foreach($width in @(48,50,60,79,100)){
+        foreach($width in @(48,50,52,56,60,79,100)){
             $row=@(Get-Hotpl8DashboardFrame $case.status $case.policy $now $width 40 -Paused:$case.frozen -ReducedMotion)[1]
             $text=(@($row.spans)|ForEach-Object text) -join ''
             $label=$case.name+' at '+$width+': '+$text
             # A two-cell margin before the border means nothing was cut to fit.
             Assert ((Get-DashboardCells $text) -eq $width -and $text -match '  │$') $label
             Assert ($text -match '\bauto(-switch)? ') $label
-            foreach($word in $case.words){Assert ($text -match ('(^|[\s·])'+[regex]::Escape($word)+'($|[\s·])')) ($label+' lacks '+$word)}
+            foreach($word in $case.words){Assert ($text -match ('(^|[\s·])'+$word+'($|[\s·])')) ($label+' lacks '+$word)}
             if($width -eq 100){foreach($phrase in $case.full){Assert ($text.Contains($phrase)) ($label+' lacks '+$phrase)}}
         }
     }
