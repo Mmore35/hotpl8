@@ -86,6 +86,7 @@ The Windows binary is built for `x86_64-pc-windows-msvc` with a static C runtime
 | Reader unit tests (`cargo test --locked` in `native/`) | 14 |
 | Routing and fallback suite (`tests/test-native.ps1`) | 15 checks: used when matching; kill switch; other protocol or commit; declined, failed and cut-off answers; missing, corrupt and non-executable file; unreadable build identity; other parameters; hung reader; the built reader against PowerShell for a source checkout and for a release |
 | Upgrade (`tests/test_delivery.py`, `tests/test_macos_delivery.py`) | Prior release without a binary, verified package with one, activation, fresh process through the stable launcher, removed and corrupt binary, rollback |
+| Ordinary Mac install (`tests/test-install-macos.ps1`) | A package copy whose reader has lost its executable bit installs with the bit restored |
 | `hotpl8 version` through `hotpl8.cmd`, median of 20, Windows | 1,615 ms before, 2,276 ms after |
 | `hotpl8 version` through the installed stable launcher, median of 20, Windows | 2,913 ms before, 3,217 ms after |
 | Reader alone, median of 20, Windows | 496 ms; an empty `powershell -NoProfile` took 677 ms in the same run |
@@ -99,7 +100,7 @@ The launcher timings include the PowerShell processes that start `hotpl8.ps1`. T
 ## Limits
 
 - The binaries carry no publisher signature. Windows Smart App Control, where enabled, can refuse to start one. That is a failed start, so PowerShell answers.
-- An installer from before this change does not know the `bin/` paths. If such an installer is run after a downgrade while a newer release is still kept in `previous`, it stops with `Unrecognized file in application directory`. Installing the newer package again, or removing `previous/bin`, clears it. Managed delivery is unaffected: it keeps whole release directories.
+- An installer or uninstaller from before this change does not know the `bin/` paths and stops with `Unrecognized file in application directory` when it checks a kept release that has them. On Windows the older installer checks only `previous`, so this appears on the run after a downgrade, while the newer release is still kept there. On Mac it also checks `app` before moving it, so the downgrade itself stops. Removing `bin` from the kept copy that has it (`app/bin` or `previous/bin`) clears it, and PowerShell answers for that copy. On Windows, installing the newer package again also clears it. Managed delivery is unaffected: it keeps whole release directories.
 - The reader's speed is hidden behind the PowerShell launchers until they are replaced, which needs its own lifecycle plan.
 - macOS on Intel is built but only Apple silicon is exercised in CI.
 - A live PR preview runs from the source archive, which has no compiled file, so it shows the PowerShell implementation. Previewing the reader needs the CI-built package and is part of stage 3.
