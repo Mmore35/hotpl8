@@ -9,6 +9,10 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-install-test-'+[guid]::NewGui
 [void][IO.Directory]::CreateDirectory($dir)
 $install=Join-Path $dir 'application with spaces';$state=Join-Path $dir 'state'
 $pathBefore=[Environment]::GetEnvironmentVariable('Path','User')
+# Installed collectors and uninstalls below look for Claude's settings here, never in the real
+# profile. The directory does not exist until the automatic continue checks create it.
+$claude=Join-Path $dir 'claude home';$claudeBefore=$env:CLAUDE_CONFIG_DIR;$installBefore=$env:HOTPL8_INSTALL_DIRECTORY
+$env:CLAUDE_CONFIG_DIR=$claude;$env:HOTPL8_INSTALL_DIRECTORY=$null
 try{
     Check 'package is reproducible and contains only allowlisted source' {
         $zip=& (Join-Path $root 'scripts/package.ps1') -OutputDirectory (Join-Path $dir 'build')
@@ -55,7 +59,8 @@ try{
     Check 'fresh archive installs without editing PATH or native homes' {
         & (Join-Path $source 'install.ps1') -InstallDirectory $install -StateDirectory $state -NoPath|Out-Null
         $p=Read-Hotpl8Json (Join-Path $state 'policy.json')
-        Assert ($p.mode -eq 'monitor' -and -not $p.warm)
+        # Switching and automatic continue start on; warming is the one that waits to be asked for.
+        Assert ($p.mode -eq 'automate' -and $p.switchEnabled -eq $true -and -not $p.warm -and $null -eq $p.automation.continue)
         Assert (Test-Path -LiteralPath (Join-Path $install 'app/hotpl8.ps1'))
         Assert ([Environment]::GetEnvironmentVariable('Path','User') -ceq $pathBefore)
     }
@@ -105,6 +110,117 @@ try{
         }finally{
             [IO.File]::WriteAllBytes($policyPath,$original)
             foreach($name in @('status.txt','status.js','status.json','collector.json')){Remove-Item -LiteralPath (Join-Path $state $name) -Force -ErrorAction SilentlyContinue}
+        }
+    }
+    # Automatic continue. Only the fixture Claude settings are read or written from here on.
+    $settings=Join-Path $claude 'settings.json';$app=Join-Path $install 'app'
+    $ownHook=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $app 'continue.ps1'),'-Provider','claude','-StateDirectory',[IO.Path]::GetFullPath($state)) -join '|'
+    Check 'continue hook needs a Claude directory and an installation that owns the state' {
+        $copy=Join-Path $dir 'plain copy/code';[void][IO.Directory]::CreateDirectory($copy)
+        Set-Hotpl8ContinueHook $app $state
+        Assert (-not (Test-Path -LiteralPath $claude))
+        [void][IO.Directory]::CreateDirectory($claude)
+        Set-Hotpl8ContinueHook $copy $state
+        Set-Hotpl8ContinueHook $app (Join-Path $dir 'another state')
+        Set-Hotpl8ContinueHook $app $state -Remove
+        Assert (-not (Test-Path -LiteralPath $settings) -and -not (Test-Path -LiteralPath (Join-Path $state 'continue')) -and -not (Test-Hotpl8ContinueHook $state))
+        $explicit=Get-Hotpl8ContinueHookCommand $copy $state -Explicit
+        Assert ($explicit.args[4] -ceq (Join-Path $copy 'continue.ps1'))
+        Set-Hotpl8ContinueHook $app $state
+        $after=Read-Hotpl8Json $settings
+        Assert (@($after.PSObject.Properties).Count -eq 1 -and $after.hooks.StopFailure.Count -eq 1 -and (Test-Hotpl8ContinueHook $state))
+        Set-Hotpl8ContinueHook $app $state -Remove
+        Assert (([IO.File]::ReadAllText($settings) -replace '\s','') -ceq '{}')
+    }
+    Check 'continue hook is added once and every other Claude setting survives' {
+        # Shapes a JSON round trip can damage: empty and one-item lists, nesting, null, a
+        # timestamp-looking string, and text outside ASCII.
+        $fixture='{"model":"fixture-model","emptyList":[],"single":["only"],"nested":{"deep":{"value":1,"list":[[],[1]],"none":null,"flag":false}},'+
+            '"stamp":"2026-01-02T03:04:05Z","words":"caf\u00e9 \u732b <tag> & ''quote''","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo before"}]}],'+
+            '"StopFailure":[{"matcher":"rate_limit","hooks":[{"type":"command","command":"echo foreign"}]},{"hooks":[]}]}}'
+        Write-Hotpl8Text $settings $fixture -NoBom
+        Set-Hotpl8ContinueHook $app $state
+        $after=Read-Hotpl8Json $settings
+        Assert ($after.model -ceq 'fixture-model' -and $after.emptyList -is [array] -and $after.emptyList.Count -eq 0)
+        Assert ($after.single -is [array] -and $after.single.Count -eq 1 -and $after.single[0] -ceq 'only')
+        Assert ($after.nested.deep.value -eq 1 -and $after.nested.deep.list.Count -eq 2 -and $after.nested.deep.list[0].Count -eq 0 -and $after.nested.deep.list[1][0] -eq 1)
+        Assert ($after.nested.deep.PSObject.Properties['none'] -and $null -eq $after.nested.deep.none -and $after.nested.deep.flag -eq $false)
+        Assert ($after.stamp -is [string] -and $after.stamp -ceq '2026-01-02T03:04:05Z')
+        Assert ($after.words -ceq ('caf'+[char]0xe9+' '+[char]0x732b+" <tag> & 'quote'"))
+        Assert ($after.hooks.PreToolUse[0].matcher -ceq 'Bash' -and $after.hooks.PreToolUse[0].hooks[0].command -ceq 'echo before')
+        Assert ($after.hooks.StopFailure.Count -eq 3 -and $after.hooks.StopFailure[0].hooks[0].command -ceq 'echo foreign' -and $after.hooks.StopFailure[1].hooks.Count -eq 0)
+        $entry=$after.hooks.StopFailure[2];$hook=$entry.hooks[0]
+        Assert ($entry.matcher -ceq 'rate_limit' -and $entry.hooks.Count -eq 1 -and $hook.type -ceq 'command' -and $hook.asyncRewake -eq $true -and $hook.timeout -eq 21700)
+        Assert ($hook.command -ceq 'powershell.exe' -and ($hook.args -join '|') -ceq $ownHook)
+        Assert (Test-Hotpl8ContinueHook $state)
+        $hash=(Get-FileHash -LiteralPath $settings).Hash
+        Set-Hotpl8ContinueHook $app $state
+        Assert ((Get-FileHash -LiteralPath $settings).Hash -eq $hash)
+        Set-Hotpl8ContinueHook $app $state -Remove
+        $after=Read-Hotpl8Json $settings
+        Assert ($after.hooks.StopFailure.Count -eq 2 -and $after.hooks.StopFailure[0].hooks[0].command -ceq 'echo foreign' -and $after.hooks.PreToolUse[0].hooks[0].command -ceq 'echo before')
+        Assert ($after.words -ceq ('caf'+[char]0xe9+' '+[char]0x732b+" <tag> & 'quote'") -and $after.emptyList.Count -eq 0 -and $after.stamp -ceq '2026-01-02T03:04:05Z')
+        Assert (-not (Test-Path -LiteralPath (Join-Path $state 'continue/hook.json')) -and -not (Test-Hotpl8ContinueHook $state))
+    }
+    Check 'a Claude settings file that cannot be rewritten safely is refused and left alone' {
+        foreach($bad in @('not json','[]','{"hooks":[]}','{"hooks":{"StopFailure":{}}}')){
+            Write-Hotpl8Text $settings $bad -NoBom;$before=(Get-FileHash -LiteralPath $settings).Hash;$threw=$false
+            try{Set-Hotpl8ContinueHook $app $state}catch{$threw=$true}
+            Assert ($threw -and (Get-FileHash -LiteralPath $settings).Hash -eq $before -and -not (Test-Hotpl8ContinueHook $state))
+        }
+        Remove-Item -LiteralPath $settings -Force
+    }
+    Check 'a managed installation gets a hook that finds its current release through awkward paths' {
+        $managed=Join-Path $dir "managed o'install dir";$managedState=Join-Path $dir "managed o'state dir"
+        $release=Join-Path $managed 'releases/fixture';[void][IO.Directory]::CreateDirectory($release);[void][IO.Directory]::CreateDirectory($managedState)
+        Write-Hotpl8Text (Join-Path $managed 'current.json') '{"protocol":1,"sha":"fixture","release":"releases/fixture"}' -NoBom
+        Write-Hotpl8Text (Join-Path $managed 'delivery.json') (@{stateDirectory=$managedState}|ConvertTo-Json) -NoBom
+        Write-Hotpl8Text (Join-Path $release 'continue.ps1') ('param([string]$Provider,[string]$StateDirectory)'+"`n"+'[IO.File]::WriteAllText((Join-Path $StateDirectory "ran.txt"),$Provider);exit 2')
+        $env:HOTPL8_INSTALL_DIRECTORY=$managed
+        try{
+            $hook=Get-Hotpl8ContinueHookCommand $release $managedState
+            Assert ($hook.command -ceq 'powershell.exe' -and $hook.args[3] -ceq '-Command' -and $hook.args.Count -eq 5)
+            # Run exactly what Claude would run: it must reach the release named by current.json.
+            $shellArgs=@($hook.args)
+            & $hook.command $shellArgs|Out-Null
+            Assert ($LASTEXITCODE -eq 2 -and [IO.File]::ReadAllText((Join-Path $managedState 'ran.txt')) -ceq 'claude')
+            # Another state directory is not this installation's to hook.
+            Assert ($null -eq (Get-Hotpl8ContinueHookCommand $release $state))
+        }finally{$env:HOTPL8_INSTALL_DIRECTORY=$null}
+    }
+    Check 'the collector keeps the Claude hook in step with policy and survives a broken settings file' {
+        $policyPath=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllBytes($policyPath)
+        # One collection through the given copy. The backoff marker keeps it away from cswap.
+        $collect={param([string]$Code,[bool]$Continue,[switch]$ObserveOnly)
+            $p=Read-Hotpl8Json (Join-Path $source 'policy.example.json');$p.prefer=@(1)
+            if(-not $Continue){$p.automation|Add-Member NoteProperty continue $false}
+            Write-Hotpl8Text $policyPath ($p|ConvertTo-Json -Depth 12)
+            $now=[datetimeoffset]::UtcNow
+            Write-Hotpl8Text (Join-Path $state 'collector.json') (@{schemaVersion=1;providers=@{claude=@{lastAttemptAt=$now.ToString('o');failures=1;nextAttemptAt=$now.AddMinutes(30).ToString('o');status='unavailable'}}}|ConvertTo-Json -Depth 8)
+            Remove-Item -LiteralPath (Join-Path $state 'status.json') -Force -ErrorAction SilentlyContinue
+            $extra=@();if($ObserveOnly){$extra=@('-ObserveOnly')}
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Code 'tick.ps1') -Scheduled -StateDirectory $state @extra|Out-Null
+            Assert ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (Join-Path $state 'status.json')))
+        }
+        try{
+            & $collect $source $true
+            Assert (-not (Test-Path -LiteralPath $settings))
+            & $collect $app $true -ObserveOnly
+            Assert (-not (Test-Path -LiteralPath $settings))
+            & $collect $app $true
+            Assert ((Test-Hotpl8ContinueHook $state) -and ((Read-Hotpl8Json $settings).hooks.StopFailure[0].hooks[0].args -join '|') -ceq $ownHook)
+            & $collect $app $false -ObserveOnly
+            Assert (Test-Hotpl8ContinueHook $state)
+            & $collect $app $false
+            Assert (-not (Test-Hotpl8ContinueHook $state) -and -not (Read-Hotpl8Json $settings).hooks)
+            Write-Hotpl8Text $settings 'not json' -NoBom
+            & $collect $app $true
+            Assert ([IO.File]::ReadAllText($settings) -ceq 'not json')
+            Assert ((Get-Content -LiteralPath (Join-Path $state 'events.jsonl') -Raw) -match '"continue_hook_failed"')
+        }finally{
+            [IO.File]::WriteAllBytes($policyPath,$original)
+            foreach($name in @('status.txt','status.js','status.json','collector.json','events.jsonl')){Remove-Item -LiteralPath (Join-Path $state $name) -Force -ErrorAction SilentlyContinue}
+            Remove-Item -LiteralPath $settings -Force -ErrorAction SilentlyContinue
         }
     }
     Check 'one installed dashboard update reaches watch and nyan through the same launcher' {
@@ -228,8 +344,14 @@ try{
         $aliasHooks=@{hooks=@{SessionStart=@(@{matcher='startup';hooks=@(@{type='command';command=$aliasCommand},@{type='command';command=$command},@{type='command';command=$foreignCommand},@{type='command';command='echo alias unrelated'})});OtherEvent=@(@{command='alias keep'})}}
         Write-Hotpl8Text (Join-Path $aliasHome 'hooks.json') ($aliasHooks|ConvertTo-Json -Depth 12) -NoBom
         [IO.File]::WriteAllText((Join-Path $install 'keep.txt'),'keep')
+        Write-Hotpl8Text $settings '{"hooks":{"StopFailure":[{"hooks":[{"type":"command","command":"echo foreign"}]}]}}' -NoBom
+        Set-Hotpl8ContinueHook $app $state
+        Assert (Test-Hotpl8ContinueHook $state)
         $before=(Get-FileHash (Join-Path $state 'policy.json')).Hash
         & (Join-Path $source 'uninstall.ps1') -InstallDirectory $install|Out-Null
+        $claudeAfter=Read-Hotpl8Json $settings
+        Assert ($claudeAfter.hooks.StopFailure.Count -eq 1 -and $claudeAfter.hooks.StopFailure[0].hooks[0].command -ceq 'echo foreign')
+        Assert (-not (Test-Path -LiteralPath (Join-Path $state 'continue/hook.json')))
         Assert (-not (Test-Path -LiteralPath (Join-Path $install 'app')))
         Assert ((Get-FileHash (Join-Path $state 'policy.json')).Hash -eq $before)
         Assert (Test-Path -LiteralPath (Join-Path $install 'keep.txt'))
@@ -248,6 +370,7 @@ try{
         Assert ((Read-Hotpl8Json (Join-Path $state 'delivery-owner.json')).fixture -ceq 'OWNERSHIP_SENTINEL')
     }
 }finally{
+    $env:CLAUDE_CONFIG_DIR=$claudeBefore;$env:HOTPL8_INSTALL_DIRECTORY=$installBefore
     $full=[IO.Path]::GetFullPath($dir)
     if($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-install-test-[a-f0-9]{32}$'){Remove-Item -LiteralPath $full -Recurse -Force}
 }

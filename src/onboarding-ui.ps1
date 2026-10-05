@@ -1,3 +1,18 @@
+# Warming is the one automatic action that spends quota, so first-time setup asks instead
+# of deciding. Asked only when it could take effect; any answer but yes leaves it off.
+function Request-Hotpl8Warming([string]$Directory,[scriptblock]$Ask={param($question) Read-Host $question}) {
+    $path=Join-Path $Directory 'policy.json';$hash=(Get-FileHash $path -Algorithm SHA256).Hash
+    $policy=Read-Hotpl8Json $path
+    $capable=@(Get-Hotpl8ProviderAccounts $policy|Where-Object {(Get-Hotpl8ProviderDefinition $_.provider).capabilities.warming}).Count
+    if(-not $capable -or $policy.warm -eq $true -or -not (Get-Hotpl8Actions $policy $false).switching){return}
+    'Warming sends a small message from an idle account now and then so its usage window starts early.'
+    'Turn it on for one computer only.'
+    if((& $Ask 'Turn warming on? [y/N]') -ne 'y'){return}
+    $next=ConvertTo-Hotpl8PolicyV2 $policy
+    $next|Add-Member NoteProperty warm $true -Force
+    Save-Hotpl8Policy $Directory $next $hash
+    'Warming is on. To turn it off, set warm to false in policy.json.'
+}
 # Thin terminal client of the same durable operation used by local agents.
 function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$NewAccount,[switch]$AllowInstall) {
     $r=Invoke-Hotpl8Onboarding $Directory begin '' $Provider '' -NewAccount:$NewAccount -AllowInstall:$AllowInstall
@@ -58,6 +73,7 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                     $r=Invoke-Hotpl8Onboarding $Directory sign_in $r.operationId;continue
                 }
                 'ready'{
+                    if(-not $NewAccount -and -not [Console]::IsInputRedirected){try{Request-Hotpl8Warming $Directory}catch{$_.Exception.Message}}
                     'Setup complete. Opening your account view.'
                     . (Join-Path $PSScriptRoot 'dashboard.ps1')
                     Show-Hotpl8Dashboard $Directory

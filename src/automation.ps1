@@ -58,7 +58,8 @@ function Assert-Hotpl8AutomationPolicy($Policy) {
     }
     if ($a) {
         if($a -isnot [pscustomobject]){throw 'automation must be an object.'}
-        foreach ($field in $a.PSObject.Properties) { if ($field.Name -notin @('schedule','dailyAttemptLimit','warmExcluded')) { throw 'Invalid automation field.' } }
+        foreach ($field in $a.PSObject.Properties) { if ($field.Name -notin @('schedule','dailyAttemptLimit','warmExcluded','continue')) { throw 'Invalid automation field.' } }
+        if ($null -ne $a.continue -and $a.continue -isnot [bool]) { throw 'automation.continue must be true or false.' }
         if ($null -ne $a.dailyAttemptLimit -and (-not (Test-Hotpl8Number $a.dailyAttemptLimit) -or $a.dailyAttemptLimit -lt 1 -or $a.dailyAttemptLimit -gt 100 -or [math]::Floor($a.dailyAttemptLimit) -ne $a.dailyAttemptLimit)) { throw 'dailyAttemptLimit must be an integer from 1 to 100.' }
         if($null -ne $a.warmExcluded -and ($a.warmExcluded -isnot [array] -or @($a.warmExcluded|Select-Object -Unique).Count -ne @($a.warmExcluded).Count)){throw 'warmExcluded must be a unique array.'}
         if($null -ne $a.warmExcluded -and @($a.warmExcluded|Where-Object {$null -eq $_}).Count){throw 'Null warming exclusion.'}

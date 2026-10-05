@@ -152,7 +152,7 @@ try{
         Assert ($null -eq $five.remainingPercent)
     }
     Check 'Claude current and proposed accounts respect pause hold monitor and scope' {
-        SaveFixture;$snapshot.slots[0].used5h=100;WriteFixture
+        SaveFixture;$policy.mode='monitor';$snapshot.slots[0].used5h=100;WriteFixture
         $r=Request readiness @{provider='claude'}
         Assert ($r.ok -and -not $r.data.eligible -and $r.data.proposedSlot -eq '2' -and $r.data.requiresSelection -and -not $r.data.switchingPermitted)
         $policy.mode='automate';$policy.switchEnabled=$true;WriteFixture

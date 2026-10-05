@@ -88,12 +88,14 @@ function Assert-Hotpl8Policy($Policy) {
     }
 }
 function Get-Hotpl8Actions($Policy, [bool]$ObserveOnly) {
-    # Legacy configs predate mode. Preserve their existing behavior; new examples are monitor-only.
+    # Legacy configs predate mode. Preserve their existing behavior; monitor mode turns every action off.
     $enabled = -not $ObserveOnly -and $Policy.mode -ne 'monitor'
     $legacy = $null -eq $Policy.schemaVersion
     return @{
         switching = $enabled -and (($legacy -and $null -eq $Policy.switchEnabled) -or $Policy.switchEnabled -eq $true)
         warming = $enabled -and $Policy.warm -eq $true
         probing = $enabled -and (($legacy -and $null -eq $Policy.probeEnabled) -or $Policy.probeEnabled -eq $true)
+        # Automatic continue after a usage limit (continue.ps1) is on unless switched off.
+        continuing = $enabled -and $Policy.automation.continue -ne $false
     }
 }

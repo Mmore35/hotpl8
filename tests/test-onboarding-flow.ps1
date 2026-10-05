@@ -1,7 +1,7 @@
 # Offline first-account and recovery contracts; every native operation is replaced by a fixture.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-foreach($module in @('common','config','diagnostics','management','onboarding','onboarding-native','onboarding-install','agent-api','mcp')){. (Join-Path $root ('src/'+$module+'.ps1'))}
+foreach($module in @('common','config','diagnostics','management','onboarding','onboarding-native','onboarding-install','onboarding-ui','agent-api','mcp')){. (Join-Path $root ('src/'+$module+'.ps1'))}
 . (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 $lab=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-onboarding-flow-'+[guid]::NewGuid().ToString('N'))
@@ -32,11 +32,38 @@ function Candidate([string]$Id,[bool]$Enrolled=$false,[string]$Provider='codex')
     [pscustomobject]@{id=$Id;provider=$Provider;home=(Join-Path $lab $Id);slot=$Id;label=('Fixture '+$Id);enrolled=$Enrolled;status='ok'}
 }
 try{
-    Check 'zero-state creates monitor policy and asks only for provider' {
+    Check 'zero-state creates the default policy and asks only for provider' {
         $r=BeginFixture empty ''; $r=RunFixture $r
         Assert ($r.phase -eq 'needs_provider' -and $r.humanRequired)
         $p=Read-Hotpl8Json (Join-Path $script:directory 'policy.json')
-        Assert ($p.mode -eq 'monitor' -and -not $p.warm -and -not $p.switchEnabled)
+        Assert ($p.mode -eq 'automate' -and $p.switchEnabled -eq $true -and $p.warm -eq $false -and $p.probeEnabled -eq $false)
+    }
+    Check 'first setup offers warming, and only a yes turns it on' {
+        $where=Join-Path $lab warming;[void][IO.Directory]::CreateDirectory($where);$path=Join-Path $where 'policy.json'
+        $policy=Read-Hotpl8Json (Join-Path $root 'policy.example.json');$policy.prefer=@(1)
+        Write-Hotpl8Text $path ($policy|ConvertTo-Json -Depth 24);$before=(Get-FileHash $path).Hash
+        $asked=@{count=0;answer=''}
+        foreach($answer in @('','n','yes')){$asked.answer=$answer;[void]@(Request-Hotpl8Warming $where {$asked.count++;$asked.answer})}
+        Assert ($asked.count -eq 3 -and (Get-FileHash $path).Hash -eq $before) 'only y may change the policy'
+        $asked.answer='y';$text=@(Request-Hotpl8Warming $where {$asked.count++;$asked.answer}) -join ' '
+        $saved=Read-Hotpl8Json $path
+        Assert ($saved.warm -eq $true -and $saved.mode -eq 'automate' -and $saved.switchEnabled -eq $true -and $text.Contains('Warming is on'))
+        [void]@(Request-Hotpl8Warming $where {$asked.count++;$asked.answer})
+        Assert ($asked.count -eq 4) 'warming already on must not be asked again'
+    }
+    Check 'warming is not offered where it could not take effect' {
+        $asked=@{count=0}
+        foreach($case in @('codex-only','monitor','switching-off')){
+            $where=Join-Path $lab ('warming-'+$case);[void][IO.Directory]::CreateDirectory($where);$path=Join-Path $where 'policy.json'
+            $policy=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
+            if($case -eq 'codex-only'){$policy.codex.slots=@([pscustomobject]@{id='main';home=(Join-Path $lab 'native')})}else{$policy.prefer=@(1)}
+            if($case -eq 'monitor'){$policy.mode='monitor'}
+            if($case -eq 'switching-off'){$policy.switchEnabled=$false}
+            Write-Hotpl8Text $path ($policy|ConvertTo-Json -Depth 24);$before=(Get-FileHash $path).Hash
+            $text=@(Request-Hotpl8Warming $where {$asked.count++;'y'})
+            Assert (-not $text.Count -and (Get-FileHash $path).Hash -eq $before) $case
+        }
+        Assert ($asked.count -eq 0)
     }
     Check 'one existing account completes without any provider login' {
         $r=BeginFixture existing;$script:candidates=@(Candidate only)

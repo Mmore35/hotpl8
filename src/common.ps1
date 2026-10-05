@@ -92,12 +92,13 @@ function Read-Hotpl8Json([string]$Path) {
     finally{if($reader){$reader.Dispose()}elseif($stream){$stream.Dispose()}}
     # Parsing can be much slower than reading. Release the file first so the
     # collector never waits for dashboard JSON conversion to finish.
-    try{
-        # Core PowerShell otherwise turns JSON timestamps into local DateTime values;
-        # the Windows API contract requires their original strings and UTC suffixes.
-        if($PSVersionTable.PSVersion -ge [version]'7.5'){return ConvertFrom-Json -InputObject $text -DateKind String -ErrorAction Stop}
-        return ConvertFrom-Json -InputObject $text -ErrorAction Stop
-    }catch{return $null}
+    try{return ConvertFrom-Hotpl8Json $text}catch{return $null}
+}
+function ConvertFrom-Hotpl8Json([string]$Text) {
+    # Core PowerShell otherwise turns JSON timestamps into local DateTime values;
+    # the Windows API contract requires their original strings and UTC suffixes.
+    if($PSVersionTable.PSVersion -ge [version]'7.5'){return ConvertFrom-Json -InputObject $Text -DateKind String -ErrorAction Stop}
+    return ConvertFrom-Json -InputObject $Text -ErrorAction Stop
 }
 function Test-Hotpl8Number($Value) {
     if ($null -eq $Value -or $Value -is [bool] -or $Value -is [string]) { return $false }

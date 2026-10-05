@@ -2,7 +2,7 @@
 
 ![Fictional accounts showing collector health, weekly pace, an unconfirmed warm receipt and work-hour blocking](assets/operations.png)
 
-These commands are in the 0.2 source candidate. The older downloadable preview does not contain them. Start with `hotpl8 setup`, optionally `hotpl8 setup -Interactive`. Setup preserves existing policy and uses native sign-in; it does not enable automation. Claude enrollment uses an existing cswap account number:
+These commands are in the 0.2 source candidate. The older downloadable preview does not contain them. Start with `hotpl8 setup`, optionally `hotpl8 setup -Interactive`. Setup preserves an existing policy and uses native sign-in. The one setting it can change is warming, and only when you answer `y` to its question. Claude enrollment uses an existing cswap account number:
 
 ```powershell
 hotpl8 enroll -Provider claude -Slot 1 -Label Everyday
@@ -31,6 +31,16 @@ hotpl8 resume
 Disabled accounts cannot be selected; explicit Codex launch also rejects them. Disabled Codex homes are not polled. Claude inventory is one upstream call, but disabled slots cannot authorize switches, warming or probes. Reserve status changes priority and weekly floors; it does not disable the account. Changes validate the complete policy, reject concurrent edits, save `policy.previous.json`, and atomically replace policy. Cached decisions update on the next collection; native launch rechecks policy immediately.
 
 Pause persists across restarts and suppresses automatic switching, warming and recovery probes. Quota collection and deliberate Codex launches continue. Dashboard Space only freezes the view. Existing hold leases suppress switches separately; they do not mean warming is paused.
+
+## Automatic continue
+
+```powershell
+hotpl8 continue
+hotpl8 continue -Operation disable
+hotpl8 continue -Operation enable
+```
+
+When a hosted conversation stops on a usage limit, HotPl8 sends it one `Automated message: continue.` as soon as a usable account is in place. This is on whenever the policy is not in monitor mode and `automation.continue` is not `false`. For Claude the collector keeps one `StopFailure` entry in Claude's user settings in step with that setting; `disable` removes it at once. While automation is paused a waiting conversation keeps waiting and continues when the pause ends. `hotpl8 doctor` reports the setting, the hook and the last continue in one line. The events are `continue_sent`, `continue_skipped` and `continue_hook_failed`. [Behavior and limits](plans/automatic-continue.md).
 
 ## Canceled and unreadable accounts
 
@@ -84,7 +94,7 @@ Policy version 2 adds:
 }
 ```
 
-This is a fragment to merge into a complete policy with `schemaVersion: 2` and an explicit mode. Existing version-1 policies remain supported. New installations remain monitor-only, with history and notifications off. Account commands preserve the policy version unless a requested setting requires migration, without enabling actions. Older releases reject version 2; rollback checks reader compatibility before replacing files.
+This is a fragment to merge into a complete policy with `schemaVersion: 2` and an explicit mode. Existing version-1 policies remain supported. New installations start in automate mode with switching and automatic continue on; warming, recovery probes, history and notifications stay off. Account commands preserve the policy version unless a requested setting requires migration, without enabling actions. Older releases reject version 2; rollback checks reader compatibility before replacing files.
 
 Days use Sunday=0 through Saturday=6. Start is inclusive, end exclusive. Overnight intervals belong to their starting day; equal start/end allows no prompts. Omit the schedule for all hours. The default time zone is local; optional `timeZone` uses an ID supported by the host PowerShell runtime. Check that ID again when moving policy between Windows and Mac. Local daylight-saving transitions follow the runtime time-zone database.
 

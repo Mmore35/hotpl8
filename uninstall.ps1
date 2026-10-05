@@ -41,6 +41,9 @@ try{
             if($changed){$hook.hooks.SessionStart=$entries;$updates+=@(@{path=$hookPath;value=$hook})}
         }
     }
+    # A Claude settings file that cannot be changed safely does not block the uninstall.
+    try{Set-Hotpl8ContinueHook (Join-Path $root 'app') $state -Remove}
+    catch{'Automatic continue hook was not removed from Claude settings: '+$_.Exception.Message}
     if($installation.scheduled -and $installation.platform -ne 'macos'){
         $task=Get-ScheduledTask -TaskName ('HotPl8-'+$installation.id) -ErrorAction SilentlyContinue
         if($task -and $task.Description -ne ('HotPl8 owned installation '+$installation.id)){throw 'Task ownership mismatch.'}

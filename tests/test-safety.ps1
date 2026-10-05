@@ -15,17 +15,32 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-safety-'+[guid]::NewGuid().To
 $savedFixture=$env:HOTPL8_SAFE_FIXTURE;$savedCalls=$env:HOTPL8_SAFE_CALLS;$savedState=$env:HOTPL8_STATE_DIRECTORY
 try{
     $policy=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
-    Check 'new policy disables every automatic action' {
+    Check 'new policy switches and continues by itself but never warms or probes' {
         Assert-Hotpl8Policy $policy
         $a=Get-Hotpl8Actions $policy $false
-        Assert (-not $a.switching -and -not $a.warming -and -not $a.probing)
+        Assert ($a.switching -and $a.continuing -and -not $a.warming -and -not $a.probing)
+    }
+    Check 'continue follows the mode and its own setting, which is true or false only' {
+        $p=Copy-Value $policy
+        Assert (-not (Get-Hotpl8Actions $p $true).continuing)
+        $p.mode='monitor';$a=Get-Hotpl8Actions $p $false
+        Assert (-not $a.continuing -and -not $a.switching -and -not $a.warming -and -not $a.probing)
+        $p.mode='automate';$p.switchEnabled=$false
+        Assert (Get-Hotpl8Actions $p $false).continuing
+        $p.automation|Add-Member NoteProperty continue $false;Assert-Hotpl8Policy $p
+        Assert (-not (Get-Hotpl8Actions $p $false).continuing)
+        $p.automation.continue=$true;Assert-Hotpl8Policy $p
+        Assert (Get-Hotpl8Actions $p $false).continuing
+        $p.automation.continue='false';$threw=$false
+        try{Assert-Hotpl8Policy $p}catch{$threw=$true}
+        Assert $threw
     }
     Check 'legacy actions preserved while refresh overrides them' {
         $p=Copy-Value @{prefer=@(1);warm=$true}
         $a=Get-Hotpl8Actions $p $false
-        Assert ($a.switching -and $a.warming -and $a.probing)
+        Assert ($a.switching -and $a.warming -and $a.probing -and $a.continuing)
         $a=Get-Hotpl8Actions $p $true
-        Assert (-not $a.switching -and -not $a.warming -and -not $a.probing)
+        Assert (-not $a.switching -and -not $a.warming -and -not $a.probing -and -not $a.continuing)
     }
     Check 'invalid numeric, boolean, duplicate, and mode fields rejected' {
         foreach($entry in @(@('warm','false'),@('margin5h',101),@('maxUsageAgeS',-1),@('mode','monitr'),@('prefer',@(1,1)))){

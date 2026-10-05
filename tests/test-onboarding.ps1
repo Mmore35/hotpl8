@@ -11,6 +11,8 @@ function Check([string]$Name, [scriptblock]$Body) {
 }
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-onboarding-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($dir)
+# The continue command writes Claude's settings here, never in the real profile.
+$claudeBefore = $env:CLAUDE_CONFIG_DIR; $env:CLAUDE_CONFIG_DIR = Join-Path $dir 'claude home'
 function Invoke-TestCli([string[]]$Arguments) {
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName = (Get-Process -Id $PID).Path
@@ -29,11 +31,12 @@ function Invoke-TestCli([string[]]$Arguments) {
     } finally { $proc.Dispose() }
 }
 try {
-    Check 'init creates monitor policy and directs users to guided setup' {
+    Check 'init creates the default policy and directs users to guided setup' {
         $r = Invoke-TestCli @('init')
-        Assert ($r.code -eq 0 -and $r.text.Contains('hotpl8 setup'))
+        Assert ($r.code -eq 0 -and $r.text.Contains('hotpl8 setup') -and $r.text.Contains('automatic switching and continue on, warming off'))
         $policy = Read-Hotpl8Json (Join-Path $dir 'policy.json')
-        Assert ($policy.mode -eq 'monitor' -and -not $policy.prefer -and -not $policy.codex.slots)
+        Assert ($policy.mode -eq 'automate' -and $policy.switchEnabled -eq $true -and $policy.warm -eq $false -and $policy.probeEnabled -eq $false)
+        Assert (-not $policy.prefer -and -not $policy.codex.slots)
     }
     Check 'doctor explains missing enrollment while retaining JSON contract' {
         $before = (Get-FileHash (Join-Path $dir 'policy.json')).Hash
@@ -42,6 +45,7 @@ try {
         $json = Invoke-TestCli @('doctor', '-AsJson')
         $d = $json.text | ConvertFrom-Json
         Assert ($json.code -eq 0 -and $d.policyValid -and -not $d.codexConfigured)
+        Assert ($d.continue.enabled -eq $true -and $d.continue.hookPresent -eq $false -and $null -eq $d.continue.lastAt)
         Assert ((Get-FileHash (Join-Path $dir 'policy.json')).Hash -eq $before)
         Assert (@(Get-ChildItem $dir -File).Count -eq 1)
     }
@@ -80,6 +84,12 @@ try {
         $text = (Format-Hotpl8Doctor $report) -join "`n"
         Assert ($text.Contains('per-account status') -and $text.Contains('native login and quota availability are checked by hotpl8 refresh'))
     }
+    Check 'doctor reports automatic continue in one line' {
+        $report.continue = @{ enabled = $true; hookPresent = $false; lastAt = $null }
+        Assert (((Format-Hotpl8Doctor $report) -join "`n").Contains('Automatic continue: on | Claude hook absent | last sent never'))
+        $report.continue = @{ enabled = $false; hookPresent = $true; lastAt = '2026-01-02T03:04:05.0000000+00:00' }
+        Assert (((Format-Hotpl8Doctor $report) -join "`n").Contains('Automatic continue: off | Claude hook present | last sent 2026-01-02T03:04:05.0000000+00:00'))
+    }
     Check 'guided setup CLI preserves policy and exposes offline capabilities' {
         $before=(Get-FileHash (Join-Path $dir 'policy.json')).Hash
         $r=Invoke-TestCli @('setup');Assert ($r.code -eq 0 -and $r.text.Contains('guided enrollment'))
@@ -101,7 +111,49 @@ try {
         Assert ($r.code -eq 0 -and $m.title.Contains('HotPl8'))
         Assert (@(Get-ChildItem $dir -File).Count -eq $before)
     }
+    Check 'continue shows its state and changes nothing until asked' {
+        $before = (Get-FileHash (Join-Path $dir 'policy.json')).Hash
+        $r = Invoke-TestCli @('continue')
+        Assert ($r.code -eq 0 -and $r.text.Contains('Automatic continue: on') -and $r.text.Contains('Claude hook: absent'))
+        Assert ((Invoke-TestCli @('init')).code -ne 0)
+        Assert ((Get-FileHash (Join-Path $dir 'policy.json')).Hash -eq $before -and -not (Test-Path $env:CLAUDE_CONFIG_DIR))
+    }
+    Check 'continue disable and enable keep the policy and the Claude hook in step' {
+        [void][IO.Directory]::CreateDirectory($env:CLAUDE_CONFIG_DIR)
+        $settings = Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json'
+        $r = Invoke-TestCli @('continue', '-Operation', 'enable')
+        Assert ($r.code -eq 0 -and $r.text.Contains('Automatic continue: on') -and $r.text.Contains('Claude hook: present'))
+        $hook = (Read-Hotpl8Json $settings).hooks.StopFailure[0].hooks[0]
+        Assert ($hook.asyncRewake -eq $true -and ($hook.args -join ' ').Contains('continue.ps1'))
+        $r = Invoke-TestCli @('continue', '-Operation', 'disable')
+        Assert ($r.code -eq 0 -and $r.text.Contains('off (automation.continue is false)') -and $r.text.Contains('Claude hook: absent'))
+        $policy = Read-Hotpl8Json (Join-Path $dir 'policy.json')
+        Assert ($policy.automation.continue -eq $false -and $policy.mode -eq 'automate' -and $policy.switchEnabled -eq $true -and $policy.warm -eq $false)
+        Assert (-not (Read-Hotpl8Json $settings).hooks)
+        $d = (Invoke-TestCli @('doctor', '-AsJson')).text | ConvertFrom-Json
+        Assert ($d.continue.enabled -eq $false -and $d.continue.hookPresent -eq $false)
+        $r = Invoke-TestCli @('continue', '-Operation', 'enable')
+        Assert ($r.text.Contains('Claude hook: present') -and $null -eq (Read-Hotpl8Json (Join-Path $dir 'policy.json')).automation.continue)
+    }
+    Check 'continue leaves a monitor policy alone and freezes an older policy before changing it' {
+        $path = Join-Path $dir 'policy.json'
+        $monitor = Read-Hotpl8Json (Join-Path $root 'policy.example.json'); $monitor.mode = 'monitor'
+        Write-Hotpl8Text $path ($monitor | ConvertTo-Json -Depth 24)
+        $before = (Get-FileHash $path).Hash
+        $r = Invoke-TestCli @('continue', '-Operation', 'enable')
+        Assert ($r.code -eq 0 -and $r.text.Contains('off (monitor mode turns every action off)') -and $r.text.Contains('Claude hook: absent'))
+        Assert ((Get-FileHash $path).Hash -eq $before)
+        Copy-Item (Join-Path $root 'tests/legacy-policy.json') $path -Force
+        $r = Invoke-TestCli @('continue', '-Operation', 'disable')
+        $saved = Read-Hotpl8Json $path
+        Assert ($r.code -eq 0 -and $saved.schemaVersion -eq 2 -and $saved.automation.continue -eq $false)
+        Assert ($saved.mode -eq 'automate' -and $saved.switchEnabled -eq $true -and $saved.probeEnabled -eq $true -and $saved.warm -eq $true)
+        [void][IO.Directory]::CreateDirectory((Join-Path $dir 'continue'))
+        [IO.File]::WriteAllText((Join-Path $dir 'continue/fixture-conversation'), '')
+        Assert ((Invoke-TestCli @('doctor')).text -match 'Automatic continue: off \| Claude hook absent \| last sent \d{4}-\d\d-\d\dT')
+    }
 } finally {
+    $env:CLAUDE_CONFIG_DIR = $claudeBefore
     $full = [IO.Path]::GetFullPath($dir)
     if ($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-onboarding-[a-f0-9]{32}$') {
         Remove-Item -LiteralPath $full -Recurse -Force
