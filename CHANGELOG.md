@@ -6,6 +6,7 @@
 - **After this update, an installation that is not in monitor mode gets automatic continue without a policy change.** On its next collector run HotPl8 adds one entry to the `StopFailure` hooks in Claude's user settings by itself. To turn it off and remove the entry: `hotpl8 continue -Operation disable`. With T3 Code 0.0.46 or later, turn off T3's own resume of limited conversations.
 - New installations start with automatic account switching and automatic continue on. Warming stays off; interactive setup asks whether to turn it on. Existing policies are not changed.
 - Add `hotpl8 continue` to show, enable or disable automatic continue, and one doctor line for its state.
+- Ship a small compiled reader with each release and answer `hotpl8 version` from it. Output is unchanged; `-AsJson` carries the same data with different spacing. PowerShell still answers when the reader is missing, was built from another commit, declines the input, or `HOTPL8_NATIVE=0` is set. Building from source now needs Rust. This is the first step of moving display commands out of PowerShell.
 
 - Remove Codex model registration from T3 routing, helper setup, CLI launches and cached readiness. Account selection uses the configured quota basis; native model/options pass through unchanged, including omitted defaults. Legacy model maps remain readable but are ignored. Active-work ownership and quota/account controls are preserved.
 

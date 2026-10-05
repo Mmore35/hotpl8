@@ -203,6 +203,18 @@ def install_dispatch(root, release, config):
         atomic_bytes(target, shim, 0o700)
 
 
+def native_files(release):
+    # Zip extraction drops the executable bit. The file was already checked against the
+    # delivery manifest; a native file without the bit is ignored and PowerShell answers.
+    listed = read(release / "release-files.json", {}).get("platformFiles", {})
+    for relative in listed.get("macos", []) if isinstance(listed, dict) else []:
+        if not isinstance(relative, str) or not re.fullmatch(r"bin/macos/[a-zA-Z0-9_.-]+", relative):
+            raise DeliveryError("Candidate lists an invalid native file")
+        path = release / relative
+        if path.is_file() and not path.is_symlink():
+            os.chmod(path, 0o700)
+
+
 def adapter(root, release, operation, backend=None):
     owned, config = owned_config(root)
     if operation == "components":
@@ -210,6 +222,7 @@ def adapter(root, release, operation, backend=None):
     build = read(release / "build-info.json", {})
     if not re.fullmatch(r"[a-f0-9]{40}", build.get("sha", "")):
         raise DeliveryError("Candidate has no exact source identity")
+    native_files(release)
     command = [config["powershell"], "-NoProfile", "-NonInteractive", "-File",
                release / "delivery/macos-preflight.ps1", "-ReleaseDirectory", release,
                "-StateDirectory", config["stateDirectory"], "-InstallDirectory", root]

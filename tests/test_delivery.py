@@ -656,6 +656,74 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         self.assertEqual(d.digest(self.state / "policy.json"), before)
         self.assertEqual(d.read(self.state / "ledger.json"), {"request": 42})
 
+    @unittest.skipUnless(os.name == "nt", "Windows native reader delivery")
+    def test_native_reader_upgrade_fallback_and_rollback(self):
+        source = Path(__file__).resolve().parents[1]
+        native = source / "bin/windows/hotpl8-native.exe"
+        self.assertTrue(native.is_file(), "Build the native reader first: scripts/build-native.ps1")
+        identity = subprocess.run([str(native), "self-check"], capture_output=True, timeout=30).stdout.decode()
+        self.assertRegex(identity, r"\Ahotpl8-native protocol=1 sha=[a-f0-9]{40}\n\Z")
+        new = identity.strip()[-40:]
+        version = (source / "VERSION").read_text().strip()
+        ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+        self.config["adapter"] = "delivery/hotpl8-adapter.ps1"
+        d.write(self.root / "delivery.json", self.config)
+        d.write(self.root / "installation.json", {"product": "hotpl8", "id": "012345abcdef", "version": "fixture", "stateDirectory": str(self.state)})
+        self.previous["protocol"] = 1
+        d.write(self.root / "current.json", self.previous)
+        shutil.copyfile(source / "policy.example.json", self.state / "policy.json")
+
+        def build(sha, extra=()):
+            with zipfile.ZipFile(self.source, "w") as z:
+                for name in [*d.read(source / "release-files.json")["files"], *extra]:
+                    z.write(source / name, name)
+            package(self.source, self.archive, "hotpl8", "example/hotpl8", sha)
+
+        def ask(*arguments, native=True):
+            environment = {key: value for key, value in os.environ.items() if key.upper() != "HOTPL8_NATIVE"}
+            if not native:
+                environment["HOTPL8_NATIVE"] = "0"
+            # The same command line as the installed hotpl8.cmd.
+            result = subprocess.run([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(self.root / "launch.ps1"),
+                                     "-Entry", "hotpl8", "version", *arguments], env=environment, capture_output=True, timeout=180)
+            self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+            return result.stdout.decode().replace("\r\n", "\n")
+
+        # The installed release predates the reader: the same code without a compiled file.
+        build(A)
+        old = self.root / "releases" / A
+        d.unpack(self.archive, old, self.config, A)
+        d.write(self.root / "receipts" / (A + ".json"), {"manifestDigest": d.digest(old / "delivery-manifest.json")})
+        shutil.copyfile(old / "delivery/launch.ps1", self.root / "launch.ps1")
+        self.assertEqual(ask(), version + " main " + A[:12] + "\n")
+        build(new, ["bin/windows/hotpl8-native.exe"])
+        self.github.sha = new
+        self.assertEqual(d.update(self.root, self.github)["state"], "current")
+        self.assertEqual(d.read(self.root / "current.json")["sha"], new)
+        installed = self.root / "releases" / new / "bin/windows/hotpl8-native.exe"
+        self.assertEqual(d.digest(installed), d.digest(native))
+        self.assertEqual(ask(), version + " main " + new[:12] + "\n")
+        # Windows PowerShell writes two spaces after a colon and the reader one, which
+        # shows through the stable launcher which of them answered.
+        record = {"version": version, "build": {"protocol": 1, "product": "hotpl8", "repository": "example/hotpl8", "sha": new, "channel": "main"}}
+        answer = ask("-AsJson")
+        self.assertIn('"version": "', answer)
+        self.assertEqual(json.loads(answer), record)
+        answer = ask("-AsJson", native=False)
+        self.assertIn('"version":  "', answer)
+        self.assertEqual(json.loads(answer), record)
+        installed.write_bytes(b"not a program")
+        answer = ask("-AsJson")
+        self.assertIn('"version":  "', answer)
+        self.assertEqual(json.loads(answer), record)
+        installed.unlink()
+        self.assertEqual(ask(), version + " main " + new[:12] + "\n")
+        # Pointer rollback selects the release that has no reader.
+        d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": new}})
+        self.assertEqual(d.update(self.root, self.github)["state"], "pending")
+        self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+        self.assertEqual(ask(), version + " main " + A[:12] + "\n")
+
     def test_preview_is_repeatable_and_never_selects_production(self):
         self.config["previewWorkflow"] = "ci.yml"
         d.write(self.root / "delivery.json", self.config)

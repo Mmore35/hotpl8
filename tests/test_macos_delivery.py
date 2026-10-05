@@ -229,6 +229,60 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(d.read(self.root / 'installation.json')['sourceSha'], A)
         self.assertFalse((self.root / 'transaction.json').exists())
 
+    def test_native_reader_upgrade_fallback_and_rollback(self):
+        native = REPO / 'bin/macos/hotpl8-native'
+        self.assertTrue(native.is_file(), 'Build the native reader first: scripts/build-native.ps1')
+        identity = subprocess.run([str(native), 'self-check'], capture_output=True, timeout=30).stdout.decode()
+        self.assertRegex(identity, r'\Ahotpl8-native protocol=1 sha=[a-f0-9]{40}\n\Z')
+        new = identity.strip()[-40:]
+        version = (REPO / 'VERSION').read_text().strip()
+        environment = {key: value for key, value in os.environ.items() if key != 'HOTPL8_NATIVE'}
+        # PowerShell 7 lays JSON out as the reader does, so the gate itself says who answers.
+        gate = self.base / 'gate.ps1'
+        gate.write_text("param($Release)\n. (Join-Path $Release 'src/native.ps1')\nif(Get-Hotpl8NativePath $Release){'reader'}else{'powershell'}\n")
+
+        def answers(release):
+            result = subprocess.run([self.pwsh, '-NoProfile', '-File', str(gate), str(release)],
+                                    env=environment, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            return result.stdout.decode().strip()
+
+        def ask():
+            result = subprocess.run([str(self.root / 'hotpl8'), 'version'], env=environment, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            return result.stdout.decode()
+
+        # The installed release predates the reader: the same code without a compiled file.
+        self.assertEqual(self.update()['state'], 'current')
+        self.assertEqual(answers(self.root / 'releases' / A), 'powershell')
+        self.assertEqual(ask(), version + ' main ' + A[:12] + '\n')
+        with zipfile.ZipFile(self.source, 'a') as archive:
+            archive.write(native, 'bin/macos/hotpl8-native')
+        self.candidate(new)
+        self.assertEqual(self.update()['state'], 'current')
+        self.assertEqual(d.read(self.root / 'current.json')['sha'], new)
+        release = self.root / 'releases' / new
+        installed = release / 'bin/macos/hotpl8-native'
+        # Extraction drops the executable bit; the adapter restores it before preflight.
+        self.assertTrue(os.access(installed, os.X_OK))
+        self.assertEqual(answers(release), 'reader')
+        self.assertEqual(ask(), version + ' main ' + new[:12] + '\n')
+        os.chmod(installed, 0o600)
+        self.assertEqual(answers(release), 'powershell')
+        self.assertEqual(ask(), version + ' main ' + new[:12] + '\n')
+        os.chmod(installed, 0o700)
+        installed.write_bytes(b'not a program')
+        self.assertEqual(answers(release), 'powershell')
+        self.assertEqual(ask(), version + ' main ' + new[:12] + '\n')
+        installed.unlink()
+        self.assertEqual(answers(release), 'powershell')
+        self.assertEqual(ask(), version + ' main ' + new[:12] + '\n')
+        # Pointer rollback selects the release that has no reader.
+        d.write(self.root / 'transaction.json', dict(previous=d.read(self.root / 'previous.json'), candidate=dict(sha=new)))
+        self.assertEqual(self.update()['state'], 'pending')
+        self.assertEqual(d.read(self.root / 'current.json')['sha'], A)
+        self.assertEqual(ask(), version + ' main ' + A[:12] + '\n')
+
     def test_registration_prevalidates_all_and_preserves_disabled_jobs(self):
         owned, config = m.owned_config(self.root)
         spec = m.job_plist(self.root, 'collector', owned, config)

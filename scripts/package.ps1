@@ -9,7 +9,7 @@ $output=Assert-Hotpl8Path $OutputDirectory
 [void][IO.Directory]::CreateDirectory($output)
 $version=(Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
 if($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'){throw 'Invalid version'}
-$files=@(Get-Hotpl8ReleaseFiles $root)
+$files=@(Get-Hotpl8ReleaseFiles $root -Platform $Platform -RequirePlatformFiles)
 $stage=Join-Path $output ('package-'+[guid]::NewGuid().ToString('N'))
 $zip=Join-Path $output ('hotpl8-'+$version+'-'+$Platform+'.zip')
 [void][IO.Directory]::CreateDirectory($stage)

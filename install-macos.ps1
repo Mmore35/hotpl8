@@ -18,7 +18,7 @@ foreach($codeRoot in @($PSScriptRoot,(Join-Path $destination 'app'),(Join-Path $
     if($state -eq $codeRoot -or $state.StartsWith($codeRoot+'/')){throw 'State must be separate from code.'}
 }
 if($state -eq $destination -or $destination -eq $PSScriptRoot -or $destination.StartsWith($PSScriptRoot+'/')){throw 'Installation and source must be separate.'}
-$files=@(Get-Hotpl8ReleaseFiles $PSScriptRoot)
+$files=@(Get-Hotpl8ReleaseFiles $PSScriptRoot -Platform macos)
 $checksums=Read-Hotpl8Json (Join-Path $PSScriptRoot 'checksums.json')
 if($checksums){foreach($f in $files){if((Get-FileHash (Join-Path $PSScriptRoot $f)).Hash.ToLowerInvariant() -cne $checksums.$f){throw 'Release checksum mismatch.'}}}
 foreach($dir in @($destination,$state)){[void][IO.Directory]::CreateDirectory($dir);[IO.File]::SetUnixFileMode($dir,[IO.UnixFileMode]'UserRead,UserWrite,UserExecute')}
@@ -44,7 +44,11 @@ $lock=$null;$promoted=$false;$moved=$false;$createdLink=$false;$createdLaunch=$f
 try{
     $lock=[IO.File]::Open((Join-Path $state 'tick.lock'),'OpenOrCreate','ReadWrite','None')
     if(-not $old){Write-Hotpl8Text (Join-Path $destination 'installation.json') ($receipt|ConvertTo-Json) -NoBom}
-    foreach($f in $files){$target=Join-Path $stage $f;[void][IO.Directory]::CreateDirectory((Split-Path $target -Parent));[IO.File]::Copy((Join-Path $PSScriptRoot $f),$target)}
+    foreach($f in $files){
+        $target=Join-Path $stage $f;[void][IO.Directory]::CreateDirectory((Split-Path $target -Parent));[IO.File]::Copy((Join-Path $PSScriptRoot $f),$target)
+        # Archive extraction drops the executable bit, and a native file without it is ignored.
+        if($f.StartsWith('bin/macos/',[StringComparison]::Ordinal)){[IO.File]::SetUnixFileMode($target,[IO.UnixFileMode]'UserRead,UserWrite,UserExecute')}
+    }
     if(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'build-info.json')){[IO.File]::Copy((Join-Path $PSScriptRoot 'build-info.json'),(Join-Path $stage 'build-info.json'))}
     Write-Hotpl8Text (Join-Path $stage 'install-state.json') (@{stateDirectory=$state}|ConvertTo-Json) -NoBom
     $policy=Join-Path $state 'policy.json'

@@ -1,0 +1,25 @@
+[package]
+name = "hotpl8-native"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+description = "Compiled reader for HotPl8 display commands"
+repository = "https://github.com/Mmore35/hotpl8"
+publish = false
+
+[[bin]]
+name = "hotpl8-native"
+path = "src/main.rs"
+
+# Every dependency ships inside the binary. Add one only when a command uses it,
+# and record it in THIRD_PARTY_NOTICES.md.
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

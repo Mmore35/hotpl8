@@ -248,6 +248,7 @@ updater. Packaged files alone are insufficient when setup copies them elsewhere.
 |---|---|---|
 | CLI and scheduled collector | Stable launchers select current release; existing short writers drain | Installed SHA and completed collector SHA; pointer rollback |
 | Interactive dashboard | Existing handoff after pointer change | Loaded SHA in window title; retained release |
+| Compiled reader (`bin/`) | An inventoried file of the release; each new `hotpl8` process uses the one in the release it was started from. See [the plan](plans/rust-read-side.md) | `hotpl8-native self-check` reports the commit it was built from, which must equal the release's; pointer rollback, and a missing, unusable or mismatched file gives the PowerShell answer |
 | Managed T3 bridge | Bootstrap selects verified current release once per new provider process | Per-process SHA/start/heartbeat, read-only import probe; same pointer rollback, active sessions retained |
 | Standalone T3 bridge | Deliberately pinned setup copy | Doctor reports unmanaged; explicit reinstall |
 | Automatic continue waiter | Claude's hook resolves the current release on each run; the Codex bridge runs the copy beside it | Doctor reports the hook; `hotpl8 continue -Operation disable` removes it |

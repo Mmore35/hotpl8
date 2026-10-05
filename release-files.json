@@ -194,6 +194,19 @@
     "tests/test-continue.ps1",
     "tests/probe-codex-continue.py",
     "tests/probe-claude-continue.mjs",
-    "docs/plans/automatic-continue.md"
-  ]
+    "docs/plans/automatic-continue.md",
+    "src/native.ps1",
+    "scripts/build-native.ps1",
+    "tests/test-native.ps1",
+    "tests/native-fake.cs",
+    "docs/plans/rust-read-side.md"
+  ],
+  "platformFiles": {
+    "windows": [
+      "bin/windows/hotpl8-native.exe"
+    ],
+    "macos": [
+      "bin/macos/hotpl8-native"
+    ]
+  }
 }
