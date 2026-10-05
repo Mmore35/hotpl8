@@ -1,0 +1,3 @@
+# The shipped Windows binary carries its C runtime, so nothing has to be installed beside it.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

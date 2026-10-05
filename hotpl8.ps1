@@ -46,6 +46,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 try {
+    # A plain version request is answered by the compiled reader when this release ships a
+    # matching one. Anything else, including a reader that declines, continues below unchanged.
+    # The Mac launcher adds its Codex binding to every request; version does not read it.
+    if($Command -eq 'version' -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin @('Command','AsJson','CodexExecutable')}).Count){
+        . (Join-Path $PSScriptRoot 'src/native.ps1')
+        $nativeText=Invoke-Hotpl8Native $PSScriptRoot $(if($AsJson){@('version','--root',$PSScriptRoot,'-AsJson')}else{@('version','--root',$PSScriptRoot)})
+        if($null -ne $nativeText){$nativeText;exit 0}
+    }
     . (Join-Path $PSScriptRoot 'src/common.ps1')
     if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}
     if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}

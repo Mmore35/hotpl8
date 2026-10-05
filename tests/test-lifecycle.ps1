@@ -18,7 +18,7 @@ try{
         $archive=[IO.Compression.ZipFile]::OpenRead($zip)
         try{
             $entries=@($archive.Entries|ForEach-Object FullName)
-            Assert ($entries.Count -eq (@(Get-Hotpl8ReleaseFiles $root).Count+1))
+            Assert ($entries.Count -eq (@(Get-Hotpl8ReleaseFiles $root -Platform windows).Count+1))
             Assert ('policy.json' -notin $entries -and 'auth.json' -notin $entries -and 'checksums.json' -in $entries)
         }finally{$archive.Dispose()}
         [IO.Compression.ZipFile]::ExtractToDirectory($zip,(Join-Path $dir 'release'))

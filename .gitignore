@@ -68,3 +68,7 @@ automation-leases.json
 /onboarding/
 /accounts/
 /runtime/
+
+# Compiled reader: built by scripts/build-native.ps1, shipped only inside tested packages
+/bin/
+/native/target/

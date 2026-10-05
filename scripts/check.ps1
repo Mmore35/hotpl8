@@ -4,7 +4,7 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
-$files=@(Get-ChildItem -LiteralPath $root -Recurse -File|Where-Object{$_.FullName -notmatch '[\\/](dist|artifacts|\.git)[\\/]'})
+$files=@(Get-ChildItem -LiteralPath $root -Recurse -File|Where-Object{$_.FullName -notmatch '[\\/](dist|artifacts|\.git|native[\\/]target)[\\/]'})
 $failures=@()
 foreach($file in $files){
     if($file.Extension -eq '.ps1'){
@@ -15,7 +15,7 @@ foreach($file in $files){
     if($file.Extension -eq '.json'){
         try{$null=Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8|ConvertFrom-Json}catch{$failures+=('Invalid JSON: '+$file.Name)}
     }
-    if($file.Extension -in @('.md','.ps1','.psd1','.sh','.py','.json','.yml','.yaml','.vbs','.cmd','.js','.mjs','.cs','.toml')){
+    if($file.Extension -in @('.md','.ps1','.psd1','.sh','.py','.json','.yml','.yaml','.vbs','.cmd','.js','.mjs','.cs','.toml','.rs')){
         $text=[IO.File]::ReadAllText($file.FullName)
         if($text -match '(?i)(/(?:Users|home)/[a-z][a-z0-9._ -]+/|[A-Z]:[\\/]+Users[\\/]+[a-z][a-z0-9._ -]+[\\/]+|[a-z0-9._%+-]+@(?:gmail|outlook|hotmail)\.com)'){$failures+=('Private data/path candidate: '+$file.Name)}
         if($file.Extension -eq '.md'){

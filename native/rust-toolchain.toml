@@ -1,0 +1,4 @@
+# One compiler for local builds and both CI jobs. scripts/build-native.ps1 adds the targets.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
