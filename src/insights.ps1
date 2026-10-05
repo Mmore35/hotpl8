@@ -123,10 +123,10 @@ function Add-Hotpl8Insights($Snapshot,$Policy,[string]$Directory,$Previous,[date
     $Snapshot|Add-Member NoteProperty shadow $shadow -Force
     $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
 }
-function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$SkipDisplay) {
+function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$SkipDisplay,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     $s=Read-Hotpl8Json (Join-Path $Directory 'status.json')
     $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
-    $pause=Get-Hotpl8Pause $Directory
+    $pause=Get-Hotpl8Pause $Directory $Now
     # First collection can stall before there is a snapshot. Show that evidence too.
     if(-not $s -and ($c -or $pause)){$s=[pscustomobject]@{schemaVersion=2;generatedAt=$null;slots=@()}}
     if($s){
@@ -150,12 +150,38 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$S
     # and skips the reader-side display summaries, which nothing on that path reads.
     if($s -and -not $SkipDisplay){
         $readerPolicy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json (Join-Path $Directory 'policy.json')}
-        $s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $readerPolicy) -Force
+        $s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $readerPolicy $Now) -Force
         # Advice only: a detector failure must never cost a reader its snapshot.
-        $candidates=@();try{$candidates=@(Get-Hotpl8ParkCandidates $s $readerPolicy)}catch{}
+        $candidates=@();try{$candidates=@(Get-Hotpl8ParkCandidates $s $readerPolicy $Now)}catch{}
         $s|Add-Member NoteProperty parkCandidates $candidates -Force
     }
     return $s
+}
+# The text of `hotpl8 status`. $Now is the request's single clock reading, so
+# every line describes the same instant.
+function Format-Hotpl8Status($Status,$Policy,[string]$StateDirectory,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    Format-Hotpl8Overview $Status.providerOverview | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
+    'HotPl8 | generated ' + (ConvertTo-Hotpl8SafeText $Status.generatedAt)
+    if($Status.collector){Get-Hotpl8Health $Status.collector $Now}
+    $pause=Get-Hotpl8Pause $StateDirectory $Now
+    if($pause){'AUTOMATION PAUSED: '+(ConvertTo-Hotpl8SafeText $pause.reason)}
+    $age = ($Now - [datetimeoffset]::Parse($Status.generatedAt)).TotalSeconds
+    if ($age -gt 900 -or $age -lt -5) { 'STALE: refresh before relying on these readings.' }
+    foreach($registration in @(Get-Hotpl8ConfiguredProviders $Policy)){
+        $view=Get-Hotpl8ProviderView $Status $Policy $registration.id
+        if($view.provider -eq 'claude'){
+            ConvertTo-Hotpl8SafeText ($registration.name+': active slot '+$view.snapshot.active+' | '+$view.snapshot.verdict)
+            foreach($account in @($view.snapshot.slots)){
+                $fiveHour=if($null -eq $account.used5h){'unknown'}else{[string](100-$account.used5h)+'% remaining'}
+                $weekly=if($null -eq $account.used7d){'unknown'}else{[string](100-$account.used7d)+'% remaining'}
+                ConvertTo-Hotpl8SafeText ('  '+$account.label+' ['+$account.slot+'] 5h '+$fiveHour+' | 7d '+$weekly+' | '+$account.status)
+                if($account.warmOutcome){'    warm: '+$account.warmOutcome.outcome}
+                if((Test-Hotpl8FreshTimestamp $account.observedAt $Now) -and $account.forecast){'    '+(Format-Hotpl8Forecast $account.forecast)}
+            }
+        }elseif($view.snapshot.providers.codex){
+            Format-CodexStatus $view.snapshot.providers.codex $view.policy.codex $Now|ForEach-Object {ConvertTo-Hotpl8SafeText ($_ -replace '^Codex', $registration.name)}
+        }else{$registration.name+': not configured or no observation yet.'}
+    }
 }
 function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     if(-not $Snapshot -or -not $Snapshot.generatedAt){'No observation. Run hotpl8 refresh.';return}

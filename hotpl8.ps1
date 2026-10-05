@@ -365,38 +365,19 @@ try {
         $Command = 'status'
     }
 
-    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -SkipDisplay:($Command -eq 'codex')
+    # One clock reading per request: every line of an answer describes the same instant.
+    $now=[datetimeoffset]::UtcNow
+    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -SkipDisplay:($Command -eq 'codex') -Now $now
     if($Command -eq 'explain'){
-        if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory) -Force}
+        if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory $now) -Force}
         if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}
-        else{Format-Hotpl8Explanation $status|ForEach-Object {ConvertTo-Hotpl8SafeText $_}}
+        else{Format-Hotpl8Explanation $status $now|ForEach-Object {ConvertTo-Hotpl8SafeText $_}}
         exit 0
     }
     if ($Command -eq 'status') {
         if (-not $status -or -not $status.generatedAt) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
         if ($AsJson) { $status | ConvertTo-Json -Depth 24; exit 0 }
-        Format-Hotpl8Overview $status.providerOverview | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
-        'HotPl8 | generated ' + (ConvertTo-Hotpl8SafeText $status.generatedAt)
-        if($status.collector){Get-Hotpl8Health $status.collector}
-        $pause=Get-Hotpl8Pause $StateDirectory
-        if($pause){'AUTOMATION PAUSED: '+(ConvertTo-Hotpl8SafeText $pause.reason)}
-        $age = ([datetimeoffset]::UtcNow - [datetimeoffset]::Parse($status.generatedAt)).TotalSeconds
-        if ($age -gt 900 -or $age -lt -5) { 'STALE: refresh before relying on these readings.' }
-        foreach($registration in @(Get-Hotpl8ConfiguredProviders $policy)){
-            $view=Get-Hotpl8ProviderView $status $policy $registration.id
-            if($view.provider -eq 'claude'){
-                ConvertTo-Hotpl8SafeText ($registration.name+': active slot '+$view.snapshot.active+' | '+$view.snapshot.verdict)
-                foreach($account in @($view.snapshot.slots)){
-                    $fiveHour=if($null -eq $account.used5h){'unknown'}else{[string](100-$account.used5h)+'% remaining'}
-                    $weekly=if($null -eq $account.used7d){'unknown'}else{[string](100-$account.used7d)+'% remaining'}
-                    ConvertTo-Hotpl8SafeText ('  '+$account.label+' ['+$account.slot+'] 5h '+$fiveHour+' | 7d '+$weekly+' | '+$account.status)
-                    if($account.warmOutcome){'    warm: '+$account.warmOutcome.outcome}
-                    if((Test-Hotpl8FreshTimestamp $account.observedAt) -and $account.forecast){'    '+(Format-Hotpl8Forecast $account.forecast)}
-                }
-            }elseif($view.snapshot.providers.codex){
-                Format-CodexStatus $view.snapshot.providers.codex $view.policy.codex|ForEach-Object {ConvertTo-Hotpl8SafeText ($_ -replace '^Codex', $registration.name)}
-            }else{$registration.name+': not configured or no observation yet.'}
-        }
+        Format-Hotpl8Status $status $policy $StateDirectory $now
         exit 0
     }
 

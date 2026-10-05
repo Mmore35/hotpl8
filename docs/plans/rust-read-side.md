@@ -58,6 +58,36 @@ Set `HOTPL8_NATIVE=0` to use PowerShell for everything.
 | On the compiled path `version` no longer loads the other modules, resolves the state directory or prepares onboarding tools | Change on purpose | A fault in those steps no longer stops `version` from printing. With `HOTPL8_NATIVE=0` they run as before |
 | Wording of errors | Preserve | Never produced by the reader |
 
+## Contract: `status` and `explain`
+
+Both commands recalculate the overview, capacity, selection and eligibility from the cached files on every read, so the reader carries those rules too, ported function by function. The two PowerShell versions in use disagree with each other about numbers (5.1 reads `1.5` as a decimal and whole numbers as 32-bit; 7 reads them as a double and 64-bit) and about time arithmetic, so the caller says which one it is and the reader follows that one.
+
+| Behavior | Label | Notes |
+|---|---|---|
+| `hotpl8 status` and `hotpl8 explain` print the same lines as PowerShell for the same files at the same instant, exit 0 | Preserve | Byte-equal, against Windows PowerShell 5.1 and PowerShell 7 |
+| Number types, arithmetic, rounding and number-to-text rules of the calling PowerShell version | Preserve | Decimal and double results differ between the two versions; each is matched against its own |
+| `-PreviewPolicy FILE`, the state directory order (parameter, `HOTPL8_STATE_DIRECTORY`, `install-state.json`, the code directory) | Preserve | Paths that are not absolute are declined |
+| `No cached status. Run hotpl8 refresh.` and `No observation. Run hotpl8 refresh.` | Preserve | |
+| The stale notices: a reading older than 900 seconds or more than 5 seconds ahead of the clock | Preserve | |
+| Agent pauses, the manual pause, and an invalid pause file | Preserve | |
+| Reset times in the Codex lines use the machine's time zone | Preserve | Declined for a time more than two years from now, and on a Mac with `TZ` set |
+| `-AsJson` reports the same properties with the same values and number types | Preserve | Compared value by value before either side is written as text |
+| Layout of `-AsJson` text, and the order of keys in objects PowerShell builds from hash tables | Change on purpose | The two PowerShell versions already differ in layout, and hash table order is not defined |
+| The clock is read once per request | Change on purpose | PowerShell read it at each use, a few milliseconds apart. PowerShell now reads it once too, so both can be compared at one instant |
+| On the compiled path the commands no longer load the other modules or prepare onboarding tools | Change on purpose | As for `version`. With `HOTPL8_NATIVE=0` they run as before |
+| The identity check is part of the command's own start (protocol 2) | Change on purpose | One program start per request instead of two. See How it runs |
+| A missing or invalid policy, and every other PowerShell error | Preserve | Declined, so PowerShell reports it with its own text and exit status |
+| Files that are not strict UTF-8 JSON objects; duplicate or non-ASCII property names; date-like strings; numbers with an exponent, more than 28 digits or beyond 64 bits; nesting deeper than the JSON depth limits | Preserve | Declined |
+| Timestamps that are not `yyyy-MM-ddTHH:mm:ss[.fraction]` with `Z` or an offset | Preserve | Declined; PowerShell parses many other forms by regional rules |
+| A sort, comparison or hash table lookup whose result depends on regional text rules or on PowerShell 5.1's unstable sort | Preserve | Declined |
+| Values of a type a rule does not expect (text where a number belongs, an array where an object belongs, and so on) | Preserve | Declined unless the PowerShell result for that combination was measured and is modelled |
+| Provider definitions and capacity profiles that differ from the ones this release was built with | Preserve | Declined |
+| Regional settings whose decimal point is not `.`, minus sign is not `-`, time separator is not `:` or calendar is not Gregorian; languages other than English | Preserve | Not routed |
+| PowerShell 7 before 7.5 | Preserve | Not routed |
+| Any parameter other than `-AsJson`, `-StateDirectory`, `-PreviewPolicy` and `-CodexExecutable` | Preserve | Not routed |
+| `refresh` and `tick`, which print status after collecting | Preserve | Not routed |
+| Wording of errors | Preserve | Never produced by the reader |
+
 ## Packaging
 
 `release-files.json` gains an additive `platformFiles` map. `files` and `schemaVersion` are unchanged, so existing readers of the manifest keep working.
