@@ -37,12 +37,15 @@ function Start-Waiter([string[]]$Arguments,[string]$InputText='',[string]$Entryp
     foreach($name in @('CLAUDE_CODE_ENTRYPOINT','CLAUDE_PID','HOTPL8_STATE_DIRECTORY')){$info.EnvironmentVariables.Remove($name)}
     if($Entrypoint){$info.EnvironmentVariables['CLAUDE_CODE_ENTRYPOINT']=$Entrypoint}
     $process=[Diagnostics.Process]::Start($info)
-    if($InputText){$process.StandardInput.Write($InputText)}
-    $process.StandardInput.Close()
+    # As a host sends it: UTF-8 without a signature, whatever encoding this console uses.
+    $stdin=$process.StandardInput.BaseStream
+    if($InputText){$bytes=(New-Object Text.UTF8Encoding $false).GetBytes($InputText);$stdin.Write($bytes,0,$bytes.Length)}
+    $stdin.Close()
     $script:running+=@($process)
     return $process
 }
-function Complete-Waiter($Process,[int]$Seconds=40){
+# Generous limits: a loaded machine can take most of a minute to start one PowerShell.
+function Complete-Waiter($Process,[int]$Seconds=120){
     if(-not $Process.WaitForExit($Seconds*1000)){$Process.Kill();throw 'the waiter did not finish'}
     return [pscustomobject]@{code=$Process.ExitCode;text=$Process.StandardError.ReadToEnd()}
 }
@@ -50,7 +53,9 @@ function Invoke-Waiter([string[]]$Arguments,[string]$InputText='',[string]$Entry
 function Assert-Waiting($Process,[int]$Seconds=3){Assert (-not $Process.WaitForExit($Seconds*1000))}
 function Get-Events{@(Get-Content -LiteralPath (Join-Path $state 'events.jsonl') -ErrorAction SilentlyContinue|ForEach-Object {($_|ConvertFrom-Json).code})}
 function New-Hook([string]$Session){
-    $transcript=Join-Path $dir ($Session+'.jsonl')
+    # A folder name outside ASCII: the waiter must still find the transcript it was given.
+    $folder=Join-Path $dir ('transcripts '+[char]0xE9);[void][IO.Directory]::CreateDirectory($folder)
+    $transcript=Join-Path $folder ($Session+'.jsonl')
     [IO.File]::WriteAllText($transcript,'fixture')
     return @{transcript=$transcript;json=(@{session_id=$Session;transcript_path=$transcript;hook_event_name='StopFailure'}|ConvertTo-Json -Compress)}
 }
@@ -60,7 +65,7 @@ function Start-HookWaiter($Hook){
     $records=Join-Path $state 'continue'
     if(Test-Path -LiteralPath $records){Remove-Item -LiteralPath $records -Recurse -Force}
     $process=Start-Waiter @() $Hook.json 'sdk-ts'
-    for($i=0;$i -lt 400 -and -not (Test-Path -LiteralPath $records);$i++){Start-Sleep -Milliseconds 100}
+    for($i=0;$i -lt 1200 -and -not (Test-Path -LiteralPath $records);$i++){Start-Sleep -Milliseconds 100}
     Assert (Test-Path -LiteralPath $records)
     return $process
 }

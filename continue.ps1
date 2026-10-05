@@ -40,7 +40,8 @@ try {
     }
     $transcript = $null; $size = -1
     if (-not $Conversation) {
-        $hook = [Console]::In.ReadToEnd() | ConvertFrom-Json
+        # Hosts send this as UTF-8; the console's own encoding would misread a path outside ASCII.
+        $hook = (New-Object IO.StreamReader([Console]::OpenStandardInput(), [Text.Encoding]::UTF8)).ReadToEnd() | ConvertFrom-Json
         $Conversation = [string]$hook.session_id
         $transcript = [string]$hook.transcript_path
         if ($transcript -and (Test-Path -LiteralPath $transcript)) { $size = (Get-Item -LiteralPath $transcript).Length }
