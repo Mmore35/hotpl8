@@ -95,7 +95,6 @@ function Add-Hotpl8NativeInsights($Snapshot, $Policy, [string]$Directory, $Previ
     }
     $activity=Read-Hotpl8Json (Join-Path $Directory 'activity.json')
     $Snapshot|Add-Member NoteProperty recentActions @($activity.events|Select-Object -Last 5) -Force
-    $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
     $shadow=Invoke-Hotpl8Replay @($Snapshot) $Policy
     $Snapshot|Add-Member NoteProperty shadow @($shadow.decisions) -Force
 }
@@ -124,7 +123,7 @@ function Add-Hotpl8Insights($Snapshot,$Policy,[string]$Directory,$Previous,[date
     $Snapshot|Add-Member NoteProperty shadow $shadow -Force
     $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
 }
-function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null) {
+function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$SkipDisplay) {
     $s=Read-Hotpl8Json (Join-Path $Directory 'status.json')
     $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
     $pause=Get-Hotpl8Pause $Directory
@@ -147,7 +146,9 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null) {
         $s|Add-Member NoteProperty automationPause $pause -Force
     }
     if($s -and $PolicyOverride){$s|Add-Member NoteProperty displayPolicy 'explicit reader policy' -Force}
-    if($s){
+    # A native launch reads provider observations only: it takes the snapshot as stored
+    # and skips the reader-side display summaries, which nothing on that path reads.
+    if($s -and -not $SkipDisplay){
         $readerPolicy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json (Join-Path $Directory 'policy.json')}
         $s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $readerPolicy) -Force
         # Advice only: a detector failure must never cost a reader its snapshot.

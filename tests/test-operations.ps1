@@ -280,6 +280,19 @@ try{
         Assert ($null -eq $s.generatedAt -and (Get-Hotpl8Health $s.collector $now) -eq 'collector stalled')
         Assert (-not (Test-Path -LiteralPath (Join-Path $first 'status.json')))
     }
+    Check 'a native launch read skips only the reader-side display summaries' {
+        $launch=Join-Path $dir 'launch-read';[void][IO.Directory]::CreateDirectory($launch)
+        $f=Get-Hotpl8ScreenshotFixture
+        # The collector publishes its own overview in status.json; a launch read leaves it as stored.
+        $f.status|Add-Member NoteProperty providerOverview ([pscustomobject]@{stored='collector copy'}) -Force
+        Write-Hotpl8Text (Join-Path $launch 'policy.json') ($f.policy|ConvertTo-Json -Depth 24)
+        Write-Hotpl8Text (Join-Path $launch 'status.json') ($f.status|ConvertTo-Json -Depth 24)
+        $full=Read-Hotpl8Snapshot $launch;$lean=Read-Hotpl8Snapshot $launch -SkipDisplay
+        Assert ($full.providerOverview.codex -and -not $full.providerOverview.stored -and $full.PSObject.Properties['parkCandidates']) 'default read recomputes the overview and adds park advice'
+        Assert ($lean.providerOverview.stored -ceq 'collector copy' -and -not $lean.PSObject.Properties['parkCandidates']) 'launch read keeps the stored snapshot and computes no display summary'
+        foreach($snapshot in @($full,$lean)){foreach($name in @('providerOverview','parkCandidates')){if($snapshot.PSObject.Properties[$name]){$snapshot.PSObject.Properties.Remove($name)}}}
+        Assert ($full.providers.codex -and ($full|ConvertTo-Json -Depth 24) -ceq ($lean|ConvertTo-Json -Depth 24)) 'everything a launch reads is unchanged'
+    }
     Check 'weekly-expiry and balanced ranking have distinct defined objectives' {
         $early=$now.AddDays(1).ToString('o');$late=$now.AddDays(5).ToString('o')
         Assert ((Get-Hotpl8SelectionKey weekly-expiry 50 20 $early $now) -lt (Get-Hotpl8SelectionKey weekly-expiry 90 90 $late $now))
