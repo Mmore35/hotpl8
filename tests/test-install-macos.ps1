@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 if(-not $IsMacOS){throw 'This suite requires macOS.'}
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
+. (Join-Path $root 'src/lifecycle.ps1')
 $lab=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-macos-install-'+[guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($lab)
 $shell=(Get-Process -Id $PID).Path
@@ -22,6 +23,19 @@ try{
   $receipt=Read-Hotpl8Json (Join-Path $script:installed 'installation.json')
   Assert ($receipt.platform -eq 'macos' -and -not $receipt.scheduled -and -not $receipt.pathAdded)
   Assert (([IO.File]::GetUnixFileMode((Join-Path $script:installed 'state')) -band [IO.UnixFileMode]'OtherRead,GroupRead') -eq 0)
+ }
+ Check 'a reader that arrives without its executable bit is installed executable' {
+  # Archive extraction drops the bit, and File.Copy keeps whatever the source has, so a
+  # checkout cannot show the loss. This copy of the package has the bit cleared.
+  $source=Join-Path $lab 'unpacked'
+  foreach($file in @(Get-Hotpl8ReleaseFiles $root -Platform macos)){
+   $target=Join-Path $source $file;[void][IO.Directory]::CreateDirectory((Split-Path $target -Parent));[IO.File]::Copy((Join-Path $root $file),$target)
+  }
+  $relative='bin/macos/hotpl8-native'
+  [IO.File]::SetUnixFileMode((Join-Path $source $relative),[IO.UnixFileMode]'UserRead,UserWrite')
+  $destination=Join-Path $lab 'restored install'
+  InstallFixture $destination $source
+  Assert (([IO.File]::GetUnixFileMode((Join-Path $destination ('app/'+$relative))) -band [IO.UnixFileMode]::UserExecute) -ne 0) 'installed reader is not executable'
  }
  Check 'update and rollback retain policy and resumable operations' {
   $state=Join-Path $script:installed 'state'

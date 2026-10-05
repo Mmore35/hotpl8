@@ -19,7 +19,7 @@ if(-not $StateDirectory){$StateDirectory=if($old){$old.stateDirectory}else{Join-
 $state=Assert-Hotpl8Path $StateDirectory
 if($old -and $state -ine $old.stateDirectory){throw 'Update must preserve the existing state directory.'}
 if($state -eq $destination -or $state.StartsWith($destination+'\app',[StringComparison]::OrdinalIgnoreCase) -or $state.StartsWith($destination+'\previous',[StringComparison]::OrdinalIgnoreCase)){throw 'State must be separate from application files.'}
-$files=@(Get-Hotpl8ReleaseFiles $source)
+$files=@(Get-Hotpl8ReleaseFiles $source -Platform windows)
 $hashes=Read-Hotpl8Json (Join-Path $source 'checksums.json')
 if($hashes){
     foreach($file in $files){

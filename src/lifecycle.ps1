@@ -21,7 +21,7 @@ function Assert-Hotpl8Path([string]$Path) {
     }
     return $full
 }
-function Get-Hotpl8ReleaseFiles([string]$Source) {
+function Get-Hotpl8ReleaseFiles([string]$Source,[string]$Platform,[switch]$RequirePlatformFiles) {
     $manifest=Read-Hotpl8Json (Join-Path $Source 'release-files.json')
     if(-not $manifest -or $manifest.schemaVersion -ne 1 -or -not $manifest.files){throw 'Missing release file manifest.'}
     $seen=@{}
@@ -31,6 +31,21 @@ function Get-Hotpl8ReleaseFiles([string]$Source) {
         $full=Assert-Hotpl8Path (Join-Path $Source $relative)
         if(-not (Test-Path -LiteralPath $full -PathType Leaf)){throw ('Missing release file: '+$relative)}
         $relative
+    }
+    # Compiled files exist for one platform per package and not at all in a plain source
+    # checkout, so each is listed only when present. Packaging requires its own platform's set.
+    if($null -eq $manifest.platformFiles){return}
+    if($manifest.platformFiles -isnot [pscustomobject]){throw 'Invalid release file manifest.'}
+    foreach($group in $manifest.platformFiles.PSObject.Properties){
+        if($group.Name -cnotin @('windows','macos')){throw 'Invalid release file manifest.'}
+        foreach($relative in @($group.Value)){
+            if($relative -isnot [string] -or $relative -notmatch '^[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$' -or $relative -match '(^|/)\.\.?(/|$)' -or -not $relative.StartsWith('bin/'+$group.Name+'/',[StringComparison]::Ordinal) -or $seen.ContainsKey($relative)){throw 'Invalid release file manifest.'}
+            $seen[$relative]=$true
+            if($Platform -and $group.Name -cne $Platform){continue}
+            $full=Assert-Hotpl8Path (Join-Path $Source $relative)
+            if(Test-Path -LiteralPath $full -PathType Leaf){$relative}
+            elseif($RequirePlatformFiles){throw ('Missing native release file: '+$relative+'. Run scripts/build-native.ps1 first.')}
+        }
     }
 }
 function Remove-Hotpl8App([string]$Path, [switch]$ValidateOnly) {

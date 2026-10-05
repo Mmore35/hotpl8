@@ -6,3 +6,6 @@
 *.md text eol=lf
 *.json text eol=lf
 *.png binary
+*.rs text eol=lf
+*.toml text eol=lf
+Cargo.lock text eol=lf

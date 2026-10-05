@@ -29,6 +29,16 @@ jobs:
       - name: Static and policy checks
         shell: powershell
         run: .\scripts\check.ps1
+      - name: Build and test the native reader
+        shell: powershell
+        run: |
+          Push-Location native
+          rustup show active-toolchain
+          if ($LASTEXITCODE -ne 0) { rustup toolchain install; if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain install failed' } }
+          cargo test --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Native reader tests failed' }
+          Pop-Location
+          .\scripts\build-native.ps1 -Target x86_64-pc-windows-msvc
       - name: Offline regression and installation suites
         shell: powershell
         run: .\scripts\test.ps1
