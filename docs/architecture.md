@@ -69,6 +69,7 @@ For example, an elapsed reset is read against the observation that reported it. 
 ```text
 hotpl8.cmd / hotpl8.ps1       User commands
 tick.ps1                    Collection and action orchestration
+continue.ps1                One waiter for automatic continue, both providers
 setup-codex.ps1             Native account enrollment and optional hooks
 install/uninstall/rollback.ps1
                             Stable installation entrypoints
@@ -107,7 +108,7 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 
 ## Tradeoffs and limits
 
-PowerShell keeps the Windows installation small, but other platforms are not release-qualified. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. Monitor mode is the starting point; optional automation needs explicit configuration. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
+PowerShell keeps the Windows installation small, but other platforms are not release-qualified. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
 

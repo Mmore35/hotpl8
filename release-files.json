@@ -189,6 +189,11 @@
     "delivery/live-preview.ps1",
     "tests/test_live_preview.py",
     "tests/fixtures/terminal.ps1",
-    "src/onboarding-process.ps1"
+    "src/onboarding-process.ps1",
+    "continue.ps1",
+    "tests/test-continue.ps1",
+    "tests/probe-codex-continue.py",
+    "tests/probe-claude-continue.mjs",
+    "docs/plans/automatic-continue.md"
   ]
 }

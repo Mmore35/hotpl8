@@ -2,6 +2,11 @@
 
 ## Unreleased — shared provider core
 
+- Add automatic continue. When a hosted conversation's turn dies on a usage limit, HotPl8 sends that conversation one `Automated message: continue.` as soon as a usable account is in place: a different account, or the same one read again after the limit. It is a new turn; nothing is replayed. Claude and the T3 Codex bridge share one waiter, `continue.ps1`. Interactive terminal Claude and plain `hotpl8 codex` are not covered. [Behavior, limits and evidence](docs/plans/automatic-continue.md).
+- **After this update, an installation that is not in monitor mode gets automatic continue without a policy change.** On its next collector run HotPl8 adds one entry to the `StopFailure` hooks in Claude's user settings by itself. To turn it off and remove the entry: `hotpl8 continue -Operation disable`. With T3 Code 0.0.46 or later, turn off T3's own resume of limited conversations.
+- New installations start with automatic account switching and automatic continue on. Warming stays off; interactive setup asks whether to turn it on. Existing policies are not changed.
+- Add `hotpl8 continue` to show, enable or disable automatic continue, and one doctor line for its state.
+
 - Remove Codex model registration from T3 routing, helper setup, CLI launches and cached readiness. Account selection uses the configured quota basis; native model/options pass through unchanged, including omitted defaults. Legacy model maps remain readable but are ignored. Active-work ownership and quota/account controls are preserved.
 
 - Add `hotpl8 park` and `hotpl8 unpark`. Park finds accounts whose plan ended or whose sign-in has failed for a week, asks once, and removes them from collection, totals, selection and the warming schedule while keeping their settings; unpark or a new sign-in restores them. Doctor and the dashboard name these accounts instead of pointing at each other.

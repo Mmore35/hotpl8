@@ -2,7 +2,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'add', 'explain', 'accounts', 'park', 'unpark', 'pause', 'resume', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
+    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'add', 'explain', 'accounts', 'park', 'unpark', 'pause', 'resume', 'continue', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
     [string]$Command = 'watch',
     [string]$Slot,
     [string]$Model,
@@ -99,16 +99,17 @@ try {
         'tick: collect and apply actions enabled by policy; monitor mode prevents actions.'
         'status -AsJson: local cached snapshot (may contain private labels).'
         'doctor -AsJson: redacted offline diagnostics; no login or quota calls.'
-        'init: create a monitoring-only policy if none exists.'
+        'init: create the default policy if none exists: automatic switching and continue on, warming off.'
         'enroll -Slot main -AccountHome PATH: enroll an already signed-in native Codex home.'
         'codex [-Slot ID] [-Model ID] [native arguments]; resume requires -Slot.'
         'All commands accept -StateDirectory PATH. See docs/usage.md.'
-        'setup [-Interactive]: guided, monitoring-first enrollment for either provider.'
+        'setup [-Interactive]: guided enrollment for either provider.'
         'accounts -Provider REGISTERED_ID [-Slot ID -Operation rename|enable|disable|reserve|work -Label NAME]'
         'park [-Yes]: set aside accounts that lost their plan or have been unreadable for a week; asks once.'
         'park -Provider ID -Slot SLOT: set one account aside. unpark [-Provider ID -Slot SLOT]: bring one back with its settings.'
         'explain [-AsJson]: recorded selection reasons. capabilities [-AsJson]: offline readiness.'
         'pause [-Minutes 60] / resume: persistent automation pause; collection continues.'
+        'continue [-Operation enable|disable]: automatic continue after a usage limit; shows whether it is on.'
         'history [-Operation clear]: inspect retention or delete local usage history.'
         'tray [-Once]: optional Windows tray; -Once prints its view model without opening a window.'
         'update-check [-Channel preview] [-Operation dismiss] / update -InstallDirectory PATH'
@@ -180,7 +181,7 @@ try {
             throw 'policy.json already exists; it was not overwritten.'
         }
         [IO.File]::Copy((Join-Path $PSScriptRoot 'policy.example.json'), $path, $false)
-        'Created a monitoring policy. Next: hotpl8 setup'
+        'Created the default policy: automatic switching and continue on, warming off. Next: hotpl8 setup'
         'HotPl8 connects your native account and reads usage automatically.'
         exit 0
     }
@@ -210,6 +211,33 @@ try {
         if($duration){'Automation paused for '+$duration+' minutes. Collection continues.'}
         elseif(Get-Hotpl8Pause $StateDirectory){'Manual pause cleared. Agent pauses or invalid pause state still block automation.'}
         else{'Automation resumed under the existing policy.'}
+        exit 0
+    }
+    if($Command -eq 'continue'){
+        if($Operation -notin @('list','enable','disable')){throw 'Continue supports list, enable or disable.'}
+        . (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
+        if($Operation -ne 'list'){
+            $path=Join-Path $StateDirectory 'policy.json';$hash=(Get-FileHash $path -Algorithm SHA256).Hash
+            # Read after hashing so concurrent edits are rejected when committing.
+            $policy=Read-Hotpl8Json $path
+            if(($Operation -eq 'disable') -ne ($policy.automation.continue -eq $false)){
+                $policy=ConvertTo-Hotpl8PolicyV2 $policy
+                if($Operation -eq 'enable'){$policy.automation.PSObject.Properties.Remove('continue')}
+                else{
+                    if(-not $policy.automation){$policy|Add-Member NoteProperty automation ([pscustomobject]@{}) -Force}
+                    $policy.automation|Add-Member NoteProperty continue $false -Force
+                }
+                Save-Hotpl8Policy $StateDirectory $policy $hash
+            }
+        }
+        $on=(Get-Hotpl8Actions $policy $false).continuing
+        if($Operation -ne 'list'){
+            # Asked for explicitly, so a copy that is not an installation gets its hook too.
+            $hookLock=[IO.File]::Open((Join-Path $StateDirectory 'tick.lock'),'OpenOrCreate','ReadWrite','None')
+            try{Set-Hotpl8ContinueHook $PSScriptRoot $StateDirectory -Explicit -Remove:(-not $on)}finally{$hookLock.Dispose()}
+        }
+        'Automatic continue: '+$(if($on){'on'}elseif($policy.mode -eq 'monitor'){'off (monitor mode turns every action off)'}else{'off (automation.continue is false)'})
+        'Claude hook: '+$(if(Test-Hotpl8ContinueHook $StateDirectory){'present'}else{'absent'})
         exit 0
     }
     if($Command -eq 'accounts'){

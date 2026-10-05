@@ -78,6 +78,9 @@ function Format-Hotpl8Doctor($Report,$ParkCandidates=@()) {
         'PARK CANDIDATE: '+$candidate.label+' ('+$candidate.providerName+'), '+(Format-Hotpl8ParkReason $candidate)+'.'
     }
     if(@($ParkCandidates|Where-Object {$_}).Count){'Sign in again to keep an account, or run hotpl8 park to set it aside until it returns.'}
+    if($Report.continue){
+        'Automatic continue: '+$(if($Report.continue.enabled){'on'}else{'off'})+' | Claude hook '+$(if($Report.continue.hookPresent){'present'}else{'absent'})+' | last sent '+$(if($Report.continue.lastAt){$Report.continue.lastAt}else{'never'})
+    }
     'Doctor is offline: native login and quota availability are checked by hotpl8 refresh.'
 }
 function Get-Hotpl8Doctor([string]$StateDirectory) {
@@ -106,6 +109,17 @@ function Get-Hotpl8Doctor([string]$StateDirectory) {
         $driver=Get-Hotpl8ProviderDriver $r.driver
         $registered[$r.id]=[pscustomobject]@{driver=$r.driver;configured=(@(Get-Hotpl8ProviderAccounts $policy|Where-Object provider -CEQ $r.id).Count -gt 0);installed=$(if($driver.slotKind -eq 'numeric'){$cswapFound}else{$codexFound})}
     }}
+    # Read only: whether automatic continue is on, hooked into Claude, and when it last fired.
+    $continue=$null
+    if($valid){try{
+        . (Join-Path $PSScriptRoot 'lifecycle.ps1')
+        $markers=Join-Path $StateDirectory 'continue';$lastAt=$null
+        if(Test-Path -LiteralPath $markers){
+            $last=Get-ChildItem -LiteralPath $markers -File|Where-Object{$_.Name -cmatch '^[A-Za-z0-9-]+$'}|Sort-Object LastWriteTimeUtc|Select-Object -Last 1
+            if($last){$lastAt=([datetimeoffset]$last.LastWriteTimeUtc).ToString('o')}
+        }
+        $continue=[pscustomobject]@{enabled=[bool](Get-Hotpl8Actions $policy $false).continuing;hookPresent=(Test-Hotpl8ContinueHook $StateDirectory);lastAt=$lastAt}
+    }catch{}}
     return [pscustomobject]@{
         providers=[pscustomobject]$registered
         version=(Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'VERSION') -Raw).Trim()
@@ -121,5 +135,6 @@ function Get-Hotpl8Doctor([string]$StateDirectory) {
         snapshotFresh=($null -ne $age -and $age -ge -5 -and $age -le 900)
         collectorBusy=$locked
         parkCandidates=$parkCandidates
+        continue=$continue
     }
 }

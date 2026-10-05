@@ -10,7 +10,9 @@
 | `doctor -AsJson` | Redacted offline diagnostics. Missing/invalid policy returns nonzero. |
 | `version` / `help` | Print installed version / command summary. |
 | `enroll -Slot main -AccountHome PATH` | Enroll a signed-in native Codex home; optional `-Label`. Available in current source; rc.1 uses setup-codex.ps1. |
-| `init` | Create a safe initial policy without overwriting existing configuration. |
+| `init` | Create the default policy (automatic switching and continue on, warming off) without overwriting existing configuration. |
+| `continue` | Show whether [automatic continue](plans/automatic-continue.md) is on and whether Claude's hook is present; changes nothing. |
+| `continue -Operation disable` / `enable` | Turn automatic continue off or on; the policy setting and Claude's hook change together. |
 | `codex -Slot main` | Validate native login and launch in that home. Does not guarantee quota. |
 | `codex -Model NATIVE_MODEL` | Select an eligible account and pass the model unchanged to native Codex. |
 | `codex -Slot main resume` | Resume within the home that owns the conversation. |
@@ -25,7 +27,7 @@ Q, Escape, and Ctrl+C exit the dashboard. Space **freezes the view**, not the co
 
 To suspend all automatic actions, set policy mode to monitor. The legacy hold.json lease suppresses switching only, expires automatically, and does not stop warming or probing. Never interpret a hold as a general automation pause.
 
-Doctor prints setup and dependency guidance in human mode. Its `-AsJson` fields and exit status retain the existing contract: exit zero means the policy is valid, not that native login or every quota reading is healthy. The dashboard is a cached view; its timestamp describes the last collection. Use refresh for a new reading or opt into scheduled collection.
+Doctor prints setup and dependency guidance in human mode. With an enrolled account it also prints one line for automatic continue: on or off, whether Claude's hook is present, and when a continue was last sent. Its `-AsJson` fields and exit status retain the existing contract: exit zero means the policy is valid, not that native login or every quota reading is healthy. The dashboard is a cached view; its timestamp describes the last collection. Use refresh for a new reading or opt into scheduled collection.
 
 ## Account operations
 

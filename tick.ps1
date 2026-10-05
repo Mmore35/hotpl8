@@ -7,6 +7,7 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/collection.ps1')
 . (Join-Path $PSScriptRoot 'src/insights.ps1')
 . (Join-Path $PSScriptRoot 'src/provider-runtime.ps1')
+. (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
 . (Join-Path $PSScriptRoot 'src/onboarding.ps1')
 . (Join-Path $PSScriptRoot 'src/onboarding-install.ps1')
@@ -92,6 +93,12 @@ try {
     }
     Write-Hotpl8Text (Join-Path $StateDirectory 'collector.json') ($collector|ConvertTo-Json -Depth 8)
     Complete-Hotpl8ObservedOnboarding $StateDirectory
+    # Claude's automatic continue hook follows policy; a settings file that cannot be
+    # changed safely is reported and never fails collection.
+    if(-not $ObserveOnly -and @(Get-Hotpl8ProviderAccounts $policy|Where-Object provider -CEQ 'claude').Count){
+        try{Set-Hotpl8ContinueHook $PSScriptRoot $StateDirectory -Remove:(-not (Get-Hotpl8Actions $policy $false).continuing)}
+        catch{Write-Hotpl8Event $StateDirectory 'continue_hook_failed' $_}
+    }
     foreach($action in $actions){ConvertTo-Hotpl8SafeText $action}
 } catch {
     $failed=$true

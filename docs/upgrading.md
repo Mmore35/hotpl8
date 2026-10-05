@@ -42,6 +42,12 @@ The default portable state behavior remains supported. To migrate, install into 
 
 Private development repositories may contain account data in older commits. Keep their history private when migrating to this public source release; never import native credentials or private logs into a public branch.
 
+## Automatic continue
+
+An update that contains [automatic continue](plans/automatic-continue.md) turns it on for every installation whose policy is not in monitor mode, without a policy change. On the next collector run HotPl8 adds one entry to the `StopFailure` hooks in Claude's user settings by itself; it changes nothing else in that file and skips a file it cannot replace safely. A monitor-mode installation gets neither. To turn it off, run `hotpl8 continue -Operation disable`, which also removes the entry. If you use T3 Code 0.0.46 or later, turn off its own resume of limited conversations so only one continue is sent. Uninstall removes the entry; a rollback to a release without `continue.ps1` leaves the entry pointing at a script that is no longer there, so disable first.
+
+The default policy for a new installation also changed: automate mode with switching on, warming off. An existing policy is never rewritten by an update.
+
 ## Agent pause compatibility
 
 The new collector reads `automation-leases.json` in addition to the manual pause file. Upgrade every collector and pause writer sharing that state before enabling MCP pause writes. Old binaries cannot honor leases. The new rollback command refuses rollback while live or invalid lease state exists; released and expired leases do not block it. Old rollback/install binaries cannot enforce this guard. See [agent API](agent-api.md).

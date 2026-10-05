@@ -4,10 +4,11 @@ Copy the tracked example only for a new installation. The [schema](../policy.sch
 
 | Fields | Meaning/default |
 |---|---|
-| `schemaVersion`, `mode` | 2 for new installations; version 1 remains supported. Monitor by default. automate permits only separately enabled actions. |
+| `schemaVersion`, `mode` | 2 for new installations; version 1 remains supported. A new policy uses automate, which permits only the separately enabled actions; monitor turns every action off. |
 | `prefer`, `labels` | Selected Claude numeric slots in preference order; empty until explicitly enrolled. |
 | `reserve` | Subset of preferred slots kept behind ordinary work slots. |
-| `switchEnabled`, `warm`, `probeEnabled` | Independently control switching and inference-based warming/recovery; false by default. |
+| `switchEnabled`, `warm`, `probeEnabled` | Independently control switching and inference-based warming/recovery. A new policy has switching on and the other two off. |
+| `automation.continue` | [Automatic continue](plans/automatic-continue.md) after a usage limit. On unless set to `false`; needs a mode other than monitor, not `switchEnabled`. |
 | `order`, `resetLeadMin` | prefer, soonest-reset, or version-2 weekly-expiry/balanced; 10-minute lead avoids unnecessary switches. |
 | `margin5h`, `margin7d`, `margin7dWork`, `hysteresis` | Remaining-percentage floors: 25, 20, 5, and 10. |
 | `maxUsageAgeS`, `staleQuarantineS` | Freshness ceiling 900 seconds; stale recovery threshold 21600 seconds. |
@@ -22,7 +23,7 @@ Copy the tracked example only for a new installation. The [schema](../policy.sch
 
 Examples in [examples/](../examples/README.md) show provider combinations using fictional slots. Replace all account homes locally. Empty provider sections are disabled. Invalid/unknown quotas cannot authorize automatic use. Explicit version-2 `claudeModels` constrain selection using reported scoped windows; automatic actions remain experimental.
 
-Existing policies without schemaVersion preserve their legacy switching and probing defaults. Migrate deliberately by adding schemaVersion 2, mode automate, and explicit action booleans matching your intended behavior, or choose monitor to disable all actions. New installers never replace an existing policy.
+Existing policies without schemaVersion preserve their legacy switching and probing defaults. Migrate deliberately by adding schemaVersion 2, mode automate, and explicit action booleans matching your intended behavior, or choose monitor to disable all actions. New installers never replace an existing policy. Automatic continue is on for every policy that is not in monitor mode; `hotpl8 continue -Operation disable` turns it off, and for a policy without schemaVersion first writes its current behavior down as version 2.
 
 See [account operations](operations.md) for version-2 schedules, persistent pause, attempt budgets, disabled accounts, scoped eligibility, history, notifications and selection replay. Account commands preserve action choices during migration and save a policy backup.
 

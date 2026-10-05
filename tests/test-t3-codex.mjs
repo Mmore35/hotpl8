@@ -416,3 +416,88 @@ test('native model rerouting is forwarded without a new account decision', async
   assert.equal(h.bridge.route.slot, 'a');
   assert.equal(h.bridge.active.get('t'), 'one'); h.bridge.close();
 });
+
+// Automatic continue: the waiter is a fake, so these drive only the bridge's own rules.
+function waiting(h) {
+  const calls = [];
+  h.bridge.waiter = (threadId, slot) => {
+    const call = { threadId, slot, killed: false, kill: () => { call.killed = true; } };
+    call.done = new Promise(done => { call.finish = done; });
+    calls.push(call); return call;
+  };
+  return calls;
+}
+const limited = (h, threadId = 't') => ({ method: 'turn/completed', params: { threadId, turn: { status: 'failed', error: { codexErrorInfo: 'usageLimitExceeded' } } } });
+const turns = h => h.native.filter(m => m.method === 'turn/start');
+async function finished(h, call, code) {
+  call.finish(code); await new Promise(done => setImmediate(done)); await h.bridge.serial;
+}
+async function limitedTurn(h) {
+  const calls = waiting(h);
+  await h.bridge.client({ id: 3, method: 'turn/start', params: { threadId: 't', input: [{ type: 'text', text: 'original' }] } });
+  h.bridge.native({ id: 3, result: { turn: { id: 'turn' } } });
+  h.bridge.native(limited(h));
+  return calls;
+}
+
+test('a usage-limit failure is continued once, as a new turn on the newly selected account', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  assert.deepEqual(h.client.at(-1), limited(h));
+  assert.deepEqual(calls.map(c => [c.threadId, c.slot]), [['t', 'a']]);
+  const before = h.client.length;
+  h.select('b'); await finished(h, calls[0], 2);
+  assert.equal(turns(h).length, 2);
+  assert.match(turns(h)[1].id, /^hotpl8-internal-/);
+  assert.deepEqual(turns(h)[1].params, { threadId: 't', input: [{ type: 'text', text: 'Automated message: continue.', text_elements: [] }] });
+  assert.equal(h.bridge.route.slot, 'b');
+  assert.equal(h.bridge.reservations.size, 0); assert.equal(h.bridge.waiters.size, 0);
+  assert.equal(h.client.length, before);
+  h.bridge.close();
+});
+
+test('a waiter that stands down, another failure or an untracked thread sends nothing', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  await finished(h, calls[0], 0);
+  assert.equal(turns(h).length, 1); assert.equal(h.bridge.waiters.size, 0);
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 't', turn: { status: 'failed', error: { codexErrorInfo: 'other' } } } });
+  h.bridge.native(limited(h, 'unknown'));
+  assert.equal(calls.length, 1); h.bridge.close();
+});
+
+test('the owner writing first cancels the waiter and no continue follows', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  await h.bridge.client({ id: 4, method: 'turn/start', params: { threadId: 't', input: [{ type: 'text', text: 'mine' }] } });
+  assert.equal(calls[0].killed, true);
+  await finished(h, calls[0], 2);
+  assert.deepEqual(turns(h).map(m => m.id), [3, 4]); h.bridge.close();
+});
+
+test('a continue is never sent into running work', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  started(h); await finished(h, calls[0], 2);
+  assert.equal(turns(h).length, 1); assert.equal(h.bridge.waiters.size, 0); h.bridge.close();
+});
+
+test('a continue that cannot be admitted is dropped with one fixed diagnostic', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  const before = h.client.length;
+  h.reject(); await finished(h, calls[0], 2);
+  assert.deepEqual(errors, ['routing_continue_failed']);
+  assert.equal(turns(h).length, 1); assert.equal(h.bridge.reservations.size, 0);
+  assert.equal(h.client.length, before); assert.equal(calls.length, 1); h.bridge.close();
+});
+
+test('closing the bridge ends every waiter', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  h.bridge.close();
+  assert.equal(calls[0].killed, true);
+  await finished(h, calls[0], 2);
+  assert.equal(turns(h).length, 1);
+});

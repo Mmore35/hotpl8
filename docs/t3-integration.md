@@ -134,7 +134,11 @@ move its thread selections back before removal.
    during ongoing work. Account changes are deferred while any parent, child or
    pending admission is active. Native external-token login can revoke network
    permission for existing work, so a validated alternative is adopted only
-   between turns. The bridge never replays the previous turn.
+   between turns. The bridge never replays the previous turn. When a turn ends on
+   a usage limit and [automatic continue](plans/automatic-continue.md) is on, the
+   bridge starts one new turn on the same conversation with the text
+   `Automated message: continue.` once the selected account differs from the one
+   that failed or has been read again since the failure.
    Account changes serialize independently of follow-ups, steering, interrupts,
    approvals and tool replies. Parent and child model names do not affect selection.
 6. An external-token refresh request is answered only for the matching account.
@@ -213,8 +217,16 @@ in-flight request, observation delay, explicit hold or exhausted-all condition.
 Unsuccessful background selection reports a fixed diagnostic and preserves native
 work. The original native failure, if one occurs, is shown once;
 the bridge never replays a partially executed prompt or duplicates tool effects.
-The next user turn performs a fresh selection. Unknown/unsupported protocol or
-command options fail closed, including non-stdio app-server transports.
+The next user turn performs a fresh selection, and so does an automatic continue,
+which is a new turn and not a replay. `routing_continue_failed` means that turn
+could not be started; nothing is retried and the next user turn works as usual.
+Unknown/unsupported protocol or command options fail closed, including non-stdio
+app-server transports.
+
+T3 Code 0.0.46 and later can resume limited conversations itself
+(`autoResumeLimitedThreads`). Turn that off so one continue is sent, not two. T3
+closes idle conversations after 30 minutes, so a continue can only arrive inside
+that window.
 
 The dashboard's NEXT LAUNCH remains a collector recommendation, not an assertion
 that every open T3 session changed accounts. `setup-t3.ps1 -Operation doctor` checks

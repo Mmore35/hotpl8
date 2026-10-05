@@ -81,3 +81,103 @@ function Register-Hotpl8Task($Installation,[string]$Directory) {
     $task=New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $definition.description
     Register-ScheduledTask -TaskName $definition.name -InputObject $task -Force|Out-Null
 }
+# Automatic continue reaches Claude through one StopFailure hook in its user-level settings,
+# which every account shares. HotPl8 owns exactly the hook whose args it recorded.
+function Get-Hotpl8ClaudeSettingsPath {
+    Join-Path $(if($env:CLAUDE_CONFIG_DIR){$env:CLAUDE_CONFIG_DIR}else{Join-Path (Get-Hotpl8UserHome) '.claude'}) 'settings.json'
+}
+# What the hook runs depends on how this copy was installed. A copy that is not an
+# installation (source checkout, test, preview) gets a hook only when asked explicitly.
+function Get-Hotpl8ContinueHookCommand([string]$CodeDirectory,[string]$StateDirectory,[switch]$Explicit) {
+    $state=[IO.Path]::GetFullPath($StateDirectory);$shell=@('-NoProfile','-ExecutionPolicy','Bypass')
+    $install=$env:HOTPL8_INSTALL_DIRECTORY
+    if($install -and (Test-Path -LiteralPath (Join-Path $install 'current.json'))){
+        $delivery=Read-Hotpl8Json (Join-Path $install 'delivery.json')
+        $exe=if($env:OS -eq 'Windows_NT'){'powershell.exe'}else{[string]$delivery.powershell}
+        if($exe -and $delivery.stateDirectory -and [IO.Path]::GetFullPath([string]$delivery.stateDirectory) -eq $state){
+            # Finds the current release each time it runs, so an update never touches the hook.
+            $quoted=@($install,(Join-Path $install 'current.json'),$state|ForEach-Object{"'"+([string]$_).Replace("'","''")+"'"})
+            $script='& (Join-Path '+$quoted[0]+' ((Get-Content -LiteralPath '+$quoted[1]+" -Raw | ConvertFrom-Json).release + '/continue.ps1')) -Provider claude -StateDirectory "+$quoted[2]+'; exit $LASTEXITCODE'
+            return [pscustomobject]@{command=$exe;args=$shell+@('-Command',$script)}
+        }
+    }
+    $root=Split-Path $CodeDirectory -Parent
+    $installation=Read-Hotpl8Json (Join-Path $root 'installation.json')
+    $installed=$installation.product -eq 'hotpl8' -and $installation.stateDirectory -and [IO.Path]::GetFullPath([string]$installation.stateDirectory) -eq $state
+    if(-not $installed -and -not $Explicit){return $null}
+    $exe=if($env:OS -eq 'Windows_NT'){'powershell.exe'}else{Get-Hotpl8PowerShell}
+    return [pscustomobject]@{command=$exe;args=$shell+@('-File',(Join-Path $CodeDirectory 'continue.ps1'),'-Provider','claude','-StateDirectory',$state)}
+}
+function Test-Hotpl8ContinueHook([string]$StateDirectory) {
+    $recorded=(Read-Hotpl8Json (Join-Path $StateDirectory 'continue/hook.json')).args
+    if(-not $recorded){return $false}
+    $owned=ConvertTo-Json -InputObject @($recorded) -Compress
+    foreach($entry in @((Read-Hotpl8Json (Get-Hotpl8ClaudeSettingsPath)).hooks.StopFailure)){
+        foreach($hook in @($entry.hooks)){if($hook.args -and (ConvertTo-Json -InputObject @($hook.args) -Compress) -ceq $owned){return $true}}
+    }
+    return $false
+}
+# Present unless -Remove. Every other hook, event and setting is left exactly as it was:
+# the file is not written when anything outside hooks.StopFailure would come out different.
+function Set-Hotpl8ContinueHook([string]$CodeDirectory,[string]$StateDirectory,[switch]$Remove,[switch]$Explicit) {
+    $path=Get-Hotpl8ClaudeSettingsPath
+    if(-not (Test-Path -LiteralPath (Split-Path $path -Parent) -PathType Container)){return}
+    $recordPath=Join-Path $StateDirectory 'continue/hook.json'
+    $recorded=(Read-Hotpl8Json $recordPath).args
+    $wanted=Get-Hotpl8ContinueHookCommand $CodeDirectory $StateDirectory -Explicit:$Explicit
+    if(-not $Remove -and -not $wanted){return}
+    $key={param($value) ConvertTo-Json -InputObject @($value) -Depth 64 -Compress}
+    $owned=@();if($recorded){$owned+=@(& $key $recorded)};if($wanted){$owned+=@(& $key $wanted.args)}
+    if(-not $owned.Count){return}
+    $text='{}';$exists=Test-Path -LiteralPath $path
+    if($exists){
+        if((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Claude settings file is a link; it was not changed.'}
+        $text=[IO.File]::ReadAllText($path)
+        # Core PowerShell before 7.5 rewrites JSON timestamps as it reads them.
+        if($PSVersionTable.PSVersion.Major -ge 6 -and $PSVersionTable.PSVersion -lt [version]'7.5' -and $text -match '"\d{4}-\d{2}-\d{2}T\d{2}:'){throw 'Claude settings cannot be rewritten safely by this PowerShell version; the file was not changed.'}
+    }
+    $document=$null;try{$document=ConvertFrom-Hotpl8Json $text}catch{}
+    $object=[System.Management.Automation.PSCustomObject]
+    $existing=$document.hooks.StopFailure
+    if($document -isnot $object -or ($null -ne $document.hooks -and $document.hooks -isnot $object) -or ($null -ne $existing -and $existing -isnot [array])){throw 'Claude settings file is not valid; it was not changed.'}
+    $entries=@()
+    foreach($entry in $existing){
+        if($entry.hooks -isnot [array]){$entries+=,$entry;continue}
+        $kept=@($entry.hooks|Where-Object{(& $key $_.args) -cnotin $owned})
+        if($kept.Count -eq $entry.hooks.Count){$entries+=,$entry}
+        elseif($kept.Count){$entry.hooks=$kept;$entries+=,$entry}
+    }
+    if(-not $Remove){
+        $entries+=,[pscustomobject]@{matcher='rate_limit';hooks=@([pscustomobject]@{type='command';command=$wanted.command;args=@($wanted.args);asyncRewake=$true;timeout=21700})}
+    }
+    # Compared before the document is changed below; ConvertFrom-Json gave it fresh arrays.
+    $before=if($null -eq $existing){'[]'}else{& $key (ConvertFrom-Hotpl8Json $text).hooks.StopFailure}
+    if((& $key $entries) -cne $before){
+        if(-not $entries.Count){
+            $document.hooks.PSObject.Properties.Remove('StopFailure')
+            if(-not @($document.hooks.PSObject.Properties).Count){$document.PSObject.Properties.Remove('hooks')}
+        }
+        else{
+            if($null -eq $document.hooks){$document|Add-Member NoteProperty hooks ([pscustomobject]@{})}
+            if($document.hooks.PSObject.Properties['StopFailure']){$document.hooks.StopFailure=$entries}
+            else{$document.hooks|Add-Member NoteProperty StopFailure $entries}
+        }
+        $next=$document|ConvertTo-Json -Depth 64
+        $rest={param([string]$json)
+            $copy=ConvertFrom-Hotpl8Json $json
+            if($copy.hooks -is $object){
+                $copy.hooks.PSObject.Properties.Remove('StopFailure')
+                if(-not @($copy.hooks.PSObject.Properties).Count){$copy.PSObject.Properties.Remove('hooks')}
+            }
+            ConvertTo-Json -InputObject $copy -Depth 64 -Compress
+        }
+        if((& $rest $next) -cne (& $rest $text)){throw 'Claude settings could not be rewritten without changing other settings; the file was not changed.'}
+        if($exists -and [IO.File]::ReadAllText($path) -cne $text){throw 'Claude settings changed while being read; the file was not changed.'}
+        Write-Hotpl8Text $path $next -NoBom
+    }
+    if($Remove){if(Test-Path -LiteralPath $recordPath){Remove-Item -LiteralPath $recordPath -Force}}
+    elseif(-not $recorded -or (& $key $recorded) -cne (& $key $wanted.args)){
+        [void][IO.Directory]::CreateDirectory((Split-Path $recordPath -Parent))
+        Write-Hotpl8Text $recordPath ([pscustomobject]@{args=@($wanted.args)}|ConvertTo-Json) -NoBom
+    }
+}

@@ -250,6 +250,7 @@ updater. Packaged files alone are insufficient when setup copies them elsewhere.
 | Interactive dashboard | Existing handoff after pointer change | Loaded SHA in window title; retained release |
 | Managed T3 bridge | Bootstrap selects verified current release once per new provider process | Per-process SHA/start/heartbeat, read-only import probe; same pointer rollback, active sessions retained |
 | Standalone T3 bridge | Deliberately pinned setup copy | Doctor reports unmanaged; explicit reinstall |
+| Automatic continue waiter | Claude's hook resolves the current release on each run; the Codex bridge runs the copy beside it | Doctor reports the hook; `hotpl8 continue -Operation disable` removes it |
 
 The HotPl8 adapter discovers owned T3 receipts under `integrations`, records their
 membership in `delivery.json`, and detects missing registered components. It
