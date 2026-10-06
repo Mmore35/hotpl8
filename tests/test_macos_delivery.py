@@ -233,13 +233,13 @@ class Lifecycle(unittest.TestCase):
         native = REPO / 'bin/macos/hotpl8-native'
         self.assertTrue(native.is_file(), 'Build the native reader first: scripts/build-native.ps1')
         identity = subprocess.run([str(native), 'self-check'], capture_output=True, timeout=30).stdout.decode()
-        self.assertRegex(identity, r'\Ahotpl8-native protocol=1 sha=[a-f0-9]{40}\n\Z')
+        self.assertRegex(identity, r'\Ahotpl8-native protocol=2 sha=[a-f0-9]{40}\n\Z')
         new = identity.strip()[-40:]
         version = (REPO / 'VERSION').read_text().strip()
         environment = {key: value for key, value in os.environ.items() if key != 'HOTPL8_NATIVE'}
-        # PowerShell 7 lays JSON out as the reader does, so the gate itself says who answers.
+        # PowerShell 7 lays JSON out as the reader does, so the hand-over itself says who answers.
         gate = self.base / 'gate.ps1'
-        gate.write_text("param($Release)\n. (Join-Path $Release 'src/native.ps1')\nif(Get-Hotpl8NativePath $Release){'reader'}else{'powershell'}\n")
+        gate.write_text("param($Release)\n. (Join-Path $Release 'src/native.ps1')\nif($null -ne (Invoke-Hotpl8Native $Release @('version','--root',$Release))){'reader'}else{'powershell'}\n")
 
         def answers(release):
             result = subprocess.run([self.pwsh, '-NoProfile', '-File', str(gate), str(release)],

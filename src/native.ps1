@@ -28,8 +28,7 @@ function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[int]$Tim
     }catch{return $null}
     finally{if($process){$process.Dispose()}}
 }
-# The binary's path, only when it exists, is executable, reports this protocol and was built
-# from the same commit as the release around it, and HOTPL8_NATIVE is not 0.
+# The binary's path, only when it exists and is executable and HOTPL8_NATIVE is not 0.
 function Get-Hotpl8NativePath([string]$Root) {
     try{
         if($env:HOTPL8_NATIVE -eq '0'){return $null}
@@ -38,25 +37,47 @@ function Get-Hotpl8NativePath([string]$Root) {
         $path=Join-Path $Root $(if($windows){'bin/windows/hotpl8-native.exe'}else{'bin/macos/hotpl8-native'})
         if(-not [IO.File]::Exists($path)){return $null}
         if(-not $windows -and -not ([IO.File]::GetUnixFileMode($path) -band [IO.UnixFileMode]::UserExecute)){return $null}
+        return $path
+    }catch{return $null}
+}
+# What every request tells the reader about its caller, or $null when this caller is one the
+# reader does not follow. The reader checks it as part of answering, so a request costs one
+# program start: a reader of another protocol or built from another commit declines.
+function Get-Hotpl8NativeIdentity([string]$Root) {
+    try{
+        # Numbers and time arithmetic differ between the two PowerShell versions in use, and
+        # the reader follows the one it is told. Before 7.5 JSON dates were read differently.
+        $version=$PSVersionTable.PSVersion
+        $shell=if($PSVersionTable.PSEdition -ne 'Core'){if($version.Major -eq 5 -and $version.Minor -eq 1){'desktop'}}
+            elseif($version.Major -gt 7 -or ($version.Major -eq 7 -and $version.Minor -ge 5)){'core'}
+        if(-not $shell){return $null}
+        # PowerShell formats numbers and times, sorts and compares text by regional rules.
+        # The reader knows the invariant and English ones.
+        $culture=[Globalization.CultureInfo]::CurrentCulture
+        if($culture.Name -ne '' -and $culture.TwoLetterISOLanguageName -cne 'en'){return $null}
+        if($culture.NumberFormat.NumberDecimalSeparator -cne '.' -or $culture.NumberFormat.NegativeSign -cne '-'){return $null}
+        if($culture.DateTimeFormat.TimeSeparator -cne ':' -or $culture.DateTimeFormat.Calendar -isnot [Globalization.GregorianCalendar]){return $null}
+        $identity=@('--protocol','2','--shell',$shell)
         # A source checkout has no build identity; there the protocol alone decides.
-        $sha='(?:[a-f0-9]{40}|unknown)'
         $buildFile=Join-Path $Root 'build-info.json'
         if([IO.File]::Exists($buildFile)){
             $build=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($buildFile)) -ErrorAction Stop
             if($build.sha -isnot [string] -or $build.sha -cnotmatch '\A[a-f0-9]{40}\z'){return $null}
-            $sha=$build.sha
+            $identity+=@('--release',$build.sha)
         }
-        $check=Invoke-Hotpl8NativeProcess $path @('self-check')
-        if(-not $check -or $check.exitCode -ne 0 -or $check.output -cnotmatch ('\Ahotpl8-native protocol=1 sha='+$sha+'\n\z')){return $null}
-        return $path
+        return $identity
     }catch{return $null}
 }
 # The command's complete text, or $null when the PowerShell implementation must answer:
-# no usable binary, a declined input (exit 64), any other exit status, or cut-off output.
+# no usable binary, a caller the reader does not follow, a declined request (exit 64), any
+# other exit status, or cut-off output. $Arguments is the command followed by its own
+# arguments; the caller's identity goes between them.
 function Invoke-Hotpl8Native([string]$Root,[string[]]$Arguments) {
     $path=Get-Hotpl8NativePath $Root
     if(-not $path){return $null}
-    $result=Invoke-Hotpl8NativeProcess $path $Arguments
+    $identity=Get-Hotpl8NativeIdentity $Root
+    if(-not $identity){return $null}
+    $result=Invoke-Hotpl8NativeProcess $path (@($Arguments[0])+$identity+@($Arguments|Select-Object -Skip 1))
     if(-not $result -or $result.exitCode -ne 0 -or -not $result.output.EndsWith("`n",[StringComparison]::Ordinal)){return $null}
     return $result.output.Substring(0,$result.output.Length-1)
 }

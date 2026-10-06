@@ -662,7 +662,7 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         native = source / "bin/windows/hotpl8-native.exe"
         self.assertTrue(native.is_file(), "Build the native reader first: scripts/build-native.ps1")
         identity = subprocess.run([str(native), "self-check"], capture_output=True, timeout=30).stdout.decode()
-        self.assertRegex(identity, r"\Ahotpl8-native protocol=1 sha=[a-f0-9]{40}\n\Z")
+        self.assertRegex(identity, r"\Ahotpl8-native protocol=2 sha=[a-f0-9]{40}\n\Z")
         new = identity.strip()[-40:]
         version = (source / "VERSION").read_text().strip()
         ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")

@@ -46,13 +46,23 @@ param(
 
 $ErrorActionPreference = 'Stop'
 try {
-    # A plain version request is answered by the compiled reader when this release ships a
-    # matching one. Anything else, including a reader that declines, continues below unchanged.
-    # The Mac launcher adds its Codex binding to every request; version does not read it.
-    if($Command -eq 'version' -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin @('Command','AsJson','CodexExecutable')}).Count){
+    # A plain version, status or explain request is answered by the compiled reader when this
+    # release ships a matching one. These only read; refresh and tick never go there. Anything
+    # else, including a reader that declines, continues below unchanged.
+    # The Mac launcher adds its Codex binding to every request; none of the three reads it.
+    $nativeAllowed=switch($Command){
+        'version'{@('Command','AsJson','CodexExecutable')}
+        {$_ -in 'status','explain'}{@('Command','AsJson','StateDirectory','PreviewPolicy','CodexExecutable')}
+    }
+    if($nativeAllowed -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin $nativeAllowed}).Count){
         . (Join-Path $PSScriptRoot 'src/native.ps1')
-        $nativeText=Invoke-Hotpl8Native $PSScriptRoot $(if($AsJson){@('version','--root',$PSScriptRoot,'-AsJson')}else{@('version','--root',$PSScriptRoot)})
-        if($null -ne $nativeText){$nativeText;exit 0}
+        $nativeArguments=@($Command,'--root',$PSScriptRoot)
+        if($StateDirectory){$nativeArguments+=@('--state',$StateDirectory)}
+        if($PreviewPolicy){$nativeArguments+=@('--policy',$PreviewPolicy)}
+        if($AsJson){$nativeArguments+='-AsJson'}
+        $nativeText=Invoke-Hotpl8Native $PSScriptRoot $nativeArguments
+        # Text is one line per output object, as the PowerShell implementation writes it; JSON is one string.
+        if($null -ne $nativeText){if($AsJson){$nativeText}else{$nativeText.Split("`n")};exit 0}
     }
     . (Join-Path $PSScriptRoot 'src/common.ps1')
     if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}

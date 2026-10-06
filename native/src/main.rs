@@ -177,7 +177,9 @@ fn absolute(path: &OsString) -> R<PathBuf> {
     } else {
         text.starts_with('/')
     };
-    if !rooted || ps::has_control(text) {
+    // .NET removes "." and ".." from the text; the system follows links first.
+    let stepping = text.split(|c| c == '/' || (cfg!(windows) && c == '\\')).any(|part| part == "." || part == "..");
+    if !rooted || stepping || ps::has_control(text) {
         return decline();
     }
     Ok(PathBuf::from(text))
@@ -546,6 +548,22 @@ mod tests {
         ] {
             assert_eq!(run_as(&arguments(items), Some(SHA)), Err(Declined), "{items:?}");
         }
+    }
+
+    #[test]
+    fn only_paths_both_sides_open_alike_are_taken() {
+        let (plain, stepping) = if cfg!(windows) {
+            (vec![r"C:\state", "c:/state/a.b", r"\\server\share\state"], vec!["state", r"C:state", r"\state", r"\\?\C:\state", r"\\.\C:\state", r"C:\state\..\other", r"C:\state\.", "C:/state/./a"])
+        } else {
+            (vec!["/state", "/state/a.b", r"/state/a\..\b"], vec!["state", "./state", "/state/../other", "/state/.", "/state/./a"])
+        };
+        for text in plain {
+            assert_eq!(absolute(&OsString::from(text)).ok(), Some(PathBuf::from(text)), "{text}");
+        }
+        for text in stepping {
+            assert!(absolute(&OsString::from(text)).is_err(), "{text}");
+        }
+        assert!(absolute(&OsString::from(if cfg!(windows) { "C:\\state\ta" } else { "/state\ta" })).is_err());
     }
 
     #[test]
