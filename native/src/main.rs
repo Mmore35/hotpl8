@@ -15,6 +15,7 @@ mod json;
 mod num;
 mod observation;
 mod ps;
+mod registry;
 mod selection;
 mod time;
 

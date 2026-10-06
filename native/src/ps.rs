@@ -516,6 +516,16 @@ impl V {
         props.items.push((name.into(), value));
         Ok(())
     }
+    /// `$object.PSObject.Properties.Remove(name)`: nothing happens when the member is absent.
+    #[track_caller]
+    pub fn remove_member(&self, name: &str) -> R<()> {
+        let V::Obj(o) = self else { return decline() };
+        let mut props = o.borrow_mut();
+        if let Some(index) = props.find(name) {
+            props.items.remove(index);
+        }
+        Ok(())
+    }
 
     /// [bool]$value
     #[track_caller]
