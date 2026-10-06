@@ -414,10 +414,13 @@ function Get-CswapReadTimeoutMs {
     # How long `cswap list --json` may run before this script kills it. The read
     # renews any stored token that has expired, and that grant is single-use:
     # killing cswap after its request left but before the reply is saved retires
-    # the slot's only token. So this must outlast cswap's own wait for that reply
-    # (10 s through 0.26.0, 30 s where oauth.OAUTH_REFRESH_TIMEOUT_S exists) plus
-    # its 10 s wait for the slot lock. The old 20 s sat inside that window.
-    return 50000
+    # the slot's only token. So this must outlast the longest road cswap takes to
+    # a saved reply. A renewal waits up to 10 s for the slot lock and then for the
+    # reply (10 s through 0.26.0, 30 s where oauth.OAUTH_REFRESH_TIMEOUT_S exists).
+    # When the first one gets no reply, cswap asks for usage with the expired
+    # token (5 s), is refused and renews once more: 10+30 + 5 + 10+30 = 85 s.
+    # The old 20 s sat inside the first of those waits.
+    return 90000
 }
 
 function Resolve-CswapExecutable([string]$CswapExecutable) {
@@ -639,23 +642,29 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $statePath = Join-Path $StateDirectory 'warm-state.json'
     $state  = @{}   # lastWarm  : slot -> ISO8601 of last warm ping
     $pstate = @{}   # lastProbe : slot -> ISO8601 of last stale-quarantine probe
-    $dstate = @{}   # probeDead : slot -> stored generation a probe already failed on
+    $dstate = @{}   # probeDead : slot -> @{ mark = stored generation; fails = probes failed on it }
     if (Test-Path $statePath) {
         try {
             $sj = Get-Content $statePath -Raw | ConvertFrom-Json
             if ($sj.lastWarm)  { foreach ($p in $sj.lastWarm.PSObject.Properties)  { $state[$p.Name]  = [string]$p.Value } }
             if ($sj.lastProbe) { foreach ($p in $sj.lastProbe.PSObject.Properties) { $pstate[$p.Name] = [string]$p.Value } }
-            if ($sj.probeDead) { foreach ($p in $sj.probeDead.PSObject.Properties) { $dstate[$p.Name] = [string]$p.Value } }
+            if ($sj.probeDead) { foreach ($p in $sj.probeDead.PSObject.Properties) { $dstate[$p.Name] = @{ mark = [string]$p.Value.mark; fails = [int]$p.Value.fails } } }
         } catch { $state = @{}; $pstate = @{}; $dstate = @{} }
     }
 
-    # A stale verdict is worth ONE probe per stored token. cswap condemns a
-    # generation, not a slot, so once a probe has failed on the generation still
-    # stored, asking again cannot answer differently: only a new sign-in writes a
-    # new one. Until then the honest status is "needs re-login", not "unchecked".
-    # A slot whose stored token cannot be read keeps the old behaviour.
+    # A stale verdict is worth TWO probes per stored token, not one every $staleS
+    # for as long as it stays. cswap condemns a generation, not a slot, so once
+    # the generation still stored has been refused, asking again cannot answer
+    # differently: only a new sign-in writes a new one. Until then the honest
+    # status is "needs re-login", not "unchecked". Two, because a probe reports
+    # only that it failed: a timeout, an outage or a missing client fails it just
+    # the same, and one such failure must not retire a slot that a second look
+    # would revive. A slot whose stored token cannot be read keeps the old
+    # behaviour.
+    $spentAfter = 2
     $spent = @($stuck | Where-Object {
-        $dstate["$_"] -and $dstate["$_"] -eq (Get-CredMark (Get-SlotEncPath $_ ([string]$acc[$_].obj.email)) $true)
+        $d = $dstate["$_"]
+        $d -and $d.fails -ge $spentAfter -and $d.mark -eq (Get-CredMark (Get-SlotEncPath $_ ([string]$acc[$_].obj.email)) $true)
     })
     if ($spent.Count -gt 0) {
         $stuck        = @($stuck | Where-Object { $spent -notcontains $_ })
@@ -773,7 +782,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         if (-not $e) { continue }
         # No new knob and no flag: the floor IS the staleness that defined $stuck.
         # A slot is probed at most once per $staleS, and (see $spent above) only
-        # once per stored token where that token can be read.
+        # twice per stored token where that token can be read.
         $last = $pstate["$n"]
         if ($last) {
             try {
@@ -789,7 +798,10 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         if ($pok) { $revived += $n; $dstate.Remove("$n") }
         else {
             $mark = Get-CredMark (Get-SlotEncPath $n ([string]$e.obj.email)) $true
-            if ($mark -match '@') { $dstate["$n"] = $mark }
+            if ($mark -match '@') {
+                $d = $dstate["$n"]
+                $dstate["$n"] = @{ mark = $mark; fails = $(if ($d -and $d.mark -eq $mark) { [int]$d.fails + 1 } else { 1 }) }
+            }
         }
         $pstate["$n"] = [datetimeoffset]::UtcNow.ToString('o')
         Save-TickState $statePath $state $pstate $dstate
