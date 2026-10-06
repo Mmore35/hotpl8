@@ -341,7 +341,7 @@ function Get-Hotpl8ParityCases {
   "codex":{"slots":[{"id":"work","label":"Work","home":"C:\\Fictional\\codex-work"},{"id":"personal","label":"Personal","home":"C:\\Fictional\\codex-personal"}],"prefer":["work","personal"],"capacity":{"work":{"weekly":5,"fiveHour":1.5},"personal":{"weekly":1,"fiveHour":0.3}},"margin7dWork":5}
  }}
 '@
-    $threeMac=$three.Replace('C:\\Fictional\\','/Users/fictional/')
+    $threeMac=$three.Replace('C:\\Fictional\\','/opt/fictional/')
     [void]$cases.Add(@{name='policy version three';files=@{'policy.json'=$three;'status.json'=$status};macFiles=@{'policy.json'=$threeMac}})
     [void]$cases.Add(@{name='policy version three with one provider';files=@{'policy.json'='{"schemaVersion":3,"mode":"monitor","providers":{"claude":{"prefer":[1,2],"claudeModels":["example-scoped"]}}}';'status.json'=$status}})
     [void]$cases.Add(@{name='policy version three with no providers';files=@{'policy.json'='{"schemaVersion":3,"mode":"monitor","providers":{}}';'status.json'=$status}})
@@ -439,6 +439,8 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='policy that is not JSON';files=@{'policy.json'='{"schemaVersion":2,';'status.json'=$status}})
     [void]$cases.Add(@{name='empty policy file';files=@{'policy.json'='';'status.json'=$status}})
     [void]$cases.Add(@{name='generation time that is not a time';files=@{'policy.json'=$policy;'status.json'=$status.Replace('{"generatedAt":"@t-42s@"','{"generatedAt":"soon"')};expect=@{default='either'}})
+    [void]$cases.Add(@{name='text where a percentage belongs';files=@{'policy.json'=$policy;'status.json'=$status.Replace('"used5h":38','"used5h":"38"')}})
+    [void]$cases.Add(@{name='usage that is an object';files=@{'policy.json'=$policy;'status.json'=$status.Replace('"used7d":54','"used7d":{"value":54}')}})
 
     # Input PowerShell answers from but the reader does not model. It must decline.
     $decline={param([string]$Name,[string]$Text,[string]$PolicyText=$policy) [void]$cases.Add(@{name=$Name;files=@{'policy.json'=$PolicyText;'status.json'=$Text};expect='decline'})}
@@ -456,8 +458,6 @@ function Get-Hotpl8ParityCases {
     & $decline 'comment in a state file' ($status.Replace('{"generatedAt"','{/* note */"generatedAt"'))
     & $decline 'trailing comma' ($status.Replace('"hold":null,"slots"','"hold":null,"slots"').Replace(']}}}',']}},}'))
     & $decline 'single quoted text' ($status.Replace('"label":"Everyday"',"`"label`":'Everyday'"))
-    & $decline 'text where a percentage belongs' ($status.Replace('"used5h":38','"used5h":"38"'))
     & $decline 'array where the provider object belongs' ($status.Replace('"providers":{"codex":{','"providers":{"codex":[{').Replace(']}}}',']}]}}'))
-    & $decline 'usage that is an object' ($status.Replace('"used7d":54','"used7d":{"value":54}'))
     return $cases.ToArray()
 }

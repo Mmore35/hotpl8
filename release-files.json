@@ -199,6 +199,10 @@
     "scripts/build-native.ps1",
     "tests/test-native.ps1",
     "tests/native-fake.cs",
+    "tests/test-native-parity.ps1",
+    "tests/parity/referee.ps1",
+    "tests/parity/cases.ps1",
+    "tests/parity/fuzz.ps1",
     "docs/plans/rust-read-side.md"
   ],
   "platformFiles": {
