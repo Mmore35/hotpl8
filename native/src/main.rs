@@ -8,6 +8,8 @@
 #![allow(dead_code)]
 
 mod capacity;
+mod claude;
+mod codex;
 mod contract;
 mod critical;
 mod decision;

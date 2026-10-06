@@ -831,6 +831,14 @@ impl V {
             other => other.arr(),
         }
     }
+    /// `$list[0]` for a list the code built itself: null when it is empty.
+    #[track_caller]
+    pub fn first(&self) -> R<V> {
+        match self {
+            V::Arr(items) => Ok(items.first().cloned().unwrap_or(V::Null)),
+            _ => decline(),
+        }
+    }
     /// `$value.PSObject.Properties`
     #[track_caller]
     pub fn props(&self) -> R<Vec<(Rc<str>, V)>> {
