@@ -41,7 +41,7 @@ function Test-Hotpl8AccountEnrolled([string]$Directory,[string]$Provider,[string
 }
 function Get-Hotpl8ParkClaudeRow([string]$Slot) {
     $exe=Resolve-CswapExecutable '';if(-not $exe){return $null}
-    $read=Invoke-Hotpl8Process $exe @('list','--json') 20000
+    $read=Invoke-Hotpl8Process $exe @('list','--json') (Get-CswapReadTimeoutMs)
     if($read.exitCode -ne 0){return $null}
     $data=$read.output|ConvertFrom-Json
     if($data.schemaVersion -ne 1){return $null}

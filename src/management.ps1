@@ -83,7 +83,7 @@ function Add-Hotpl8RegisteredAccountCore([string]$Directory,[string]$Provider,[s
         if($Slot -notmatch '^[1-9][0-9]{0,3}$' -or $AccountHome){throw 'This driver enrolls an existing native numeric account, without an account home.'}
         if([int]$Slot -in @($part.prefer)){'Account already enrolled; policy unchanged.';return}
         $exe=Resolve-CswapExecutable $Executable;if(-not $exe){throw 'Native account manager is not installed.'}
-        $read=Invoke-Hotpl8Process $exe @('list','--json') 20000
+        $read=Invoke-Hotpl8Process $exe @('list','--json') (Get-CswapReadTimeoutMs)
         if($read.exitCode -ne 0){throw 'Native account inventory is unavailable.'}
         $data=$read.output|ConvertFrom-Json
         if($data.schemaVersion -ne 1 -or @($data.accounts|Where-Object number -EQ ([int]$Slot)).Count -ne 1){throw 'Account not found in native inventory.'}
@@ -220,7 +220,7 @@ function Add-Hotpl8ClaudeAccount([string]$Directory,[string]$Slot,[string]$Label
     $path=Join-Path $Directory 'policy.json';$hash=(Get-FileHash $path -Algorithm SHA256).Hash
     $p=ConvertTo-Hotpl8PolicyV2 (Read-Hotpl8Json $path)
     $exe=Resolve-CswapExecutable '';if(-not $exe){throw 'Install claude-swap and enroll with cswap first.'}
-    $read=Invoke-Hotpl8Process $exe @('list','--json') 20000
+    $read=Invoke-Hotpl8Process $exe @('list','--json') (Get-CswapReadTimeoutMs)
     if($read.exitCode -ne 0){throw 'Could not read cswap inventory.'}
     $data=$read.output|ConvertFrom-Json
     if($data.schemaVersion -ne 1 -or @($data.accounts|Where-Object number -EQ ([int]$Slot)).Count -ne 1){throw 'Slot not found in supported cswap inventory.'}
