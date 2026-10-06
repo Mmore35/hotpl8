@@ -14,6 +14,8 @@ mod decision;
 mod json;
 mod num;
 mod observation;
+mod pause;
+mod policy;
 mod ps;
 mod registry;
 mod selection;

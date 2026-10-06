@@ -1,0 +1,442 @@
+//! The policy checks of src/config.ps1, src/automation.ps1 and src/providers/codex.ps1.
+//! PowerShell stops with an error where these return `throw()`; the reader then declines,
+//! and PowerShell reports the error in its own words.
+
+use crate::capacity::assert_capacity_policy;
+use crate::critical::assert_critical_policy;
+use crate::ps::*;
+use crate::registry;
+
+const ORDERS: [&str; 4] = ["prefer", "soonest-reset", "weekly-expiry", "balanced"];
+const LATER_ORDERS: [&str; 2] = ["weekly-expiry", "balanced"];
+
+/// `$null -ne $value -and (-not (Test-Hotpl8Number $value) -or $value -lt low -or $value -gt high)`
+fn outside(value: &V, low: i32, high: i32) -> R<bool> {
+    Ok(!value.is_null() && (!value.is_number() || value.lt_i(low)? || value.gt_i(high)?))
+}
+/// `[Math]::Floor($value) -ne $value`
+fn fraction(value: &V) -> R<bool> {
+    value.floor()?.ne(value)
+}
+/// `$null -ne $list -and ($list -isnot [array] -or the list repeats an item)`, then the
+/// same list holding a null.
+fn unique_array(list: &V) -> R<()> {
+    if list.is_null() {
+        return Ok(());
+    }
+    if !list.is_arr() || unique_count(&list.each())? != list.arr().len() {
+        return throw();
+    }
+    if list.arr().iter().any(V::is_null) {
+        return throw();
+    }
+    Ok(())
+}
+/// The names of an object's members, none of which may be outside `allowed`.
+fn fields_within(object: &V, allowed: &[&str]) -> R<()> {
+    for (name, _) in object.props()? {
+        if !V::s_of(&name).in_s(allowed)? {
+            return throw();
+        }
+    }
+    Ok(())
+}
+
+/// Assert-Hotpl8Policy
+pub fn assert_policy(policy: &V) -> R<()> {
+    if !policy.is_obj() {
+        return throw();
+    }
+    let version = policy.g("schemaVersion")?;
+    if version.eq_i(3)? && version.is_number() {
+        let allowed =
+            ["schemaVersion", "mode", "providers", "switchEnabled", "warm", "probeEnabled", "automation", "historyEnabled", "notificationsEnabled", "display"];
+        for (name, _) in policy.props()? {
+            if !allowed.contains(&&*name) {
+                return throw();
+            }
+        }
+        if !policy.g("mode")?.is_cin_list(&[V::s_of("monitor"), V::s_of("automate")])? {
+            return throw();
+        }
+        let control = registry::copy(policy)?;
+        control.remove_member("providers")?;
+        control.set("schemaVersion", V::I32(2))?;
+        assert_policy(&control)?;
+        let mut native_homes = Keys::new();
+        let mut global_owners = 0;
+        for r in registry::configured_providers(policy, false)? {
+            let driver = registry::provider_driver(&r.g("driver")?)?;
+            let id = r.g("id")?.s()?;
+            let view = registry::provider_view(&V::Null, policy, &id, &[])?;
+            let part = r.g("policy")?;
+            if driver.g("provider")?.eq_s("claude")? {
+                for key in [
+                    "schemaVersion", "mode", "switchEnabled", "warm", "probeEnabled", "automation", "historyEnabled", "notificationsEnabled",
+                    "display", "providers", "codex",
+                ] {
+                    if part.has(key)? {
+                        return throw();
+                    }
+                }
+                assert_policy(&view.g("policy")?)?;
+                if part.g("prefer")?.each().iter().any(|n| !n.is_null()) {
+                    global_owners += 1;
+                }
+            } else {
+                assert_codex_policy(&part)?;
+                for slot in part.g("slots")?.arr() {
+                    let home = home_key(&slot.g("home")?.s()?)?;
+                    if native_homes.contains(&home)? {
+                        return throw();
+                    }
+                    native_homes.insert(&home)?;
+                }
+            }
+            if !r.path(&["definition", "capabilities", "warming"])?.t()? && part.g("warm")?.t()? {
+                return throw();
+            }
+        }
+        if global_owners > 1 {
+            return throw();
+        }
+        return Ok(());
+    }
+    let versioned = [V::I32(1), V::I32(2)];
+    if !version.is_null() && (!version.is_number() || !version.is_in_list(&versioned)?) {
+        return throw();
+    }
+    let v2_fields = ["automation", "disabled", "claudeModels", "historyEnabled", "notificationsEnabled", "capacity", "critical", "display"];
+    if version.ne(&V::I32(2))? {
+        for (name, _) in policy.props()? {
+            if V::s_of(&name).in_s(&v2_fields)? {
+                return throw();
+            }
+        }
+    }
+    if version.is_in_list(&versioned)? {
+        let mut allowed = vec![
+            "schemaVersion", "mode", "prefer", "reserve", "labels", "weights", "switchEnabled", "warm", "probeEnabled", "order", "pattern",
+            "margin5h", "margin7d", "margin7dWork", "hysteresis", "warmMin7d", "warmMin7dWork", "maxUsageAgeS", "staleQuarantineS", "warmFloorMin",
+            "warmPhaseWindowMin", "warmGroup", "resetLeadMin", "codex",
+        ];
+        if version.eq_i(2)? {
+            allowed.extend(v2_fields);
+            assert_automation_policy(policy)?;
+        }
+        fields_within(policy, &allowed)?;
+    }
+    let codex = policy.g("codex")?;
+    if version.ne(&V::I32(2))? && (codex.g("capacity")?.t()? || codex.g("critical")?.t()?) {
+        return throw();
+    }
+    let mode = policy.g("mode")?;
+    if mode.t()? && !mode.in_s(&["monitor", "automate"])? {
+        return throw();
+    }
+    for key in ["warm", "switchEnabled", "probeEnabled"] {
+        let value = policy.g(key)?;
+        if !value.is_null() && !value.is_bool() {
+            return throw();
+        }
+    }
+    if version.is_in_list(&versioned)? && !mode.t()? {
+        return throw();
+    }
+    for key in ["margin5h", "margin7d", "margin7dWork", "hysteresis", "warmMin7d", "warmMin7dWork"] {
+        if outside(&policy.g(key)?, 0, 100)? {
+            return throw();
+        }
+    }
+    for key in ["maxUsageAgeS", "staleQuarantineS", "warmFloorMin", "warmPhaseWindowMin", "warmGroup", "resetLeadMin"] {
+        if outside(&policy.g(key)?, 0, 604800)? {
+            return throw();
+        }
+    }
+    for key in ["maxUsageAgeS", "staleQuarantineS", "warmFloorMin", "warmPhaseWindowMin", "warmGroup"] {
+        let value = policy.g(key)?;
+        if !value.is_null() && value.le_i(0)? {
+            return throw();
+        }
+    }
+    let order = policy.g("order")?;
+    if order.t()? && !order.in_s(&ORDERS)? {
+        return throw();
+    }
+    if version.ne(&V::I32(2))?
+        && (order.in_s(&LATER_ORDERS)? || codex.g("order")?.in_s(&LATER_ORDERS)? || (!codex.is_null() && codex.has("disabled")?))
+    {
+        return throw();
+    }
+    let pattern = policy.g("pattern")?;
+    if pattern.t()? && !pattern.in_s(&["maintain", "even", "clustered", "synced"])? {
+        return throw();
+    }
+    let mut seen = Keys::new();
+    for n in policy.g("prefer")?.arr() {
+        if n.is_null() {
+            continue;
+        }
+        if !n.is_number() || n.le_i(0)? || n.gt_i(10000)? || fraction(&n)? || seen.contains(&n.s()?)? {
+            return throw();
+        }
+        seen.insert(&n.s()?)?;
+    }
+    for n in policy.g("reserve")?.arr() {
+        if !n.is_null() && !seen.contains(&n.s()?)? {
+            return throw();
+        }
+    }
+    for (_, value) in policy.g("labels")?.props()? {
+        let text = value.s()?;
+        if has_control(&text) || length(&text) > 80 {
+            return throw();
+        }
+    }
+    assert_capacity_policy(policy)?;
+    assert_critical_policy(policy)?;
+    let display = policy.g("display")?;
+    if display.t()? {
+        for (name, value) in display.props()? {
+            if !V::s_of(&name).in_s(&["reducedMotion", "noColor"])? || !value.is_bool() {
+                return throw();
+            }
+        }
+    }
+    for (_, value) in policy.g("weights")?.props()? {
+        if !value.is_number() || value.le_i(0)? || value.gt_i(10000)? {
+            return throw();
+        }
+    }
+    Ok(())
+}
+
+/// Assert-Hotpl8AutomationPolicy
+fn assert_automation_policy(policy: &V) -> R<()> {
+    let a = policy.g("automation")?;
+    for name in ["disabled", "claudeModels"] {
+        unique_array(&policy.g(name)?)?;
+    }
+    if a.t()? {
+        if !a.is_obj() {
+            return throw();
+        }
+        fields_within(&a, &["schedule", "dailyAttemptLimit", "warmExcluded", "continue"])?;
+        let proceed = a.g("continue")?;
+        if !proceed.is_null() && !proceed.is_bool() {
+            return throw();
+        }
+        let limit = a.g("dailyAttemptLimit")?;
+        if !limit.is_null() && (!limit.is_number() || limit.lt_i(1)? || limit.gt_i(100)? || fraction(&limit)?) {
+            return throw();
+        }
+        let excluded = a.g("warmExcluded")?;
+        unique_array(&excluded)?;
+        for id in excluded.each() {
+            if id.is_null() {
+                continue;
+            }
+            let Some(text) = id.as_str() else { return throw() };
+            // The pattern's `$` also accepts a final line feed; that spelling is left to PowerShell.
+            if has_control(text) {
+                return decline();
+            }
+            let Some((provider, slot)) = text.split_once(':') else { return throw() };
+            let lower = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-';
+            if !(1..=40).contains(&provider.len()) || !provider.as_bytes()[0].is_ascii_lowercase() || !provider.bytes().all(lower) || !slot_name(slot, 40) {
+                return throw();
+            }
+            let definition = registry::provider_definition(provider)?;
+            let driver = registry::provider_driver(&definition.g("driver")?)?;
+            if driver.g("slotKind")?.eq_s("numeric")? && !slot.bytes().all(|b| b.is_ascii_digit()) {
+                return throw();
+            }
+        }
+        let s = a.g("schedule")?;
+        if s.t()? {
+            if !s.is_obj() {
+                return throw();
+            }
+            fields_within(&s, &["start", "end", "days", "timeZone"])?;
+            for t in [s.g("start")?, s.g("end")?] {
+                let Some(text) = t.as_str() else { return throw() };
+                if has_control(text) {
+                    return decline();
+                }
+                let b = text.as_bytes();
+                let hour = b.len() == 5 && (((b[0] == b'0' || b[0] == b'1') && b[1].is_ascii_digit()) || (b[0] == b'2' && (b'0'..=b'3').contains(&b[1])));
+                if !hour || b[2] != b':' || !(b'0'..=b'5').contains(&b[3]) || !b[4].is_ascii_digit() {
+                    return throw();
+                }
+            }
+            let days = s.g("days")?;
+            if !days.is_arr() || days.arr().is_empty() || unique_count(&days.each())? != days.arr().len() {
+                return throw();
+            }
+            for d in days.arr() {
+                if !d.is_number() || d.lt_i(0)? || d.gt_i(6)? || fraction(&d)? {
+                    return throw();
+                }
+            }
+            // The zone names a machine knows are PowerShell's to judge.
+            if s.g("timeZone")?.t()? {
+                return decline();
+            }
+        }
+    }
+    let prefer = policy.g("prefer")?;
+    for n in policy.g("disabled")?.arr() {
+        if !n.is_null() && !n.is_in(&prefer)? {
+            return throw();
+        }
+    }
+    for name in policy.g("claudeModels")?.each() {
+        if name.is_null() {
+            continue;
+        }
+        let Some(text) = name.as_str() else { return throw() };
+        if !slot_name(text, 80) {
+            return throw();
+        }
+    }
+    for key in ["historyEnabled", "notificationsEnabled"] {
+        let value = policy.g(key)?;
+        if !value.is_null() && !value.is_bool() {
+            return throw();
+        }
+    }
+    Ok(())
+}
+
+/// Assert-CodexPolicy
+pub fn assert_codex_policy(policy: &V) -> R<()> {
+    assert_capacity_policy(policy)?;
+    assert_critical_policy(policy)?;
+    fields_within(
+        policy,
+        &[
+            "slots", "prefer", "reserve", "disabled", "order", "defaultMeter", "modelMeters", "margin5h", "margin7d", "margin7dWork", "hysteresis",
+            "resetLeadMin", "capacity", "critical",
+        ],
+    )?;
+    let mut ids = Keys::new();
+    let mut homes = Keys::new();
+    for slot in policy.g("slots")?.arr() {
+        if !slot.t()? {
+            return throw();
+        }
+        let id = slot.g("id")?.s()?;
+        if !slot_name(&id, 40) {
+            return throw();
+        }
+        let home = home_key(&slot.g("home")?.s()?)?;
+        if ids.contains(&id)? || homes.contains(&home)? {
+            return throw();
+        }
+        ids.insert(&id)?;
+        homes.insert(&home)?;
+        let label = slot.g("label")?.s()?;
+        if has_control(&label) || length(&label) > 80 {
+            return throw();
+        }
+    }
+    for name in ["prefer", "reserve", "disabled"] {
+        let mut seen = Keys::new();
+        for id in policy.g(name)?.arr() {
+            if !id.t()? {
+                continue;
+            }
+            let id = id.s()?;
+            if !ids.contains(&id)? || seen.contains(&id)? {
+                return throw();
+            }
+            seen.insert(&id)?;
+        }
+    }
+    for key in ["margin5h", "margin7d", "margin7dWork", "hysteresis"] {
+        if outside(&policy.g(key)?, 0, 100)? {
+            return throw();
+        }
+    }
+    let meter = policy.g("defaultMeter")?;
+    if meter.t()? && !meter.in_s(&["codex", "codex_bengalfox"])? {
+        return throw();
+    }
+    let order = policy.g("order")?;
+    if order.t()? && !order.in_s(&ORDERS)? {
+        return throw();
+    }
+    // Legacy maps are inert compatibility data; native owns model availability.
+    if policy.has("modelMeters")? && !policy.g("modelMeters")?.is_obj() {
+        return throw();
+    }
+    if outside(&policy.g("resetLeadMin")?, 0, 604800)? {
+        return throw();
+    }
+    for id in policy.g("disabled")?.arr() {
+        if id.t()? && !ids.contains(&id.s()?)? {
+            return throw();
+        }
+    }
+    Ok(())
+}
+
+/// A native account home as the checks compare it: `[IO.Path]::GetFullPath` with the
+/// trailing separators trimmed, lower-cased. Only paths that call leaves as written are
+/// modelled; anything it would rewrite or refuse declines.
+fn home_key(path: &str) -> R<String> {
+    if path.is_empty() {
+        // A missing home is not rooted, and GetFullPath refuses an empty path.
+        return throw();
+    }
+    if !printable(path) || path.len() > 200 || path.contains('~') {
+        return decline();
+    }
+    let rest = if cfg!(windows) {
+        let b = path.as_bytes();
+        if b.len() < 3 || !b[0].is_ascii_alphabetic() || b[1] != b':' || !(b[2] == b'\\' || b[2] == b'/') {
+            return decline();
+        }
+        &path[3..]
+    } else {
+        if !path.starts_with('/') || path.contains('\\') {
+            return decline();
+        }
+        &path[1..]
+    };
+    let rest = if cfg!(windows) { rest.replace('/', "\\") } else { rest.to_string() };
+    let separator = if cfg!(windows) { '\\' } else { '/' };
+    if rest.is_empty() {
+        return decline();
+    }
+    for segment in rest.split(separator) {
+        let stem = segment.split('.').next().unwrap_or("").to_ascii_lowercase();
+        let device = matches!(stem.as_str(), "con" | "prn" | "aux" | "nul" | "conin$" | "conout$")
+            || ((stem.starts_with("com") || stem.starts_with("lpt")) && stem.len() == 4 && stem.as_bytes()[3].is_ascii_digit());
+        if segment.is_empty()
+            || segment == "."
+            || segment == ".."
+            || segment.ends_with('.')
+            || segment.ends_with(' ')
+            || segment.starts_with(' ')
+            || segment.contains(['<', '>', ':', '"', '|', '?', '*'])
+            || device
+        {
+            return decline();
+        }
+    }
+    let head = if cfg!(windows) { path[..2].to_string() + "\\" } else { "/".to_string() };
+    Ok((head + &rest).to_ascii_lowercase())
+}
+
+/// Get-Hotpl8Actions for a command that may act: whether switching is on. The other
+/// members are worked out as PowerShell does, so a policy it would stop on stops here.
+pub fn switching(policy: &V) -> R<bool> {
+    let enabled = policy.g("mode")?.ne_s("monitor")?;
+    let legacy = policy.g("schemaVersion")?.is_null();
+    let switching = enabled && ((legacy && policy.g("switchEnabled")?.is_null()) || policy.g("switchEnabled")?.is_true()?);
+    let _warming = enabled && policy.g("warm")?.is_true()?;
+    let _probing = enabled && ((legacy && policy.g("probeEnabled")?.is_null()) || policy.g("probeEnabled")?.is_true()?);
+    let _continuing = enabled && policy.path(&["automation", "continue"])?.ne(&V::Bool(false))?;
+    Ok(switching)
+}
