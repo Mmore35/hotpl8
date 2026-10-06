@@ -1,6 +1,6 @@
 # Contributing
 
-Use Windows PowerShell 5.1, PowerShell 7.5 or later, Git Bash, Python 3, Node 22+ and Rust (through [rustup](https://rustup.rs); the version is pinned in `native/rust-toolchain.toml`) for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository, build the compiled reader once and after any change under `native/`, and run:
+Use Windows PowerShell 5.1, Git Bash, Python 3, Node 22+ and Rust (through [rustup](https://rustup.rs); the version is pinned in `native/rust-toolchain.toml`) for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository, build the compiled reader once and after any change under `native/`, and run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-native.ps1
@@ -56,16 +56,25 @@ Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do
 
 Claude plan discovery is isolated in `src/providers/claude_plan.py` and `claude-plans.ps1`. Run `python tests/test_claude_plan.py` and `tests/test-claude-plans.ps1` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
 
-The compiled reader under `native/` answers display commands only when it prints exactly what
-PowerShell prints; for anything else it declines and PowerShell answers. Changes there require
-`cargo test --locked` in `native/`, `tests/test-native.ps1` and `tests/test-native-parity.ps1`.
-The parity suite asks PowerShell and the reader the same question about the fictional cases in
-`tests/parity/cases.ps1` and about seeded variations of them, under Windows PowerShell and
-PowerShell 7; add a case for every input shape a change touches. `-Only NAME` runs one case
-and `-Deep` many more variations. Write the behavior into
-[the contract](docs/plans/rust-read-side.md) before the code, and do not change the PowerShell
-implementation, the referee or a parity case in the same commit as reader code. Crates compiled
-into the reader are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The compiled reader under `native/` is the only implementation of `version`, `status` and
+`explain`: PowerShell hands those requests to it and has no answer of its own, so do not add
+one. Changes there require `cargo test --locked` in `native/`, `tests/test-native.ps1` and
+`tests/test-native-parity.ps1`. The collector, tray and dashboard still calculate the same
+rules in PowerShell. The parity suite holds those to the reader: it asks both the same question
+about the fictional cases in `tests/parity/cases.ps1` and about seeded variations of them,
+under the PowerShell the suite runs in, and compares the text of `status` with
+`tests/parity/expected-status.txt`. Add a case for every input shape a change touches.
+`-Only NAME` runs one case, `-Deep` many more variations, and `-Update` rewrites the expected
+text after a deliberate change. Write the behavior into
+[the contract](docs/plans/rust-read-side.md) before the code. A rule that changes is changed in
+both places in one commit; a case or an expected result is never edited only to make a
+comparison pass. The reader depends on no crate, and adding one means recording it in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+`hotpl8-launch.cmd` and `delivery/launch.cmd` keep the text they were released with, because a
+running session comes back to them by position. A launcher that has to change ships under a new
+file name; see [the launcher](docs/install.md#the-launcher). `tests/test-native.ps1` holds their
+bytes and fails on any other.
 
 T3 integration changes require `node --test tests/test-t3-codex.mjs` and
 `tests/test-t3-routing.ps1`. Fixtures use synthetic credentials and a fake native

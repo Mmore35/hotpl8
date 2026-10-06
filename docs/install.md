@@ -57,3 +57,27 @@ Windows adds its command to user PATH for new terminals. Mac places a command in
 Rerun the ordinary installer to update its owned application. `rollback.ps1 -InstallDirectory PATH` restores the previous code when compatible. `uninstall.ps1 -InstallDirectory PATH` removes owned code and integration while retaining state, onboarding progress, and native account data. A separately enrolled [main delivery installation](delivery.md) keeps its existing delivery owner; ordinary setup will not overwrite it.
 
 The private Mac bootstrap runtime is retained at `~/Library/Application Support/HotPl8-Runtimes` because installed launchers may reference it. Remove it only after no installation uses it. Claude adapter runtimes remain with preserved state.
+
+## The launcher
+
+On Windows, `hotpl8` is a command file that asks HotPl8's compiled reader first. `version`, `status` and `explain` in their plain spellings are answered by the reader, and PowerShell is not started. For any other words the launcher starts PowerShell with the same words, as it always has. On a Mac the launcher starts PowerShell for every command for now, and PowerShell hands those three to the reader.
+
+| Copy | What `hotpl8` runs |
+|---|---|
+| Source checkout or extracted package | `hotpl8.cmd` hands over to `hotpl8-launch.cmd`, which asks `bin\windows\hotpl8-native.exe` |
+| Ordinary installation | `hotpl8.cmd` in the installation directory hands over to `app\hotpl8.cmd`, and from there as above |
+| [Main delivery installation](delivery.md) | `hotpl8.cmd` hands over to `launch.cmd` beside it, which asks the `hotpl8-native.exe` beside it. That copy answers nothing itself: it reads which release is in force and has that release's own reader answer |
+
+The reader ends with 0 for an answer and 1 for a refusal. Any other status, a crash included, means the words were not its to answer, and the launcher starts PowerShell.
+
+The files are split this way because `cmd` reads a command file again after every line and carries on from a position in it. A dashboard started from a launcher comes back to that file when it ends, perhaps days later. If the file holds other text by then, `cmd` carries on in the middle of it. Three rules follow:
+
+- A launcher that sessions run from keeps its text for good. `hotpl8-launch.cmd` and `delivery/launch.cmd` are such files, and `tests/test-native.ps1` holds their bytes.
+- `hotpl8.cmd` is one line that hands over and is not returned to. It is shorter than the place the earlier three-line launchers come back to, so a session started from one of those ends cleanly at the end of it.
+- A launcher that has to change ships under a new file name, and the one line names it.
+
+An ordinary installation gets its one line when the installer is rerun. `rollback.ps1` puts the previous release back under `app` and leaves the line as it is; `app\hotpl8.cmd` exists in every release, and in a release from before this arrangement it starts PowerShell.
+
+A main delivery installation enrolled earlier gets `launch.cmd`, the reader beside it, and the one line at the first activation of a release that ships them. Its `hotpl8.cmd` is replaced only when it is exactly the text enrollment wrote; an edited one is left alone and keeps starting PowerShell for every command. Every activation after that refreshes the reader beside the launcher. A reader that is answering cannot be written over, so the one in use is moved aside as `hotpl8-native.<id>.old` and removed at the next activation.
+
+One case ends untidily. A session still running from `app\hotpl8-launch.cmd` when that file is taken away under it (a rollback or downgrade to a release from before this arrangement, or enrollment in main delivery) prints `The batch file cannot be found.` when it ends, with status 1 in place of its own. Nothing else is affected.

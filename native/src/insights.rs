@@ -139,7 +139,7 @@ fn remaining_text(used: &V) -> R<String> {
     Ok(cat!(V::I32(100).sub(used)?.s()?, "% remaining"))
 }
 
-/// Format-Hotpl8Status: the text of `hotpl8 status`. `now` is the request's single clock
+/// The text of `hotpl8 status`. `now` is the request's single clock
 /// reading, so every line describes the same instant.
 pub fn format_status(status: &V, policy: &V, state_directory: &Path, now: Dto) -> R<Vec<String>> {
     let mut lines = Vec::new();
