@@ -162,7 +162,7 @@ function Get-Hotpl8OnboardingCandidates([string]$Directory,[string]$Provider) {
     }elseif($Provider -eq 'claude'){
         $exe=Resolve-CswapExecutable ''
         if($exe){
-            $r=Invoke-Hotpl8Process $exe @('list','--json') 20000
+            $r=Invoke-Hotpl8Process $exe @('list','--json') (Get-CswapReadTimeoutMs)
             if($r.exitCode -ne 0){throw 'Native inventory unavailable.'}
             $inventory=$r.output|ConvertFrom-Json
             if($inventory.schemaVersion -ne 1){throw 'Native inventory unsupported.'}

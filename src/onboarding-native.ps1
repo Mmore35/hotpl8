@@ -28,7 +28,7 @@ function Add-Hotpl8NativeClaudeAccount([string]$Directory,$Operation,[switch]$Ex
     $cswap=Resolve-CswapExecutable ''
     $capture=Invoke-Hotpl8NativeCapture $cswap @('add') $profile -PreserveProfileBindings:$Existing
     if($capture.exitCode -ne 0){throw 'Native capture did not complete.'}
-    $inventory=Invoke-Hotpl8Process $cswap @('list','--json') 20000
+    $inventory=Invoke-Hotpl8Process $cswap @('list','--json') (Get-CswapReadTimeoutMs)
     if($inventory.exitCode -ne 0){throw 'Native inventory unavailable.'}
     $data=$inventory.output|ConvertFrom-Json
     $matches=@($data.accounts|Where-Object { $_.email -eq $identity.email -and (-not $identity.orgId -or $_.organizationUuid -eq $identity.orgId) })

@@ -353,6 +353,7 @@ function Get-DashboardActivityNote($Event,$Policy,[datetimeoffset]$Now) {
         'warm_attempt'{if($reason -eq 'sent'){'warm sent · '+$label}else{$tone='amber';'warm failed · '+$label}}
         'warm_outcome'{if($reason -in @('unconfirmed','failed','account_changed')){$tone='amber'};(Format-DashboardWarmOutcome $reason)+' · '+$label}
         'recovery_probe'{if($reason -eq 'sent'){'probe sent · '+$label}else{$tone='amber';'probe failed · '+$label}}
+        'credential_unrenewed'{$tone='amber';'sign-in not renewed · '+$label}
         'recommendation'{
             $providerName=[string]$Event.provider
             try{$providerName=(Get-Hotpl8ProviderDefinition $Event.provider).name}catch{}
