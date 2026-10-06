@@ -1,4 +1,5 @@
 """PR identity, explicit execution boundary, archive and lifecycle regressions."""
+import hashlib
 import io
 import json
 import os
@@ -19,6 +20,9 @@ import runner as d
 
 SHA = "a" * 40
 OTHER = "b" * 40
+PLATFORM = "windows" if os.name == "nt" else "macos"
+READER = "bin/" + PLATFORM + "/hotpl8-native" + (".exe" if PLATFORM == "windows" else "")
+PACKAGE = "hotpl8-0.0.0-" + PLATFORM + ".zip"
 
 
 def source_zip(extra=None):
@@ -38,6 +42,26 @@ def source_zip(extra=None):
     return output.getvalue()
 
 
+def candidate_zip(reader=b"fictional reader", recorded=None, sums=None, name=PACKAGE, extra=None, package=None):
+    """The artifact CI stores for a candidate: its package and the package's checksum."""
+    if package is None:
+        inner = io.BytesIO()
+        with zipfile.ZipFile(inner, "w") as z:
+            z.writestr("hotpl8.ps1", "# fictional candidate")
+            if reader is not None:
+                z.writestr(READER, reader)
+            if recorded is not False:
+                z.writestr("checksums.json", json.dumps({READER: recorded or hashlib.sha256(reader or b"").hexdigest()}))
+        package = inner.getvalue()
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as z:
+        z.writestr(name, package)
+        z.writestr("SHA256SUMS", hashlib.sha256(package).hexdigest() + "  " + name + "\n" if sums is None else sums)
+        for key, value in (extra or {}).items():
+            z.writestr(key, value)
+    return output.getvalue()
+
+
 class Preview(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -53,14 +77,36 @@ class Preview(unittest.TestCase):
         self.gh = mock.Mock(repo="sample/hotpl8", executable="gh")
         self.gh.api.side_effect = lambda endpoint: self.pr if endpoint.startswith("pulls/") else dict(workflow_runs=[self.workflow])
         self.download = source_zip()
+        self.candidate = None
         self.children = []
+        self.readers = []
+
+    def compiled(self, inventory=None, **changes):
+        """Make the fixture a candidate that ships a compiled reader for this platform."""
+        inventory = inventory or json.dumps(dict(files=["hotpl8.ps1"], platformFiles={PLATFORM: [READER]}))
+        self.download = source_zip({"repo-head/release-files.json": inventory})
+        self.candidate = candidate_zip(**changes)
+        self.artifacts = [dict(id=77, name="hotpl8-" + PLATFORM + "-candidate", expired=False)]
+        self.heads = []
+        def api(endpoint):
+            if endpoint.startswith("pulls/"):
+                return self.heads.pop(0) if self.heads else self.pr
+            if endpoint == "actions/runs/11/artifacts":
+                return dict(artifacts=self.artifacts)
+            return dict(workflow_runs=[self.workflow])
+        self.gh.api.side_effect = api
 
     def run_child(self, argv, **kwargs):
-        if argv[0] == "gh":
+        if argv[0] == "gh" and argv[-1].endswith("/zip"):
+            self.assertEqual(argv[-1], "repos/sample/hotpl8/actions/artifacts/77/zip")
+            kwargs["stdout"].write(self.candidate)
+        elif argv[0] == "gh":
             self.assertEqual(argv[-1], "repos/sample/hotpl8/zipball/" + SHA)
             kwargs["stdout"].write(self.download)
         else:
             self.children.append((argv, kwargs))
+            reader = Path(argv[argv.index("-SourceDirectory") + 1], READER)
+            self.readers.append((reader.read_bytes(), os.access(reader, os.X_OK)) if reader.is_file() else None)
             self.assertTrue(Path(argv[argv.index("-SourceDirectory") + 1], "src/dashboard.ps1").is_file())
             self.assertTrue("HOTPL8_INSTALL_DIRECTORY" not in kwargs["env"])
             self.assertTrue("GH_TOKEN" not in kwargs["env"])
@@ -161,6 +207,101 @@ class Preview(unittest.TestCase):
         self.download = source_zip({item: "../../private"})
         with self.assertRaises(d.DeliveryError): self.invoke()
         self.assertEqual(len(self.children), 0)
+
+    def test_compiled_candidate_runs_with_the_reader_its_trusted_run_built(self):
+        self.compiled()
+        self.assertEqual(self.invoke(), 0)
+        self.assertEqual(self.readers, [(b"fictional reader", True)])
+        self.assertIn(mock.call("actions/runs/11/artifacts"), self.gh.api.mock_calls)
+        self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
+        self.assertEqual((self.root / "current.json").read_bytes(), self.before)
+
+    def test_candidate_without_a_reader_for_this_platform_downloads_no_package(self):
+        other = "macos" if PLATFORM == "windows" else "windows"
+        for inventory in (None, json.dumps(dict(files=[READER])), json.dumps(dict(platformFiles={other: [READER]})),
+                          json.dumps(dict(platformFiles={PLATFORM: ["bin/" + PLATFORM + "/another"]}))):
+            with self.subTest(inventory=inventory):
+                self.children.clear(); self.readers.clear(); self.gh.api.reset_mock()
+                if inventory:
+                    self.compiled(inventory=inventory)
+                self.assertEqual(self.invoke(), 0)
+                self.assertEqual(self.readers, [None])
+                self.assertNotIn(mock.call("actions/runs/11/artifacts"), self.gh.api.mock_calls)
+
+    def test_missing_expired_or_ambiguous_candidate_package_defers_without_executing(self):
+        mine = dict(id=77, name="hotpl8-" + PLATFORM + "-candidate", expired=False)
+        other = "macos" if PLATFORM == "windows" else "windows"
+        for artifacts in ([], [dict(mine, expired=True)], [mine, dict(mine, id=78)],
+                          [dict(mine, name="hotpl8-" + other + "-candidate")], [dict(mine, name="preview-images")]):
+            with self.subTest(artifacts=artifacts):
+                self.compiled()
+                self.artifacts = artifacts
+                with self.assertRaises(d.Deferred): self.invoke()
+                self.assertEqual(len(self.children), 0)
+                self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
+
+    def test_candidate_package_download_failure_defers_without_executing(self):
+        self.compiled()
+        original = self.run_child
+        def fail(argv, **kwargs):
+            if argv[-1].endswith("/zip"):
+                return subprocess.CompletedProcess(argv, 1)
+            return original(argv, **kwargs)
+        self.run_child = fail
+        with self.assertRaises(d.Deferred): self.invoke()
+        self.assertEqual(len(self.children), 0)
+        self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
+
+    def test_damaged_or_unexpected_candidate_package_never_executes(self):
+        other = "macos" if PLATFORM == "windows" else "windows"
+        cases = dict(
+            wrong_package_checksum=dict(sums="0" * 64 + "  " + PACKAGE + "\n"),
+            checksum_names_another_file=dict(package=b"x", sums=hashlib.sha256(b"x").hexdigest() + "  other.zip\n"),
+            two_checksum_lines=dict(package=b"x", sums=(hashlib.sha256(b"x").hexdigest() + "  " + PACKAGE + "\n") * 2),
+            empty_checksums=dict(sums=""),
+            extra_file=dict(extra={"run.cmd": "unsafe"}),
+            other_platform=dict(name="hotpl8-0.0.0-" + other + ".zip"),
+            unsafe_name=dict(name="../hotpl8-0.0.0-" + PLATFORM + ".zip"),
+            no_reader=dict(reader=None),
+            reader_differs_from_its_checksum=dict(recorded="0" * 64),
+            no_file_checksums=dict(recorded=False),
+            package_is_not_an_archive=dict(package=b"not an archive"),
+        )
+        for label, changes in cases.items():
+            with self.subTest(label=label):
+                self.compiled(**changes)
+                with self.assertRaises(d.DeliveryError): self.invoke()
+                self.assertEqual(len(self.children), 0)
+                self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
+        for label, candidate in (("not_an_archive", b"not an archive"), ("empty", b"")):
+            with self.subTest(label=label):
+                self.compiled()
+                self.candidate = candidate
+                with self.assertRaises(d.DeliveryError): self.invoke()
+                self.assertEqual(len(self.children), 0)
+        self.compiled(inventory="{")
+        with self.assertRaises(d.DeliveryError): self.invoke()
+        self.assertEqual(len(self.children), 0)
+
+    def test_compiled_candidate_refuses_fork_failed_ci_and_changed_head(self):
+        self.compiled()
+        self.pr["head"]["repo"]["full_name"] = "outsider/fork"
+        with mock.patch.object(live.subprocess, "run") as process:
+            with self.assertRaises(d.DeliveryError): self.invoke()
+            process.assert_not_called()
+        self.pr["head"]["repo"]["full_name"] = "sample/hotpl8"
+        self.workflow["conclusion"] = "failure"
+        with mock.patch.object(live.subprocess, "run") as process:
+            with self.assertRaises(d.Deferred): self.invoke()
+            process.assert_not_called()
+        self.workflow["conclusion"] = "success"
+        # The head moves after both downloads: neither the source nor the reader runs.
+        self.heads = [self.pr, dict(head=dict(sha=OTHER))]
+        with self.assertRaises(d.Deferred): self.invoke()
+        self.assertEqual(len(self.children), 0)
+        self.assertFalse(list(self.root.glob("previews/pr-34/*/live-*")))
+        self.assertEqual(self.invoke(), 0)
+        self.assertEqual(self.readers, [(b"fictional reader", True)])
 
     def test_real_demo_harness_runs_in_installed_powershell_without_account_state(self):
         powershell = shutil.which("pwsh") or shutil.which("powershell")

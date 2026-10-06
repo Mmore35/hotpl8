@@ -283,6 +283,33 @@ try{
         Assert ($result.exitCode -eq 0 -and $result.output -ceq ('native-sentinel'+$line)) $result.output
         Assert (((Get-Calls) -join ';') -ceq ('version|'+$caller+'|--release|'+$fixtureSha+'|--root|'+$release)) ((Get-Calls) -join ';')
     }
+    Check 'the live preview asks a candidate''s reader for the dashboard, and shows PowerShell''s when it declines' {
+        # delivery/live-preview.ps1 runs from the installed release against a candidate's source.
+        Set-Build ''
+        $demo=Join-Path $lab 'preview state';[void][IO.Directory]::CreateDirectory($demo)
+        $url='https://github.com/example/hotpl8/pull/1'
+        $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'delivery/live-preview.ps1'),'-SourceDirectory',$release,'-StateDirectory',$demo,'-PrUrl',$url,'-Revision',$fixtureSha)
+        $asked='nyan|'+$caller+'|--root|'+$release+'|--state|'+$demo
+        Use-Fake
+        $result=Invoke-Hotpl8Process $shell $arguments 60000
+        Assert ($result.exitCode -eq 0 -and $result.output.Contains('native-sentinel') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
+        Assert (((Get-Calls) -join ';') -ceq $asked) ((Get-Calls) -join ';')
+        Assert ((@([IO.Directory]::GetFiles($demo)|ForEach-Object{[IO.Path]::GetFileName($_)}|Sort-Object) -join ',') -ceq 'policy.json,status.json')
+        Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='64'}
+        $result=Invoke-Hotpl8Process $shell $arguments 60000
+        Assert ($result.exitCode -eq 0 -and $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
+        Assert (((Get-Calls) -join ';') -ceq $asked) ((Get-Calls) -join ';')
+        # A compiled dashboard that fails is shown failing; the other one does not cover for it.
+        Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='3'}
+        $result=Invoke-Hotpl8Process $shell $arguments 60000
+        Assert ($result.exitCode -eq 3 -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
+        Use-Fake @{HOTPL8_NATIVE='0'}
+        $result=Invoke-Hotpl8Process $shell $arguments 60000
+        Assert ($result.exitCode -eq 0 -and $result.output.Contains('Demo Everyday') -and @(Get-Calls).Count -eq 0) $result.output
+        Use-Fake;Set-Reader ''
+        $result=Invoke-Hotpl8Process $shell $arguments 60000
+        Assert ($result.exitCode -eq 0 -and $result.output.Contains('Demo Everyday') -and @(Get-Calls).Count -eq 0) $result.output
+    }
     Check 'a reader that does not finish is stopped' {
         Use-Fake @{HOTPL8_TEST_NATIVE_HANG='1'}
         $clock=[Diagnostics.Stopwatch]::StartNew()
