@@ -5,6 +5,13 @@
 //! output, so `hotpl8.ps1` continues into its own code and prints what it always printed.
 //! The behaviour contract is docs/plans/rust-read-side.md.
 
+#![allow(dead_code)]
+
+mod json;
+mod num;
+mod ps;
+mod time;
+
 use std::ffi::OsString;
 use std::io::{ErrorKind, Write};
 use std::path::Path;
