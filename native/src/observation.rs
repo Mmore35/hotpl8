@@ -63,7 +63,7 @@ pub fn claude_observation(slot: &V, policy: &V) -> R<V> {
 pub fn claude_entry_observation(entry: &V) -> R<V> {
     let observation = entry.g("observation")?;
     if !observation.t()? {
-        return decline();
+        return unreadable();
     }
     Ok(observation)
 }
@@ -94,7 +94,7 @@ pub fn codex_observation(slot: &V, meter: &str) -> R<V> {
         } else {
             match &w {
                 V::Obj(_) => w.has("observedAt")?,
-                V::Arr(_) | V::Hash(_) => return decline(),
+                V::Arr(_) | V::Hash(_) => return unreadable(),
                 _ => false,
             }
         };

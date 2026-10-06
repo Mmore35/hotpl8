@@ -1,6 +1,6 @@
 //! The policy checks of src/config.ps1, src/automation.ps1 and src/providers/codex.ps1.
-//! PowerShell stops with an error where these return `throw()`; the reader then declines,
-//! and PowerShell reports the error in its own words.
+//! Each refusal is said in the words HotPl8 has always used for it: the collector, which is
+//! still PowerShell, refuses the same policy with the same sentence.
 
 use crate::capacity::assert_capacity_policy;
 use crate::critical::assert_critical_policy;
@@ -20,23 +20,23 @@ fn fraction(value: &V) -> R<bool> {
 }
 /// `$null -ne $list -and ($list -isnot [array] -or the list repeats an item)`, then the
 /// same list holding a null.
-fn unique_array(list: &V) -> R<()> {
+fn unique_array(list: &V, repeated: &str, null: &str) -> R<()> {
     if list.is_null() {
         return Ok(());
     }
     if !list.is_arr() || unique_count(&list.each())? != list.arr().len() {
-        return throw();
+        return fail(repeated);
     }
     if list.arr().iter().any(V::is_null) {
-        return throw();
+        return fail(null);
     }
     Ok(())
 }
 /// The names of an object's members, none of which may be outside `allowed`.
-fn fields_within(object: &V, allowed: &[&str]) -> R<()> {
+fn fields_within(object: &V, allowed: &[&str], refusal: &str) -> R<()> {
     for (name, _) in object.props()? {
         if !V::s_of(&name).in_s(allowed)? {
-            return throw();
+            return fail(refusal);
         }
     }
     Ok(())
@@ -45,7 +45,7 @@ fn fields_within(object: &V, allowed: &[&str]) -> R<()> {
 /// Assert-Hotpl8Policy
 pub fn assert_policy(policy: &V) -> R<()> {
     if !policy.is_obj() {
-        return throw();
+        return fail("Invalid policy: expected an object.");
     }
     let version = policy.g("schemaVersion")?;
     if version.eq_i(3)? && version.is_number() {
@@ -53,11 +53,11 @@ pub fn assert_policy(policy: &V) -> R<()> {
             ["schemaVersion", "mode", "providers", "switchEnabled", "warm", "probeEnabled", "automation", "historyEnabled", "notificationsEnabled", "display"];
         for (name, _) in policy.props()? {
             if !allowed.contains(&&*name) {
-                return throw();
+                return fail("Invalid version 3 policy field.");
             }
         }
         if !policy.g("mode")?.is_cin_list(&[V::s_of("monitor"), V::s_of("automate")])? {
-            return throw();
+            return fail("Invalid policy: version 3 requires mode.");
         }
         let control = registry::copy(policy)?;
         control.remove_member("providers")?;
@@ -76,7 +76,7 @@ pub fn assert_policy(policy: &V) -> R<()> {
                     "display", "providers", "codex",
                 ] {
                     if part.has(key)? {
-                        return throw();
+                        return fail("Provider policy contains a global or foreign setting.");
                     }
                 }
                 assert_policy(&view.g("policy")?)?;
@@ -88,29 +88,29 @@ pub fn assert_policy(policy: &V) -> R<()> {
                 for slot in part.g("slots")?.arr() {
                     let home = home_key(&slot.g("home")?.s()?)?;
                     if native_homes.contains(&home)? {
-                        return throw();
+                        return fail("Native account home is enrolled under more than one provider.");
                     }
                     native_homes.insert(&home)?;
                 }
             }
             if !r.path(&["definition", "capabilities", "warming"])?.t()? && part.g("warm")?.t()? {
-                return throw();
+                return fail("Provider does not support warming.");
             }
         }
         if global_owners > 1 {
-            return throw();
+            return fail("The native global activation driver supports only one configured provider owner.");
         }
         return Ok(());
     }
     let versioned = [V::I32(1), V::I32(2)];
     if !version.is_null() && (!version.is_number() || !version.is_in_list(&versioned)?) {
-        return throw();
+        return fail("Invalid policy: unsupported schemaVersion.");
     }
     let v2_fields = ["automation", "disabled", "claudeModels", "historyEnabled", "notificationsEnabled", "capacity", "critical", "display"];
     if version.ne(&V::I32(2))? {
         for (name, _) in policy.props()? {
             if V::s_of(&name).in_s(&v2_fields)? {
-                return throw();
+                return fail("New operational settings require schemaVersion 2.");
             }
         }
     }
@@ -124,53 +124,53 @@ pub fn assert_policy(policy: &V) -> R<()> {
             allowed.extend(v2_fields);
             assert_automation_policy(policy)?;
         }
-        fields_within(policy, &allowed)?;
+        fields_within(policy, &allowed, "Invalid policy: unknown versioned field.")?;
     }
     let codex = policy.g("codex")?;
     if version.ne(&V::I32(2))? && (codex.g("capacity")?.t()? || codex.g("critical")?.t()?) {
-        return throw();
+        return fail("Capacity and critical settings require schemaVersion 2.");
     }
     let mode = policy.g("mode")?;
     if mode.t()? && !mode.in_s(&["monitor", "automate"])? {
-        return throw();
+        return fail("Invalid policy: mode must be monitor or automate.");
     }
     for key in ["warm", "switchEnabled", "probeEnabled"] {
         let value = policy.g(key)?;
         if !value.is_null() && !value.is_bool() {
-            return throw();
+            return fail(format!("Invalid policy field: {key}"));
         }
     }
     if version.is_in_list(&versioned)? && !mode.t()? {
-        return throw();
+        return fail("Invalid policy: versioned policy requires mode.");
     }
     for key in ["margin5h", "margin7d", "margin7dWork", "hysteresis", "warmMin7d", "warmMin7dWork"] {
         if outside(&policy.g(key)?, 0, 100)? {
-            return throw();
+            return fail(format!("Invalid policy field: {key}"));
         }
     }
     for key in ["maxUsageAgeS", "staleQuarantineS", "warmFloorMin", "warmPhaseWindowMin", "warmGroup", "resetLeadMin"] {
         if outside(&policy.g(key)?, 0, 604800)? {
-            return throw();
+            return fail(format!("Invalid policy field: {key}"));
         }
     }
     for key in ["maxUsageAgeS", "staleQuarantineS", "warmFloorMin", "warmPhaseWindowMin", "warmGroup"] {
         let value = policy.g(key)?;
         if !value.is_null() && value.le_i(0)? {
-            return throw();
+            return fail(format!("Invalid policy field: {key}"));
         }
     }
     let order = policy.g("order")?;
     if order.t()? && !order.in_s(&ORDERS)? {
-        return throw();
+        return fail("Invalid policy field: order");
     }
     if version.ne(&V::I32(2))?
         && (order.in_s(&LATER_ORDERS)? || codex.g("order")?.in_s(&LATER_ORDERS)? || (!codex.is_null() && codex.has("disabled")?))
     {
-        return throw();
+        return fail("New selection options require policy version 2.");
     }
     let pattern = policy.g("pattern")?;
     if pattern.t()? && !pattern.in_s(&["maintain", "even", "clustered", "synced"])? {
-        return throw();
+        return fail("Invalid policy field: pattern");
     }
     let mut seen = Keys::new();
     for n in policy.g("prefer")?.arr() {
@@ -178,19 +178,19 @@ pub fn assert_policy(policy: &V) -> R<()> {
             continue;
         }
         if !n.is_number() || n.le_i(0)? || n.gt_i(10000)? || fraction(&n)? || seen.contains(&n.s()?)? {
-            return throw();
+            return fail("Invalid policy field: prefer");
         }
         seen.insert(&n.s()?)?;
     }
     for n in policy.g("reserve")?.arr() {
         if !n.is_null() && !seen.contains(&n.s()?)? {
-            return throw();
+            return fail("Invalid policy field: reserve");
         }
     }
     for (_, value) in policy.g("labels")?.props()? {
         let text = value.s()?;
         if has_control(&text) || length(&text) > 80 {
-            return throw();
+            return fail("Invalid policy field: labels");
         }
     }
     assert_capacity_policy(policy)?;
@@ -199,13 +199,13 @@ pub fn assert_policy(policy: &V) -> R<()> {
     if display.t()? {
         for (name, value) in display.props()? {
             if !V::s_of(&name).in_s(&["reducedMotion", "noColor"])? || !value.is_bool() {
-                return throw();
+                return fail("Invalid display setting.");
             }
         }
     }
     for (_, value) in policy.g("weights")?.props()? {
         if !value.is_number() || value.le_i(0)? || value.gt_i(10000)? {
-            return throw();
+            return fail("Invalid policy field: weights");
         }
     }
     Ok(())
@@ -215,94 +215,92 @@ pub fn assert_policy(policy: &V) -> R<()> {
 fn assert_automation_policy(policy: &V) -> R<()> {
     let a = policy.g("automation")?;
     for name in ["disabled", "claudeModels"] {
-        unique_array(&policy.g(name)?)?;
+        unique_array(&policy.g(name)?, &format!("Invalid array: {name}"), &format!("Null array entry: {name}"))?;
     }
     if a.t()? {
         if !a.is_obj() {
-            return throw();
+            return fail("automation must be an object.");
         }
-        fields_within(&a, &["schedule", "dailyAttemptLimit", "warmExcluded", "continue"])?;
+        fields_within(&a, &["schedule", "dailyAttemptLimit", "warmExcluded", "continue"], "Invalid automation field.")?;
         let proceed = a.g("continue")?;
         if !proceed.is_null() && !proceed.is_bool() {
-            return throw();
+            return fail("automation.continue must be true or false.");
         }
         let limit = a.g("dailyAttemptLimit")?;
         if !limit.is_null() && (!limit.is_number() || limit.lt_i(1)? || limit.gt_i(100)? || fraction(&limit)?) {
-            return throw();
+            return fail("dailyAttemptLimit must be an integer from 1 to 100.");
         }
         let excluded = a.g("warmExcluded")?;
-        unique_array(&excluded)?;
+        unique_array(&excluded, "warmExcluded must be a unique array.", "Null warming exclusion.")?;
         for id in excluded.each() {
             if id.is_null() {
                 continue;
             }
-            let Some(text) = id.as_str() else { return throw() };
-            // The pattern's `$` also accepts a final line feed; that spelling is left to PowerShell.
+            let Some(text) = id.as_str() else { return fail("Invalid warming exclusion.") };
+            // The pattern's `$` also accepts a final line feed; that spelling is not read.
             if has_control(text) {
-                return decline();
+                return unreadable();
             }
-            let Some((provider, slot)) = text.split_once(':') else { return throw() };
+            let Some((provider, slot)) = text.split_once(':') else { return fail("Invalid warming exclusion.") };
             let lower = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-';
             if !(1..=40).contains(&provider.len()) || !provider.as_bytes()[0].is_ascii_lowercase() || !provider.bytes().all(lower) || !slot_name(slot, 40) {
-                return throw();
+                return fail("Invalid warming exclusion.");
             }
             let definition = registry::provider_definition(provider)?;
             let driver = registry::provider_driver(&definition.g("driver")?)?;
             if driver.g("slotKind")?.eq_s("numeric")? && !slot.bytes().all(|b| b.is_ascii_digit()) {
-                return throw();
+                return fail("Invalid warming exclusion.");
             }
         }
         let s = a.g("schedule")?;
         if s.t()? {
             if !s.is_obj() {
-                return throw();
+                return fail("schedule must be an object.");
             }
-            fields_within(&s, &["start", "end", "days", "timeZone"])?;
+            fields_within(&s, &["start", "end", "days", "timeZone"], "Invalid schedule field.")?;
             for t in [s.g("start")?, s.g("end")?] {
-                let Some(text) = t.as_str() else { return throw() };
+                let Some(text) = t.as_str() else { return fail("Work hours must use HH:mm.") };
                 if has_control(text) {
-                    return decline();
+                    return unreadable();
                 }
                 let b = text.as_bytes();
                 let hour = b.len() == 5 && (((b[0] == b'0' || b[0] == b'1') && b[1].is_ascii_digit()) || (b[0] == b'2' && (b'0'..=b'3').contains(&b[1])));
                 if !hour || b[2] != b':' || !(b'0'..=b'5').contains(&b[3]) || !b[4].is_ascii_digit() {
-                    return throw();
+                    return fail("Work hours must use HH:mm.");
                 }
             }
             let days = s.g("days")?;
             if !days.is_arr() || days.arr().is_empty() || unique_count(&days.each())? != days.arr().len() {
-                return throw();
+                return fail("Work days must be a nonempty unique array.");
             }
             for d in days.arr() {
                 if !d.is_number() || d.lt_i(0)? || d.gt_i(6)? || fraction(&d)? {
-                    return throw();
+                    return fail("Work days must be 0 (Sunday) through 6.");
                 }
             }
-            // The zone names a machine knows are PowerShell's to judge.
-            if s.g("timeZone")?.t()? {
-                return decline();
-            }
+            // `timeZone` is not judged here: which zone names this machine knows is a question
+            // for the collector, which works by the schedule. Nothing shown depends on it.
         }
     }
     let prefer = policy.g("prefer")?;
     for n in policy.g("disabled")?.arr() {
         if !n.is_null() && !n.is_in(&prefer)? {
-            return throw();
+            return fail("Disabled Claude slot must be enrolled.");
         }
     }
     for name in policy.g("claudeModels")?.each() {
         if name.is_null() {
             continue;
         }
-        let Some(text) = name.as_str() else { return throw() };
+        let Some(text) = name.as_str() else { return fail("Invalid Claude scoped model name.") };
         if !slot_name(text, 80) {
-            return throw();
+            return fail("Invalid Claude scoped model name.");
         }
     }
     for key in ["historyEnabled", "notificationsEnabled"] {
         let value = policy.g(key)?;
         if !value.is_null() && !value.is_bool() {
-            return throw();
+            return fail(format!("{key} must be Boolean."));
         }
     }
     Ok(())
@@ -318,26 +316,27 @@ pub fn assert_codex_policy(policy: &V) -> R<()> {
             "slots", "prefer", "reserve", "disabled", "order", "defaultMeter", "modelMeters", "margin5h", "margin7d", "margin7dWork", "hysteresis",
             "resetLeadMin", "capacity", "critical",
         ],
+        "invalid_codex_field",
     )?;
     let mut ids = Keys::new();
     let mut homes = Keys::new();
     for slot in policy.g("slots")?.arr() {
         if !slot.t()? {
-            return throw();
+            return fail("invalid_slot");
         }
         let id = slot.g("id")?.s()?;
         if !slot_name(&id, 40) {
-            return throw();
+            return fail("invalid_slot");
         }
         let home = home_key(&slot.g("home")?.s()?)?;
         if ids.contains(&id)? || homes.contains(&home)? {
-            return throw();
+            return fail("duplicate_slot_or_home");
         }
         ids.insert(&id)?;
         homes.insert(&home)?;
         let label = slot.g("label")?.s()?;
         if has_control(&label) || length(&label) > 80 {
-            return throw();
+            return fail("invalid_label");
         }
     }
     for name in ["prefer", "reserve", "disabled"] {
@@ -348,34 +347,34 @@ pub fn assert_codex_policy(policy: &V) -> R<()> {
             }
             let id = id.s()?;
             if !ids.contains(&id)? || seen.contains(&id)? {
-                return throw();
+                return fail("invalid_preference");
             }
             seen.insert(&id)?;
         }
     }
     for key in ["margin5h", "margin7d", "margin7dWork", "hysteresis"] {
         if outside(&policy.g(key)?, 0, 100)? {
-            return throw();
+            return fail("invalid_margin");
         }
     }
     let meter = policy.g("defaultMeter")?;
     if meter.t()? && !meter.in_s(&["codex", "codex_bengalfox"])? {
-        return throw();
+        return fail("invalid_meter");
     }
     let order = policy.g("order")?;
     if order.t()? && !order.in_s(&ORDERS)? {
-        return throw();
+        return fail("invalid_order");
     }
     // Legacy maps are inert compatibility data; native owns model availability.
     if policy.has("modelMeters")? && !policy.g("modelMeters")?.is_obj() {
-        return throw();
+        return fail("invalid_model_meter");
     }
     if outside(&policy.g("resetLeadMin")?, 0, 604800)? {
-        return throw();
+        return fail("invalid_reset_lead");
     }
     for id in policy.g("disabled")?.arr() {
         if id.t()? && !ids.contains(&id.s()?)? {
-            return throw();
+            return fail("invalid_disabled_slot");
         }
     }
     Ok(())
@@ -383,31 +382,39 @@ pub fn assert_codex_policy(policy: &V) -> R<()> {
 
 /// A native account home as the checks compare it: `[IO.Path]::GetFullPath` with the
 /// trailing separators trimmed, lower-cased. Only paths that call leaves as written are
-/// modelled; anything it would rewrite or refuse declines.
+/// modelled: a home it would rewrite is not one HotPl8 enrolls, and is not read.
 fn home_key(path: &str) -> R<String> {
     if path.is_empty() {
-        // A missing home is not rooted, and GetFullPath refuses an empty path.
-        return throw();
+        // A missing home is not rooted.
+        return fail("invalid_home");
     }
     if !printable(path) || path.len() > 200 || path.contains('~') {
-        return decline();
+        return unreadable();
+    }
+    // [IO.Path]::IsPathRooted: a leading separator, or on Windows a drive.
+    let b = path.as_bytes();
+    let rooted = match cfg!(windows) {
+        true => b[0] == b'\\' || b[0] == b'/' || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':'),
+        false => b[0] == b'/',
+    };
+    if !rooted {
+        return fail("invalid_home");
     }
     let rest = if cfg!(windows) {
-        let b = path.as_bytes();
         if b.len() < 3 || !b[0].is_ascii_alphabetic() || b[1] != b':' || !(b[2] == b'\\' || b[2] == b'/') {
-            return decline();
+            return unreadable();
         }
         &path[3..]
     } else {
         if !path.starts_with('/') || path.contains('\\') {
-            return decline();
+            return unreadable();
         }
         &path[1..]
     };
     let rest = if cfg!(windows) { rest.replace('/', "\\") } else { rest.to_string() };
     let separator = if cfg!(windows) { '\\' } else { '/' };
     if rest.is_empty() {
-        return decline();
+        return unreadable();
     }
     for segment in rest.split(separator) {
         let stem = segment.split('.').next().unwrap_or("").to_ascii_lowercase();
@@ -422,7 +429,7 @@ fn home_key(path: &str) -> R<String> {
             || segment.contains(['<', '>', ':', '"', '|', '?', '*'])
             || device
         {
-            return decline();
+            return unreadable();
         }
     }
     let head = if cfg!(windows) { path[..2].to_string() + "\\" } else { "/".to_string() };

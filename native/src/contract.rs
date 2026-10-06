@@ -123,7 +123,7 @@ fn first_reset(windows: &[V]) -> R<V> {
         if !at.t()? {
             continue;
         }
-        let V::Str(text) = &at else { return decline() };
+        let V::Str(text) = &at else { return unreadable() };
         if first.as_deref().is_none_or(|known| &**text < known) {
             first = Some(text.to_string());
         }

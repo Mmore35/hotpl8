@@ -3,10 +3,11 @@
 # A variation takes the files of one case, sometimes the policy or a side file of another,
 # and changes a few values in the JSON text: a number, a time, a word, a literal, or one
 # property removed. The same seed gives the same cases on every machine and PowerShell
-# version, so a failure names a case that can be run again with -Only.
+# version, and each is made from the ones before it alone, so a failure names a case that
+# tests/test-native-parity.ps1 makes again from the start of its name: -Only 'fuzz 7-203*'.
 #
-# Every variation is an 'either' case: the reader may decline it, but an answer must equal
-# PowerShell's, and where PowerShell fails the reader must decline.
+# Every variation is an 'either' case: the reader may refuse it, but what it computes must
+# equal what PowerShell's rules compute, and files those rules refuse it must refuse.
 
 function New-Hotpl8ParityRandom([int]$Seed) { @{state=[long]($Seed -band 0x7fffffff)} }
 function Get-Hotpl8ParityRandom($Random,[int]$Below) {
@@ -17,7 +18,7 @@ function Get-Hotpl8ParityPick($Random,[string[]]$From) { $From[(Get-Hotpl8Parity
 
 # One change to a JSON text. Returns the text unchanged when it holds nothing of that kind.
 function Edit-Hotpl8ParityFuzzText([string]$Text,$Random) {
-    $numbers='0','1','2','5','20','25','50','75','99','100','101','-1','0.5','1.0','12.25','33.333','99.95','100.0','0.1','66.66666666666667','0.30000000000000004','1000000','2147483648','null','true','"7"','[]','{}'
+    $numbers='0','1','2','5','20','25','50','75','99','100','101','-1','0.5','1.0','12.25','33.333','99.95','100.0','0.1','66.66666666666667','0.30000000000000004','1000000','2147483648','1E-05','5.0000000001659828E-05','3.8e1','1E+16','null','true','"7"','[]','{}'
     $words='""','null','"ok"','"stale"','"unknown"','"error"','"auto"','"monitor"','"observed"','"eligible"','"work"','"codex"','"two\nlines"','"tab\there"',('"caf'+[char]0xe9+'"'),'"A"','"a"','7','{}'
     $literals='true','false','null','0','1','""','[]','{}'
     $kind=Get-Hotpl8ParityRandom $Random 6
@@ -92,6 +93,7 @@ function Get-Hotpl8ParityFuzzCases([object[]]$Cases,[int]$Count,[int]$Seed,[swit
         $case=@{name=('fuzz '+$Seed+'-'+$index+' from '+($notes -join ', '));files=$files;expect='either'}
         if($base.ContainsKey('preview')){$case.preview=$base.preview}
         if($base.ContainsKey('noBom')){$case.noBom=$base.noBom}
+        if($base.ContainsKey('catalog')){$case.catalog=$base.catalog}
         [void]$result.Add($case)
     }
     return $result.ToArray()

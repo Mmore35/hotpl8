@@ -23,35 +23,35 @@ pub fn assert_critical_policy(part: &V) -> R<()> {
         return Ok(());
     }
     if !c.is_obj() {
-        return throw();
+        return fail("critical must be an object.");
     }
     for (name, _) in c.props()? {
         if !V::s_of(&name).in_s(&["enabled", "enterPercent", "exitPercent", "floorPercent", "drainToZero", "pollSeconds", "dwellSeconds", "advantagePercent"])? {
-            return throw();
+            return fail("Invalid critical setting.");
         }
     }
     for key in ["enabled", "drainToZero"] {
         let value = c.g(key)?;
         if !value.is_null() && !value.is_bool() {
-            return throw();
+            return fail("Invalid critical boolean.");
         }
     }
     for key in ["enterPercent", "exitPercent", "floorPercent", "advantagePercent"] {
         let value = c.g(key)?;
         if !value.is_null() && (!value.is_number() || value.lt_i(0)? || value.gt_i(100)?) {
-            return throw();
+            return fail("Invalid critical percentage.");
         }
     }
     if critical_setting(part, "exitPercent", 25.0)? <= critical_setting(part, "enterPercent", 20.0)? {
-        return throw();
+        return fail("Critical exit must exceed entry.");
     }
     if critical_setting(part, "floorPercent", 1.0)? > critical_setting(part, "enterPercent", 20.0)? {
-        return throw();
+        return fail("Critical floor exceeds entry.");
     }
     for key in ["pollSeconds", "dwellSeconds"] {
         let value = c.g(key)?;
         if !value.is_null() && (!value.is_number() || value.lt_i(60)? || value.gt_i(300)?) {
-            return throw();
+            return fail("Critical timing must be 60-300 seconds.");
         }
     }
     Ok(())
@@ -98,7 +98,7 @@ pub fn critical_decision(accounts: &[V], part: &V, previous_id: &str, state: &V,
                 // Two accounts can only tie on every key when their names differ by case
                 // alone, which the culture decides.
                 match order_keys(&a.g("slot")?, &b.g("slot")?)? {
-                    Ordering::Equal if !a.same_ref(b) => decline(),
+                    Ordering::Equal if !a.same_ref(b) => unreadable(),
                     third => Ok(third),
                 }
             },
@@ -111,7 +111,7 @@ pub fn critical_decision(accounts: &[V], part: &V, previous_id: &str, state: &V,
         if best.t()? && !prior.is_empty() && selected.ne(&previous)? {
             let mut age = 0.0;
             if since.t()? {
-                let V::Str(text) = &since else { return decline() };
+                let V::Str(text) = &since else { return unreadable() };
                 if let Some(parsed) = catch(|| Dto::parse(text))? {
                     age = now.since(parsed).total_seconds();
                 }

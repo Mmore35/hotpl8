@@ -13,27 +13,13 @@ Provider terms apply independently of HotPl8's MIT license. Development tools ar
 
 ## Compiled reader
 
-The release archive contains `hotpl8-native`, built from `native/` by `scripts/build-native.ps1`. These crates are compiled into it at the versions pinned in `native/Cargo.lock`. Each is available under the MIT license, which is the one used here. The Rust compiler and Cargo are build tools and are not shipped.
+The release archive contains `hotpl8-native`, built from `native/` by `scripts/build-native.ps1`. It depends on no crate: `native/Cargo.lock` lists the reader alone. The Rust compiler and Cargo are build tools and are not shipped.
 
-| Crate | Purpose | License/source |
+| Component | Purpose | License/source |
 |---|---|---|
-| serde_json, serde_core | JSON reading and writing | MIT OR Apache-2.0; [serde_json](https://github.com/serde-rs/json), [serde](https://github.com/serde-rs/serde) |
-| indexmap, equivalent, hashbrown | Keeps JSON properties in file order | MIT OR Apache-2.0; [indexmap](https://github.com/indexmap-rs/indexmap), [equivalent](https://github.com/indexmap-rs/equivalent), [hashbrown](https://github.com/rust-lang/hashbrown) |
-| itoa | Integer formatting | MIT OR Apache-2.0; [upstream](https://github.com/dtolnay/itoa) |
-| zmij | Decimal formatting | MIT; [upstream](https://github.com/dtolnay/zmij) |
-| memchr | Byte search | Unlicense OR MIT; [upstream](https://github.com/BurntSushi/memchr) |
 | Rust standard library | Runtime support linked into the binary | MIT OR Apache-2.0; [upstream](https://github.com/rust-lang/rust) |
 
-Copyright lines as they appear in each crate's `LICENSE-MIT` (serde_json, serde_core, itoa and zmij carry none):
-
-```text
-indexmap     Copyright (c) 2016--2017
-equivalent   Copyright (c) 2016--2023
-hashbrown    Copyright (c) 2016 Amanieu d'Antras
-memchr       Copyright (c) 2015 Andrew Gallant
-```
-
-The permission notice is the same in all of them (retained verbatim):
+It is used under the MIT license. The permission notice (retained verbatim):
 
 ```text
 Permission is hereby granted, free of charge, to any
@@ -61,7 +47,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-Adding or updating a crate means updating this section in the same change.
+Adding a crate means recording it here, with its license and required notices, in the same change.
 
 ## Terminal Nyan Cat
 

@@ -31,6 +31,14 @@ if($Operation -in @('preflight','activate','health','recover')){
     $result=Invoke-Hotpl8Process $exe @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $ReleaseDirectory 'hotpl8.ps1'),'doctor','-StateDirectory',$StateDirectory,'-AsJson') 30000
     if($result.exitCode -ne 0){throw 'Candidate policy/readiness validation failed.'}
 }
+if($Operation -in @('preflight','health')){
+    # version, status and explain are answered by the compiled reader alone, so a release
+    # whose reader does not start on this machine is never selected.
+    . (Join-Path $ReleaseDirectory 'src/native.ps1')
+    $answer=$null
+    try{$answer=Invoke-Hotpl8NativeProcess (Get-Hotpl8NativePath $ReleaseDirectory) @('version','--root',$ReleaseDirectory)}catch{$answer=$null}
+    if(-not $answer -or $answer.exitCode -ne 0){throw 'Candidate has no compiled reader that starts on this machine.'}
+}
 Sync-Hotpl8T3Delivery $Operation $InstallDirectory $ReleaseDirectory $StateDirectory
 if($Operation -in @('activate','recover')){
     $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')

@@ -1,9 +1,9 @@
 //! PowerShell's dynamic values and operators, as far as `status` and `explain` use them.
 //!
 //! The ported modules follow the PowerShell source line by line on top of these helpers.
-//! Each helper models exactly the type combinations real state files produce and declines
-//! on the rest, so an unmodelled input reaches the PowerShell implementation instead of
-//! getting a slightly different answer here.
+//! Each helper models exactly the type combinations real state files produce and stops as
+//! `unreadable` on the rest: the user is told the state cannot be shown, never shown a
+//! slightly different answer.
 
 use crate::num::{self, Dec};
 use std::cell::{Cell, RefCell};
@@ -11,30 +11,77 @@ use std::cmp::Ordering;
 use std::panic::Location;
 use std::rc::Rc;
 
-/// Why the reader stopped computing an answer.
+/// Why the reader stopped computing an answer. Boxed, so the happy path carries one word.
 #[derive(Debug)]
-pub enum Stop {
-    /// Outside what the reader models: PowerShell must answer.
-    Decline(&'static Location<'static>),
-    /// PowerShell would throw here. A ported try/catch may catch it; otherwise it is a
-    /// decline too, so PowerShell reports its own error.
-    Throw(&'static Location<'static>),
+pub struct Stop(Box<Detail>);
+#[derive(Debug)]
+struct Detail {
+    /// A rule refused the input, as against input the reader does not read at all. A ported
+    /// try/catch catches the first and never the second.
+    thrown: bool,
+    at: &'static Location<'static>,
+    /// What the user is told. Without one, the place in the reader stands in for it.
+    message: Option<String>,
 }
 pub type R<T> = Result<T, Stop>;
 
-#[track_caller]
-pub fn decline<T>() -> R<T> {
-    Err(Stop::Decline(Location::caller()))
+impl Stop {
+    #[track_caller]
+    fn new<T>(thrown: bool, message: Option<String>) -> R<T> {
+        Err(Stop(Box::new(Detail { thrown, at: Location::caller(), message })))
+    }
+    pub fn thrown(&self) -> bool {
+        self.0.thrown
+    }
+    /// A rule refused the input in HotPl8's own words: the refusal is part of the product,
+    /// and the parity suite holds its wording to PowerShell's.
+    pub fn ruled(&self) -> bool {
+        self.0.thrown && self.0.message.is_some()
+    }
+    /// The whole of what HotPl8 prints for this stop, after its own name.
+    pub fn message(&self) -> String {
+        match &self.0.message {
+            Some(message) => message.clone(),
+            None => {
+                let place = format!("{}:{}", self.0.at.file().replace('\\', "/"), self.0.at.line());
+                format!("This state cannot be shown: one of its values is not one HotPl8 writes ({place}). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.")
+            }
+        }
+    }
+    /// The same stop, said in the caller's words where it had none of its own.
+    pub fn described(mut self, message: impl FnOnce() -> String) -> Stop {
+        if self.0.message.is_none() {
+            self.0.message = Some(message());
+        }
+        self
+    }
 }
+
+/// Input the reader does not read: a shape HotPl8 never writes.
+#[track_caller]
+pub fn unreadable<T>() -> R<T> {
+    Stop::new(false, None)
+}
+/// Input the reader does not read, said in words the user can act on.
+#[track_caller]
+pub fn unreadable_as<T>(message: impl Into<String>) -> R<T> {
+    Stop::new(false, Some(message.into()))
+}
+/// A rule refuses the input, with the words HotPl8 has always used for it.
+#[track_caller]
+pub fn fail<T>(message: impl Into<String>) -> R<T> {
+    Stop::new(true, Some(message.into()))
+}
+/// An operation fails on the input where the rules never expected it to.
 #[track_caller]
 pub fn throw<T>() -> R<T> {
-    Err(Stop::Throw(Location::caller()))
+    Stop::new(true, None)
 }
-/// try { body } catch { }: `None` when PowerShell would have thrown.
+/// try { body } catch { }: `None` when a rule refused the input.
 pub fn catch<T>(body: impl FnOnce() -> R<T>) -> R<Option<T>> {
     match body() {
         Ok(value) => Ok(Some(value)),
-        Err(Stop::Throw(_)) => Ok(None),
+        Err(stop) if stop.thrown() => Ok(None),
         Err(stop) => Err(stop),
     }
 }
@@ -148,7 +195,7 @@ pub fn dbl(value: f64) -> R<V> {
     if value.is_finite() {
         Ok(V::Dbl(value))
     } else {
-        decline()
+        unreadable()
     }
 }
 
@@ -211,7 +258,7 @@ impl N {
             N::I64(x) => Ok(Dec::from_i64(x)),
             N::Dec(x) => Ok(x),
             // PowerShell 7 converts a double to a decimal by other rules than these.
-            N::Dbl(_) if !desktop() => decline(),
+            N::Dbl(_) if !desktop() => unreadable(),
             N::Dbl(x) => Dec::from_f64(x),
         }
     }
@@ -231,15 +278,30 @@ fn same_text(left: &str, right: &str, case_sensitive: bool) -> R<bool> {
     if printable(left) && printable(right) {
         return Ok(!case_sensitive && left.eq_ignore_ascii_case(right));
     }
-    decline()
+    unreadable()
 }
-/// Culture ordering, modelled for strings of ASCII letters and digits only.
+/// Culture ordering, modelled for strings of ASCII letters and digits, and for hyphens
+/// between them where every culture table agrees.
 #[track_caller]
 pub fn order_text(left: &str, right: &str) -> R<Ordering> {
-    if !alphanumeric(left) || !alphanumeric(right) {
-        return decline();
+    let (left, right) = (left.to_ascii_lowercase(), right.to_ascii_lowercase());
+    if alphanumeric(&left) && alphanumeric(&right) {
+        return Ok(left.cmp(&right));
     }
-    Ok(left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()))
+    let hyphenated = |text: &str| text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if !hyphenated(&left) || !hyphenated(&right) {
+        return unreadable();
+    }
+    // Windows gives a hyphen no weight and ICU a weight below every letter and digit. Both
+    // decide by the first place the strings differ when neither has a hyphen there, and
+    // put a string before a longer one that starts with it.
+    match left.bytes().zip(right.bytes()).find(|(a, b)| a != b) {
+        Some((a, b)) if a != b'-' && b != b'-' => Ok(a.cmp(&b)),
+        Some(_) => unreadable(),
+        None if left.len() == right.len() => Ok(Ordering::Equal),
+        None if left.trim_end_matches('-') == right.trim_end_matches('-') => unreadable(),
+        None => Ok(left.len().cmp(&right.len())),
+    }
 }
 
 /// A string read as a number of its own form: `None` when it is plainly not a number.
@@ -250,7 +312,7 @@ fn parse_number(text: &str) -> R<Option<N>> {
     }
     let trimmed = text.trim_matches(|c: char| c == ' ' || c == '\t' || c == '\r' || c == '\n');
     if trimmed.is_empty() {
-        return decline();
+        return unreadable();
     }
     let body = trimmed.strip_prefix(['+', '-']).unwrap_or(trimmed);
     let (whole, fraction) = match body.split_once('.') {
@@ -261,21 +323,21 @@ fn parse_number(text: &str) -> R<Option<N>> {
     if digits(whole) && fraction.is_none_or(digits) {
         let significant = whole.trim_start_matches('0').len() + fraction.map_or(0, str::len);
         if significant > 15 {
-            return decline();
+            return unreadable();
         }
         return Ok(Some(match fraction {
             None => {
-                let value: i64 = trimmed.strip_prefix('+').unwrap_or(trimmed).parse().or_else(|_| decline())?;
+                let value: i64 = trimmed.strip_prefix('+').unwrap_or(trimmed).parse().or_else(|_| unreadable())?;
                 i32::try_from(value).map_or(N::I64(value), N::I32)
             }
-            Some(_) => N::Dbl(trimmed.strip_prefix('+').unwrap_or(trimmed).parse().or_else(|_| decline())?),
+            Some(_) => N::Dbl(trimmed.strip_prefix('+').unwrap_or(trimmed).parse().or_else(|_| unreadable())?),
         }));
     }
     let lower = text.to_ascii_lowercase();
     if text.is_ascii() && !text.bytes().any(|b| b.is_ascii_digit()) && !lower.contains("nan") && !lower.contains("infinity") {
         return Ok(None);
     }
-    decline()
+    unreadable()
 }
 
 #[track_caller]
@@ -284,12 +346,12 @@ fn compare_numbers(left: N, right: N) -> R<Ordering> {
         (N::Dec(_), _) | (_, N::Dec(_)) => {
             // An overflowing double would make PowerShell fall back to a double comparison.
             let convert = |n: N| match n.dec() {
-                Err(Stop::Throw(_)) => decline(),
+                Err(stop) if stop.thrown() => unreadable(),
                 other => other,
             };
             convert(left)?.compare(convert(right)?)
         }
-        (N::Dbl(_), _) | (_, N::Dbl(_)) => left.f().partial_cmp(&right.f()).map_or_else(decline, Ok),
+        (N::Dbl(_), _) | (_, N::Dbl(_)) => left.f().partial_cmp(&right.f()).map_or_else(unreadable, Ok),
         _ => {
             let whole = |n: N| match n {
                 N::I32(x) => x as i64,
@@ -416,14 +478,14 @@ impl V {
                 let props = o.borrow();
                 match props.find(name) {
                     Some(index) => Ok(props.items[index].1.clone()),
-                    None if RESERVED.contains(&name.to_ascii_lowercase().as_str()) => decline(),
+                    None if RESERVED.contains(&name.to_ascii_lowercase().as_str()) => unreadable(),
                     None => Ok(V::Null),
                 }
             }
             V::Hash(o) => {
                 let lower = name.to_ascii_lowercase();
                 if RESERVED.contains(&lower.as_str()) || HASH_RESERVED.contains(&lower.as_str()) || !printable(name) {
-                    return decline();
+                    return unreadable();
                 }
                 let props = o.borrow();
                 if let Some((_, value)) = props.items.iter().find(|(key, _)| &**key == name) {
@@ -431,24 +493,24 @@ impl V {
                 }
                 // A key that matches only when case is ignored depends on the culture.
                 if props.find(name).is_some() {
-                    return decline();
+                    return unreadable();
                 }
                 Ok(V::Null)
             }
-            V::Arr(_) => decline(),
-            _ if RESERVED.contains(&name.to_ascii_lowercase().as_str()) => decline(),
+            V::Arr(_) => unreadable(),
+            _ if RESERVED.contains(&name.to_ascii_lowercase().as_str()) => unreadable(),
             _ => Ok(V::Null),
         }
     }
-    /// `$value.$name` with a name taken from data: names PowerShell answers itself decline.
+    /// `$value.$name` with a name taken from data: a name PowerShell answers itself is not read.
     #[track_caller]
     pub fn gd(&self, name: &str) -> R<V> {
         let lower = name.to_ascii_lowercase();
         if RESERVED.contains(&lower.as_str()) || !printable(name) || name.is_empty() {
-            return decline();
+            return unreadable();
         }
         if matches!(self, V::Hash(_)) && HASH_RESERVED.contains(&lower.as_str()) {
-            return decline();
+            return unreadable();
         }
         self.g(name)
     }
@@ -478,25 +540,25 @@ impl V {
             }
             V::Hash(o) => {
                 if !printable(name) {
-                    return decline();
+                    return unreadable();
                 }
                 let mut props = o.borrow_mut();
                 if let Some(index) = props.items.iter().position(|(key, _)| &**key == name) {
                     props.items[index].1 = value;
                 } else if props.find(name).is_some() {
-                    return decline();
+                    return unreadable();
                 } else {
                     props.items.push((name.into(), value));
                 }
                 Ok(())
             }
-            _ => decline(),
+            _ => unreadable(),
         }
     }
     /// `$object | Add-Member -NotePropertyName name -NotePropertyValue value [-Force]`
     #[track_caller]
     pub fn add_member(&self, name: &str, value: V, force: bool) -> R<()> {
-        let V::Obj(o) = self else { return decline() };
+        let V::Obj(o) = self else { return unreadable() };
         let mut props = o.borrow_mut();
         if let Some(index) = props.find(name) {
             if !force {
@@ -510,7 +572,7 @@ impl V {
     /// `$object.PSObject.Properties.Remove(name)`: nothing happens when the member is absent.
     #[track_caller]
     pub fn remove_member(&self, name: &str) -> R<()> {
-        let V::Obj(o) = self else { return decline() };
+        let V::Obj(o) = self else { return unreadable() };
         let mut props = o.borrow_mut();
         if let Some(index) = props.find(name) {
             props.items.remove(index);
@@ -532,7 +594,7 @@ impl V {
             V::Arr(items) => match items.len() {
                 0 => false,
                 1 => match &items[0] {
-                    V::Arr(inner) if inner.is_empty() => return decline(),
+                    V::Arr(inner) if inner.is_empty() => return unreadable(),
                     V::Arr(_) => true,
                     single => single.t()?,
                 },
@@ -552,10 +614,10 @@ impl V {
             V::I32(x) => x.to_string(),
             V::I64(x) => x.to_string(),
             V::Dec(x) if desktop() || x.scale == 0 => x.text(),
-            V::Dec(_) => return decline(),
+            V::Dec(_) => return unreadable(),
             V::Dbl(x) => num::double_text(*x),
             V::Str(text) => text.to_string(),
-            V::Arr(_) | V::Obj(_) | V::Hash(_) => return decline(),
+            V::Arr(_) | V::Obj(_) | V::Hash(_) => return unreadable(),
         })
     }
     /// [string]$value, as a value.
@@ -568,12 +630,12 @@ impl V {
     fn equal(&self, other: &V, case_sensitive: bool) -> R<bool> {
         match (self, other) {
             (V::Null, _) => Ok(other.is_null()),
-            (V::Arr(_), _) => decline(),
+            (V::Arr(_), _) => unreadable(),
             (V::Obj(a), V::Obj(b)) | (V::Hash(a), V::Hash(b)) => Ok(Rc::ptr_eq(a, b)),
             (V::Obj(_) | V::Hash(_), V::Null) => Ok(false),
-            (V::Obj(_) | V::Hash(_), _) => decline(),
+            (V::Obj(_) | V::Hash(_), _) => unreadable(),
             (_, V::Null) => Ok(false),
-            (_, V::Arr(_) | V::Obj(_) | V::Hash(_)) => decline(),
+            (_, V::Arr(_) | V::Obj(_) | V::Hash(_)) => unreadable(),
             (V::Bool(a), _) => Ok(*a == other.t()?),
             (V::Str(a), _) => same_text(a, &other.s()?, case_sensitive),
             (_, V::Bool(b)) => Ok(compare_numbers(self.n().unwrap(), N::I32(*b as i32))? == Ordering::Equal),
@@ -663,7 +725,7 @@ impl V {
             (V::Null, V::Str(_) | V::Bool(_)) => Ok(Ordering::Less),
             (V::Null, _) => match other.n() {
                 Some(number) => Ok(if number.negative() { Ordering::Greater } else { Ordering::Less }),
-                None => decline(),
+                None => unreadable(),
             },
             (V::Bool(_) | V::Str(_), V::Null) => Ok(Ordering::Greater),
             (V::Str(a), V::Str(_) | V::Bool(_) | V::I32(_) | V::I64(_) | V::Dec(_) | V::Dbl(_)) => order_text(a, &other.s()?),
@@ -678,11 +740,11 @@ impl V {
                     },
                     _ => match other.n() {
                         Some(number) => compare_numbers(left, number),
-                        None => decline(),
+                        None => unreadable(),
                     },
                 }
             }
-            _ => decline(),
+            _ => unreadable(),
         }
     }
     #[track_caller]
@@ -730,7 +792,7 @@ impl V {
             },
             _ => match self.n() {
                 Some(number) => Ok(number),
-                None => decline(),
+                None => unreadable(),
             },
         }
     }
@@ -739,11 +801,11 @@ impl V {
     pub fn add(&self, other: &V) -> R<V> {
         match self {
             V::Null => match other {
-                V::Arr(_) | V::Obj(_) | V::Hash(_) => decline(),
+                V::Arr(_) | V::Obj(_) | V::Hash(_) => unreadable(),
                 _ => Ok(other.clone()),
             },
             V::Str(text) => Ok(V::Str(format!("{}{}", text, other.s()?).into())),
-            V::Bool(_) | V::Arr(_) | V::Obj(_) | V::Hash(_) => decline(),
+            V::Bool(_) | V::Arr(_) | V::Obj(_) | V::Hash(_) => unreadable(),
             _ => arithmetic(Op::Add, self.operand()?, other.operand()?),
         }
     }
@@ -757,7 +819,7 @@ impl V {
     pub fn mul(&self, other: &V) -> R<V> {
         match self {
             V::Null => Ok(V::Null),
-            V::Str(_) | V::Bool(_) | V::Arr(_) | V::Obj(_) | V::Hash(_) => decline(),
+            V::Str(_) | V::Bool(_) | V::Arr(_) | V::Obj(_) | V::Hash(_) => unreadable(),
             _ => arithmetic(Op::Mul, self.operand()?, other.operand()?),
         }
     }
@@ -770,8 +832,8 @@ impl V {
     #[track_caller]
     pub fn neg(&self) -> R<V> {
         Ok(match self.operand()? {
-            N::I32(x) => x.checked_neg().map_or_else(decline, |x| Ok(V::I32(x)))?,
-            N::I64(x) => x.checked_neg().map_or_else(decline, |x| Ok(V::I64(x)))?,
+            N::I32(x) => x.checked_neg().map_or_else(unreadable, |x| Ok(V::I32(x)))?,
+            N::I64(x) => x.checked_neg().map_or_else(unreadable, |x| Ok(V::I64(x)))?,
             N::Dec(x) => V::Dec(x.negated()?),
             N::Dbl(x) => V::Dbl(-x),
         })
@@ -827,7 +889,7 @@ impl V {
     pub fn first(&self) -> R<V> {
         match self {
             V::Arr(items) => Ok(items.first().cloned().unwrap_or(V::Null)),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
     /// `$value.PSObject.Properties`
@@ -836,7 +898,7 @@ impl V {
         match self {
             V::Null => Ok(Vec::new()),
             V::Obj(o) => Ok(o.borrow().items.clone()),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
     /// `$value | Select-Object *`: a new object with the same members.
@@ -844,11 +906,31 @@ impl V {
     pub fn shallow(&self) -> R<V> {
         match self {
             V::Obj(o) => Ok(V::Obj(Rc::new(RefCell::new(Props { items: o.borrow().items.clone() })))),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
 }
 
+/// A list assigned from an `if` statement: `$list=if(...){@(...)}else{@(...)}`. The statement
+/// unrolls its one list, so a single item is held bare. Piped, a bare item is the item it
+/// was; an array held bare is a list of other items, and that reading is not modelled.
+#[track_caller]
+pub fn held(list: Vec<V>) -> R<Vec<V>> {
+    match list.as_slice() {
+        [V::Arr(_)] => unreadable(),
+        _ => Ok(list),
+    }
+}
+/// `.Count` of a list held that way. A bare `$null` counts as no item and any other bare
+/// value as one, except an object, which Windows PowerShell does not count at all.
+#[track_caller]
+pub fn held_count(list: &[V]) -> R<usize> {
+    match list {
+        [V::Null] => Ok(0),
+        [V::Obj(_) | V::Hash(_)] => unreadable(),
+        _ => Ok(list.len()),
+    }
+}
 /// `$list | Where-Object name`: the items whose member is truthy.
 #[track_caller]
 pub fn where_truthy(list: &[V], name: &str) -> R<Vec<V>> {
@@ -899,16 +981,16 @@ pub fn unique(list: &[V]) -> R<Vec<V>> {
                     if a == b {
                         known = true;
                     } else if !printable(a) || !printable(b) || a.eq_ignore_ascii_case(b) {
-                        return decline();
+                        return unreadable();
                     }
                 }
                 (V::I32(a), V::I32(b)) => known |= a == b,
                 (V::I64(a), V::I64(b)) => known |= a == b,
-                _ => return decline(),
+                _ => return unreadable(),
             }
         }
         if !matches!(item, V::Str(_) | V::I32(_) | V::I64(_)) {
-            return decline();
+            return unreadable();
         }
         if !known {
             seen.push(item);
@@ -927,7 +1009,7 @@ pub fn sort<T: Clone>(items: &[T], mut order: impl FnMut(&T, &T) -> R<Ordering>,
                 Ordering::Greater => at -= 1,
                 Ordering::Equal => {
                     if desktop() && !same(&out[at - 1], item) {
-                        return decline();
+                        return unreadable();
                     }
                     break;
                 }
@@ -944,18 +1026,18 @@ pub fn order_keys(left: &V, right: &V) -> R<Ordering> {
     match (left, right) {
         (V::Null, V::Null) => Ok(Ordering::Equal),
         (V::Null, _) => match right.n() {
-            Some(number) if number.negative() => decline(),
+            Some(number) if number.negative() => unreadable(),
             _ => Ok(Ordering::Less),
         },
         (_, V::Null) => match left.n() {
-            Some(number) if number.negative() => decline(),
+            Some(number) if number.negative() => unreadable(),
             _ => Ok(Ordering::Greater),
         },
         (V::Bool(a), V::Bool(b)) => Ok(a.cmp(b)),
         (V::Str(a), V::Str(b)) => order_text(a, b),
         _ => match (left.n(), right.n()) {
             (Some(a), Some(b)) => compare_numbers(a, b),
-            _ => decline(),
+            _ => unreadable(),
         },
     }
 }
@@ -973,9 +1055,9 @@ pub fn math_pick(first: &V, second: &V, max: bool) -> R<V> {
         (V::I64(_), _) => V::I64(second.to_long()?),
         (V::Dbl(_), _) => V::Dbl(second.dbl()?),
         (V::Dec(_), V::Null) => V::Dec(Dec::from_i64(0)),
-        (V::Dec(_), V::Str(_) | V::Bool(_)) => return decline(),
-        (V::Dec(_), _) => V::Dec(second.n().map_or_else(decline, |n| n.dec())?),
-        _ => return decline(),
+        (V::Dec(_), V::Str(_) | V::Bool(_)) => return unreadable(),
+        (V::Dec(_), _) => V::Dec(second.n().map_or_else(unreadable, |n| n.dec())?),
+        _ => return unreadable(),
     };
     let order = compare_numbers(first.n().unwrap(), second.n().unwrap())?;
     Ok(if (order == Ordering::Less) == max { second } else { first })
@@ -987,7 +1069,7 @@ fn zero_like(value: &V) -> R<V> {
         V::I64(_) => Ok(V::I64(0)),
         V::Dbl(_) => Ok(V::Dbl(0.0)),
         V::Dec(_) if desktop() => Ok(V::Dec(Dec::from_i64(0))),
-        _ => decline(),
+        _ => unreadable(),
     }
 }
 /// `($values | Measure-Object -Minimum).Minimum`: a double, or null.
@@ -997,7 +1079,7 @@ pub fn measure_min(values: &[V]) -> R<V> {
     for (index, value) in values.iter().enumerate() {
         let next = match value {
             V::Null => None,
-            _ => Some(value.n().map_or_else(decline, |n| Ok(n.f()))?),
+            _ => Some(value.n().map_or_else(unreadable, |n| Ok(n.f()))?),
         };
         running = match (running, next) {
             _ if index == 0 => next,
@@ -1018,7 +1100,7 @@ pub fn measure_sum(values: &[V]) -> R<V> {
     for value in values {
         match value {
             V::Null => {}
-            _ => sum += value.n().map_or_else(decline, |n| Ok(n.f()))?,
+            _ => sum += value.n().map_or_else(unreadable, |n| Ok(n.f()))?,
         }
     }
     dbl(sum)
@@ -1057,7 +1139,7 @@ pub fn blank(text: &str) -> R<bool> {
         }
     }
     if unsure {
-        return decline();
+        return unreadable();
     }
     Ok(true)
 }
@@ -1070,7 +1152,7 @@ pub fn slot_name(text: &str, max: usize) -> bool {
 
 /// A `@{}` used as a set of string keys. Its comparison ignores case by the rules of the
 /// current culture, so only keys of printable ASCII are modelled, and two keys that
-/// differ by case alone decline.
+/// differ by case alone are not read.
 #[derive(Default)]
 pub struct Keys(Vec<String>);
 impl Keys {
@@ -1085,7 +1167,7 @@ impl Keys {
                 return Ok(true);
             }
             if !printable(known) || !printable(key) || known.eq_ignore_ascii_case(key) {
-                return decline();
+                return unreadable();
             }
         }
         Ok(false)
@@ -1135,7 +1217,7 @@ impl V {
         match self {
             V::Null => Ok(false),
             V::Obj(o) => Ok(o.borrow().find(name).is_some()),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
     /// `-$value` as a double: `-[double]$value`.
@@ -1152,7 +1234,7 @@ impl V {
             V::I32(x) => Ok(V::Dec(Dec::from_i64(*x as i64))),
             V::I64(x) => Ok(V::Dec(Dec::from_i64(*x))),
             V::Dec(x) => Ok(V::Dec(x.round1()?)),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
     /// [math]::Floor($value)
@@ -1163,7 +1245,7 @@ impl V {
             V::I32(x) => Ok(V::Dec(Dec::from_i64(*x as i64))),
             V::I64(x) => Ok(V::Dec(Dec::from_i64(*x))),
             V::Dec(x) => Ok(V::Dec(x.floor()?)),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
     /// `'{0:0.#}' -f $value`
@@ -1174,7 +1256,7 @@ impl V {
             V::Dec(x) => Ok(x.text_tenths()),
             V::I32(x) => Ok(x.to_string()),
             V::I64(x) => Ok(x.to_string()),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
 }
@@ -1195,8 +1277,8 @@ mod tests {
             Ok(V::Dec(x)) => format!("m{}", x.text()),
             Ok(V::Str(x)) => format!("s{x}"),
             Ok(_) => "other".into(),
-            Err(Stop::Throw(_)) => "throw".into(),
-            Err(Stop::Decline(_)) => "decline".into(),
+            Err(stop) if stop.thrown() => "throw".into(),
+            Err(_) => "unreadable".into(),
         }
     }
 
@@ -1221,7 +1303,7 @@ mod tests {
         assert_eq!(text(i(5).mul(&V::Null)), "i0");
         assert_eq!(text(V::Null.div(&i(5))), "i0");
         assert_eq!(text(i(5).div(&V::Null)), "throw");
-        assert_eq!(text(V::Dbl(5.0).div(&i(0))), "decline");
+        assert_eq!(text(V::Dbl(5.0).div(&i(0))), "unreadable");
         assert_eq!(text(s("x").add(&l(45))), "sx45");
         assert_eq!(text(s("r=").add(&V::Bool(false))), "sr=False");
         assert_eq!(text(V::Null.neg()), "i0");
@@ -1245,7 +1327,7 @@ mod tests {
         assert_eq!(ok(V::I32(0).eq(&s(""))), Some(true));
         assert_eq!(ok(V::I32(1).eq(&s("01"))), Some(true));
         assert_eq!(ok(V::I32(1).eq(&s("x"))), Some(false));
-        assert!(matches!(V::I32(1).lt(&s("x")), Err(Stop::Throw(_))));
+        assert!(V::I32(1).lt(&s("x")).is_err_and(|stop| stop.thrown()));
         assert_eq!(ok(V::Bool(true).eq(&s("false"))), Some(true));
         assert_eq!(ok(V::I32(2).eq(&V::Bool(true))), Some(false));
         assert_eq!(ok(s("01").is_in(&V::from(vec![V::I32(1)]))), Some(true));
@@ -1272,5 +1354,35 @@ mod tests {
         assert_eq!(text(math_pick(&V::Dbl(0.0), &V::I32(-3), true)), "d0.0");
         assert_eq!(text(math_pick(&V::I32(100), &V::Dbl(41.7), false)), "i42");
         assert_eq!(text(math_pick(&V::Null, &V::Null, false)), "d0.0");
+    }
+
+    #[test]
+    fn text_is_ordered_where_every_culture_table_agrees() {
+        let order = |left, right| order_text(left, right).ok();
+        assert_eq!(order("claude", "Codex"), Some(Ordering::Less));
+        assert_eq!(order("ABC", "abc"), Some(Ordering::Equal));
+        assert_eq!(order("claude", "fictional-claude"), Some(Ordering::Less));
+        assert_eq!(order("codex-two", "codex"), Some(Ordering::Greater));
+        assert_eq!(order("a-b", "a-c"), Some(Ordering::Less));
+        // Windows reads "ab" against "aa" here, and ICU a hyphen against a letter.
+        assert_eq!(order("a-b", "aa"), None);
+        assert_eq!(order("codex", "codex-"), None);
+        assert_eq!(order("a b", "a"), None);
+    }
+
+    #[test]
+    fn a_list_from_an_if_statement_is_held_bare_when_it_has_one_item() {
+        let count = |list: &[V]| held_count(list).ok();
+        assert_eq!(count(&[]), Some(0));
+        assert_eq!(count(&[V::Null]), Some(0));
+        assert_eq!(count(&[V::s_of("work")]), Some(1));
+        assert_eq!(count(&[V::I32(0)]), Some(1));
+        assert_eq!(count(&[V::Null, V::Null]), Some(2));
+        assert_eq!(count(&[new_obj(vec![("Count", V::I32(5))])]), None);
+        assert_eq!(count(&[new_obj(vec![]), new_obj(vec![])]), Some(2));
+        let pair = V::Arr(Rc::new(vec![V::I32(1), V::I32(2)]));
+        assert!(held(vec![pair.clone()]).is_err());
+        assert_eq!(held(vec![pair.clone(), pair]).ok().map(|list| list.len()), Some(2));
+        assert_eq!(held(vec![V::Null]).ok().map(|list| list.len()), Some(1));
     }
 }

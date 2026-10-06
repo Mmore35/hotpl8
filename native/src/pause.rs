@@ -13,9 +13,9 @@ const DAY_SECONDS: i64 = 86_400;
 /// Test-Hotpl8LeaseId, giving the id in the one case the ledger's key table compares.
 fn lease_id(value: &V) -> R<Option<String>> {
     let Some(text) = value.as_str() else { return Ok(None) };
-    // The pattern's `$` also accepts a final line feed; that spelling is left to PowerShell.
+    // The pattern's `$` also accepts a final line feed; that spelling is not read.
     if has_control(text) {
-        return decline();
+        return unreadable();
     }
     let b = text.as_bytes();
     let shaped = b.len() == 36 && b.iter().enumerate().all(|(i, c)| if matches!(i, 8 | 13 | 18 | 23) { *c == b'-' } else { c.is_ascii_hexdigit() });
@@ -33,7 +33,7 @@ fn lease_owner(value: &V) -> R<bool> {
 fn lease_time(value: &V) -> R<Dto> {
     let Some(text) = value.as_str() else { return throw() };
     if has_control(text) {
-        return decline();
+        return unreadable();
     }
     let lower = text.to_ascii_lowercase();
     if !lower.ends_with('z') && !lower.ends_with("+00:00") {
@@ -48,10 +48,10 @@ fn read_ledger(directory: &Path) -> R<Option<V>> {
     let file = match std::fs::symlink_metadata(&path) {
         Ok(file) => file,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Some(obj! {"schemaVersion" => 1, "entries" => Vec::<V>::new()})),
-        Err(_) => return decline(),
+        Err(_) => return unreadable(),
     };
     if file.file_type().is_symlink() {
-        return decline();
+        return unreadable();
     }
     if file.is_dir() || file.len() > 262_144 {
         return Ok(None);
@@ -156,7 +156,7 @@ pub fn pause(directory: &Path, now: Dto) -> R<V> {
     let invalid = || obj! {"until" => V::Null, "reason" => "invalid_pause", "invalid" => true};
     let pause = match std::fs::metadata(&path) {
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(leases),
-        Err(_) => return decline(),
+        Err(_) => return unreadable(),
         Ok(file) if file.is_dir() => return Ok(invalid()),
         Ok(_) => json::read_file(&path)?.unwrap_or(V::Null),
     };

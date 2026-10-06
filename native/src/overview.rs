@@ -30,21 +30,21 @@ fn overview_percent(value: &V) -> R<bool> {
 }
 /// `$list.Count` as PowerShell holds it.
 fn count(length: usize) -> R<i32> {
-    i32::try_from(length).or_else(|_| decline())
+    i32::try_from(length).or_else(|_| unreadable())
 }
 
 /// Get-Hotpl8NativeOverview for its one family: the value it files under that name.
 fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
     let claude = family == "claude";
     let part = if claude { policy.clone() } else { policy.g("codex")? };
-    let configured = if claude {
+    let configured = held(if claude {
         filter(&policy.g("prefer")?.arr(), |id| Ok(!id.is_null()))?
     } else {
         pluck(&filter(&part.g("slots")?.arr(), |slot| slot.t())?, "id")?
-    };
+    })?;
     let disabled = part.g("disabled")?;
     let ids = unique(&filter(&configured, |id| Ok(!id.is_in(&disabled)?))?)?;
-    let observations = if claude { snapshot.g("slots")?.arr() } else { snapshot.path(&["providers", "codex", "slots"])?.arr() };
+    let observations = held(if claude { snapshot.g("slots")?.arr() } else { snapshot.path(&["providers", "codex", "slots"])?.arr() })?;
     // The unified Codex graph is always the main allowance, never Spark.
     let meter = if claude { "overall weekly" } else { "codex" };
     let mut members: Vec<V> = Vec::new();
@@ -262,7 +262,7 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
         "scope" => meter,
         "accounts" => total,
         "measured" => measured,
-        "disabled" => count(configured.len())? - count(ids.len())?,
+        "disabled" => count(held_count(&configured)?)? - count(ids.len())?,
         "duplicates" => duplicates,
         "knownRemainingPercent" => &known,
         "unknownPercent" => unknown,
@@ -342,7 +342,7 @@ fn capacity_display(p: &V) -> R<Display> {
 /// `.ToUpper()` for a name in plain ASCII; any other spelling depends on the culture.
 fn upper(text: &str) -> R<String> {
     if !printable(text) {
-        return decline();
+        return unreadable();
     }
     Ok(text.to_ascii_uppercase())
 }
@@ -350,7 +350,7 @@ fn upper(text: &str) -> R<String> {
 /// Format-Hotpl8Overview
 pub fn format_overview(overview: &V) -> R<Vec<String>> {
     if !overview.is_obj() {
-        return decline();
+        return unreadable();
     }
     let mut lines = Vec::new();
     for (provider, p) in overview.props()? {
@@ -359,7 +359,7 @@ pub fn format_overview(overview: &V) -> R<Vec<String>> {
         let title = if name.t()? {
             match name.as_str() {
                 Some(text) => upper(text)?,
-                None => return decline(),
+                None => return unreadable(),
             }
         } else {
             upper(&provider)?
@@ -409,7 +409,7 @@ pub fn park_candidates(snapshot: &V, policy: &V, now: Dto) -> R<Vec<V>> {
             snapshot.g("providers")?.gd(&id.s()?)?
         };
         let numeric = driver.g("slotKind")?.eq_s("numeric")?;
-        let ids = if numeric { part.g("prefer")?.arr() } else { pluck(&filter(&part.g("slots")?.arr(), |slot| slot.t())?, "id")? };
+        let ids = held(if numeric { part.g("prefer")?.arr() } else { pluck(&filter(&part.g("slots")?.arr(), |slot| slot.t())?, "id")? })?;
         let disabled = part.g("disabled")?;
         for id in filter(&ids, |id| Ok(!id.is_null() && !id.is_in(&disabled)?))? {
             let rows = filter(&payload.g("slots")?.arr(), |row| {

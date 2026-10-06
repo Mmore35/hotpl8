@@ -205,7 +205,7 @@ def install_dispatch(root, release, config):
 
 def native_files(release):
     # Zip extraction drops the executable bit. The file was already checked against the
-    # delivery manifest; a native file without the bit is ignored and PowerShell answers.
+    # delivery manifest; without the bit the compiled reader cannot start.
     listed = read(release / "release-files.json", {}).get("platformFiles", {})
     for relative in listed.get("macos", []) if isinstance(listed, dict) else []:
         if not isinstance(relative, str) or not re.fullmatch(r"bin/macos/[a-zA-Z0-9_.-]+", relative):
@@ -213,6 +213,15 @@ def native_files(release):
         path = release / relative
         if path.is_file() and not path.is_symlink():
             os.chmod(path, 0o700)
+
+
+def reader_starts(release):
+    # version, status and explain are answered by the compiled reader alone, so a release
+    # whose reader does not start on this Mac is never selected.
+    try:
+        run([release / "bin/macos/hotpl8-native", "version", "--root", release], 30)
+    except OSError:
+        raise DeliveryError("Candidate has no compiled reader that starts on this Mac") from None
 
 
 def adapter(root, release, operation, backend=None):
@@ -223,6 +232,8 @@ def adapter(root, release, operation, backend=None):
     if not re.fullmatch(r"[a-f0-9]{40}", build.get("sha", "")):
         raise DeliveryError("Candidate has no exact source identity")
     native_files(release)
+    if operation in ("preflight", "health"):
+        reader_starts(release)
     command = [config["powershell"], "-NoProfile", "-NonInteractive", "-File",
                release / "delivery/macos-preflight.ps1", "-ReleaseDirectory", release,
                "-StateDirectory", config["stateDirectory"], "-InstallDirectory", root]

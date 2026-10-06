@@ -235,7 +235,8 @@ try{
     }
     Check 'descriptor and enrollment only reaches collector CLI UI API MCP controls and diagnostics' {
         $package=Join-Path $lab 'package';[void][IO.Directory]::CreateDirectory($package)
-        $files=@((Get-Content (Join-Path $root 'release-files.json') -Raw|ConvertFrom-Json).files)+@('src/provider-runtime.ps1')
+        $manifest=Get-Content (Join-Path $root 'release-files.json') -Raw|ConvertFrom-Json
+        $files=@($manifest.files)+@($manifest.platformFiles.windows)+@('src/provider-runtime.ps1')
         foreach($file in @($files|Select-Object -Unique)){
             $target=Join-Path $package $file;[void][IO.Directory]::CreateDirectory((Split-Path $target -Parent))
             [IO.File]::Copy((Join-Path $root $file),$target,$true)

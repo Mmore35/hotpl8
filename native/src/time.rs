@@ -1,8 +1,8 @@
 //! System.DateTimeOffset and System.TimeSpan, for the timestamps state files carry.
 //! Only the round-trip form `yyyy-MM-ddTHH:mm:ss[.fffffff](Z|±hh:mm)` is modelled; other
-//! spellings depend on the caller's culture and decline.
+//! spellings depend on the caller's culture and are not read.
 
-use crate::ps::{decline, desktop, throw, R, V};
+use crate::ps::{unreadable, desktop, throw, R, V};
 
 pub const TICKS_PER_SECOND: i64 = 10_000_000;
 const TICKS_PER_MINUTE: i64 = 60 * TICKS_PER_SECOND;
@@ -75,20 +75,20 @@ impl Dto {
         }
         let b = text.as_bytes();
         if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
-            return decline();
+            return unreadable();
         }
         let part = |from: usize, to: usize| number(&b[from..to]);
         let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) =
             (part(0, 4), part(5, 7), part(8, 10), part(11, 13), part(14, 16), part(17, 19))
         else {
-            return decline();
+            return unreadable();
         };
         let mut at = 19;
         let mut fraction = 0i64;
         if b[at] == b'.' {
             let digits = b[at + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
             if !(1..=7).contains(&digits) {
-                return decline();
+                return unreadable();
             }
             fraction = number(&b[at + 1..at + 1 + digits]).unwrap() * 10i64.pow(7 - digits as u32);
             at += 1 + digits;
@@ -96,16 +96,16 @@ impl Dto {
         let offset_minutes = match &b[at..] {
             [b'Z'] => 0,
             [sign @ (b'+' | b'-'), h1, h2, b':', m1, m2] => {
-                let (Some(hours), Some(minutes)) = (number(&[*h1, *h2]), number(&[*m1, *m2])) else { return decline() };
+                let (Some(hours), Some(minutes)) = (number(&[*h1, *h2]), number(&[*m1, *m2])) else { return unreadable() };
                 if minutes > 59 || hours * 60 + minutes > 14 * 60 {
-                    return decline();
+                    return unreadable();
                 }
                 (hours * 60 + minutes) as i32 * if *sign == b'-' { -1 } else { 1 }
             }
-            _ => return decline(),
+            _ => return unreadable(),
         };
         if year < 1 || !(1..=12).contains(&month) || day < 1 || day > days_in_month(year, month) || hour > 23 || minute > 59 || second > 59 {
-            return decline();
+            return unreadable();
         }
         let local = days_before(year, month, day) * TICKS_PER_DAY
             + hour * TICKS_PER_HOUR
@@ -114,7 +114,7 @@ impl Dto {
             + fraction;
         let ticks = local - offset_minutes as i64 * TICKS_PER_MINUTE;
         if !(0..=MAX_TICKS).contains(&ticks) {
-            return decline();
+            return unreadable();
         }
         Ok(Dto { ticks, offset_minutes })
     }
@@ -124,7 +124,7 @@ impl Dto {
         match value {
             V::Null => throw(),
             V::Str(text) => Dto::parse(text),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
 
@@ -175,18 +175,18 @@ impl Dto {
     /// .AddSeconds / .AddMinutes / .AddHours / .AddDays with a whole number.
     #[track_caller]
     pub fn plus_seconds(self, seconds: i64) -> R<Dto> {
-        let Some(ticks) = seconds.checked_mul(TICKS_PER_SECOND).and_then(|t| self.ticks.checked_add(t)) else { return decline() };
+        let Some(ticks) = seconds.checked_mul(TICKS_PER_SECOND).and_then(|t| self.ticks.checked_add(t)) else { return unreadable() };
         let local = ticks + self.offset_minutes as i64 * TICKS_PER_MINUTE;
         if !(0..=MAX_TICKS).contains(&ticks) || !(0..=MAX_TICKS).contains(&local) {
-            return decline();
+            return unreadable();
         }
         Ok(Dto { ticks, offset_minutes: self.offset_minutes })
     }
     /// [datetimeoffset]::UtcNow
     #[track_caller]
     pub fn now() -> R<Dto> {
-        let Ok(since) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else { return decline() };
-        let Ok(ticks) = i64::try_from(since.as_nanos() / 100) else { return decline() };
+        let Ok(since) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else { return unreadable() };
+        let Ok(ticks) = i64::try_from(since.as_nanos() / 100) else { return unreadable() };
         Ok(Dto { ticks: UNIX_EPOCH_SECONDS * TICKS_PER_SECOND + ticks, offset_minutes: 0 })
     }
     /// `$this - $other`, as a TimeSpan.
@@ -222,23 +222,23 @@ impl Span {
     }
 }
 
-/// The machine's UTC offset at an instant, in minutes: what .ToLocalTime() applies.
-/// Only instants near the request's own time are answered, and only where the offset is
-/// not about to change, so a daylight-saving rule the system and .NET could read
-/// differently never decides the text.
+thread_local! {
+    static ZONE: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Test-only: answer as a machine this many minutes east of UTC would, so that an expected
+/// answer reads the same wherever the suite runs.
+pub fn set_zone(minutes: Option<i32>) {
+    ZONE.with(|cell| cell.set(minutes));
+}
+
+/// The machine's UTC offset at an instant, in minutes, by the system's own time-zone rules.
 #[track_caller]
-pub fn local_offset_minutes(at: Dto, now: Dto) -> R<i32> {
-    let two_years = 730 * TICKS_PER_DAY;
-    if (at.ticks - now.ticks).abs() > two_years {
-        return decline();
+pub fn local_offset_minutes(at: Dto) -> R<i32> {
+    match ZONE.with(|cell| cell.get()) {
+        Some(minutes) => Ok(minutes),
+        None => system_offset(at.ticks),
     }
-    let offset = system_offset(at.ticks)?;
-    for near in [at.ticks - 3 * TICKS_PER_HOUR, at.ticks + 3 * TICKS_PER_HOUR] {
-        if system_offset(near)? != offset {
-            return decline();
-        }
-    }
-    Ok(offset)
 }
 
 #[cfg(windows)]
@@ -277,19 +277,19 @@ fn system_offset(ticks: i64) -> R<i32> {
     // zone selects the current time zone.
     let done = unsafe { SystemTimeToTzSpecificLocalTimeEx(core::ptr::null(), &universal, &mut local) };
     if done == 0 {
-        return decline();
+        return unreadable();
     }
     let seconds = |t: &SystemTime| {
         days_before(t.year as i64, t.month as i64, t.day as i64) * 86_400 + t.hour as i64 * 3600 + t.minute as i64 * 60 + t.second as i64
     };
     let difference = seconds(&local) - seconds(&universal);
     if difference % 60 != 0 {
-        return decline();
+        return unreadable();
     }
     Ok((difference / 60) as i32)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(unix, target_pointer_width = "64"))]
 #[track_caller]
 fn system_offset(ticks: i64) -> R<i32> {
     use core::ffi::{c_char, c_int, c_long};
@@ -311,27 +311,24 @@ fn system_offset(ticks: i64) -> R<i32> {
         fn tzset();
         fn localtime_r(time: *const i64, result: *mut Tm) -> *mut Tm;
     }
-    // .NET reads TZ its own way; without it both follow the system zone.
-    if std::env::var_os("TZ").is_some_and(|value| !value.is_empty()) {
-        return decline();
-    }
     let seconds = ticks / TICKS_PER_SECOND - UNIX_EPOCH_SECONDS;
     let mut local = Tm { sec: 0, min: 0, hour: 0, mday: 0, mon: 0, year: 0, wday: 0, yday: 0, isdst: 0, gmtoff: 0, zone: core::ptr::null() };
-    // SAFETY: time_t is a 64-bit integer on macOS and `local` is a live struct tm.
+    // SAFETY: on a 64-bit Unix time_t is a 64-bit integer, and `local` is a live struct tm
+    // in the layout macOS and Linux share.
     let done = unsafe {
         tzset();
         localtime_r(&seconds, &mut local)
     };
     if done.is_null() || local.gmtoff % 60 != 0 {
-        return decline();
+        return unreadable();
     }
     Ok((local.gmtoff / 60) as i32)
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, all(unix, target_pointer_width = "64"))))]
 #[track_caller]
 fn system_offset(_ticks: i64) -> R<i32> {
-    decline()
+    unreadable()
 }
 
 #[cfg(test)]
@@ -357,8 +354,8 @@ mod tests {
 
     #[test]
     fn other_spellings_stop() {
-        assert!(matches!(Dto::parse(""), Err(crate::ps::Stop::Throw(_))));
-        assert!(matches!(Dto::parse("  "), Err(crate::ps::Stop::Throw(_))));
+        assert!(Dto::parse("").is_err_and(|stop| stop.thrown()));
+        assert!(Dto::parse("  ").is_err_and(|stop| stop.thrown()));
         for text in [
             "2026-09-12 11:59:18Z",
             "2026-09-12T11:59:18",
@@ -372,7 +369,7 @@ mod tests {
             "0001-01-01T00:00:00+01:00",
             "tomorrow",
         ] {
-            assert!(matches!(Dto::parse(text), Err(crate::ps::Stop::Decline(_))), "{text}");
+            assert!(Dto::parse(text).is_err_and(|stop| !stop.thrown()), "{text}");
         }
     }
 

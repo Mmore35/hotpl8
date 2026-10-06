@@ -22,7 +22,7 @@ fn rank_order(a: &V, b: &V) -> R<Ordering> {
     }
     // Names that differ by case alone are ordered by the culture.
     match order_text(&left, &right)? {
-        Ordering::Equal => decline(),
+        Ordering::Equal => unreadable(),
         order => Ok(order),
     }
 }
@@ -44,7 +44,7 @@ pub fn provider_decision(accounts: &V, policy: &V, context: &V, now: Dto) -> R<V
         return throw();
     }
     if intent != "observe" {
-        return decline();
+        return unreadable();
     }
     let scopes = filter(&context.g("scopes")?.arr(), |scope| scope.t())?;
     let mut rows = Vec::new();

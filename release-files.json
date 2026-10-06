@@ -203,6 +203,7 @@
     "tests/parity/referee.ps1",
     "tests/parity/cases.ps1",
     "tests/parity/fuzz.ps1",
+    "tests/parity/expected-status.txt",
     "docs/plans/rust-read-side.md"
   ],
   "platformFiles": {

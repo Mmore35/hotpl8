@@ -33,7 +33,8 @@ function Get-Hotpl8ReleaseFiles([string]$Source,[string]$Platform,[switch]$Requi
         $relative
     }
     # Compiled files exist for one platform per package and not at all in a plain source
-    # checkout, so each is listed only when present. Packaging requires its own platform's set.
+    # checkout, so each is listed only when present. Packaging and installing require their
+    # own platform's set.
     if($null -eq $manifest.platformFiles){return}
     if($manifest.platformFiles -isnot [pscustomobject]){throw 'Invalid release file manifest.'}
     foreach($group in $manifest.platformFiles.PSObject.Properties){

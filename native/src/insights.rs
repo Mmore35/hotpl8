@@ -106,14 +106,14 @@ pub fn read_snapshot(directory: &Path, reader_policy: &V, explicit: bool, now: D
 fn name_text(name: &V) -> R<String> {
     match name.as_str() {
         Some(text) => Ok(text.to_string()),
-        None => decline(),
+        None => unreadable(),
     }
 }
 
 /// `$line -replace '^Codex', $name`
 fn rename_codex(line: &str, name: &str) -> R<String> {
     if name.contains('$') {
-        return decline();
+        return unreadable();
     }
     match line.get(..5) {
         Some(head) if head.eq_ignore_ascii_case("codex") => Ok(cat!(name, &line[5..])),

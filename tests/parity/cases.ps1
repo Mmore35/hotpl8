@@ -1,7 +1,7 @@
 # Parity cases for `hotpl8 status` and `hotpl8 explain`.
 #
-# A case is a set of state files, written as JSON text so both PowerShell versions and the
-# compiled reader read the same bytes. Times are tokens relative to the instant the case
+# A case is a set of state files, written as JSON text so PowerShell's rules and the compiled
+# reader's read the same bytes. Times are tokens relative to the instant the case
 # runs at (see Expand-Hotpl8ParityText). Every name, label and reading here is fictional.
 #
 #   name     unique
@@ -10,22 +10,52 @@
 #   macFiles file name -> JSON text that replaces the entry in `files` on macOS, where an
 #            absolute path looks different
 #   noBom    write the files without a byte order mark
-#   expect   what the compiled reader must do when PowerShell answers:
-#              'answer'   print the same answer (the default)
-#              'decline'  leave the answer to PowerShell
-#              'either'   decline, or print the same answer
-#            A hash table sets it per mode: status, explain, status-json, explain-json,
-#            and default.
+#   catalog  file name -> text: the provider definitions of the copy the case is asked of,
+#            all of them, in place of the two a release ships
+#   expect   what the compiled reader must do with files PowerShell's rules take:
+#              'answer'   compute the same (the default)
+#              'refuse'   refuse them, because it reads files more strictly
+#              'either'   refuse them, or compute the same
+#            A hash table sets it per form: status-json, explain-json, explain, and default.
 #
-# When PowerShell fails, the reader must decline; no case can ask for anything else.
+# Files PowerShell's rules refuse, the reader must refuse; no case can ask for anything else.
 
+# Case files carry times relative to the instant a case runs at, so the same text serves a
+# pinned instant and the real clock:
+#   @t-42s@  that instant minus 42 seconds, as 2026-09-12T11:59:18.0000000+00:00
+#   @z+2h@   the same, as 2026-09-12T14:00:00Z
+#   @f+83m@  the same, as 2026-09-12T13:23:00.250000+00:00 (the instant plus a quarter second)
+#   @u+3d@   the same, as Unix seconds
+# Units are s, m, h and d.
+function Expand-Hotpl8ParityText([string]$Text,[datetimeoffset]$Now) {
+    [regex]::Replace($Text,'@([tuzf])([+-]\d+)([smhd])@',{
+        param($match)
+        $amount=[int]$match.Groups[2].Value
+        $at=switch($match.Groups[3].Value){'s'{$Now.AddSeconds($amount)}'m'{$Now.AddMinutes($amount)}'h'{$Now.AddHours($amount)}default{$Now.AddDays($amount)}}
+        switch($match.Groups[1].Value){
+            't'{$at.ToString('o')}
+            'z'{$at.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ',[Globalization.CultureInfo]::InvariantCulture)}
+            'f'{$at.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ss',[Globalization.CultureInfo]::InvariantCulture)+'.250000+00:00'}
+            default{$at.ToUnixTimeSeconds().ToString([Globalization.CultureInfo]::InvariantCulture)}
+        }
+    })
+}
 function Edit-Hotpl8ParityText([string]$Text,[string]$Old,[string]$New) {
     $first=$Text.IndexOf($Old,[StringComparison]::Ordinal)
     if($first -lt 0 -or $Text.IndexOf($Old,$first+1,[StringComparison]::Ordinal) -ge 0){throw ('A parity case edit must match exactly once: '+$Old)}
     $Text.Remove($first,$Old.Length).Insert($first,$New)
 }
-function Join-Hotpl8ParityStatus([string[]]$Slots,[string[]]$CodexSlots,[string]$Extra='',[string]$CodexExtra='') {
-    '{"generatedAt":"@t-42s@","active":1,"hold":null,"slots":['+($Slots -join ',')+'],"providers":{"codex":{"defaultMeter":"codex","recommendedSlot":"work","slots":['+($CodexSlots -join ',')+']'+$CodexExtra+'}}'+$Extra+'}'
+function Join-Hotpl8ParityStatus([string[]]$Slots,[string[]]$CodexSlots,[string]$Extra='',[string]$CodexExtra='',[string]$Providers='') {
+    '{"generatedAt":"@t-42s@","active":1,"hold":null,"slots":['+($Slots -join ',')+'],"providers":{"codex":{"defaultMeter":"codex","recommendedSlot":"work","slots":['+($CodexSlots -join ',')+']'+$CodexExtra+'}'+$Providers+'}'+$Extra+'}'
+}
+# A definition a release ships, as the text of its file.
+function Get-Hotpl8ParityDefinition([string]$Id) {
+    [IO.File]::ReadAllText((Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) ('data/providers/'+$Id+'.json')))
+}
+# The same definition registered under another id, at another place in the display order.
+function Rename-Hotpl8ParityDefinition([string]$Id,[string]$As,[int]$Order) {
+    $text=Edit-Hotpl8ParityText (Get-Hotpl8ParityDefinition $Id) ('"id": "'+$Id+'"') ('"id": "'+$As+'"')
+    [regex]::Replace($text,'"display": \{"order": \d+\}',('"display": {"order": '+$Order+'}'))
 }
 
 function Get-Hotpl8ParityCases {
@@ -298,7 +328,7 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='manual pause';files=(& $withState @{'automation-pause.json'='{"schemaVersion":1,"until":"@t+2h@","reason":"owner asked"}'})})
     [void]$cases.Add(@{name='manual pause that ended';files=(& $withState @{'automation-pause.json'='{"schemaVersion":1,"until":"@t-1m@","reason":"owner asked"}'})})
     [void]$cases.Add(@{name='pause file without an end';files=(& $withState @{'automation-pause.json'='{"schemaVersion":1,"reason":"owner asked"}'})})
-    [void]$cases.Add(@{name='pause reason with control characters';files=(& $withState @{'automation-pause.json'='{"schemaVersion":1,"until":"@t+2h@","reason":"line one\nline two\ttabbed\u007f"}'});expect=@{default='answer';explain='either';'explain-json'='answer'}})
+    [void]$cases.Add(@{name='pause reason with control characters';files=(& $withState @{'automation-pause.json'='{"schemaVersion":1,"until":"@t+2h@","reason":"line one\nline two\ttabbed\u007f"}'});})
     $lease='{"leaseId":"11111111-2222-4333-8444-555555555555","owner":"agent one","minutes":90,"acquiredAt":"@z-30m@","until":"@z+60m@","releasedAt":null,"retainUntil":"@z+25h@"}'
     $leaseTwo='{"leaseId":"22222222-2222-4333-8444-555555555555","owner":"agent two","minutes":240,"acquiredAt":"@t-60m@","until":"@t+180m@","releasedAt":null,"retainUntil":"@t+28h@"}'
     $released='{"leaseId":"33333333-2222-4333-8444-555555555555","owner":"agent three","minutes":60,"acquiredAt":"@z-30m@","until":"@z+30m@","releasedAt":"@z-10m@","retainUntil":"@z+24h@"}'
@@ -309,7 +339,7 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='empty lease ledger';files=(& $withState @{'automation-leases.json'='{"schemaVersion":1,"entries":[]}'})})
     [void]$cases.Add(@{name='lease with the wrong end';files=(& $withState @{'automation-leases.json'=('{"schemaVersion":1,"entries":['+$lease.Replace('@z+60m@','@z+61m@')+']}')})})
     [void]$cases.Add(@{name='lease ledger with an extra field';files=(& $withState @{'automation-leases.json'=('{"schemaVersion":1,"entries":[],"note":"x"}')})})
-    [void]$cases.Add(@{name='lease ledger that is not an object';files=(& $withState @{'automation-leases.json'='[]'});expect='either'})
+    [void]$cases.Add(@{name='lease ledger that is not an object';files=(& $withState @{'automation-leases.json'='[]'});expect='refuse'})
     [void]$cases.Add(@{name='lease and manual pause, pause later';files=(& $withState @{'automation-leases.json'=('{"schemaVersion":1,"entries":['+$lease+']}');'automation-pause.json'='{"schemaVersion":1,"until":"@t+2h@","reason":"owner asked"}'})})
     [void]$cases.Add(@{name='lease and manual pause, lease later';files=(& $withState @{'automation-leases.json'=('{"schemaVersion":1,"entries":['+$leaseTwo+']}');'automation-pause.json'='{"schemaVersion":1,"until":"@t+2h@","reason":"owner asked"}'})})
     [void]$cases.Add(@{name='lease and a pause file without an end';files=(& $withState @{'automation-leases.json'=('{"schemaVersion":1,"entries":['+$lease+']}');'automation-pause.json'='{"schemaVersion":1}'})})
@@ -325,6 +355,9 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='Codex only';files=@{'policy.json'='{"schemaVersion":2,"mode":"monitor","codex":{"slots":[{"id":"work","label":"Work"},{"id":"personal","label":"Personal"}]}}';'status.json'=$status}})
     [void]$cases.Add(@{name='no providers configured';files=@{'policy.json'='{"schemaVersion":2,"mode":"monitor"}';'status.json'=$status}})
     [void]$cases.Add(@{name='one Codex account without capacity';files=@{'policy.json'='{"schemaVersion":2,"mode":"monitor","codex":{"slots":[{"id":"personal","label":"Personal"}]}}';'status.json'=$status}})
+    # PowerShell holds a list of one bare, so one account without an id is no account, and two are two disabled ones.
+    [void]$cases.Add(@{name='one Codex account without an id';files=@{'policy.json'='{"schemaVersion":2,"mode":"monitor","codex":{"slots":[{"label":"Personal"}]}}';'status.json'=$status}})
+    [void]$cases.Add(@{name='two Codex accounts without an id';files=@{'policy.json'='{"schemaVersion":2,"mode":"monitor","codex":{"slots":[{"label":"Personal"},{"label":"Work"}]}}';'status.json'=$status}})
     [void]$cases.Add(@{name='Codex configured but never observed';files=@{'policy.json'=$policy;'status.json'=('{"generatedAt":"@t-42s@","active":1,"hold":null,"slots":['+$one+','+$two+']}')}})
     [void]$cases.Add(@{name='capacity profiles';files=@{'policy.json'=(Edit-Hotpl8ParityText (Edit-Hotpl8ParityText $policy '"capacity":{"1":{"weekly":1,"fiveHour":0.3},"2":{"weekly":5,"fiveHour":1.5}}' '"capacity":{"1":{"profile":"claude-pro"},"2":{"profile":"claude-max-5x"}}') '"capacity":{"work":{"weekly":5,"fiveHour":1.5},"personal":{"weekly":1,"fiveHour":0.3}}' '"capacity":{"work":{"profile":"codex-pro-5x"},"personal":{"profile":"codex-plus"}}');'status.json'=$status}})
     [void]$cases.Add(@{name='capacity profile of the other provider';files=@{'policy.json'=(Edit-Hotpl8ParityText $policy '"capacity":{"1":{"weekly":1,"fiveHour":0.3},"2":{"weekly":5,"fiveHour":1.5}}' '"capacity":{"1":{"profile":"codex-plus"},"2":{"weekly":5}}');'status.json'=$status}})
@@ -345,6 +378,35 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='policy version three';files=@{'policy.json'=$three;'status.json'=$status};macFiles=@{'policy.json'=$threeMac}})
     [void]$cases.Add(@{name='policy version three with one provider';files=@{'policy.json'='{"schemaVersion":3,"mode":"monitor","providers":{"claude":{"prefer":[1,2],"claudeModels":["example-scoped"]}}}';'status.json'=$status}})
     [void]$cases.Add(@{name='policy version three with no providers';files=@{'policy.json'='{"schemaVersion":3,"mode":"monitor","providers":{}}';'status.json'=$status}})
+
+    # Provider definitions a copy holds beside the two a release ships, and ones it must refuse.
+    $claude=Get-Hotpl8ParityDefinition 'claude';$codex=Get-Hotpl8ParityDefinition 'codex'
+    $spare='{"id":"one","label":"Spare","status":"ok","observedAt":"@t-42s@","buckets":{"codex":{"status":"observed","windows":{"300":{"usedPercent":12,"remainingPercent":88,"resetsAt":@u+3h@,"anchorState":"observed-active"},"10080":{"usedPercent":30,"remainingPercent":70,"resetsAt":@u+4d@,"anchorState":"observed-active"}}}}}'
+    $withSpare=Join-Hotpl8ParityStatus @($one,$two) @($work,$personal) -Providers (',"fictional":{"defaultMeter":"codex","recommendedSlot":"one","slots":['+$spare+']}')
+    $four=Edit-Hotpl8ParityText $three '"margin7dWork":5}' '"margin7dWork":5},"fictional":{"slots":[{"id":"one","label":"Spare","home":"C:\\Fictional\\spare"}]}'
+    $added=@{'claude.json'=$claude;'codex.json'=$codex;'fictional.json'=(Rename-Hotpl8ParityDefinition 'codex' 'fictional' 30)}
+    [void]$cases.Add(@{name='a third provider';catalog=$added;files=@{'policy.json'=$four;'status.json'=$withSpare};macFiles=@{'policy.json'=$four.Replace('C:\\Fictional\\','/opt/fictional/')}})
+    [void]$cases.Add(@{name='a third provider that is not configured';catalog=$added;files=@{'policy.json'=$policy;'status.json'=$withSpare}})
+    [void]$cases.Add(@{name='a third provider never observed';catalog=$added;files=@{'policy.json'=$four;'status.json'=$status};macFiles=@{'policy.json'=$four.Replace('C:\\Fictional\\','/opt/fictional/')}})
+    # Two pairs share a place in the display order, so the ids decide; each pair has a hyphen.
+    # Shown whether configured or not; one Claude driver has one configured owner.
+    $tied=@{'claude.json'=$claude;'codex.json'=$codex;'fictional-claude.json'=(Rename-Hotpl8ParityDefinition 'claude' 'fictional-claude' 10);'codex-two.json'=(Rename-Hotpl8ParityDefinition 'codex' 'codex-two' 20)}
+    $tiedPolicy='{"schemaVersion":3,"mode":"monitor","providers":{"codex-two":{"slots":[{"id":"one","label":"Spare","home":"C:\\Fictional\\spare"}]},"codex":{"slots":[{"id":"work","label":"Work","home":"C:\\Fictional\\codex-work"}]},"claude":{"prefer":[1,2]}}}'
+    [void]$cases.Add(@{name='providers that share a place in the display order';catalog=$tied;files=@{'policy.json'=$policy;'status.json'=$status}})
+    [void]$cases.Add(@{name='two providers of the Codex driver';catalog=$tied;files=@{'policy.json'=$tiedPolicy;'status.json'=$status};macFiles=@{'policy.json'=$tiedPolicy.Replace('C:\\Fictional\\','/opt/fictional/')}})
+    [void]$cases.Add(@{name='two providers of the Claude driver';catalog=$tied;files=@{'policy.json'='{"schemaVersion":3,"mode":"monitor","providers":{"fictional-claude":{"prefer":[1]},"claude":{"prefer":[1,2]}}}';'status.json'=$status}})
+    [void]$cases.Add(@{name='a shipped provider moved in the display order';catalog=@{'claude.json'=(Rename-Hotpl8ParityDefinition 'claude' 'claude' 40);'codex.json'=$codex};files=@{'policy.json'=$policy;'status.json'=$status}})
+    [void]$cases.Add(@{name='a copy without the Claude definition';catalog=@{'codex.json'=$codex};files=@{'policy.json'=$policy;'status.json'=$status}})
+    [void]$cases.Add(@{name='a copy without the Claude definition and no Claude accounts';catalog=@{'codex.json'=$codex};files=@{'policy.json'='{"schemaVersion":2,"mode":"monitor","codex":{"slots":[{"id":"work","label":"Work"}]}}';'status.json'=$status}})
+    $refused={param([string]$Name,[hashtable]$Catalog) [void]$cases.Add(@{name=$Name;catalog=$Catalog;files=@{'policy.json'=$policy;'status.json'=$status}})}
+    & $refused 'definition with an unknown driver' @{'claude.json'=$claude;'codex.json'=$codex;'fictional.json'=(Edit-Hotpl8ParityText (Rename-Hotpl8ParityDefinition 'codex' 'fictional' 30) '"driver": "codex-app-server"' '"driver": "shell"')}
+    & $refused 'definition with an unknown field' @{'claude.json'=$claude;'codex.json'=(Edit-Hotpl8ParityText $codex '"schemaVersion": 1,' '"schemaVersion": 1, "command": "run",')}
+    & $refused 'definition under another file name' @{'claude.json'=$claude;'codex.json'=$codex;'fictional.json'=$codex}
+    & $refused 'definition of a capability its driver has not' @{'claude.json'=$claude;'codex.json'=(Edit-Hotpl8ParityText $codex '"warming": false' '"warming": true')}
+    & $refused 'definition with a window its driver has not' @{'claude.json'=$claude;'codex.json'=(Edit-Hotpl8ParityText $codex '"minutes": 300, "required": false' '"minutes": 300, "required": true')}
+    & $refused 'definition with a fractional display order' @{'claude.json'=(Edit-Hotpl8ParityText $claude '"order": 10' '"order": 10.5');'codex.json'=$codex}
+    & $refused 'definition that is not JSON' @{'claude.json'=$claude;'codex.json'=$codex.Substring(0,$codex.Length-4)}
+    & $refused 'no definitions at all' @{}
 
     # Reader policy.
     [void]$cases.Add(@{name='preview policy';files=@{'policy.json'=$policy;'status.json'=$status};preview=$automate})
@@ -438,26 +500,33 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='policy that is an array';files=@{'policy.json'='[]';'status.json'=$status}})
     [void]$cases.Add(@{name='policy that is not JSON';files=@{'policy.json'='{"schemaVersion":2,';'status.json'=$status}})
     [void]$cases.Add(@{name='empty policy file';files=@{'policy.json'='';'status.json'=$status}})
-    [void]$cases.Add(@{name='generation time that is not a time';files=@{'policy.json'=$policy;'status.json'=$status.Replace('{"generatedAt":"@t-42s@"','{"generatedAt":"soon"')};expect=@{default='either'}})
+    [void]$cases.Add(@{name='generation time that is not a time';files=@{'policy.json'=$policy;'status.json'=$status.Replace('{"generatedAt":"@t-42s@"','{"generatedAt":"soon"')};expect='refuse'})
+    # A label is the one text a user writes; it is shown and never compared.
+    $far=('Caf'+[char]0xe9+' '+[char]0x65e5+[char]0x672c+' '+[char]0x2014+' x')
+    [void]$cases.Add(@{name='labels outside ASCII';files=@{'policy.json'=$policy.Replace('"Everyday"','"'+$far+'"').Replace('"label":"Work"','"label":"'+$far+'"');'status.json'=$status.Replace('"Everyday"','"'+$far+'"').Replace('"label":"Work"','"label":"'+$far+'"')}})
+    # PowerShell writes a double below 0.0001 or from 1E+15 with an exponent, so a reading can arrive as one.
+    [void]$cases.Add(@{name='number with an exponent';files=@{'policy.json'=$policy;'status.json'=$status.Replace('"used5h":38','"used5h":3.8e1')}})
+    [void]$cases.Add(@{name='readings too small to write without an exponent';files=@{'policy.json'=$policy;'status.json'=$status.Replace('"used5h":38','"used5h":1E-05').Replace('"usedPercent":26,"remainingPercent":74','"usedPercent":99.99995,"remainingPercent":5.0000000001659828E-05').Replace('"usedPercent":89,"remainingPercent":11','"usedPercent":1.4210854715202004E-14,"remainingPercent":100')}})
+    [void]$cases.Add(@{name='reading too large to write without an exponent';files=@{'policy.json'=$policy;'status.json'=$status.Replace('"used7d":54','"used7d":1E+16')}})
     [void]$cases.Add(@{name='text where a percentage belongs';files=@{'policy.json'=$policy;'status.json'=$status.Replace('"used5h":38','"used5h":"38"')}})
     [void]$cases.Add(@{name='usage that is an object';files=@{'policy.json'=$policy;'status.json'=$status.Replace('"used7d":54','"used7d":{"value":54}')}})
 
-    # Input PowerShell answers from but the reader does not model. It must decline.
-    $decline={param([string]$Name,[string]$Text,[string]$PolicyText=$policy) [void]$cases.Add(@{name=$Name;files=@{'policy.json'=$PolicyText;'status.json'=$Text};expect='decline'})}
-    & $decline 'time in a regional form' $status.Replace('{"generatedAt":"@t-42s@"','{"generatedAt":"9/12/2026 11:59:18 AM +00:00"')
-    & $decline 'time without an offset' ($status.Replace('"observedAt":"@t-42s@","active":true','"observedAt":"2026-09-12T11:59:18","active":true'))
-    & $decline 'time without seconds' ($status.Replace('"observedAt":"@t-42s@","active":true','"observedAt":"2026-09-12T11:59Z","active":true'))
-    & $decline 'number with an exponent' ($status.Replace('"used5h":38','"used5h":3.8e1'))
-    & $decline 'negative zero' ($status.Replace('"used5h":38','"used5h":-0.0'))
-    & $decline 'number beyond 64 bits' ($status.Replace('"used5h":38','"used5h":18446744073709551616'))
-    & $decline 'number with more digits than a decimal holds' ($status.Replace('"used5h":38','"used5h":38.00000000000000000000000000001'))
-    & $decline 'repeated property name' ($status.Replace('"active":1,','"active":1,"Active":2,'))
-    & $decline 'property name outside ASCII' ($status.Replace('"active":1,',('"active":1,"caf'+[char]0xe9+'":2,')))
-    & $decline 'empty property name' ($status.Replace('"active":1,','"active":1,"":2,'))
-    & $decline 'old Microsoft date text' ($status.Replace('"label":"Everyday"','"label":"\/Date(1791000000000)\/"'))
-    & $decline 'comment in a state file' ($status.Replace('{"generatedAt"','{/* note */"generatedAt"'))
-    & $decline 'trailing comma' ($status.Replace('"hold":null,"slots"','"hold":null,"slots"').Replace(']}}}',']}},}'))
-    & $decline 'single quoted text' ($status.Replace('"label":"Everyday"',"`"label`":'Everyday'"))
-    & $decline 'array where the provider object belongs' ($status.Replace('"providers":{"codex":{','"providers":{"codex":[{').Replace(']}}}',']}]}}'))
+    # Files that are not the JSON HotPl8 writes. PowerShell's parser takes them and the
+    # reader's does not: it refuses them and names the file.
+    $refuse={param([string]$Name,[string]$Text,[string]$PolicyText=$policy) [void]$cases.Add(@{name=$Name;files=@{'policy.json'=$PolicyText;'status.json'=$Text};expect='refuse'})}
+    & $refuse 'time in a regional form' $status.Replace('{"generatedAt":"@t-42s@"','{"generatedAt":"9/12/2026 11:59:18 AM +00:00"')
+    & $refuse 'time without an offset' ($status.Replace('"observedAt":"@t-42s@","active":true','"observedAt":"2026-09-12T11:59:18","active":true'))
+    & $refuse 'time without seconds' ($status.Replace('"observedAt":"@t-42s@","active":true','"observedAt":"2026-09-12T11:59Z","active":true'))
+    & $refuse 'negative zero' ($status.Replace('"used5h":38','"used5h":-0.0'))
+    & $refuse 'number beyond 64 bits' ($status.Replace('"used5h":38','"used5h":18446744073709551616'))
+    & $refuse 'number with more digits than a decimal holds' ($status.Replace('"used5h":38','"used5h":38.00000000000000000000000000001'))
+    & $refuse 'repeated property name' ($status.Replace('"active":1,','"active":1,"Active":2,'))
+    & $refuse 'property name outside ASCII' ($status.Replace('"active":1,',('"active":1,"caf'+[char]0xe9+'":2,')))
+    & $refuse 'empty property name' ($status.Replace('"active":1,','"active":1,"":2,'))
+    & $refuse 'old Microsoft date text' ($status.Replace('"label":"Everyday"','"label":"\/Date(1791000000000)\/"'))
+    & $refuse 'comment in a state file' ($status.Replace('{"generatedAt"','{/* note */"generatedAt"'))
+    & $refuse 'trailing comma' ($status.Replace('"hold":null,"slots"','"hold":null,"slots"').Replace(']}}}',']}},}'))
+    & $refuse 'single quoted text' ($status.Replace('"label":"Everyday"',"`"label`":'Everyday'"))
+    & $refuse 'array where the provider object belongs' ($status.Replace('"providers":{"codex":{','"providers":{"codex":[{').Replace(']}}}',']}]}}'))
     return $cases.ToArray()
 }

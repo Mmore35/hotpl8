@@ -157,32 +157,6 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$S
     }
     return $s
 }
-# The text of `hotpl8 status`. $Now is the request's single clock reading, so
-# every line describes the same instant.
-function Format-Hotpl8Status($Status,$Policy,[string]$StateDirectory,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    Format-Hotpl8Overview $Status.providerOverview | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
-    'HotPl8 | generated ' + (ConvertTo-Hotpl8SafeText $Status.generatedAt)
-    if($Status.collector){Get-Hotpl8Health $Status.collector $Now}
-    $pause=Get-Hotpl8Pause $StateDirectory $Now
-    if($pause){'AUTOMATION PAUSED: '+(ConvertTo-Hotpl8SafeText $pause.reason)}
-    $age = ($Now - [datetimeoffset]::Parse($Status.generatedAt)).TotalSeconds
-    if ($age -gt 900 -or $age -lt -5) { 'STALE: refresh before relying on these readings.' }
-    foreach($registration in @(Get-Hotpl8ConfiguredProviders $Policy)){
-        $view=Get-Hotpl8ProviderView $Status $Policy $registration.id
-        if($view.provider -eq 'claude'){
-            ConvertTo-Hotpl8SafeText ($registration.name+': active slot '+$view.snapshot.active+' | '+$view.snapshot.verdict)
-            foreach($account in @($view.snapshot.slots)){
-                $fiveHour=if($null -eq $account.used5h){'unknown'}else{[string](100-$account.used5h)+'% remaining'}
-                $weekly=if($null -eq $account.used7d){'unknown'}else{[string](100-$account.used7d)+'% remaining'}
-                ConvertTo-Hotpl8SafeText ('  '+$account.label+' ['+$account.slot+'] 5h '+$fiveHour+' | 7d '+$weekly+' | '+$account.status)
-                if($account.warmOutcome){'    warm: '+$account.warmOutcome.outcome}
-                if((Test-Hotpl8FreshTimestamp $account.observedAt $Now) -and $account.forecast){'    '+(Format-Hotpl8Forecast $account.forecast)}
-            }
-        }elseif($view.snapshot.providers.codex){
-            Format-CodexStatus $view.snapshot.providers.codex $view.policy.codex $Now|ForEach-Object {ConvertTo-Hotpl8SafeText ($_ -replace '^Codex', $registration.name)}
-        }else{$registration.name+': not configured or no observation yet.'}
-    }
-}
 function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     if(-not $Snapshot -or -not $Snapshot.generatedAt){'No observation. Run hotpl8 refresh.';return}
     try{$age=($Now-[datetimeoffset]::Parse($Snapshot.generatedAt)).TotalSeconds}catch{$age=99999}

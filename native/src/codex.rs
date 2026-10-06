@@ -46,7 +46,7 @@ pub fn select_codex_slot(slots: &[V], policy: &V, meter: &str, previous_id: &str
 }
 
 /// `$reasons`: a table keyed by slot name. Its comparison ignores case by the rules of
-/// the current culture, so names that differ by case alone decline.
+/// the current culture, so names that differ by case alone are not read.
 #[derive(Default)]
 struct Reasons(Vec<(String, V)>);
 impl Reasons {
@@ -56,7 +56,7 @@ impl Reasons {
                 return Ok(Some(index));
             }
             if !printable(known) || !printable(key) || known.eq_ignore_ascii_case(key) {
-                return decline();
+                return unreadable();
             }
         }
         Ok(None)
@@ -118,7 +118,7 @@ pub fn format_codex_status(codex: &V, policy: &V, now: Dto) -> R<Vec<String>> {
                     "unknown".to_string()
                 } else {
                     let at = Dto::from_unix_seconds(resets_at.to_long()?)?;
-                    Dto { ticks: at.ticks, offset_minutes: local_offset_minutes(at, now)? }.month_day_time()
+                    Dto { ticks: at.ticks, offset_minutes: local_offset_minutes(at)? }.month_day_time()
                 };
                 let duration = if text_eq(&window, "300")? { "5h" } else { "7d" };
                 parts.push(cat!(duration, " ", w.g("remainingPercent")?, "% remaining; reset ", reset, " (", w.g("anchorState")?, ")"));

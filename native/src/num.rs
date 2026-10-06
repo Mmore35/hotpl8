@@ -1,8 +1,8 @@
 //! Numbers as the two PowerShell editions compute and print them: the 96-bit decimal
 //! Windows PowerShell gives every JSON fraction, and the text forms of a double.
-//! Anything outside what is modelled here declines, so PowerShell answers instead.
+//! Anything outside what is modelled here stops as unreadable: no state HotPl8 writes reaches it.
 
-use crate::ps::{decline, desktop, throw, R};
+use crate::ps::{unreadable, desktop, throw, R};
 use std::cmp::Ordering;
 
 pub const MAX96: u128 = (1u128 << 96) - 1;
@@ -49,15 +49,15 @@ impl Dec {
     }
 
     /// A finished result. A zero that came out of a negative operand would be a negative
-    /// zero, which the editions print differently; that is declined.
+    /// zero, which the editions print differently; that is not read.
     #[track_caller]
     fn done(neg: bool, mant: u128, scale: u32, negative_operand: bool) -> R<Dec> {
         if mant > MAX96 || scale > 28 {
-            return decline();
+            return unreadable();
         }
         if mant == 0 {
             if negative_operand {
-                return decline();
+                return unreadable();
             }
             return Ok(Dec { neg: false, mant: 0, scale: scale as u8 });
         }
@@ -70,7 +70,7 @@ impl Dec {
         let mut drop = scale.saturating_sub(28);
         loop {
             if drop > 38 {
-                return decline();
+                return unreadable();
             }
             if value / pow10(drop) <= MAX96 {
                 break;
@@ -109,7 +109,7 @@ impl Dec {
             }
             return Dec::done(neg, product, scale, negative);
         }
-        let Some(product) = self.mant.checked_mul(other.mant) else { return decline() };
+        let Some(product) = self.mant.checked_mul(other.mant) else { return unreadable() };
         if product == 0 {
             return Dec::done(false, 0, 0, negative);
         }
@@ -125,7 +125,7 @@ impl Dec {
         let right = other.mant.checked_mul(pow10(scale - other.scale as u32));
         match (left, right) {
             (Some(left), Some(right)) => Ok((left, right, scale)),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
 
@@ -134,7 +134,7 @@ impl Dec {
         let negative = self.neg || other.neg;
         let (left, right, scale) = self.aligned(other)?;
         let (neg, value) = if self.neg == other.neg {
-            let Some(sum) = left.checked_add(right) else { return decline() };
+            let Some(sum) = left.checked_add(right) else { return unreadable() };
             (self.neg, sum)
         } else if left >= right {
             (self.neg, left - right)
@@ -159,7 +159,7 @@ impl Dec {
     #[track_caller]
     pub fn negated(self) -> R<Dec> {
         if self.is_zero() {
-            return decline();
+            return unreadable();
         }
         Ok(Dec { neg: !self.neg, ..self })
     }
@@ -233,9 +233,9 @@ impl Dec {
                 break;
             }
             scale += power as i32;
-            let Some(scaled) = rest.checked_mul(pow10(power)) else { return decline() };
+            let Some(scaled) = rest.checked_mul(pow10(power)) else { return unreadable() };
             let Some(next) = quotient.checked_mul(pow10(power)).and_then(|q| q.checked_add(scaled / divisor)) else {
-                return decline();
+                return unreadable();
             };
             quotient = next;
             rest = scaled % divisor;
@@ -251,7 +251,7 @@ impl Dec {
             }
         }
         if scale < 0 {
-            return decline();
+            return unreadable();
         }
         Dec::done(neg, quotient, scale as u32, negative)
     }
@@ -418,22 +418,28 @@ fn tenths_text(neg: bool, digits: &str) -> String {
 }
 
 /// The fifteen significant decimal digits .NET formats a double with, and the power of ten
-/// of the first one. Rounding starts from the exact binary value; an exact tie goes up on
-/// Windows PowerShell and to even on PowerShell 7.
+/// of the first one.
 fn fifteen_digits(value: f64) -> (Vec<u8>, i32) {
+    significant_digits(value, 15)
+}
+
+/// That many significant decimal digits of a double, and the power of ten of the first
+/// one. Rounding starts from the exact binary value; an exact tie goes up on Windows
+/// PowerShell and to even on PowerShell 7.
+fn significant_digits(value: f64, count: usize) -> (Vec<u8>, i32) {
     let exact = format!("{:.800e}", value.abs());
     let (mantissa, exponent) = exact.split_once('e').expect("exponent form");
     let mut exponent: i32 = exponent.parse().expect("exponent");
     let all: Vec<u8> = mantissa.bytes().filter(|b| *b != b'.').map(|b| b - b'0').collect();
-    let mut digits = all[..15].to_vec();
-    let tail_is_zero = all[16..].iter().all(|d| *d == 0);
-    let up = match all[15].cmp(&5) {
+    let mut digits = all[..count].to_vec();
+    let tail_is_zero = all[count + 1..].iter().all(|d| *d == 0);
+    let up = match all[count].cmp(&5) {
         Ordering::Greater => true,
         Ordering::Less => false,
-        Ordering::Equal => !tail_is_zero || desktop() || digits[14] % 2 == 1,
+        Ordering::Equal => !tail_is_zero || desktop() || digits[count - 1] % 2 == 1,
     };
     if up {
-        let mut index = 15;
+        let mut index = count;
         loop {
             if index == 0 {
                 digits.insert(0, 1);
@@ -458,16 +464,22 @@ pub fn double_text(value: f64) -> String {
     if value == 0.0 {
         return if value.is_sign_negative() && !desktop() { "-0".into() } else { "0".into() };
     }
-    let (mut digits, exponent) = fifteen_digits(value);
+    let (digits, exponent) = fifteen_digits(value);
+    general(value < 0.0, digits, exponent, 15)
+}
+
+/// .NET's "G" form of those digits: plain, or with an exponent once the first digit is
+/// worth 10 to the `precision` or less than 0.0001.
+fn general(negative: bool, mut digits: Vec<u8>, exponent: i32, precision: i32) -> String {
     while digits.len() > 1 && digits[digits.len() - 1] == 0 {
         digits.pop();
     }
     let text: String = digits.iter().map(|d| (b'0' + d) as char).collect();
     let mut out = String::new();
-    if value < 0.0 {
+    if negative {
         out.push('-');
     }
-    if exponent >= 15 || exponent < -4 {
+    if exponent >= precision || exponent < -4 {
         out.push_str(&text[..1]);
         if text.len() > 1 {
             out.push('.');
@@ -492,6 +504,40 @@ pub fn double_text(value: f64) -> String {
         }
     }
     out
+}
+
+/// ConvertTo-Json's text for a double. Windows PowerShell writes fifteen digits where they
+/// read back as the same double and seventeen where they do not; PowerShell 7 writes the
+/// fewest digits that read back, and marks a whole number with ".0".
+pub fn double_json(value: f64) -> String {
+    if desktop() {
+        if value == 0.0 {
+            return "0".into();
+        }
+        let (digits, exponent) = fifteen_digits(value);
+        let short = general(value < 0.0, digits, exponent, 15);
+        if short.parse::<f64>() == Ok(value) {
+            return short;
+        }
+        let (digits, exponent) = significant_digits(value, 17);
+        return general(value < 0.0, digits, exponent, 17);
+    }
+    if value == 0.0 {
+        return if value.is_sign_negative() { "-0.0".into() } else { "0.0".into() };
+    }
+    let shortest = format!("{:e}", value.abs());
+    let (mantissa, exponent) = shortest.split_once('e').expect("exponent form");
+    let fewest: Vec<u8> = mantissa.bytes().filter(|b| *b != b'.').map(|b| b - b'0').collect();
+    // Where two texts of that length are equally near, .NET takes the even one.
+    let (digits, exponent) = match significant_digits(value, fewest.len()) {
+        (digits, exponent) if general(false, digits.clone(), exponent, 17).parse::<f64>() == Ok(value.abs()) => (digits, exponent),
+        _ => (fewest, exponent.parse().expect("exponent")),
+    };
+    let mut text = general(value < 0.0, digits, exponent, 17);
+    if !text.contains(['.', 'E']) {
+        text.push_str(".0");
+    }
+    text
 }
 
 /// '{0:0.#}' -f $double: the fifteen digits, then half away from zero at one fraction digit.
@@ -541,7 +587,7 @@ pub fn double_tenths(value: f64) -> String {
 #[track_caller]
 pub fn round1(value: f64) -> R<f64> {
     if !value.is_finite() || value.abs() >= 1e16 {
-        return decline();
+        return unreadable();
     }
     Ok((value * 10.0).round_ties_even() / 10.0)
 }
@@ -662,6 +708,33 @@ mod tests {
         assert_eq!(double_text(f64::from_bits(4816244402031689760)), "100000000000000");
         assert_eq!(double_text(f64::from_bits(4827858800541171716)), "562949953421312");
         assert_eq!(double_text(-0.0), "-0");
+    }
+
+    #[test]
+    fn doubles_are_spelled_as_convertto_json_spells_them() {
+        // Each line: the double, Windows PowerShell 5.1's text, PowerShell 7.6's text.
+        let written = [
+            (0.00001, "1E-05", "1E-05"),
+            (0.0001, "0.0001", "0.0001"),
+            (0.00012345, "0.00012345", "0.00012345"),
+            (100.0 - 99.99995, "5.0000000001659828E-05", "5.000000000165983E-05"),
+            (100.0 - 99.99999999999999, "1.4210854715202004E-14", "1.4210854715202004E-14"),
+            (1e15, "1E+15", "1000000000000000.0"),
+            (1e16, "1E+16", "10000000000000000.0"),
+            (123456789012345678.0, "1.2345678901234568E+17", "1.2345678901234568E+17"),
+            (26.0, "26", "26.0"),
+            (0.0, "0", "0.0"),
+            (100.0 - 99.9, "0.099999999999994316", "0.09999999999999432"),
+            (-73.5, "-73.5", "-73.5"),
+            // Halfway between two seventeen-digit texts: up on one edition, to even on the other.
+            (f64::from_bits(0x4306f95d5e502a01), "808328612152640.13", "808328612152640.1"),
+        ];
+        for (value, desktop_text, core_text) in written {
+            set_core(false);
+            assert_eq!(double_json(value), desktop_text);
+            set_core(true);
+            assert_eq!(double_json(value), core_text);
+        }
         assert_eq!(double_tenths(-0.04), "-0");
         set_core(false);
         assert_eq!(double_tenths(-0.04), "0");

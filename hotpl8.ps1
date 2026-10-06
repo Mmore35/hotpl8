@@ -46,24 +46,18 @@ param(
 
 $ErrorActionPreference = 'Stop'
 try {
-    # A plain version, status or explain request is answered by the compiled reader when this
-    # release ships a matching one. These only read; refresh and tick never go there. Anything
-    # else, including a reader that declines, continues below unchanged.
+    # version, status and explain are answered by the compiled reader, their only
+    # implementation. A plain request goes there before anything else is loaded. One with other
+    # parameters is checked below like any command, and then asks the same reader.
+    # No Join-Path here: see the note on modules at the top of src/native.ps1.
+    . ([IO.Path]::Combine($PSScriptRoot,'src','native.ps1'))
     # The Mac launcher adds its Codex binding to every request; none of the three reads it.
-    $nativeAllowed=switch($Command){
+    $plain=switch($Command){
         'version'{@('Command','AsJson','CodexExecutable')}
         {$_ -in 'status','explain'}{@('Command','AsJson','StateDirectory','PreviewPolicy','CodexExecutable')}
     }
-    if($nativeAllowed -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin $nativeAllowed}).Count){
-        # No Join-Path here: see the note on modules at the top of src/native.ps1.
-        . ([IO.Path]::Combine($PSScriptRoot,'src','native.ps1'))
-        $nativeArguments=@($Command,'--root',$PSScriptRoot)
-        if($StateDirectory){$nativeArguments+=@('--state',$StateDirectory)}
-        if($PreviewPolicy){$nativeArguments+=@('--policy',$PreviewPolicy)}
-        if($AsJson){$nativeArguments+='-AsJson'}
-        $nativeText=Invoke-Hotpl8Native $PSScriptRoot $nativeArguments
-        # Text is one line per output object, as the PowerShell implementation writes it; JSON is one string.
-        if($null -ne $nativeText){if($AsJson){$nativeText}else{$nativeText.Split("`n")};exit 0}
+    if($plain -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin $plain}).Count){
+        Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy $AsJson
     }
     . (Join-Path $PSScriptRoot 'src/common.ps1')
     if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}
@@ -100,13 +94,7 @@ try {
     }
 
     # These commands do not need an existing policy or a provider observation.
-    if ($Command -eq 'version') {
-        $version=(Get-Content (Join-Path $PSScriptRoot 'VERSION') -Raw).Trim()
-        $build=Read-Hotpl8Json (Join-Path $PSScriptRoot 'build-info.json')
-        if($AsJson){[pscustomobject]@{version=$version;build=$build}|ConvertTo-Json -Depth 4}
-        elseif($build.sha){$version+' main '+$build.sha.Substring(0,12)}else{$version}
-        exit 0
-    }
+    if ($Command -eq 'version') { Exit-Hotpl8Native $PSScriptRoot 'version' '' '' $AsJson }
     if ($Command -eq 'help') {
         'nyan: dashboard with animated Nyan Cat; -ReducedMotion / -NoColor supported.'
         'accounts -Operation capacity -Provider claude -Slot 1 -CapacityProfile claude-pro -WeeklyCapacity 1 -FiveHourCapacity 0.1 (supply calibrated values). '
@@ -404,22 +392,10 @@ try {
         $Command = 'status'
     }
 
-    # One clock reading per request: every line of an answer describes the same instant.
-    $now=[datetimeoffset]::UtcNow
-    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -SkipDisplay:($Command -eq 'codex') -Now $now
-    if($Command -eq 'explain'){
-        if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory $now) -Force}
-        if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}
-        else{Format-Hotpl8Explanation $status $now|ForEach-Object {ConvertTo-Hotpl8SafeText $_}}
-        exit 0
-    }
-    if ($Command -eq 'status') {
-        if (-not $status -or -not $status.generatedAt) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
-        if ($AsJson) { $status | ConvertTo-Json -Depth 24; exit 0 }
-        Format-Hotpl8Status $status $policy $StateDirectory $now
-        exit 0
-    }
+    # refresh and tick end here too, with the status they collected.
+    if ($Command -in @('status', 'explain')) { Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy $AsJson }
 
+    $status = Read-Hotpl8Snapshot $StateDirectory -SkipDisplay
     $launchControls=Get-Hotpl8ControlSnapshot $StateDirectory
     $policy=$launchControls.policy;Assert-Hotpl8Policy $policy
     $view=Get-Hotpl8ProviderView $status $policy $Provider

@@ -1,12 +1,13 @@
-//! State files as ConvertFrom-Json reads them on each PowerShell edition, and the two ways
-//! a value leaves the reader: JSON text, and the typed dump the parity suite compares.
+//! State files, with the number types ConvertFrom-Json gives them on each PowerShell
+//! edition, and the two ways a value leaves the reader: JSON text, and the typed dump the
+//! parity suite compares.
 //!
-//! The parser accepts strict JSON only. Wherever the two editions' parsers disagree with
-//! each other or with strict JSON (comments, trailing commas, date text, huge numbers,
-//! repeated names), it declines.
+//! The parser accepts strict JSON only, which is all HotPl8 writes. Where PowerShell's own
+//! parsers are looser (comments, trailing commas, date text, huge numbers, repeated names)
+//! the file is refused by name, with the line and column where it stops being strict JSON.
 
 use crate::num::Dec;
-use crate::ps::{decline, desktop, printable, Props, R, V};
+use crate::ps::{desktop, printable, unreadable, unreadable_as, Props, R, V};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -15,46 +16,57 @@ const MAX_DEPTH: usize = 20;
 const FORBIDDEN_NAMES: [&str; 6] = ["psobject", "psbase", "psadapted", "psextended", "pstypenames", "__type"];
 
 /// The file's value, or `None` when the file does not exist.
-#[track_caller]
 pub fn read_file(path: &std::path::Path) -> R<Option<V>> {
+    let name = || path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned();
     match std::fs::read(path) {
-        Ok(bytes) => Ok(Some(parse_bytes(&bytes)?)),
+        Ok(bytes) => Ok(Some(parse_bytes(&bytes, &name())?)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             // A missing directory in the middle of the path reads as "not found" too.
             Ok(None)
         }
-        Err(_) => decline(),
+        Err(error) => unreadable_as(format!("{} cannot be opened: {error}.", name())),
     }
 }
 
-#[track_caller]
-pub fn parse_bytes(bytes: &[u8]) -> R<V> {
+/// `name` is what the user is told the document is, should it not be one.
+pub fn parse_bytes(bytes: &[u8], name: &str) -> R<V> {
     if bytes.len() > MAX_BYTES {
-        return decline();
+        return unreadable_as(format!("{name} is larger than any file HotPl8 writes."));
     }
-    // A UTF-16 or UTF-32 byte order mark switches the .NET reader to that encoding.
-    if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) || bytes.starts_with(&[0, 0, 0xfe, 0xff]) {
-        return decline();
-    }
+    // UTF-8, with or without its mark, is the one encoding HotPl8 writes.
     let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
-    let Ok(text) = std::str::from_utf8(bytes) else { return decline() };
-    parse(text)
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return unreadable_as(format!("{name} is not UTF-8 text."));
+    };
+    parse(text, name)
 }
 
 /// A JSON document whose top level is an object.
-#[track_caller]
-pub fn parse(text: &str) -> R<V> {
+pub fn parse(text: &str, name: &str) -> R<V> {
     let mut parser = Parser { bytes: text.as_bytes(), at: 0 };
+    parser.document().map_err(|stop| {
+        stop.described(|| {
+            let before = &text[..parser.at.min(text.len())];
+            let line = before.matches('\n').count() + 1;
+            let column = before.rsplit('\n').next().unwrap_or("").chars().count() + 1;
+            format!("{name} is not JSON as HotPl8 writes it (line {line}, column {column}).")
+        })
+    })
+}
+
+/// A line holding one JSON array of strings: how the parity suite spells a request.
+pub fn strings(line: &str) -> Option<Vec<String>> {
+    let mut parser = Parser { bytes: line.as_bytes(), at: 0 };
     parser.blank();
-    if parser.peek() != Some(b'{') {
-        return decline();
+    if parser.peek() != Some(b'[') {
+        return None;
     }
-    let value = parser.value(0)?;
+    let V::Arr(items) = parser.array(0).ok()? else { return None };
     parser.blank();
     if parser.at != parser.bytes.len() {
-        return decline();
+        return None;
     }
-    Ok(value)
+    items.iter().map(|item| item.as_str().map(str::to_owned)).collect()
 }
 
 struct Parser<'a> {
@@ -63,6 +75,18 @@ struct Parser<'a> {
 }
 
 impl Parser<'_> {
+    fn document(&mut self) -> R<V> {
+        self.blank();
+        if self.peek() != Some(b'{') {
+            return unreadable();
+        }
+        let value = self.value(0)?;
+        self.blank();
+        if self.at != self.bytes.len() {
+            return unreadable();
+        }
+        Ok(value)
+    }
     fn peek(&self) -> Option<u8> {
         self.bytes.get(self.at).copied()
     }
@@ -77,13 +101,13 @@ impl Parser<'_> {
             self.at += text.len();
             Ok(())
         } else {
-            decline()
+            unreadable()
         }
     }
 
     fn value(&mut self, depth: usize) -> R<V> {
         if depth > MAX_DEPTH {
-            return decline();
+            return unreadable();
         }
         match self.peek() {
             Some(b'{') => self.object(depth),
@@ -93,7 +117,7 @@ impl Parser<'_> {
             Some(b'f') => self.expect("false").map(|_| V::Bool(false)),
             Some(b'n') => self.expect("null").map(|_| V::Null),
             Some(b'-' | b'0'..=b'9') => self.number(),
-            _ => decline(),
+            _ => unreadable(),
         }
     }
 
@@ -107,15 +131,15 @@ impl Parser<'_> {
             loop {
                 self.blank();
                 if self.peek() != Some(b'"') {
-                    return decline();
+                    return unreadable();
                 }
                 let name = self.string()?;
                 let lower = name.to_ascii_lowercase();
                 if name.is_empty() || !printable(&name) || FORBIDDEN_NAMES.contains(&lower.as_str()) {
-                    return decline();
+                    return unreadable();
                 }
                 if items.iter().any(|(known, _)| known.eq_ignore_ascii_case(&name)) {
-                    return decline();
+                    return unreadable();
                 }
                 self.blank();
                 self.expect(":")?;
@@ -129,7 +153,7 @@ impl Parser<'_> {
                         self.at += 1;
                         break;
                     }
-                    _ => return decline(),
+                    _ => return unreadable(),
                 }
             }
         }
@@ -153,7 +177,7 @@ impl Parser<'_> {
                         self.at += 1;
                         break;
                     }
-                    _ => return decline(),
+                    _ => return unreadable(),
                 }
             }
         }
@@ -161,10 +185,10 @@ impl Parser<'_> {
     }
 
     fn hex4(&mut self) -> R<u32> {
-        let Some(digits) = self.bytes.get(self.at..self.at + 4) else { return decline() };
-        let Ok(text) = std::str::from_utf8(digits) else { return decline() };
+        let Some(digits) = self.bytes.get(self.at..self.at + 4) else { return unreadable() };
+        let Ok(text) = std::str::from_utf8(digits) else { return unreadable() };
         if !text.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return decline();
+            return unreadable();
         }
         self.at += 4;
         Ok(u32::from_str_radix(text, 16).unwrap())
@@ -204,24 +228,24 @@ impl Parser<'_> {
                                 self.expect("\\u")?;
                                 let low = self.hex4()?;
                                 if !(0xdc00..0xe000).contains(&low) {
-                                    return decline();
+                                    return unreadable();
                                 }
                                 0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00)
                             } else {
                                 unit
                             };
-                            let Some(c) = char::from_u32(code) else { return decline() };
+                            let Some(c) = char::from_u32(code) else { return unreadable() };
                             out.push(c);
                         }
-                        _ => return decline(),
+                        _ => return unreadable(),
                     }
                 }
-                _ => return decline(),
+                _ => return unreadable(),
             }
         }
         // Windows PowerShell turns "\/Date(...)\/" text into a date.
         if out.contains("/Date(") {
-            return decline();
+            return unreadable();
         }
         Ok(out)
     }
@@ -238,7 +262,7 @@ impl Parser<'_> {
         }
         let whole = &self.bytes[whole_start..self.at];
         if whole.is_empty() || (whole.len() > 1 && whole[0] == b'0') {
-            return decline();
+            return unreadable();
         }
         let mut fraction: &[u8] = &[];
         if self.peek() == Some(b'.') {
@@ -249,20 +273,44 @@ impl Parser<'_> {
             }
             fraction = &self.bytes[fraction_start..self.at];
             if fraction.is_empty() {
-                return decline();
+                return unreadable();
             }
         }
-        // Exponents become doubles on one edition and are spelled differently by both.
+        // PowerShell writes a double below 0.0001 or from 1E+15 with an exponent.
+        let exponent = matches!(self.peek(), Some(b'e' | b'E'));
+        if exponent {
+            self.at += 1;
+            if matches!(self.peek(), Some(b'+' | b'-')) {
+                self.at += 1;
+            }
+            let power = self.at;
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.at += 1;
+            }
+            if self.at == power {
+                return unreadable();
+            }
+        }
         if matches!(self.peek(), Some(b'e' | b'E' | b'.' | b'+' | b'-')) || whole.len() + fraction.len() > 28 {
-            return decline();
+            return unreadable();
         }
         let token = std::str::from_utf8(&self.bytes[start..self.at]).unwrap();
         let all_zero = whole.iter().chain(fraction).all(|b| *b == b'0');
         if negative && all_zero {
-            return decline();
+            return unreadable();
+        }
+        if exponent {
+            // A double on both editions, whatever else the number holds. One too large for
+            // a double is refused by Windows PowerShell and infinite in PowerShell 7, and
+            // one too small for a full double is nothing HotPl8 writes.
+            let Ok(value) = token.parse::<f64>() else { return unreadable() };
+            if value.is_subnormal() || (value == 0.0 && !all_zero) {
+                return unreadable();
+            }
+            return crate::ps::dbl(value);
         }
         if fraction.is_empty() {
-            let Ok(value) = token.parse::<i64>() else { return decline() };
+            let Ok(value) = token.parse::<i64>() else { return unreadable() };
             return Ok(match i32::try_from(value) {
                 Ok(small) if desktop() => V::I32(small),
                 _ => V::I64(value),
@@ -270,11 +318,22 @@ impl Parser<'_> {
         }
         if desktop() {
             let digits: String = whole.iter().chain(fraction).map(|b| *b as char).collect();
-            let Ok(mant) = digits.parse::<u128>() else { return decline() };
+            let Ok(mant) = digits.parse::<u128>() else { return unreadable() };
             return Ok(V::Dec(Dec { neg: negative, mant, scale: fraction.len() as u8 }));
         }
-        let Ok(value) = token.parse::<f64>() else { return decline() };
+        let Ok(value) = token.parse::<f64>() else { return unreadable() };
         crate::ps::dbl(value)
+    }
+}
+
+/// A number as this edition reads its text.
+pub fn number(text: &str) -> R<V> {
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0 };
+    let value = parser.number()?;
+    if parser.at == text.len() {
+        Ok(value)
+    } else {
+        unreadable()
     }
 }
 
@@ -323,7 +382,7 @@ fn dump_node(value: &V, indent: usize, label: &str, out: &mut String) -> R<()> {
             out.push('}');
         }
         // PowerShell lists a hash table in an order of its own.
-        V::Hash(_) => return decline(),
+        V::Hash(_) => return unreadable(),
     }
     out.push('\n');
     Ok(())
@@ -357,7 +416,7 @@ fn write_text(text: &str, out: &mut String) {
 fn write_node(value: &V, depth: usize, limit: usize, out: &mut String) -> R<()> {
     // Past its -Depth, ConvertTo-Json prints type names instead of values.
     if depth > limit {
-        return decline();
+        return unreadable();
     }
     let pad = "  ".repeat(depth + 1);
     match value {
@@ -366,8 +425,8 @@ fn write_node(value: &V, depth: usize, limit: usize, out: &mut String) -> R<()> 
         V::I32(x) => out.push_str(&x.to_string()),
         V::I64(x) => out.push_str(&x.to_string()),
         V::Dec(x) => out.push_str(&x.text()),
-        V::Dbl(x) if x.is_finite() => out.push_str(&format!("{x:?}")),
-        V::Dbl(_) | V::Hash(_) => return decline(),
+        V::Dbl(x) if x.is_finite() => out.push_str(&crate::num::double_json(*x)),
+        V::Dbl(_) | V::Hash(_) => return unreadable(),
         V::Str(text) => write_text(text, out),
         V::Arr(items) if items.is_empty() => out.push_str("[]"),
         V::Arr(items) => {
@@ -410,6 +469,7 @@ pub fn write(value: &V, limit: usize) -> R<String> {
 }
 
 /// Whether two parsed values hold the same data with the same types.
+#[cfg(test)]
 pub fn same(left: &V, right: &V) -> bool {
     match (left, right) {
         (V::Null, V::Null) => true,
@@ -437,16 +497,16 @@ mod tests {
     fn numbers_take_each_editions_types() {
         let text = r#"{"a":5,"b":3000000000,"c":45.0,"d":-0.5,"e":"xé\\","f":[true,null],"g":{}}"#;
         set_core(false);
-        assert_eq!(dump(&parse(text).ok().unwrap()).ok().unwrap(), "{\n a: i:5\n b: l:3000000000\n c: m:45.0\n d: m:-0.5\n e: s:x\\u00e9\\\\\n f: [\n  b:true\n  n\n ]\n g: {\n }\n}\n");
+        assert_eq!(dump(&parse(text, "test").ok().unwrap()).ok().unwrap(), "{\n a: i:5\n b: l:3000000000\n c: m:45.0\n d: m:-0.5\n e: s:x\\u00e9\\\\\n f: [\n  b:true\n  n\n ]\n g: {\n }\n}\n");
         set_core(true);
         assert_eq!(
-            dump(&parse(text).ok().unwrap()).ok().unwrap(),
+            dump(&parse(text, "test").ok().unwrap()).ok().unwrap(),
             "{\n a: l:5\n b: l:3000000000\n c: d:4046800000000000\n d: d:bfe0000000000000\n e: s:x\\u00e9\\\\\n f: [\n  b:true\n  n\n ]\n g: {\n }\n}\n"
         );
     }
 
     #[test]
-    fn anything_the_editions_read_differently_is_declined() {
+    fn anything_but_strict_json_is_refused_by_name_and_place() {
         for text in [
             "",
             "null",
@@ -460,7 +520,14 @@ mod tests {
             r#"{"__type":"x"}"#,
             r#"{"a":"\/Date(1791000000000)\/"}"#,
             r#"{"a":"\ud800"}"#,
-            r#"{"a":1e3}"#,
+            r#"{"a":1e}"#,
+            r#"{"a":1e+}"#,
+            r#"{"a":1e3.5}"#,
+            r#"{"a":1e3e3}"#,
+            r#"{"a":1e400}"#,
+            r#"{"a":1e-400}"#,
+            r#"{"a":5E-324}"#,
+            r#"{"a":-0e0}"#,
             r#"{"a":-0}"#,
             r#"{"a":-0.0}"#,
             r#"{"a":9223372036854775808}"#,
@@ -470,19 +537,28 @@ mod tests {
             r#"{"a":1 /* c */}"#,
             "{\"a\":\"line\nbreak\"}",
         ] {
-            assert!(parse(text).is_err(), "{text}");
+            assert!(parse(text, "test").is_err_and(|stop| !stop.thrown()), "{text}");
         }
-        assert!(parse_bytes(&[0xff, 0xfe, b'{', 0, b'}', 0]).is_err());
-        assert!(parse_bytes(b"\xef\xbb\xbf{}").is_ok());
-        assert!(parse_bytes(b"{\"a\":\"\xff\"}").is_err());
+        // A number with an exponent is a double, as PowerShell reads the ones it wrote.
+        for (text, value) in [("1e3", 1000.0), ("3.8E+1", 38.0), ("1E-05", 0.00001), ("5.0000000001659828E-05", 100.0 - 99.99995), ("-1.5e2", -150.0), ("0e0", 0.0), ("2.2250738585072014E-308", f64::MIN_POSITIVE)] {
+            assert!(matches!(parse(&format!("{{\"a\":{text}}}"), "test").unwrap().g("a").unwrap(), V::Dbl(read) if read == value), "{text}");
+        }
+        let said = |bytes: &[u8]| parse_bytes(bytes, "policy.json").err().map(|stop| stop.message());
+        assert_eq!(said(b"\xef\xbb\xbf{}"), None);
+        assert_eq!(said(&[0xff, 0xfe, b'{', 0, b'}', 0]).unwrap(), "policy.json is not UTF-8 text.");
+        assert_eq!(said(b"{\"a\":\"\xff\"}").unwrap(), "policy.json is not UTF-8 text.");
+        assert_eq!(said(b"").unwrap(), "policy.json is not JSON as HotPl8 writes it (line 1, column 1).");
+        assert_eq!(said(b"{\r\n  \"a\": 1,\r\n  \"b\": 1,\r\n}").unwrap(), "policy.json is not JSON as HotPl8 writes it (line 4, column 1).");
+        assert_eq!(said("{\"a\": \"\u{e9}\u{1F431}\", \"b\": -}".as_bytes()).unwrap(), "policy.json is not JSON as HotPl8 writes it (line 1, column 19).");
+        assert_eq!(said(&vec![b' '; MAX_BYTES + 1]).unwrap(), "policy.json is larger than any file HotPl8 writes.");
     }
 
     #[test]
     fn json_text_round_trips() {
         set_core(true);
-        let value = parse(r#"{"a":[1,2.5,"x\"y",{"b":null}],"c":{},"d":[]}"#).ok().unwrap();
+        let value = parse(r#"{"a":[1,2.5,"x\"y",{"b":null}],"c":{},"d":[]}"#, "test").ok().unwrap();
         let text = write(&value, 24).ok().unwrap();
-        assert!(same(&parse(&text).ok().unwrap(), &value));
+        assert!(same(&parse(&text, "test").ok().unwrap(), &value));
         assert!(write(&value, 1).is_err());
     }
 }

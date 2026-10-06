@@ -19,6 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "delivery"))
 import runner as d
 from package import package
 
+
+def product_files(source):
+    """What a Windows release archive holds: the shared files and the compiled reader."""
+    listed = d.read(source / "release-files.json")
+    return [*listed["files"], *listed["platformFiles"]["windows"]]
+
 A, B, C = "a" * 40, "b" * 40, "c" * 40
 
 
@@ -194,7 +200,7 @@ export async function main(config, args) {
     def make_t3_package(self, sha, broken=False):
         source = Path(__file__).resolve().parents[1]
         with zipfile.ZipFile(self.source, "w") as z:
-            for name in d.read(source / "release-files.json")["files"]:
+            for name in product_files(source):
                 if name == "src/t3-codex.mjs":
                     z.writestr(name, "not valid javascript {" if broken else self.bridge)
                 elif name == "src/t3-launcher.cs" and sha == A:
@@ -582,7 +588,7 @@ export async function main(config, args) {
         d.write(self.root / "current.json", self.previous)
         shutil.copyfile(source / "policy.example.json", self.state / "policy.json")
         with zipfile.ZipFile(self.source, "w") as z:
-            for name in d.read(source / "release-files.json")["files"]:
+            for name in product_files(source):
                 z.write(source / name, name)
         package(self.source, self.archive, "hotpl8", "example/hotpl8", B)
         candidate = self.root / "releases" / B
@@ -641,7 +647,7 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
     @unittest.skipUnless(os.name == "nt", "Windows product adapter")
     def test_real_product_package_preflight_and_readiness(self):
         source = Path(__file__).resolve().parents[1]
-        inventory = d.read(source / "release-files.json")["files"]
+        inventory = product_files(source)
         with zipfile.ZipFile(self.source, "w") as z:
             for name in inventory:
                 z.write(source / name, name)
@@ -657,13 +663,13 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         self.assertEqual(d.read(self.state / "ledger.json"), {"request": 42})
 
     @unittest.skipUnless(os.name == "nt", "Windows native reader delivery")
-    def test_native_reader_upgrade_fallback_and_rollback(self):
+    def test_native_reader_is_delivered_required_and_rolled_back(self):
         source = Path(__file__).resolve().parents[1]
-        native = source / "bin/windows/hotpl8-native.exe"
+        relative = "bin/windows/hotpl8-native.exe"
+        native = source / relative
         self.assertTrue(native.is_file(), "Build the native reader first: scripts/build-native.ps1")
         identity = subprocess.run([str(native), "self-check"], capture_output=True, timeout=30).stdout.decode()
-        self.assertRegex(identity, r"\Ahotpl8-native protocol=2 sha=[a-f0-9]{40}\n\Z")
-        new = identity.strip()[-40:]
+        self.assertRegex(identity, r"\Ahotpl8-native sha=([a-f0-9]{40}|unknown)\n\Z")
         version = (source / "VERSION").read_text().strip()
         ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
         self.config["adapter"] = "delivery/hotpl8-adapter.ps1"
@@ -673,56 +679,57 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         d.write(self.root / "current.json", self.previous)
         shutil.copyfile(source / "policy.example.json", self.state / "policy.json")
 
-        def build(sha, extra=()):
+        def build(sha, reader=native.read_bytes()):
             with zipfile.ZipFile(self.source, "w") as z:
-                for name in [*d.read(source / "release-files.json")["files"], *extra]:
+                for name in d.read(source / "release-files.json")["files"]:
                     z.write(source / name, name)
+                if reader is not None:
+                    z.writestr(relative, reader)
             package(self.source, self.archive, "hotpl8", "example/hotpl8", sha)
 
-        def ask(*arguments, native=True):
-            environment = {key: value for key, value in os.environ.items() if key.upper() != "HOTPL8_NATIVE"}
-            if not native:
-                environment["HOTPL8_NATIVE"] = "0"
+        def ask(*arguments):
             # The same command line as the installed hotpl8.cmd.
-            result = subprocess.run([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(self.root / "launch.ps1"),
-                                     "-Entry", "hotpl8", "version", *arguments], env=environment, capture_output=True, timeout=180)
+            return subprocess.run([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(self.root / "launch.ps1"),
+                                   "-Entry", "hotpl8", "version", *arguments], capture_output=True, timeout=180)
+
+        def answer(*arguments):
+            result = ask(*arguments)
             self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
             return result.stdout.decode().replace("\r\n", "\n")
 
-        # The installed release predates the reader: the same code without a compiled file.
         build(A)
         old = self.root / "releases" / A
         d.unpack(self.archive, old, self.config, A)
         d.write(self.root / "receipts" / (A + ".json"), {"manifestDigest": d.digest(old / "delivery-manifest.json")})
         shutil.copyfile(old / "delivery/launch.ps1", self.root / "launch.ps1")
-        self.assertEqual(ask(), version + " main " + A[:12] + "\n")
-        build(new, ["bin/windows/hotpl8-native.exe"])
+        self.assertEqual(answer(), version + " main " + A[:12] + "\n")
+        # A release whose reader is missing, or is not a program, is refused before it is selected.
+        for sha, reader in ((B, None), (C, b"not a program")):
+            build(sha, reader)
+            self.github.sha = sha
+            self.assertEqual(d.update(self.root, self.github)["state"], "error")
+            self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+            self.assertEqual(answer(), version + " main " + A[:12] + "\n")
+        new = "d" * 40
+        build(new)
         self.github.sha = new
         self.assertEqual(d.update(self.root, self.github)["state"], "current")
         self.assertEqual(d.read(self.root / "current.json")["sha"], new)
-        installed = self.root / "releases" / new / "bin/windows/hotpl8-native.exe"
+        installed = self.root / "releases" / new / relative
         self.assertEqual(d.digest(installed), d.digest(native))
-        self.assertEqual(ask(), version + " main " + new[:12] + "\n")
-        # Windows PowerShell writes two spaces after a colon and the reader one, which
-        # shows through the stable launcher which of them answered.
-        record = {"version": version, "build": {"protocol": 1, "product": "hotpl8", "repository": "example/hotpl8", "sha": new, "channel": "main"}}
-        answer = ask("-AsJson")
-        self.assertIn('"version": "', answer)
-        self.assertEqual(json.loads(answer), record)
-        answer = ask("-AsJson", native=False)
-        self.assertIn('"version":  "', answer)
-        self.assertEqual(json.loads(answer), record)
+        self.assertEqual(answer(), version + " main " + new[:12] + "\n")
+        self.assertEqual(json.loads(answer("-AsJson")), {"version": version, "build": {
+            "protocol": 1, "product": "hotpl8", "repository": "example/hotpl8", "sha": new, "channel": "main"}})
+        # Damage after installation is said plainly: nothing else answers these commands.
         installed.write_bytes(b"not a program")
-        answer = ask("-AsJson")
-        self.assertIn('"version":  "', answer)
-        self.assertEqual(json.loads(answer), record)
-        installed.unlink()
-        self.assertEqual(ask(), version + " main " + new[:12] + "\n")
-        # Pointer rollback selects the release that has no reader.
+        result = ask()
+        self.assertEqual((result.returncode, result.stdout), (1, b""))
+        self.assertIn(b"HotPl8: This copy has no compiled reader it can start", result.stderr)
+        # Pointer rollback selects the previous release, and its own reader answers.
         d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": new}})
         self.assertEqual(d.update(self.root, self.github)["state"], "pending")
         self.assertEqual(d.read(self.root / "current.json")["sha"], A)
-        self.assertEqual(ask(), version + " main " + A[:12] + "\n")
+        self.assertEqual(answer(), version + " main " + A[:12] + "\n")
 
     def test_preview_is_repeatable_and_never_selects_production(self):
         self.config["previewWorkflow"] = "ci.yml"

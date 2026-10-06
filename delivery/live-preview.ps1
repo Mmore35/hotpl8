@@ -36,40 +36,29 @@ try {
     Write-Hotpl8Text (Join-Path $state 'policy.json') ($fixture.policy | ConvertTo-Json -Depth 20)
     Write-Hotpl8Text (Join-Path $state 'status.json') ($fixture.status | ConvertTo-Json -Depth 20)
     [Console]::Title = $PrUrl + ' / ' + $Revision.Substring(0,12) + ' / DEMO'
-    # A candidate with a compiled reader is asked for the dashboard first, the way its own
-    # entry script asks for a display command: the command, who is asking, then where to
-    # read. A reader without a dashboard declines with 64 before it prints anything, and the
-    # candidate's PowerShell dashboard runs. HOTPL8_NATIVE=0 previews that one directly.
+    # A candidate's compiled reader is asked for the dashboard first, in the words a user
+    # types after `hotpl8`. One that has no dashboard answers 64 before it prints anything,
+    # and the candidate's PowerShell dashboard runs.
     $compiled = $false
-    $routing = Join-Path $source 'src/native.ps1'
-    if ([IO.File]::Exists($routing)) {
-        . $routing
-        if (Get-Command Get-Hotpl8NativeIdentity -ErrorAction SilentlyContinue) {
-            $reader = Get-Hotpl8NativePath $source
-            $identity = Get-Hotpl8NativeIdentity $source
-            if ($reader -and $identity) {
-                $info = New-Object Diagnostics.ProcessStartInfo
-                $info.FileName = $reader
-                $info.Arguments = (@(@('nyan') + $identity + @('--root', $source, '--state', $state) | ForEach-Object {
-                    if ($_.Length -gt 0 -and $_ -notmatch '[\s"]') { $_ }
-                    else { '"' + [regex]::Replace([regex]::Replace($_, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1') + '"' }
-                }) -join ' ')
-                # The terminal is inherited, not piped; only diagnostics are collected.
-                $info.UseShellExecute = $false
-                $info.RedirectStandardError = $true
-                $process = [Diagnostics.Process]::Start($info)
-                try {
-                    $diagnostics = $process.StandardError.ReadToEndAsync()
-                    $process.WaitForExit()
-                    if ($process.ExitCode -ne 64) {
-                        # A compiled dashboard that fails is shown failing, not replaced.
-                        $compiled = $true
-                        $code = $process.ExitCode
-                        if ($code -ne 0) { [Console]::Error.WriteLine(('Candidate reader exited with ' + $code + '. ' + $diagnostics.Result).Trim()) }
-                    }
-                } finally { $process.Dispose() }
+    $reader = Join-Path $source $(if ($env:OS -eq 'Windows_NT') { 'bin/windows/hotpl8-native.exe' } else { 'bin/macos/hotpl8-native' })
+    if ([IO.File]::Exists($reader)) {
+        $info = New-Object Diagnostics.ProcessStartInfo
+        $info.FileName = $reader
+        $info.Arguments = (@('user', 'nyan', '-StateDirectory', $state) | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' '
+        # The terminal is inherited, not piped; only diagnostics are collected.
+        $info.UseShellExecute = $false
+        $info.RedirectStandardError = $true
+        $process = [Diagnostics.Process]::Start($info)
+        try {
+            $diagnostics = $process.StandardError.ReadToEndAsync()
+            $process.WaitForExit()
+            if ($process.ExitCode -ne 64) {
+                # A compiled dashboard that fails is shown failing, not replaced.
+                $compiled = $true
+                $code = $process.ExitCode
+                if ($code -ne 0) { [Console]::Error.WriteLine(('Candidate reader exited with ' + $code + '. ' + $diagnostics.Result).Trim()) }
             }
-        }
+        } finally { $process.Dispose() }
     }
     if (-not $compiled) { Show-Hotpl8Dashboard $state -Nyan }
 } finally {

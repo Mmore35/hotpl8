@@ -8,48 +8,59 @@ use crate::obj;
 use crate::ps::*;
 use crate::time::Dto;
 use std::cell::RefCell;
+use std::path::PathBuf;
 
 thread_local! {
-    static CATALOG: RefCell<V> = const { RefCell::new(V::Null) };
+    static SOURCE: RefCell<PathBuf> = RefCell::new(PathBuf::new());
+    static CATALOG: RefCell<Option<V>> = const { RefCell::new(None) };
 }
-/// The parsed data/capacity-profiles.json this request answers from.
-pub fn set_catalog(catalog: V) {
-    CATALOG.with(|cell| *cell.borrow_mut() = catalog);
+/// The data/capacity-profiles.json this request's release ships. It is read when a rule
+/// first asks for it, as PowerShell reads it.
+pub fn set_source(file: PathBuf) {
+    SOURCE.with(|cell| *cell.borrow_mut() = file);
+    CATALOG.with(|cell| *cell.borrow_mut() = None);
 }
 /// Get-Hotpl8CapacityCatalog
-pub fn catalog() -> V {
-    CATALOG.with(|cell| cell.borrow().clone())
+pub fn catalog() -> R<V> {
+    if let Some(known) = CATALOG.with(|cell| cell.borrow().clone()) {
+        return Ok(known);
+    }
+    let Some(read) = crate::json::read_file(&SOURCE.with(|cell| cell.borrow().clone()))? else {
+        return unreadable_as("This copy of HotPl8 has no data/capacity-profiles.json.");
+    };
+    CATALOG.with(|cell| *cell.borrow_mut() = Some(read.clone()));
+    Ok(read)
 }
 
 /// Assert-Hotpl8CapacityPolicy
 pub fn assert_capacity_policy(part: &V) -> R<()> {
     for (name, c) in part.g("capacity")?.props()? {
         if !slot_name(&name, 40) || !c.is_obj() {
-            return throw();
+            return fail("Invalid capacity account.");
         }
         for (field, _) in c.props()? {
             if !V::s_of(&field).in_s(&["profile", "weekly", "fiveHour", "scoped", "evidence"])? {
-                return throw();
+                return fail("Invalid capacity field.");
             }
         }
         let profile = c.g("profile")?;
-        if profile.t()? && !catalog().g("profiles")?.gd(&profile.s()?)?.t()? {
-            return throw();
+        if profile.t()? && !catalog()?.g("profiles")?.gd(&profile.s()?)?.t()? {
+            return fail("Unknown capacity profile.");
         }
         for key in ["weekly", "fiveHour"] {
             let value = c.g(key)?;
             if !value.is_null() && (!value.is_number() || value.le_i(0)? || value.gt_i(1000000)?) {
-                return throw();
+                return fail("Capacity must be a positive finite number.");
             }
         }
         for (scope, value) in c.g("scoped")?.props()? {
             if !slot_name(&scope, 80) || !value.is_number() || value.le_i(0)? || value.gt_i(1000000)? {
-                return throw();
+                return fail("Invalid scoped capacity.");
             }
         }
         let evidence = c.g("evidence")?;
         if evidence.t()? && length(&evidence.s()?) > 240 {
-            return throw();
+            return fail("Capacity evidence is too long.");
         }
     }
     Ok(())
@@ -79,7 +90,7 @@ pub fn account_capacity(part: &V, slot: &str, provider: &str, meter: &str, detec
     } else {
         V::Null
     };
-    let mut profile = if profile_id.t()? { catalog().g("profiles")?.gd(&profile_id.s()?)? } else { V::Null };
+    let mut profile = if profile_id.t()? { catalog()?.g("profiles")?.gd(&profile_id.s()?)? } else { V::Null };
     if profile.t()? && (profile.g("provider")?.ne_s(provider)? || (provider == "codex" && profile.g("meter")?.ne(&V::s_of(meter))?)) {
         profile = V::Null;
     }
@@ -157,7 +168,7 @@ fn least_usable(windows: &[V]) -> R<V> {
 /// Get-Hotpl8CapacityAccounts
 pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter: &str, quota_headroom: bool) -> R<Vec<V>> {
     let claude = provider == "claude";
-    let ids = if claude { part.g("prefer")?.arr() } else { pluck(&part.g("slots")?.arr(), "id")? };
+    let ids = held(if claude { part.g("prefer")?.arr() } else { pluck(&part.g("slots")?.arr(), "id")? })?;
     let disabled = part.g("disabled")?.arr();
     let ids = unique(&filter(&ids, |id| Ok(!id.is_null() && !id.is_in_list(&disabled)?))?)?;
     let mut seen = Keys::new();
@@ -171,7 +182,7 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
         let s = if slot.len() == 1 { slot[0].clone() } else { V::Null };
         let stream = s.g("streamKey")?;
         if stream.t()? && s.g("status")?.in_s(&["ok", "duplicate_subscription"])? {
-            let V::Str(key) = &stream else { return decline() };
+            let V::Str(key) = &stream else { return unreadable() };
             if seen.contains(key)? {
                 continue;
             }
@@ -235,7 +246,7 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
         }
         let mut basis = "calibrated";
         if quota_headroom {
-            let profile = if c.g("profile")?.t()? { catalog().g("profiles")?.gd(&c.g("profile")?.s()?)? } else { V::Null };
+            let profile = if c.g("profile")?.t()? { catalog()?.g("profiles")?.gd(&c.g("profile")?.s()?)? } else { V::Null };
             let primary = primary_window(&windows)?;
             let primary_full = match &primary {
                 Some(window) => window.g("full")?,

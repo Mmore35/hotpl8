@@ -1,21 +1,18 @@
-# The referee for the compiled reader: PowerShell's own answers to `hotpl8 status` and
-# `hotpl8 explain`, as text and with -AsJson, computed in this process at a pinned instant.
+# The referee for the compiled reader. `hotpl8 status` and `hotpl8 explain` are the reader's,
+# but the rules they show are still computed twice: the collector, the dashboard and the tray
+# read the state through PowerShell (Read-Hotpl8Snapshot). Until those ask the reader too,
+# this holds the two to each other. It computes, in this process and at a pinned instant,
+# what PowerShell's rules give for the files the reader is shown.
 #
-# It repeats the few lines of hotpl8.ps1 between reading the policy and printing, because
-# the entry script reads the real clock. tests/test-native-parity.ps1 also runs cases
-# through the real entry script, so those lines cannot drift unnoticed.
-#
-# The four forms share one reading of the files, taken in an order that shows each form the
-# snapshot a run of its own would see: `status` first, then the pause `explain` adds. That
-# holds while printing changes nothing in the snapshot, which the suite checks by asking for
-# single forms too (-Only). Reading once is what makes a thousand comparisons affordable.
+# It holds no rule of its own: it calls what the product calls, in the order
+# hotpl8.ps1 called it when these commands were PowerShell's.
 #
 # An answer is one of:
-#   kind='text'   lines  - what the command prints, one string per line
-#   kind='value'  dump   - the typed form of the object -AsJson serialises (see below);
-#                 json   - PowerShell's own text for it
-#   kind='error'  message - the command fails; the reader must decline
-function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,[datetimeoffset]$Now,[string]$Only) {
+#   kind='value'  dump   - the typed form of the value -AsJson serialises (see below);
+#                 json   - PowerShell's own JSON text for it
+#   kind='text'   text   - what the command prints, each line ended by a line feed
+#   kind='error'  message - PowerShell's rules refuse the files
+function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,[datetimeoffset]$Now) {
     $answers=@{}
     try {
         $policy = Read-Hotpl8Json $(if($PreviewPolicy){$PreviewPolicy}else{Join-Path $StateDirectory 'policy.json'})
@@ -24,38 +21,29 @@ function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,
         $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -Now $Now
     } catch {
         $failed=@{kind='error';message=$_.Exception.Message}
-        foreach($mode in 'status','status-json','explain','explain-json'){$answers[$mode]=$failed}
+        foreach($mode in 'status-json','explain','explain-json'){$answers[$mode]=$failed}
         return $answers
     }
     if (-not $status -or -not $status.generatedAt) {
-        $answers['status']=$answers['status-json']=@{kind='text';lines=@('No cached status. Run hotpl8 refresh.')}
+        $answers['status-json']=@{kind='text';text="No cached status. Run hotpl8 refresh.`n"}
     } else {
-        if(-not $Only -or $Only -eq 'status-json'){
-            try { $answers['status-json']=@{kind='value';json=($status | ConvertTo-Json -Depth 24)} } catch { $answers['status-json']=@{kind='error';message=$_.Exception.Message} }
-            # Typed before `explain` adds to the snapshot. A failure here is the suite's own.
-            if($answers['status-json'].kind -eq 'value'){$answers['status-json'].dump=ConvertTo-Hotpl8ParityDump $status}
-        }
-        if(-not $Only -or $Only -eq 'status'){
-            try { $answers['status']=@{kind='text';lines=@(Format-Hotpl8Status $status $policy $StateDirectory $Now)} } catch { $answers['status']=@{kind='error';message=$_.Exception.Message} }
-        }
+        try { $answers['status-json']=@{kind='value';json=($status | ConvertTo-Json -Depth 24)} } catch { $answers['status-json']=@{kind='error';message=$_.Exception.Message} }
+        # Typed before the pause is added to the snapshot. A failure here is the suite's own.
+        if($answers['status-json'].kind -eq 'value'){$answers['status-json'].dump=ConvertTo-Hotpl8ParityDump $status}
     }
-    if($Only -and -not $Only.StartsWith('explain')){return $answers}
     try {
         if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory $Now) -Force}
     } catch {
         $answers['explain']=$answers['explain-json']=@{kind='error';message=$_.Exception.Message}
         return $answers
     }
-    if(-not $Only -or $Only -eq 'explain-json'){
-        try {
-            $shown=[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}
-            $answers['explain-json']=@{kind='value';json=($shown|ConvertTo-Json -Depth 16)}
-        } catch { $answers['explain-json']=@{kind='error';message=$_.Exception.Message} }
-        if($answers['explain-json'].kind -eq 'value'){$answers['explain-json'].dump=ConvertTo-Hotpl8ParityDump $shown}
-    }
-    if(-not $Only -or $Only -eq 'explain'){
-        try { $answers['explain']=@{kind='text';lines=@(Format-Hotpl8Explanation $status $Now|ForEach-Object {ConvertTo-Hotpl8SafeText $_})} } catch { $answers['explain']=@{kind='error';message=$_.Exception.Message} }
-    }
+    try {
+        # The five members `explain -AsJson` has always had.
+        $shown=[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}
+        $answers['explain-json']=@{kind='value';json=($shown|ConvertTo-Json -Depth 16)}
+    } catch { $answers['explain-json']=@{kind='error';message=$_.Exception.Message} }
+    if($answers['explain-json'].kind -eq 'value'){$answers['explain-json'].dump=ConvertTo-Hotpl8ParityDump $shown}
+    try { $answers['explain']=@{kind='text';text=((@(Format-Hotpl8Explanation $status $Now|ForEach-Object {ConvertTo-Hotpl8SafeText $_}) -join "`n")+"`n")} } catch { $answers['explain']=@{kind='error';message=$_.Exception.Message} }
     $answers
 }
 
@@ -68,75 +56,79 @@ function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,
 #   [ ... ]  array         { ... }  object, in property order
 #   h{ ... }  hash table, keys in ordinal order (a hash table has no defined order)
 #   v  a property holding "no value" rather than null     ?:Type  anything else
-function ConvertTo-Hotpl8ParityString([string]$Text) {
-    if($Text -cmatch '\A[\x20-\x5b\x5d-\x7e]*\z'){return $Text}
-    $builder=New-Object Text.StringBuilder
-    foreach($c in $Text.ToCharArray()){
-        $n=[int]$c
-        if($n -eq 92){[void]$builder.Append('\\')}
-        elseif($n -lt 32 -or $n -gt 126){[void]$builder.Append('\u'+$n.ToString('x4'))}
-        else{[void]$builder.Append($c)}
-    }
-    $builder.ToString()
-}
-function Add-Hotpl8ParityNode([Collections.Generic.List[string]]$Out,[string]$Indent,[string]$Label,$Value) {
-    $head=$Indent+$Label
-    $invariant=[Globalization.CultureInfo]::InvariantCulture
-    if($null -eq $Value){$Out.Add($head+'n');return}
-    if($Value -is [bool]){$Out.Add($head+$(if($Value){'b:true'}else{'b:false'}));return}
-    if($Value -is [int]){$Out.Add($head+'i:'+$Value.ToString($invariant));return}
-    if($Value -is [long]){$Out.Add($head+'l:'+$Value.ToString($invariant));return}
-    if($Value -is [decimal]){$Out.Add($head+'m:'+$Value.ToString($invariant));return}
-    if($Value -is [double]){$Out.Add($head+'d:'+[BitConverter]::DoubleToInt64Bits($Value).ToString('x16'));return}
-    if($Value -is [string]){$Out.Add($head+'s:'+(ConvertTo-Hotpl8ParityString $Value));return}
-    $inner=$Indent+' '
-    if($Value -is [array]){
-        $Out.Add($head+'[')
-        for($i=0;$i -lt $Value.Length;$i++){Add-Hotpl8ParityNode $Out $inner '' $Value[$i]}
-        $Out.Add($Indent+']');return
-    }
-    if($Value -is [Collections.IDictionary]){
-        $Out.Add($head+'h{')
-        $keys=@($Value.Keys|ForEach-Object {[string]$_});[Array]::Sort($keys,[StringComparer]::Ordinal)
-        foreach($key in $keys){Add-Hotpl8ParityNode $Out $inner ((ConvertTo-Hotpl8ParityString $key)+': ') $Value[$key]}
-        $Out.Add($Indent+'}');return
-    }
-    if($Value.GetType().FullName -eq 'System.Management.Automation.PSCustomObject'){
-        $Out.Add($head+'{')
-        foreach($property in $Value.PSObject.Properties){
-            $label=(ConvertTo-Hotpl8ParityString $property.Name)+': '
-            # "No value" turns into null when it is passed to a function, so it is tested here.
-            # It equals null but, unlike null, is an object.
-            if($null -eq $property.Value -and $property.Value -is [psobject]){$Out.Add($inner+$label+'v')}
-            else{Add-Hotpl8ParityNode $Out $inner $label $property.Value}
+# The walk is compiled: in PowerShell it took longer than the rules it checks.
+if(-not ('HotPl8.ParityDump' -as [type])){
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Management.Automation;
+using System.Management.Automation.Internal;
+using System.Text;
+namespace HotPl8 {
+    public static class ParityDump {
+        public static string Write(object value) {
+            StringBuilder text = new StringBuilder();
+            Node(text, "", null, value);
+            return text.ToString();
         }
-        $Out.Add($Indent+'}');return
-    }
-    $Out.Add($head+'?:'+$Value.GetType().FullName)
-}
-function ConvertTo-Hotpl8ParityDump($Value) {
-    $out=New-Object 'Collections.Generic.List[string]'
-    Add-Hotpl8ParityNode $out '' '' $Value
-    ($out -join "`n")+"`n"
-}
-
-# Case files carry times relative to the instant a case runs at, so the same text serves a
-# pinned instant and the real clock:
-#   @t-42s@  that instant minus 42 seconds, as 2026-09-12T11:59:18.0000000+00:00
-#   @z+2h@   the same, as 2026-09-12T14:00:00Z
-#   @f+83m@  the same, as 2026-09-12T13:23:00.250000+00:00 (the instant plus a quarter second)
-#   @u+3d@   the same, as Unix seconds
-# Units are s, m, h and d.
-function Expand-Hotpl8ParityText([string]$Text,[datetimeoffset]$Now) {
-    [regex]::Replace($Text,'@([tuzf])([+-]\d+)([smhd])@',{
-        param($match)
-        $amount=[int]$match.Groups[2].Value
-        $at=switch($match.Groups[3].Value){'s'{$Now.AddSeconds($amount)}'m'{$Now.AddMinutes($amount)}'h'{$Now.AddHours($amount)}default{$Now.AddDays($amount)}}
-        switch($match.Groups[1].Value){
-            't'{$at.ToString('o')}
-            'z'{$at.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ',[Globalization.CultureInfo]::InvariantCulture)}
-            'f'{$at.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ss',[Globalization.CultureInfo]::InvariantCulture)+'.250000+00:00'}
-            default{$at.ToUnixTimeSeconds().ToString([Globalization.CultureInfo]::InvariantCulture)}
+        static void Quote(StringBuilder text, string value) {
+            foreach (char c in value) {
+                if (c == '\\') text.Append("\\\\");
+                else if (c < 32 || c > 126) text.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                else text.Append(c);
+            }
         }
-    })
+        static void Node(StringBuilder text, string indent, string name, object value) {
+            CultureInfo invariant = CultureInfo.InvariantCulture;
+            text.Append(indent);
+            if (name != null) { Quote(text, name); text.Append(": "); }
+            if (value == null || value == AutomationNull.Value) { text.Append("n\n"); return; }
+            // PowerShell wraps some values; only an object it built itself has no value underneath.
+            PSObject wrapped = value as PSObject;
+            bool custom = wrapped != null && wrapped.BaseObject is PSCustomObject;
+            if (wrapped != null && !custom) value = wrapped.BaseObject;
+            if (value is bool) { text.Append((bool)value ? "b:true\n" : "b:false\n"); return; }
+            if (value is int) { text.Append("i:").Append(((int)value).ToString(invariant)).Append('\n'); return; }
+            if (value is long) { text.Append("l:").Append(((long)value).ToString(invariant)).Append('\n'); return; }
+            if (value is decimal) { text.Append("m:").Append(((decimal)value).ToString(invariant)).Append('\n'); return; }
+            if (value is double) { text.Append("d:").Append(BitConverter.DoubleToInt64Bits((double)value).ToString("x16", invariant)).Append('\n'); return; }
+            string plain = value as string;
+            if (plain != null) { text.Append("s:"); Quote(text, plain); text.Append('\n'); return; }
+            string inner = indent + " ";
+            Array items = value as Array;
+            if (items != null) {
+                text.Append("[\n");
+                foreach (object item in items) Node(text, inner, null, item);
+                text.Append(indent).Append("]\n");
+                return;
+            }
+            IDictionary table = value as IDictionary;
+            if (table != null) {
+                text.Append("h{\n");
+                List<KeyValuePair<string, object>> entries = new List<KeyValuePair<string, object>>();
+                foreach (DictionaryEntry entry in table) entries.Add(new KeyValuePair<string, object>(Convert.ToString(entry.Key, invariant), entry.Value));
+                entries.Sort(delegate(KeyValuePair<string, object> a, KeyValuePair<string, object> b) { return string.CompareOrdinal(a.Key, b.Key); });
+                foreach (KeyValuePair<string, object> entry in entries) Node(text, inner, entry.Key, entry.Value);
+                text.Append(indent).Append("}\n");
+                return;
+            }
+            if (custom) {
+                text.Append("{\n");
+                foreach (PSPropertyInfo property in wrapped.Properties) {
+                    object held = property.Value;
+                    // "No value" is not null: it is what a command that wrote nothing leaves behind.
+                    if (held == AutomationNull.Value) { text.Append(inner); Quote(text, property.Name); text.Append(": v\n"); }
+                    else Node(text, inner, property.Name, held);
+                }
+                text.Append(indent).Append("}\n");
+                return;
+            }
+            text.Append("?:").Append(value.GetType().FullName).Append('\n');
+        }
+    }
 }
+'@
+}
+function ConvertTo-Hotpl8ParityDump($Value) { [HotPl8.ParityDump]::Write($Value) }

@@ -1,23 +1,37 @@
-# What the compiled reader answers for status and explain must be what PowerShell answers.
-# The referee is PowerShell itself (tests/parity/referee.ps1), asked in this process at a
-# pinned instant; the reader is asked the same question about the same files. A reader that
-# declines is not wrong, PowerShell answers then, but a case says when declining is allowed.
+# `hotpl8 status` and `hotpl8 explain` are the compiled reader's, but the rules they show are
+# still computed twice: by the reader for those two commands, and by PowerShell for the
+# collector, the dashboard and the tray. This suite holds the two to each other and pins what
+# the reader prints.
 #
-# Starting a program costs more than any answer, so the reader answers a whole set of cases
-# in one start (its batch command) and PowerShell reads each case's files once for all four
-# forms. Both shortcuts are checked against the long way on a few cases.
+#   data     What PowerShell's rules compute from a set of files (tests/parity/referee.ps1) is
+#            what the reader computes, value for value and type for type. Where PowerShell
+#            refuses the files the reader refuses them, in the same words when the words are
+#            HotPl8's own.
+#   explain  The lines the tray builds its text from are the lines the reader prints.
+#   status   PowerShell has no status text. What the reader prints for each case is compared
+#            with tests/parity/expected-status.txt. After a change that is meant, run this
+#            suite with -Update and review the difference like any other change.
 #
-# The reader follows the number and time rules of the PowerShell that asks, so on Windows
-# the suite runs under Windows PowerShell and again under PowerShell 7. Offline; every
-# name, label and reading in the cases is fictional.
+# Starting a program costs more than any answer, so the reader answers all the questions of a
+# check in one start (its batch command), and PowerShell reads each case's files once.
 #
-#   -Only NAME   run the cases whose name matches the wildcard, and nothing else
+# The reader computes as the PowerShell that collects on its platform does: Windows
+# PowerShell 5.1 on Windows, PowerShell 7 elsewhere. The data is compared under the rules of
+# the PowerShell this suite runs in, so scripts/test.ps1 covers the first and the Mac suite
+# the second; run it in the other PowerShell to compare those rules on this machine. The
+# expected text holds both. Offline; every name, label and reading in the cases is fictional.
+#
+#   -Only NAME   run the cases whose name matches the wildcard, and nothing else. A variation
+#                is named by its seed and number: -Only 'fuzz 7-203*' makes that one again
 #   -Fuzz N      how many seeded variations to add (0 for none); -Seed chooses which
 #   -Deep        at least 1,500 variations
-#   -Inner       this is the second pass; do not start another
-param([string]$Only,[int]$Fuzz=150,[int]$Seed=1,[switch]$Deep,[switch]$Inner)
+#   -Update      write what the reader prints now to the expected text, then check as usual
+param([string]$Only,[int]$Fuzz=150,[int]$Seed=1,[switch]$Deep,[switch]$Update)
 $ErrorActionPreference='Stop'
 if($Deep){$Fuzz=[Math]::Max($Fuzz,1500)}
+if($Update -and $Only){throw 'The expected text is written for every case; leave out -Only.'}
+$variation=$Only -match '^fuzz (\d+)-(\d+)'
+if($variation){$Seed=[int]$Matches[1];$Fuzz=[int]$Matches[2]}
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
@@ -29,22 +43,30 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'parity/cases.ps1')
 . (Join-Path $PSScriptRoot 'parity/fuzz.ps1')
 $windows=$env:OS -eq 'Windows_NT'
-if(-not $windows -and -not $IsMacOS){throw 'This suite requires Windows or macOS.'}
-$relative=if($windows){'bin/windows/hotpl8-native.exe'}else{'bin/macos/hotpl8-native'}
-$real=Join-Path $root $relative
+$real=Get-Hotpl8NativePath $root
 if(-not [IO.File]::Exists($real)){throw 'Build the native reader first: scripts/build-native.ps1'}
-$shell=(Get-Process -Id $PID).Path
 $edition=if($PSVersionTable.PSEdition -eq 'Core'){'core'}else{'desktop'}
 $shellVersion=$PSVersionTable.PSVersion
-$followed=if($edition -eq 'core'){$shellVersion.Major -gt 7 -or ($shellVersion.Major -eq 7 -and $shellVersion.Minor -ge 5)}else{$shellVersion.Major -eq 5 -and $shellVersion.Minor -eq 1}
+if($edition -eq 'core' -and ($shellVersion.Major -lt 7 -or ($shellVersion.Major -eq 7 -and $shellVersion.Minor -lt 5))){throw 'The reader computes as PowerShell 7.5 or later does. Run this suite in one, or in Windows PowerShell.'}
 $now=[datetimeoffset]::Parse('2026-09-12T12:00:00Z',[Globalization.CultureInfo]::InvariantCulture)
-$modes='status','explain','status-json','explain-json'
+$forms='status-json','explain-json','explain'
+$expectedFile=Join-Path $PSScriptRoot 'parity/expected-status.txt'
 $lab=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-parity-test-'+[guid]::NewGuid().ToString('N'))
-$priorNative=$env:HOTPL8_NATIVE;$priorState=$env:HOTPL8_STATE_DIRECTORY
+$priorState=$env:HOTPL8_STATE_DIRECTORY
 $script:passed=0;$script:failed=0;$script:labs=0;$script:batches=0
+# PowerShell's rules read the provider definitions of the copy they are part of. A case may
+# bring definitions of its own; this names the directory that holds them while that case is
+# computed, and the product's own function reads it.
+$script:definitions=''
+$packagedCatalog=${function:Get-Hotpl8ProviderCatalog}
+function Get-Hotpl8ProviderCatalog([string]$Directory=$script:definitions) {
+    if($Directory){& $packagedCatalog $Directory}else{& $packagedCatalog}
+}
 function Assert($Value,$Message='assertion failed'){if(-not $Value){throw $Message}}
 function Check($Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
-# A case's files in a directory of their own, with every time written relative to $At.
+# A case's files in a directory of their own, with every time written relative to $At. A case
+# with provider definitions gets a copy of the product's data to hold them: the reader is
+# asked as the reader of that copy, and PowerShell's rules are pointed at its definitions.
 function New-Lab($Case,[datetimeoffset]$At) {
     $script:labs++
     $directory=Join-Path $lab ([string]$script:labs)
@@ -55,29 +77,41 @@ function New-Lab($Case,[datetimeoffset]$At) {
     foreach($name in $files.Keys){Write-Hotpl8Text (Join-Path $state $name) (Expand-Hotpl8ParityText $files[$name] $At) -NoBom:([bool]$Case.noBom)}
     $preview=''
     if($Case.ContainsKey('preview')){$preview=Join-Path $directory 'preview-policy.json';Write-Hotpl8Text $preview (Expand-Hotpl8ParityText $Case.preview $At)}
-    [pscustomobject]@{state=$state;preview=$preview}
+    $copy=$root;$definitions=''
+    if($Case.ContainsKey('catalog')){
+        $copy=Join-Path $directory 'root'
+        $definitions=Join-Path $copy 'data/providers'
+        [void][IO.Directory]::CreateDirectory($definitions)
+        Copy-Item -LiteralPath (Join-Path $root 'data/capacity-profiles.json') -Destination (Join-Path $copy 'data')
+        foreach($name in $Case.catalog.Keys){[IO.File]::WriteAllText((Join-Path $definitions $name),$Case.catalog[$name],[Text.UTF8Encoding]::new($false))}
+    }
+    [pscustomobject]@{state=$state;preview=$preview;root=$copy;definitions=$definitions}
 }
-function Get-Expectation($Case,[string]$Mode) {
+# What PowerShell's rules give for a case's files, read from the definitions the case brings.
+function Get-Answers($Place) {
+    $script:definitions=$Place.definitions
+    try{Get-Hotpl8ParityAnswers $Place.state $Place.preview $now}finally{$script:definitions=''}
+}
+function Get-Expectation($Case,[string]$Form) {
     if(-not $Case.ContainsKey('expect')){return 'answer'}
     if($Case.expect -isnot [Collections.IDictionary]){return [string]$Case.expect}
-    if($Case.expect.ContainsKey($Mode)){return [string]$Case.expect[$Mode]}
+    if($Case.expect.ContainsKey($Form)){return [string]$Case.expect[$Form]}
     if($Case.expect.ContainsKey('default')){return [string]$Case.expect['default']}
     'answer'
 }
-# The reader's own command line. -Dump asks for the typed form of the -AsJson value, which
-# shows a number's type and exact digits where JSON text would not.
-function Get-ReaderArguments([string]$Mode,$Place,[switch]$Dump,[switch]$RealClock) {
-    $arguments=@($Mode.Split('-')[0],'--protocol','2','--shell',$edition,'--root',$root,'--state',$Place.state)
+# The reader's own command line for a form: status, explain, status-json or explain-json.
+# -Dump asks for the typed form of the -AsJson value, which shows a number's type and exact
+# digits where JSON text would not. -Shell and -Zone pin what the machine would decide.
+function Get-ReaderArguments([string]$Form,$Place,[switch]$Dump,[string]$Shell=$edition,[string]$Zone) {
+    $arguments=@($Form.Split('-')[0],'--root',$Place.root,'--state',$Place.state,'--shell',$Shell,'--now',$now.ToString('o'))
     if($Place.preview){$arguments+=@('--policy',$Place.preview)}
-    if($Mode.EndsWith('json')){$arguments+='-AsJson';if($Dump){$arguments+='--dump'}}
-    if(-not $RealClock){$arguments+=@('--now',$now.ToString('o'))}
+    if($Form.EndsWith('json')){$arguments+='-AsJson';if($Dump){$arguments+='--dump'}}
+    if($Zone){$arguments+=@('--zone',$Zone)}
     $arguments
 }
-function Invoke-Reader([string]$Mode,$Place,[switch]$Dump,[switch]$RealClock) {
-    Invoke-Hotpl8NativeProcess $real (Get-ReaderArguments $Mode $Place -Dump:$Dump -RealClock:$RealClock) 20000
-}
-# Many questions in one start of the reader: for each, the exit status and output a start of
-# its own would give. The reader writes "<status> <bytes>" on a line, then the output.
+# Many questions in one start of the reader. For each it writes "<kind> <bytes>" on a line,
+# then that many bytes: the output for `answer`, and for a refusal what the user would be
+# told (`ruled` in words HotPl8 has always used, `stopped` in the reader's own).
 function Invoke-ReaderBatch([object[]]$Requests) {
     $script:batches++
     $file=Join-Path $lab ('questions-'+$script:batches+'.txt')
@@ -108,7 +142,7 @@ function Invoke-ReaderBatch([object[]]$Requests) {
         $head=[Text.Encoding]::ASCII.GetString($buffer,$at,$end-$at).Split(' ')
         $length=[int]$head[1]
         if($end+1+$length -gt $buffer.Length){break}
-        [void]$results.Add([pscustomobject]@{exitCode=[int]$head[0];output=$utf8.GetString($buffer,$end+1,$length)})
+        [void]$results.Add([pscustomobject]@{kind=$head[0];output=$utf8.GetString($buffer,$end+1,$length)})
         $at=$end+1+$length
     }
     if($status -ne 0 -or $results.Count -ne $Requests.Count){
@@ -118,46 +152,40 @@ function Invoke-ReaderBatch([object[]]$Requests) {
     }
     ,$results.ToArray()
 }
-function Get-FirstDifference([string]$Expected,[string]$Actual) {
-    $left=$Expected.Split("`n");$right=$Actual.Split("`n")
-    for($index=0;$index -lt [Math]::Max($left.Count,$right.Count);$index++){
-        $a=if($index -lt $left.Count){$left[$index]}else{'<nothing>'}
-        $b=if($index -lt $right.Count){$right[$index]}else{'<nothing>'}
-        if($a -cne $b){
-            if($a.Length -gt 160){$a=$a.Substring(0,160)+'...'};if($b.Length -gt 160){$b=$b.Substring(0,160)+'...'}
-            return ('row '+($index+1)+': PowerShell <'+$a+'> reader <'+$b+'>')
+function Get-FirstDifference([string]$Expected,[string]$Actual,[string]$Left='PowerShell',[string]$Right='reader') {
+    $a=$Expected.Split("`n");$b=$Actual.Split("`n")
+    for($index=0;$index -lt [Math]::Max($a.Count,$b.Count);$index++){
+        $one=if($index -lt $a.Count){$a[$index]}else{'<nothing>'}
+        $other=if($index -lt $b.Count){$b[$index]}else{'<nothing>'}
+        if($one -cne $other){
+            if($one.Length -gt 160){$one=$one.Substring(0,160)+'...'};if($other.Length -gt 160){$other=$other.Substring(0,160)+'...'}
+            return ('row '+($index+1)+': '+$Left+' <'+$one+'> '+$Right+' <'+$other+'>')
         }
     }
     'no difference'
 }
-# What PowerShell's answer obliges the reader to print, or $null when it must decline.
-function Get-ExpectedOutput($Answer) {
-    if($Answer.kind -eq 'error'){return $null}
-    if($Answer.kind -eq 'value'){return $Answer.dump}
-    $lines=@($Answer.lines|ForEach-Object{[string]$_})
-    # A line holding a line feed cannot be told from two lines once it is printed.
-    if(@($lines|Where-Object{$_.Contains("`n")}).Count){return $null}
-    ($lines -join "`n")+"`n"
-}
-# 'same', 'declined' or 'refused' (PowerShell fails and the reader declines) when the reader
-# did what the case allows; otherwise a sentence saying what is wrong.
+# 'same'; 'refused' when neither answers; 'stricter' when the reader refuses files that
+# PowerShell's rules take, which a case has to allow. Anything else says what is wrong.
 function Compare-Answer($Answer,$Result,[string]$Expectation) {
-    if(-not $Result){return 'the reader did not start or did not finish'}
-    $declined=$Result.exitCode -eq 64 -and $Result.output -eq ''
-    if(-not $declined -and $Result.exitCode -ne 0){return ('the reader exited with '+$Result.exitCode)}
-    $expected=Get-ExpectedOutput $Answer
-    if($null -eq $expected){
-        if($declined){return 'refused'}
-        if($Answer.kind -eq 'error'){return ('the reader answers where PowerShell fails with: '+$Answer.message)}
-        return 'the reader answers text that has a line feed inside a line'
+    if(-not $Result){return 'the reader gave no answer'}
+    if($Result.kind -cnotin 'answer','ruled','stopped'){return ('the reader took the question as '+$Result.kind+': '+$Result.output)}
+    $refuses=$Result.kind -cne 'answer'
+    if($Answer.kind -eq 'error'){
+        if(-not $refuses){return ('the reader answers where PowerShell refuses with: '+$Answer.message)}
+        if($Result.kind -ceq 'ruled' -and $Result.output -cne $Answer.message){return ('the reader refuses with <'+$Result.output+'> where PowerShell says <'+$Answer.message+'>')}
+        return 'refused'
     }
-    if($declined){if($Expectation -eq 'answer'){return 'the reader declines an answer it must give'};return 'declined'}
+    if($refuses){
+        if($Expectation -eq 'answer'){return ('the reader refuses an answer it must give: '+$Result.output)}
+        return 'stricter'
+    }
+    $expected=if($Answer.kind -eq 'value'){$Answer.dump}else{$Answer.text}
     if($Result.output -cne $expected){return ('the answers differ at '+(Get-FirstDifference $expected $Result.output))}
-    if($Expectation -eq 'decline'){return 'the reader answers a case marked as one it does not model; if that is meant, change the case'}
+    if($Expectation -eq 'refuse'){return 'the reader answers a case marked as one it refuses; if that is meant, change the case'}
     'same'
 }
 # A parsed JSON text as one line, with its numbers set aside in the order they appear.
-function ConvertTo-PlainTree($Value,[Collections.ArrayList]$Numbers,[switch]$Loose) {
+function ConvertTo-PlainTree($Value,[Collections.ArrayList]$Numbers) {
     if($null -eq $Value){return 'null'}
     if($Value -is [string]){return ('s:'+$Value.Length+':'+$Value)}
     if($Value -is [bool]){return ('b:'+$Value)}
@@ -171,13 +199,11 @@ function ConvertTo-PlainTree($Value,[Collections.ArrayList]$Numbers,[switch]$Loo
     }
     $parts=New-Object Collections.ArrayList
     if($Value -is [Array]){
-        foreach($item in $Value){[void]$parts.Add((ConvertTo-PlainTree $item $Numbers -Loose:$Loose))}
+        foreach($item in $Value){[void]$parts.Add((ConvertTo-PlainTree $item $Numbers))}
         return ('['+($parts -join ',')+']')
     }
     foreach($property in $Value.PSObject.Properties){
-        # The one member that records when the answer was computed.
-        $inner=if($Loose -and $property.Name -ceq 'computedAt'){'clock'}else{ConvertTo-PlainTree $property.Value $Numbers -Loose:$Loose}
-        [void]$parts.Add(($property.Name.Length.ToString()+':'+$property.Name+'='+$inner))
+        [void]$parts.Add(($property.Name.Length.ToString()+':'+$property.Name+'='+(ConvertTo-PlainTree $property.Value $Numbers)))
     }
     '{'+($parts -join ',')+'}'
 }
@@ -185,10 +211,10 @@ function ConvertTo-PlainTree($Value,[Collections.ArrayList]$Numbers,[switch]$Loo
 # compares a number's type and every digit. This is about the text a caller parses, where
 # 6 and 6.0 are one number (Windows PowerShell writes the first, the reader the second), and
 # where the same double is written with seventeen digits by one and the shortest by the other.
-function Compare-JsonText([string]$Left,[string]$Right,[switch]$Loose) {
+function Compare-JsonText([string]$Left,[string]$Right) {
     $leftNumbers=New-Object Collections.ArrayList;$rightNumbers=New-Object Collections.ArrayList
-    $leftTree=ConvertTo-PlainTree (ConvertFrom-Json -InputObject $Left) $leftNumbers -Loose:$Loose
-    $rightTree=ConvertTo-PlainTree (ConvertFrom-Json -InputObject $Right) $rightNumbers -Loose:$Loose
+    $leftTree=ConvertTo-PlainTree (ConvertFrom-Json -InputObject $Left) $leftNumbers
+    $rightTree=ConvertTo-PlainTree (ConvertFrom-Json -InputObject $Right) $rightNumbers
     if($leftTree -cne $rightTree){return 'members or text differ'}
     for($index=0;$index -lt $leftNumbers.Count;$index++){
         $a=$leftNumbers[$index];$b=$rightNumbers[$index]
@@ -197,46 +223,40 @@ function Compare-JsonText([string]$Left,[string]$Right,[switch]$Loose) {
         }
     }
 }
-function Invoke-Entry([string[]]$Arguments,[bool]$Native) {
-    try{
-        $env:HOTPL8_NATIVE=if($Native){''}else{'0'}
-        Invoke-Hotpl8Process $shell (@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'hotpl8.ps1'))+$Arguments) 120000
-    }finally{[Environment]::SetEnvironmentVariable('HOTPL8_NATIVE',$priorNative)}
-}
-# Every mode of every case at the pinned instant. Returns the tally and the failures.
+# Every form of every case at the pinned instant. Returns the tally and the failures.
 function Test-Cases([object[]]$Cases,[switch]$Layout) {
-    $tally=@{same=0;declined=0;refused=0}
+    $tally=@{same=0;stricter=0;refused=0}
     $wrong=New-Object Collections.ArrayList
     # Every question first, so that one start of the reader answers them all.
     $places=New-Object Collections.ArrayList;$questions=New-Object Collections.ArrayList
     foreach($case in $Cases){
         $place=New-Lab $case $now
         [void]$places.Add($place)
-        foreach($mode in $modes){
-            [void]$questions.Add((Get-ReaderArguments $mode $place -Dump))
-            if($Layout -and $mode.EndsWith('json')){[void]$questions.Add((Get-ReaderArguments $mode $place))}
+        foreach($form in $forms){
+            [void]$questions.Add((Get-ReaderArguments $form $place -Dump))
+            if($Layout -and $form.EndsWith('json')){[void]$questions.Add((Get-ReaderArguments $form $place))}
         }
     }
     $results=Invoke-ReaderBatch $questions.ToArray()
     $next=0
     for($index=0;$index -lt $Cases.Count;$index++){
         $case=$Cases[$index];$place=$places[$index]
-        $answers=Get-Hotpl8ParityAnswers $place.state $place.preview $now
-        foreach($mode in $modes){
-            $answer=$answers[$mode];$result=$results[$next++]
-            $printed=if($Layout -and $mode.EndsWith('json')){$results[$next++]}
-            $verdict=Compare-Answer $answer $result (Get-Expectation $case $mode)
-            if($tally.ContainsKey($verdict)){$tally[$verdict]++}else{[void]$wrong.Add($case.name+' ['+$mode+']: '+$verdict);continue}
+        $answers=Get-Answers $place
+        foreach($form in $forms){
+            $answer=$answers[$form];$result=$results[$next++]
+            $printed=if($Layout -and $form.EndsWith('json')){$results[$next++]}
+            $verdict=Compare-Answer $answer $result (Get-Expectation $case $form)
+            if($tally.ContainsKey($verdict)){$tally[$verdict]++}else{[void]$wrong.Add($case.name+' ['+$form+']: '+$verdict);continue}
             if(-not $Layout -or $verdict -ne 'same' -or $answer.kind -ne 'value'){continue}
             # The JSON text a caller receives: plain ASCII, ended once, and the same tree as
             # PowerShell's own text for the value when each is read back.
-            $problem=if(-not $printed -or $printed.exitCode -ne 0){'the reader gives the typed form but not the JSON text'}
+            $problem=if(-not $printed -or $printed.kind -cne 'answer'){'the reader gives the typed form but not the JSON text'}
                 elseif($printed.output -cnotmatch '\A[\x20-\x7e\n]*[^\n]\n\z'){'the JSON text is not plain ASCII ended by one line feed'}
                 else{
                     $differs=Compare-JsonText $answer.json $printed.output
                     if($differs){'the JSON text reads back as another value than PowerShell''s: '+$differs}
                 }
-            if($problem){[void]$wrong.Add($case.name+' ['+$mode+']: '+$problem)}
+            if($problem){[void]$wrong.Add($case.name+' ['+$form+']: '+$problem)}
         }
     }
     [pscustomobject]@{tally=$tally;wrong=$wrong.ToArray()}
@@ -245,57 +265,102 @@ function Get-WrongText([object[]]$Wrong) {
     $shown=@($Wrong|Select-Object -First 12)
     ($shown -join "`n     ")+$(if($Wrong.Count -gt $shown.Count){"`n     and "+($Wrong.Count-$shown.Count)+' more'})
 }
-$child=$null
+# What the reader prints for `hotpl8 status` on each case, as the text of the expected file:
+# a heading per case, then the output or the refusal. The instant and the time zone are
+# pinned, and both sets of number rules are asked for, so the text is the same on every
+# machine. Where the two sets print differently the case has a section for each.
+function Get-StatusText([object[]]$Cases) {
+    # A case whose files differ on a Mac would need a text of its own there.
+    $shown=@($Cases|Where-Object{-not $_.ContainsKey('macFiles')})
+    $shells='desktop','core'
+    $questions=New-Object Collections.ArrayList
+    foreach($case in $shown){
+        $place=New-Lab $case $now
+        foreach($shell in $shells){[void]$questions.Add((Get-ReaderArguments 'status' $place -Shell $shell -Zone '0'))}
+    }
+    $results=Invoke-ReaderBatch $questions.ToArray()
+    $sections=[ordered]@{}
+    for($index=0;$index -lt $shown.Count;$index++){
+        $texts=foreach($offset in 0,1){
+            $result=$results[2*$index+$offset]
+            if($result.kind -cnotin 'answer','ruled','stopped'){throw ($shown[$index].name+': the reader took the question as '+$result.kind)}
+            # A refusal names the line of the reader's source that made it, which moves with every edit.
+            $text=if($result.kind -ceq 'answer'){$result.output}else{'refused: '+[regex]::Replace($result.output,'\(((?:[a-z_]+/)*[a-z_]+\.rs):\d+\)','($1)')+"`n"}
+            if($text -cmatch '(?m)^== ' -or $text -cnotmatch '\A[^\r]*\n\z'){throw ($shown[$index].name+': the output cannot be kept in the expected text')}
+            $text
+        }
+        if($texts[0] -ceq $texts[1]){$sections[$shown[$index].name]=$texts[0]}
+        else{$sections[$shown[$index].name+' [Windows PowerShell numbers]']=$texts[0];$sections[$shown[$index].name+' [PowerShell 7 numbers]']=$texts[1]}
+    }
+    ,$sections
+}
+function ConvertTo-ExpectedText($Sections) {
+    $builder=New-Object Text.StringBuilder
+    [void]$builder.Append("# What ``hotpl8 status`` prints for each parity case at "+$now.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ',[Globalization.CultureInfo]::InvariantCulture)+", read in UTC.`n# Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.`n")
+    foreach($name in $Sections.Keys){[void]$builder.Append("`n== "+$name+"`n"+$Sections[$name])}
+    $builder.ToString()
+}
+function ConvertFrom-ExpectedText([string]$Text) {
+    $sections=[ordered]@{}
+    $name=$null;$body=New-Object Text.StringBuilder
+    foreach($line in $Text.Replace("`r`n","`n").Split("`n")){
+        if($line.StartsWith('== ',[StringComparison]::Ordinal)){
+            if($null -ne $name){$sections[$name]=$body.ToString()}
+            $name=$line.Substring(3);$body=New-Object Text.StringBuilder
+            if($sections.Contains($name)){throw ('the expected text has two sections named '+$name)}
+        }elseif($null -ne $name){[void]$body.Append($line+"`n")}
+    }
+    if($null -ne $name){$sections[$name]=$body.ToString()}
+    # Each section is followed by the blank line before the next heading, or by the end of the file.
+    foreach($key in @($sections.Keys)){$sections[$key]=$sections[$key].Substring(0,$sections[$key].Length-1)}
+    ,$sections
+}
+# What differs between the expected sections and the ones printed now, as sentences.
+function Compare-StatusText($Expected,$Actual,[switch]$Partial) {
+    $wrong=New-Object Collections.ArrayList
+    foreach($name in $Actual.Keys){
+        if(-not $Expected.Contains($name)){[void]$wrong.Add($name+': not in the expected text')}
+        elseif($Expected[$name] -cne $Actual[$name]){[void]$wrong.Add($name+': '+(Get-FirstDifference $Expected[$name] $Actual[$name] 'expected' 'reader'))}
+    }
+    if(-not $Partial){foreach($name in $Expected.Keys){if(-not $Actual.Contains($name)){[void]$wrong.Add($name+': in the expected text, but no case prints it')}}}
+    ,$wrong.ToArray()
+}
 try{
     [void][IO.Directory]::CreateDirectory($lab)
     # The state directory comes from each case, never from the machine the suite runs on.
     $env:HOTPL8_STATE_DIRECTORY=''
     $cases=@(Get-Hotpl8ParityCases)
-    $chosen=@($cases|Where-Object{-not $Only -or $_.name -like $Only})
-    if($windows -and -not $Inner -and -not $Only){
-        # Windows PowerShell and PowerShell 7 count and tell time differently, and the reader
-        # follows whichever asks. The second pass runs beside this one.
-        $pwsh=if($env:HOTPL8_TEST_PWSH){$env:HOTPL8_TEST_PWSH}else{(Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue|Select-Object -First 1).Source}
-        if($pwsh -and $edition -eq 'desktop'){
-            $info=New-Object Diagnostics.ProcessStartInfo
-            $info.FileName=$pwsh
-            $info.Arguments=(@('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-Inner','-Fuzz',[string]$Fuzz,'-Seed',[string]$Seed|ForEach-Object{ConvertTo-NativeArgument $_}) -join ' ')
-            $info.UseShellExecute=$false;$info.CreateNoWindow=$true;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
-            $process=[Diagnostics.Process]::Start($info)
-            $child=[pscustomobject]@{process=$process;output=$process.StandardOutput.ReadToEndAsync();errors=$process.StandardError.ReadToEndAsync()}
-        }
-    }
-    if(-not $followed){
-        'NOTE the reader does not follow '+$edition+' '+$shellVersion+'; checking only that it is not asked.'
-        Check 'a PowerShell the reader does not follow is not handed over' {
-            Assert ($null -eq (Get-Hotpl8NativeIdentity $root))
-            Assert ($null -eq (Invoke-Hotpl8Native $root @('version','--root',$root)))
-        }
-    }else{
-    Check 'the cases have unique names and the reader is asked as hotpl8.ps1 asks it' {
+    $from=if($variation){Get-Hotpl8ParityFuzzCases $cases $Fuzz $Seed -Mac:(-not $windows)}else{$cases}
+    $chosen=@($from|Where-Object{-not $Only -or $_.name -like $Only})
+    $plain=@($cases|Where-Object{$_.name -ceq 'plain'})[0]
+    Check 'the cases have unique names' {
         Assert (@($cases|ForEach-Object{$_.name}|Sort-Object -Unique).Count -eq $cases.Count) 'two parity cases share a name'
         Assert ($chosen.Count -gt 0) ('no parity case is named like '+$Only)
-        $identity=Get-Hotpl8NativeIdentity $root
-        if([IO.File]::Exists((Join-Path $root 'build-info.json'))){$identity=@($identity|Select-Object -First 4)}
-        Assert (($identity -join ' ') -ceq ('--protocol 2 --shell '+$edition)) ('this suite asks as "--protocol 2 --shell '+$edition+'", hotpl8.ps1 as "'+($identity -join ' ')+'"')
+        Assert $plain 'no parity case is named plain'
     }
     Check 'a wrong answer is noticed' {
         # The reader is shown other readings than PowerShell: a comparison that cannot fail proves nothing.
-        $plain=@($cases|Where-Object{$_.name -ceq 'plain'})[0]
         $other=@{name='plain, edited';files=@{}}
         foreach($name in $plain.files.Keys){$other.files[$name]=$plain.files[$name]}
         $other.files['status.json']=Edit-Hotpl8ParityText $other.files['status.json'] '"used5h":38' '"used5h":39'
         $place=New-Lab $plain $now;$edited=New-Lab $other $now
-        $answers=Get-Hotpl8ParityAnswers $place.state $place.preview $now
-        foreach($mode in $modes){
-            $answer=$answers[$mode]
-            Assert ((Compare-Answer $answer (Invoke-Reader $mode $place -Dump) 'answer') -ceq 'same') ($mode+': the unedited case must match')
-            if($mode -ne 'explain'){Assert ((Compare-Answer $answer (Invoke-Reader $mode $edited -Dump) 'answer') -like 'the answers differ at row *') ($mode+': an edited reading went unnoticed')}
-            Assert ((Compare-Answer $answer ([pscustomobject]@{exitCode=64;output=''}) 'answer') -ceq 'the reader declines an answer it must give')
-            Assert ((Compare-Answer $answer ([pscustomobject]@{exitCode=64;output=''}) 'either') -ceq 'declined')
-            Assert ((Compare-Answer $answer (Invoke-Reader $mode $place -Dump) 'decline') -like 'the reader answers a case marked*')
-            Assert ((Compare-Answer @{kind='error';message='failed'} (Invoke-Reader $mode $place -Dump) 'either') -like 'the reader answers where PowerShell fails*')
-            Assert ((Compare-Answer $answer ([pscustomobject]@{exitCode=1;output=''}) 'either') -ceq 'the reader exited with 1')
+        $answers=Get-Answers $place
+        $results=Invoke-ReaderBatch @(foreach($form in $forms){,(Get-ReaderArguments $form $place -Dump);,(Get-ReaderArguments $form $edited -Dump)})
+        $stopped=[pscustomobject]@{kind='stopped';output='This state cannot be shown.'}
+        $failed=@{kind='error';message='failed'}
+        for($index=0;$index -lt $forms.Count;$index++){
+            $form=$forms[$index];$answer=$answers[$form];$result=$results[2*$index]
+            Assert ((Compare-Answer $answer $result 'answer') -ceq 'same') ($form+': the unedited case must match')
+            if($form -ne 'explain'){Assert ((Compare-Answer $answer $results[2*$index+1] 'answer') -like 'the answers differ at row *') ($form+': an edited reading went unnoticed')}
+            Assert ((Compare-Answer $answer $stopped 'answer') -like 'the reader refuses an answer it must give*')
+            Assert ((Compare-Answer $answer $stopped 'either') -ceq 'stricter')
+            Assert ((Compare-Answer $answer $stopped 'refuse') -ceq 'stricter')
+            Assert ((Compare-Answer $answer $result 'refuse') -like 'the reader answers a case marked*')
+            Assert ((Compare-Answer $failed $result 'either') -like 'the reader answers where PowerShell refuses*')
+            Assert ((Compare-Answer $failed $stopped 'answer') -ceq 'refused')
+            Assert ((Compare-Answer $failed ([pscustomobject]@{kind='ruled';output='failed'}) 'answer') -ceq 'refused')
+            Assert ((Compare-Answer $failed ([pscustomobject]@{kind='ruled';output='Failed'}) 'either') -like 'the reader refuses with <Failed> where PowerShell says <failed>')
+            Assert ((Compare-Answer $answer ([pscustomobject]@{kind='misspelled';output='words'}) 'either') -ceq 'the reader took the question as misspelled: words')
         }
         $text='{"a":[6,"6",null,{"b":true}],"c":7.7999999999999989}'
         foreach($same in $text,'{ "a": [6.0, "6", null, {"b": true}], "c": 7.799999999999999 }'){
@@ -306,97 +371,83 @@ try{
         }
         Assert ($null -eq (Compare-JsonText '{"a":4294967296}' '{"a":4294967296.0}'))
         Assert (Compare-JsonText '{"a":4294967296}' '{"a":4294967297}')
+        # The expected text: what is written is what is read back, and each kind of difference is seen.
+        $sections=[ordered]@{'one'="first line`n`nthird line`n";'two [PowerShell 7 numbers]'="refused: words`n"}
+        $read=ConvertFrom-ExpectedText (ConvertTo-ExpectedText $sections).Replace("`n","`r`n")
+        Assert (@($read.Keys).Count -eq 2 -and $read['one'] -ceq $sections['one'] -and (Compare-StatusText $read $sections).Count -eq 0)
+        $changed=[ordered]@{'one'="first line`n`nthird line.`n";'three'="new`n"}
+        $seen=Compare-StatusText $read $changed
+        Assert ($seen.Count -eq 3 -and $seen[0] -ceq 'one: row 3: expected <third line> reader <third line.>' -and $seen[1] -ceq 'three: not in the expected text' -and $seen[2] -like 'two *: in the expected text, but no case prints it') ($seen -join '; ')
+        Assert ((Compare-StatusText $read ([ordered]@{'one'=$sections['one']}) -Partial).Count -eq 0)
     }
-    Check 'the shortcuts change no answer: one start for many questions, one reading for four forms' {
-        foreach($name in 'operations','manual pause','preview policy'){
-            $case=@($cases|Where-Object{$_.name -ceq $name})[0]
-            Assert $case ('no parity case is named '+$name)
+    Check 'one start for many questions changes no answer' {
+        $refusing=@{name='refusing';files=@{'policy.json'='{"mode":"sideways"}'}}
+        $asked=New-Object Collections.ArrayList
+        foreach($case in @($plain,$refusing)+@($cases|Where-Object{$_.name -cin 'operations','preview policy'})){
             $place=New-Lab $case $now
-            $together=Get-Hotpl8ParityAnswers $place.state $place.preview $now
-            $batch=Invoke-ReaderBatch @($modes|ForEach-Object{,(Get-ReaderArguments $_ $place -Dump)})
-            for($index=0;$index -lt $modes.Count;$index++){
-                $mode=$modes[$index]
-                $alone=(Get-Hotpl8ParityAnswers $place.state $place.preview $now -Only $mode)[$mode]
-                Assert ($alone.kind -ceq $together[$mode].kind -and (Get-ExpectedOutput $alone) -ceq (Get-ExpectedOutput $together[$mode]) -and [string]$alone.json -ceq [string]$together[$mode].json) ($name+' ['+$mode+']: PowerShell answers differently when it reads the files once for all four forms')
-                $single=Invoke-Reader $mode $place -Dump
-                Assert ($single -and $single.exitCode -eq 0 -and $single.exitCode -eq $batch[$index].exitCode -and $single.output -ceq $batch[$index].output) ($name+' ['+$mode+']: the reader answers differently among other questions than in a start of its own')
-            }
+            foreach($form in $forms+'status'){[void]$asked.Add((Get-ReaderArguments $form $place))}
         }
-        # A question the reader declines takes none of the others with it.
-        $place=New-Lab (@($cases|Where-Object{$_.name -ceq 'plain'})[0]) $now
-        $mixed=Invoke-ReaderBatch @((Get-ReaderArguments 'status' $place),@('status','--protocol','1','--shell',$edition,'--root',$root,'--state',$place.state),(Get-ReaderArguments 'status' $place))
-        Assert ($mixed.Count -eq 3 -and $mixed[0].exitCode -eq 0 -and $mixed[0].output -and $mixed[1].exitCode -eq 64 -and $mixed[1].output -eq '' -and $mixed[2].output -ceq $mixed[0].output)
+        Assert ($asked.Count -eq 16) 'a case this check relies on is gone'
+        $together=Invoke-ReaderBatch $asked.ToArray()
+        for($index=0;$index -lt $asked.Count;$index++){
+            $alone=Invoke-Hotpl8NativeProcess $real $asked[$index]
+            $same=if($together[$index].kind -ceq 'answer'){$alone.exitCode -eq 0 -and $alone.output -ceq $together[$index].output -and $alone.errors -eq ''}
+                else{$alone.exitCode -eq 1 -and $alone.output -eq '' -and $alone.errors -ceq ('HotPl8: '+$together[$index].output+"`n")}
+            Assert $same (($asked[$index] -join ' ')+': the reader answers differently among other questions than in a start of its own')
+        }
+        Assert (@($together|Where-Object{$_.kind -ceq 'answer'}).Count -eq 12 -and @($together|Where-Object{$_.kind -ceq 'ruled'}).Count -eq 4)
     }
     $script:curated=$null
-    Check ('PowerShell and the reader agree on '+$chosen.Count+' cases in four forms') {
+    Check ('PowerShell''s rules and the reader''s agree on '+$chosen.Count+' cases') {
         $script:curated=Test-Cases $chosen -Layout
         $tally=$script:curated.tally
-        Assert ($script:curated.wrong.Count -eq 0) (''+$script:curated.wrong.Count+" of "+($chosen.Count*$modes.Count)+" comparisons:`n     "+(Get-WrongText $script:curated.wrong))
-        Assert (($tally.same+$tally.declined+$tally.refused) -eq ($chosen.Count*$modes.Count))
+        Assert ($script:curated.wrong.Count -eq 0) (''+$script:curated.wrong.Count+" of "+($chosen.Count*$forms.Count)+" comparisons:`n     "+(Get-WrongText $script:curated.wrong))
+        Assert (($tally.same+$tally.stricter+$tally.refused) -eq ($chosen.Count*$forms.Count))
     }
-    if($script:curated){'     '+$script:curated.tally.same+' the same, '+$script:curated.tally.declined+' left to PowerShell, '+$script:curated.tally.refused+' failing in PowerShell and declined'}
+    if($script:curated){'     '+$script:curated.tally.same+' the same, '+$script:curated.tally.refused+' refused by both, '+$script:curated.tally.stricter+' refused by the reader alone, as their cases say'}
+    $script:printed=$null
+    # A variation has no section in the expected text.
+    if(-not $variation){
+    Check 'status prints the expected text' {
+        $script:printed=Get-StatusText $chosen
+        if($Update){
+            [IO.File]::WriteAllText($expectedFile,(ConvertTo-ExpectedText $script:printed),[Text.UTF8Encoding]::new($false))
+            'WROTE tests/parity/expected-status.txt'|Out-Host
+        }
+        Assert ([IO.File]::Exists($expectedFile)) 'tests/parity/expected-status.txt is missing; write it with -Update'
+        $wrong=Compare-StatusText (ConvertFrom-ExpectedText ([IO.File]::ReadAllText($expectedFile))) $script:printed -Partial:([bool]$Only)
+        Assert ($wrong.Count -eq 0) (''+$wrong.Count+" sections; if the change is meant, run this suite with -Update and review it:`n     "+(Get-WrongText $wrong))
+    }
+    }
+    if($script:printed){'     '+@($script:printed.Keys).Count+' sections'}
     if(-not $Only){
-    Check 'the entry script prints the same either way, read against the real clock' {
-        # hotpl8.ps1 reads the clock itself, so each attempt writes files around the present
-        # instant and asks three times within seconds. An answer that crosses a minute between
-        # the asks differs honestly; a real difference differs on every attempt.
-        foreach($name in 'plain','operations','manual pause','one agent lease','preview policy','policy only'){
-            $case=@($cases|Where-Object{$_.name -ceq $name})[0]
-            Assert $case ('no parity case is named '+$name)
-            foreach($mode in $modes){
-                $arguments=@($mode.Split('-')[0])
-                if($mode.EndsWith('json')){$arguments+='-AsJson'}
-                $problem=$null
-                for($attempt=1;$attempt -le 3;$attempt++){
-                    $place=New-Lab $case ([datetimeoffset]::UtcNow)
-                    $all=$arguments+@('-StateDirectory',$place.state)
-                    if($place.preview){$all+=@('-PreviewPolicy',$place.preview)}
-                    $direct=Invoke-Reader $mode $place -RealClock
-                    $fast=Invoke-Entry $all $true
-                    $slow=Invoke-Entry $all $false
-                    $problem=if(-not $direct -or $direct.exitCode -ne 0){'the reader does not answer'}
-                        elseif($fast.exitCode -ne 0 -or $slow.exitCode -ne 0){'the entry script failed: '+$fast.exitCode+' with the reader, '+$slow.exitCode+' without'}
-                        elseif($mode.EndsWith('json') -and $slow.output.StartsWith('{',[StringComparison]::Ordinal)){
-                            $differs=Compare-JsonText $slow.output $fast.output -Loose
-                            if($differs){'the JSON reads back differently with the reader than without: '+$differs}
-                            elseif(Compare-JsonText $direct.output $fast.output -Loose){'the entry script printed something else than the reader'}
-                        }
-                        elseif($fast.output -cne $slow.output){'the text differs at '+(Get-FirstDifference $slow.output.Replace("`r",'') $fast.output.Replace("`r",''))}
-                        elseif($fast.output.Replace("`r",'') -cne $direct.output){'the entry script printed something else than the reader'}
-                    if(-not $problem){break}
-                }
-                Assert (-not $problem) ($name+' ['+$mode+'], three attempts: '+$problem)
-            }
+    Check 'reset times follow this machine''s own time zone' {
+        # A winter and a summer instant, so a zone with daylight saving shows both of its offsets.
+        $instants=@('2027-01-15T12:00:00Z','2027-07-15T12:00:00Z'|ForEach-Object{[datetimeoffset]::Parse($_,[Globalization.CultureInfo]::InvariantCulture)})
+        $text=$plain.files['status.json'].Replace('"resetsAt":@u+2h@','"resetsAt":'+$instants[0].ToUnixTimeSeconds()).Replace('"resetsAt":@u+3d@','"resetsAt":'+$instants[1].ToUnixTimeSeconds())
+        Assert ($text -cne $plain.files['status.json'])
+        $place=New-Lab @{name='reset times';files=@{'policy.json'=$plain.files['policy.json'];'status.json'=$text}} $now
+        $result=(Invoke-ReaderBatch @(,(Get-ReaderArguments 'status' $place)))[0]
+        Assert ($result.kind -ceq 'answer') $result.output
+        foreach($instant in $instants){
+            $local='reset '+$instant.ToLocalTime().ToString('MM-dd HH:mm zzz',[Globalization.CultureInfo]::InvariantCulture)+' ('
+            Assert $result.output.Contains($local) ('the reader does not print <'+$local+'>')
         }
     }
     if($Fuzz -gt 0){
         $script:fuzzed=$null
-        Check ('PowerShell and the reader agree on '+$Fuzz+' seeded variations (seed '+$Seed+')') {
+        Check ('PowerShell''s rules and the reader''s agree on '+$Fuzz+' seeded variations (seed '+$Seed+')') {
             $script:fuzzed=Test-Cases (Get-Hotpl8ParityFuzzCases $cases $Fuzz $Seed -Mac:(-not $windows))
             $tally=$script:fuzzed.tally
             Assert ($script:fuzzed.wrong.Count -eq 0) (''+$script:fuzzed.wrong.Count+" comparisons:`n     "+(Get-WrongText $script:fuzzed.wrong))
-            # A reader that declined everything would agree with everything.
-            $answerable=$tally.same+$tally.declined
+            # A reader that refused everything would agree with everything.
+            $answerable=$tally.same+$tally.stricter
             Assert ($answerable -ge $Fuzz -and $tally.same -ge 0.6*$answerable) ('the reader answered only '+$tally.same+' of the '+$answerable+' variations PowerShell answers')
         }
-        if($script:fuzzed){'     '+$script:fuzzed.tally.same+' the same, '+$script:fuzzed.tally.declined+' left to PowerShell, '+$script:fuzzed.tally.refused+' failing in PowerShell and declined'}
+        if($script:fuzzed){'     '+$script:fuzzed.tally.same+' the same, '+$script:fuzzed.tally.refused+' refused by both, '+$script:fuzzed.tally.stricter+' refused by the reader alone'}
     }
-    }
-    }
-    if($windows -and -not $Inner -and -not $Only -and $edition -eq 'desktop'){
-        Check 'the same holds under PowerShell 7' {
-            Assert $child 'PowerShell 7 was not found. Install it, or name its pwsh in HOTPL8_TEST_PWSH.'
-            if(-not $child.process.WaitForExit(1800000)){try{$child.process.Kill()}catch{$null=$_};throw 'the PowerShell 7 pass did not finish in thirty minutes'}
-            $child.process.WaitForExit()
-            $text=$child.output.Result
-            $text.TrimEnd().Split("`n")|ForEach-Object{'  | '+$_.TrimEnd()}|Out-Host
-            Assert ($child.process.ExitCode -eq 0 -and $text -cmatch '(?m)^Native parity \(core [0-9.]+\): [1-9][0-9]* passed, 0 failed\.') ('the PowerShell 7 pass failed'+$(if($child.errors.Result){': '+$child.errors.Result.Trim()}))
-            Assert ($text -cmatch '(?m)^PASS PowerShell and the reader agree on ') 'the reader does not follow that PowerShell 7; the second pass needs 7.5 or later'
-        }
     }
 }finally{
-    if($child){try{if(-not $child.process.HasExited){$child.process.Kill()}}catch{$null=$_};$child.process.Dispose()}
-    [Environment]::SetEnvironmentVariable('HOTPL8_NATIVE',$priorNative)
     [Environment]::SetEnvironmentVariable('HOTPL8_STATE_DIRECTORY',$priorState)
     $full=[IO.Path]::GetFullPath($lab)
     if($full.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) -and (Split-Path $full -Leaf) -match '^hotpl8-parity-test-[a-f0-9]{32}$' -and (Test-Path -LiteralPath $full)){Remove-Item -LiteralPath $full -Recurse -Force}
