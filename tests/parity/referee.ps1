@@ -1,32 +1,62 @@
-# The referee for the compiled reader: PowerShell's own answer to `hotpl8 status` and
-# `hotpl8 explain`, computed in this process at a pinned instant.
+# The referee for the compiled reader: PowerShell's own answers to `hotpl8 status` and
+# `hotpl8 explain`, as text and with -AsJson, computed in this process at a pinned instant.
 #
 # It repeats the few lines of hotpl8.ps1 between reading the policy and printing, because
 # the entry script reads the real clock. tests/test-native-parity.ps1 also runs cases
 # through the real entry script, so those lines cannot drift unnoticed.
 #
+# The four forms share one reading of the files, taken in an order that shows each form the
+# snapshot a run of its own would see: `status` first, then the pause `explain` adds. That
+# holds while printing changes nothing in the snapshot, which the suite checks by asking for
+# single forms too (-Only). Reading once is what makes a thousand comparisons affordable.
+#
 # An answer is one of:
 #   kind='text'   lines  - what the command prints, one string per line
-#   kind='value'  value  - the object -AsJson serialises; json - PowerShell's own text for it
+#   kind='value'  dump   - the typed form of the object -AsJson serialises (see below);
+#                 json   - PowerShell's own text for it
 #   kind='error'  message - the command fails; the reader must decline
-function Get-Hotpl8ParityAnswer([string]$Command,[string]$StateDirectory,[string]$PreviewPolicy,[bool]$AsJson,[datetimeoffset]$Now) {
+function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,[datetimeoffset]$Now,[string]$Only) {
+    $answers=@{}
     try {
         $policy = Read-Hotpl8Json $(if($PreviewPolicy){$PreviewPolicy}else{Join-Path $StateDirectory 'policy.json'})
         if (-not $policy) { throw 'No valid policy.json. Run hotpl8 setup or see docs/install.md.' }
         Assert-Hotpl8Policy $policy
         $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -Now $Now
-        if($Command -eq 'explain'){
-            if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory $Now) -Force}
-            if($AsJson){
-                $value=[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}
-                return @{kind='value';value=$value;json=($value|ConvertTo-Json -Depth 16)}
-            }
-            return @{kind='text';lines=@(Format-Hotpl8Explanation $status $Now|ForEach-Object {ConvertTo-Hotpl8SafeText $_})}
+    } catch {
+        $failed=@{kind='error';message=$_.Exception.Message}
+        foreach($mode in 'status','status-json','explain','explain-json'){$answers[$mode]=$failed}
+        return $answers
+    }
+    if (-not $status -or -not $status.generatedAt) {
+        $answers['status']=$answers['status-json']=@{kind='text';lines=@('No cached status. Run hotpl8 refresh.')}
+    } else {
+        if(-not $Only -or $Only -eq 'status-json'){
+            try { $answers['status-json']=@{kind='value';json=($status | ConvertTo-Json -Depth 24)} } catch { $answers['status-json']=@{kind='error';message=$_.Exception.Message} }
+            # Typed before `explain` adds to the snapshot. A failure here is the suite's own.
+            if($answers['status-json'].kind -eq 'value'){$answers['status-json'].dump=ConvertTo-Hotpl8ParityDump $status}
         }
-        if (-not $status -or -not $status.generatedAt) { return @{kind='text';lines=@('No cached status. Run hotpl8 refresh.')} }
-        if ($AsJson) { return @{kind='value';value=$status;json=($status | ConvertTo-Json -Depth 24)} }
-        return @{kind='text';lines=@(Format-Hotpl8Status $status $policy $StateDirectory $Now)}
-    } catch { return @{kind='error';message=$_.Exception.Message} }
+        if(-not $Only -or $Only -eq 'status'){
+            try { $answers['status']=@{kind='text';lines=@(Format-Hotpl8Status $status $policy $StateDirectory $Now)} } catch { $answers['status']=@{kind='error';message=$_.Exception.Message} }
+        }
+    }
+    if($Only -and -not $Only.StartsWith('explain')){return $answers}
+    try {
+        if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory $Now) -Force}
+    } catch {
+        $answers['explain']=$answers['explain-json']=@{kind='error';message=$_.Exception.Message}
+        return $answers
+    }
+    if(-not $Only -or $Only -eq 'explain-json'){
+        try {
+            $shown=[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}
+            $answers['explain-json']=@{kind='value';json=($shown|ConvertTo-Json -Depth 16)}
+        } catch { $answers['explain-json']=@{kind='error';message=$_.Exception.Message} }
+        if($answers['explain-json'].kind -eq 'value'){$answers['explain-json'].dump=ConvertTo-Hotpl8ParityDump $shown}
+    }
+    if(-not $Only -or $Only -eq 'explain'){
+        try { $answers['explain']=@{kind='text';lines=@(Format-Hotpl8Explanation $status $Now|ForEach-Object {ConvertTo-Hotpl8SafeText $_})} } catch { $answers['explain']=@{kind='error';message=$_.Exception.Message} }
+    }
+    $answers
 }
 
 # A typed dump of a value: one node per line, so two values are equal exactly when their

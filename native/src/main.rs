@@ -46,6 +46,11 @@ struct Declined;
 
 fn main() -> ExitCode {
     let arguments: Vec<OsString> = std::env::args_os().skip(1).collect();
+    if let [command, file] = arguments.as_slice() {
+        if command == "batch" {
+            return batch(Path::new(file));
+        }
+    }
     let Ok(output) = run(&arguments) else {
         return ExitCode::from(DECLINED_STATUS);
     };
@@ -59,6 +64,47 @@ fn main() -> ExitCode {
 
 fn run(arguments: &[OsString]) -> Result<String, Declined> {
     run_as(arguments, option_env!("HOTPL8_BUILD_SHA"))
+}
+
+/// Test-only: every request in a file, answered by one start of this program. Comparing a
+/// thousand answers with PowerShell's must not cost a thousand program starts.
+fn batch(file: &Path) -> ExitCode {
+    let Ok(bytes) = std::fs::read(file) else {
+        return ExitCode::from(DECLINED_STATUS);
+    };
+    let Ok(requests) = batch_requests(&bytes) else {
+        return ExitCode::from(DECLINED_STATUS);
+    };
+    match answer_each(&requests, &mut std::io::stdout().lock(), run) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::from(FAILED_STATUS),
+    }
+}
+
+/// One request per line: a JSON array holding the arguments of an ordinary start.
+fn batch_requests(bytes: &[u8]) -> Result<Vec<Vec<OsString>>, Declined> {
+    let mut requests = Vec::new();
+    for line in utf8_text(bytes)?.lines().filter(|line| !line.is_empty()) {
+        let arguments: Vec<String> = serde_json::from_str(line).map_err(|_| Declined)?;
+        requests.push(arguments.into_iter().map(OsString::from).collect());
+    }
+    Ok(requests)
+}
+
+/// Each answer as `<exit status> <bytes of output>` on a line of its own, then the output.
+/// Every answer is flushed, so a request that ends the program is the one after the last
+/// answer received.
+fn answer_each(requests: &[Vec<OsString>], out: &mut impl Write, answer: impl Fn(&[OsString]) -> Result<String, Declined>) -> std::io::Result<()> {
+    for arguments in requests {
+        let (status, output) = match answer(arguments) {
+            Ok(output) => (0, output),
+            Err(Declined) => (DECLINED_STATUS, String::new()),
+        };
+        writeln!(out, "{status} {}", output.len())?;
+        out.write_all(output.as_bytes())?;
+        out.flush()?;
+    }
+    Ok(())
 }
 
 fn run_as(arguments: &[OsString], build_sha: Option<&str>) -> Result<String, Declined> {
@@ -596,6 +642,26 @@ mod tests {
         // A binary without a build identity cannot vouch for a release.
         assert_eq!(run_as(&with(&["--protocol", "2", "--shell", "desktop", "--release", SHA]), None), Err(Declined));
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_batch_answers_each_request_as_a_start_of_its_own_would() {
+        let root = std::env::temp_dir().join(format!("hotpl8-native-batch-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("VERSION"), "1.4.0\n").unwrap();
+        let version = serde_json::to_string(&["version", "--protocol", "2", "--shell", "desktop", "--root", root.to_str().unwrap()]).unwrap();
+        // A batch inside a batch, and a command that does not exist, are declined like any other.
+        let file = format!("\u{feff}{version}\n[\"batch\",\"requests\"]\r\n\n[\"refresh\"]\n{version}");
+        let requests = batch_requests(file.as_bytes()).unwrap();
+        assert_eq!(requests.len(), 4);
+        let mut out = Vec::new();
+        answer_each(&requests, &mut out, |arguments| run_as(arguments, Some(SHA))).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "0 6\n1.4.0\n64 0\n64 0\n0 6\n1.4.0\n");
+        std::fs::remove_dir_all(&root).unwrap();
+        for file in ["{}", "[1]", "[\"version\"", "\"version\"", "[\"a\"]\nnot json"] {
+            assert_eq!(batch_requests(file.as_bytes()), Err(Declined), "{file}");
+        }
+        assert_eq!(batch_requests(b""), Ok(Vec::new()));
     }
 
     #[test]
