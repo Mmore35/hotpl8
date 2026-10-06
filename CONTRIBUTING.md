@@ -1,6 +1,6 @@
 # Contributing
 
-Use Windows PowerShell 5.1, Git Bash, Python 3, Node 22+ and Rust (through [rustup](https://rustup.rs); the version is pinned in `native/rust-toolchain.toml`) for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository, build the compiled reader once and after any change under `native/`, and run:
+Use Windows PowerShell 5.1, PowerShell 7.5 or later, Git Bash, Python 3, Node 22+ and Rust (through [rustup](https://rustup.rs); the version is pinned in `native/rust-toolchain.toml`) for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository, build the compiled reader once and after any change under `native/`, and run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-native.ps1
@@ -58,10 +58,14 @@ Claude plan discovery is isolated in `src/providers/claude_plan.py` and `claude-
 
 The compiled reader under `native/` answers display commands only when it prints exactly what
 PowerShell prints; for anything else it declines and PowerShell answers. Changes there require
-`cargo test --locked` in `native/` and `tests/test-native.ps1`. Write the behavior into
+`cargo test --locked` in `native/`, `tests/test-native.ps1` and `tests/test-native-parity.ps1`.
+The parity suite asks PowerShell and the reader the same question about the fictional cases in
+`tests/parity/cases.ps1` and about seeded variations of them, under Windows PowerShell and
+PowerShell 7; add a case for every input shape a change touches. `-Only NAME` runs one case
+and `-Deep` many more variations. Write the behavior into
 [the contract](docs/plans/rust-read-side.md) before the code, and do not change the PowerShell
-implementation or an expected result in the same commit as reader code. Crates compiled into
-the reader are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+implementation, the referee or a parity case in the same commit as reader code. Crates compiled
+into the reader are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 T3 integration changes require `node --test tests/test-t3-codex.mjs` and
 `tests/test-t3-routing.ps1`. Fixtures use synthetic credentials and a fake native

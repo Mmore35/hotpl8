@@ -9,8 +9,8 @@ if(-not $windows -and -not $IsMacOS){throw 'The native reader is built for Windo
 foreach($tool in @('cargo','rustc')){
     if(-not (Get-Command $tool -ErrorAction SilentlyContinue)){throw 'Rust is required to build the native reader. Install it from https://rustup.rs and retry.'}
 }
-# The binary reports the commit it was built from; src/native.ps1 compares that with the
-# release's build-info.json before using it.
+# The binary carries the commit it was built from and declines a release that names
+# another one; src/native.ps1 sends the commit from the release's build-info.json.
 if(-not $Sha){$Sha=$env:GITHUB_SHA}
 if(-not $Sha -and (Get-Command git -ErrorAction SilentlyContinue)){
     # Outside a checkout git answers on the error stream, which Windows PowerShell raises.

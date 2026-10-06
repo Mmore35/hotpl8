@@ -1,6 +1,6 @@
 # Compiled reader for display commands
 
-Status: stage 1 of 3 implemented. `version` is answered by a compiled Rust program when the release ships one that matches it. `status`, `explain` and the dashboard still run in PowerShell and are the next two stages.
+Status: stage 2 of 3 implemented. `version`, `status` and `explain` are answered by a compiled Rust program when the release ships one that matches it. The dashboard still runs in PowerShell and is the last stage.
 
 Baseline read for this plan: main `b5ebd83986fd4bddabf1f556d7481a98be707a74`.
 
@@ -17,7 +17,7 @@ The collector, account switching, setup, onboarding, the agent interface and the
 | Stage | Commands | State |
 |---|---|---|
 | 1 | Packaging, routing, fallback, `version` | Implemented |
-| 2 | `status`, `explain` | Planned |
+| 2 | `status`, `explain`, live preview of a candidate's reader | Implemented |
 | 3 | `watch`, `nyan` | Planned |
 
 Each stage ships alone and leaves the PowerShell path intact.
@@ -32,16 +32,26 @@ Each stage ships alone and leaves the PowerShell path intact.
 
 ## How it runs
 
-`hotpl8.ps1` loads `src/native.ps1` before its other modules, and only for a request it can hand over. `Get-Hotpl8NativePath` returns the binary's path only when all of these hold:
+`hotpl8.ps1` loads `src/native.ps1` before its other modules, and only for a request it can hand over: `version`, `status` or `explain` with no parameter beyond those the contracts below name. The reader is started once per request and is told the request and who is asking:
+
+```text
+hotpl8-native <command> --protocol 2 --shell desktop|core [--release <commit>] --root <release> [--state <directory>] [--policy <file>] [-AsJson]
+```
+
+It is started only when all of these hold:
 
 - `HOTPL8_NATIVE` is not `0`.
 - `bin/windows/hotpl8-native.exe` or `bin/macos/hotpl8-native` exists in the release, and on macOS has its executable bit.
-- `hotpl8-native self-check` exits 0 within five seconds and prints exactly `hotpl8-native protocol=1 sha=<commit>`.
-- That commit equals the `sha` in the release's `build-info.json`. A source checkout has no `build-info.json`; there the protocol alone decides. A `build-info.json` without a readable 40-character commit disables the reader.
+- The caller is Windows PowerShell 5.1 (`desktop`) or PowerShell 7.5 or later (`core`), with English or invariant regional settings as the contract describes.
+- A release has a 40-character commit as `sha` in its `build-info.json`, which is sent as `--release`. A source checkout has no `build-info.json` and sends none; there the protocol alone decides. A `build-info.json` without a readable commit disables the reader.
+
+The reader checks who is asking before it reads anything else. Another protocol number, a shell it does not follow, or a `--release` other than the commit compiled into it is declined: status 64, nothing printed. The identity check therefore costs no program start of its own. Stage 1 started the reader twice, once for `hotpl8-native self-check` and once for the command. `self-check` remains for the build script and the tests and prints `hotpl8-native protocol=2 sha=<commit>`.
 
 The command's text is used only when the reader exits 0 and its output ends with a line break. Every other outcome means PowerShell answers. The build commit is compiled into the binary by `scripts/build-native.ps1`; CI builds it once per platform, tests that file, and packages that file.
 
 Set `HOTPL8_NATIVE=0` to use PowerShell for everything.
+
+Two more arguments exist for the tests, and `hotpl8.ps1` never sends them. `--now <instant>` answers for that instant instead of the clock. `--dump`, with `-AsJson`, prints the value with each number's type and exact digits instead of JSON text. When the reader declines `status` or `explain` it names the source line on standard error (`hotpl8-native: declined at <file>:<line>`); `hotpl8.ps1` does not show it.
 
 ## Contract: `version`
 
@@ -72,7 +82,7 @@ Both commands recalculate the overview, capacity, selection and eligibility from
 | Agent pauses, the manual pause, and an invalid pause file | Preserve | |
 | Reset times in the Codex lines use the machine's time zone | Preserve | Declined for a time more than two years from now, and on a Mac with `TZ` set |
 | `-AsJson` reports the same properties with the same values and number types | Preserve | Compared value by value before either side is written as text |
-| Layout of `-AsJson` text, and the order of keys in objects PowerShell builds from hash tables | Change on purpose | The two PowerShell versions already differ in layout, and hash table order is not defined |
+| Layout of `-AsJson` text, and the order of keys in objects PowerShell builds from hash tables | Change on purpose | The two PowerShell versions already differ in layout, and hash table order is not defined. The reader writes two-space indentation, a fraction on every double (`6.0` where Windows PowerShell writes `6`), the shortest digits that read back as the same double (`62.00000000000001` where Windows PowerShell writes `62.000000000000007`), and `\uXXXX` for every non-ASCII character. The text is checked to read back as the value PowerShell's own text reads back as |
 | The clock is read once per request | Change on purpose | PowerShell read it at each use, a few milliseconds apart. PowerShell now reads it once too, so both can be compared at one instant |
 | On the compiled path the commands no longer load the other modules or prepare onboarding tools | Change on purpose | As for `version`. With `HOTPL8_NATIVE=0` they run as before |
 | The identity check is part of the command's own start (protocol 2) | Change on purpose | One program start per request instead of two. See How it runs |
@@ -106,26 +116,59 @@ The Windows binary is built for `x86_64-pc-windows-msvc` with a static C runtime
 |---|---|
 | Update owner | The verified release package. The binary is an ordinary inventoried file inside `releases/<sha>` or `app`; nothing is copied elsewhere |
 | Activation boundary | The existing release pointer. A fresh `hotpl8` process uses the binary of the release it was started from |
-| Loaded-version evidence | `hotpl8-native self-check` reports the commit it was built from, and must equal the release's own |
+| Loaded-version evidence | `hotpl8-native self-check` reports the commit it was built from. Every request names the release's commit, and a reader built from another declines |
 | Recovery | Pointer rollback selects the previous release and its binary, or none. `HOTPL8_NATIVE=0`, a missing file or a failed check all give the PowerShell answer |
+
+## Previewing a candidate's reader
+
+A live PR preview extracts the candidate's source archive, which holds no compiled file. For a candidate whose `release-files.json` lists a reader for the platform, `delivery/live_preview.py` also takes the one CI built for it:
+
+- It downloads the artifact `hotpl8-<platform>-candidate` from the passing `pull_request` run for the pinned commit in the enrolled repository, the run the preview already requires. A missing, expired or ambiguous artifact stops the preview and asks for the workflow to be rerun.
+- The artifact must hold exactly `SHA256SUMS` and one package, the package must match that checksum, and the reader inside must match the package's own `checksums.json`. Anything else stops the preview before candidate code runs.
+- The reader is written to its release path under the extracted source, inside the preview's temporary directory. The head is checked again after both downloads.
+
+The run is what vouches for the file. The checksums show only that the package arrived as CI wrote it. GitHub builds a pull request run from the head merged into the target branch, so the commit compiled into the reader is that merge and not the pinned head. The extracted source has no `build-info.json`, so no `--release` is sent and the protocol alone decides, as in a source checkout.
+
+`delivery/live-preview.ps1` then asks the candidate's reader for the dashboard, with the caller described by the candidate's own `src/native.ps1` and the terminal passed through:
+
+```text
+hotpl8-native nyan --protocol 2 --shell desktop|core --root <source> --state <fictional state>
+```
+
+Status 64 with nothing printed means this reader has no dashboard, and the candidate's PowerShell dashboard runs as before. Any other non-zero status ends the preview with that status and the reader's diagnostics, so a compiled dashboard that fails is seen failing and is not replaced by the PowerShell one. `HOTPL8_NATIVE=0` previews the PowerShell dashboard.
+
+The preview harness that runs is the installed release's, not the candidate's. The reader of this stage declines `nyan`. The hand-over is here so that stage 3 can be previewed once this stage is installed, and stage 3 must keep to it: the command line above, and status 64 before any output when it does not draw.
 
 ## Evidence
 
 | Check | Result |
 |---|---|
-| Reader unit tests (`cargo test --locked` in `native/`) | 14 |
-| Routing and fallback suite (`tests/test-native.ps1`) | 15 checks: used when matching; kill switch; other protocol or commit; declined, failed and cut-off answers; missing, corrupt and non-executable file; unreadable build identity; other parameters; hung reader; the built reader against PowerShell for a source checkout and for a release |
+| Reader unit tests (`cargo test --locked` in `native/`) | 32 |
+| Routing and fallback suite (`tests/test-native.ps1`) | 20 checks: no module-loading command in the hand-over; which PowerShell is asking; one start per request with the caller and release named; the directories given to `status` and `explain`; text and JSON delivery; kill switch; declined, failed and cut-off answers; missing, corrupt and non-executable file; unreadable build identity; source checkout; unknown regional format; other parameters; live preview hand-over; hung reader; the built reader against PowerShell for a source checkout and for a release, and declining another commit, protocol and shell |
+| Parity suite (`tests/test-native-parity.ps1`), Windows PowerShell 5.1 and PowerShell 7.6 | 141 fictional cases, each as `status`, `explain` and both with `-AsJson`: 564 comparisons per version. 427 the same, 67 left to PowerShell, 70 where PowerShell fails and the reader declines. No differing answer. One check gives the reader an edited reading and requires the comparison to fail |
+| Seeded variations (`tests/test-native-parity.ps1`), both PowerShells | 150 variations of the cases in the four forms, seed 1: 600 comparisons per version. 368 the same, 119 left to PowerShell, 113 where PowerShell fails and the reader declines. No differing answer. During development 1,750 further variations (950 under 5.1, 800 under 7.6) gave 7,000 comparisons with no differing answer |
+| Entry script (`tests/test-native-parity.ps1`) | Six cases in the four forms through `hotpl8.ps1` against the real clock: the same with the reader, with `HOTPL8_NATIVE=0`, and from the reader asked directly |
+| Live preview (`tests/test_live_preview.py`) | A candidate with a reader runs with the one its trusted run built. Refused without running anything: fork, failed CI, changed head, missing, expired or ambiguous package, failed download, wrong or foreign checksum, extra or unsafe content, other platform, no reader, reader differing from its checksum |
 | Upgrade (`tests/test_delivery.py`, `tests/test_macos_delivery.py`) | Prior release without a binary, verified package with one, activation, fresh process through the stable launcher, removed and corrupt binary, rollback |
 | Ordinary Mac install (`tests/test-install-macos.ps1`) | A package copy whose reader has lost its executable bit installs with the bit restored |
-| `hotpl8 version` through `hotpl8.cmd`, median of 20, Windows | 1,615 ms before, 2,276 ms after |
-| `hotpl8 version` through the installed stable launcher, median of 20, Windows | 2,913 ms before, 3,217 ms after |
-| Reader alone, median of 20, Windows | 496 ms; an empty `powershell -NoProfile` took 677 ms in the same run |
-| Binary size, Windows | 330,752 bytes (local build) |
-| Installed adoption | Recorded after merge |
+| `hotpl8 status` through `hotpl8.cmd`, median of 20, Windows PowerShell 5.1 | 2,141 ms on main, 704 ms with the reader: 3.0 times faster. 2,178 ms with `HOTPL8_NATIVE=0` |
+| `hotpl8 explain` through `hotpl8.cmd`, median of 20, Windows PowerShell 5.1 | 1,991 ms on main, 691 ms with the reader: 2.9 times faster. 1,899 ms with `HOTPL8_NATIVE=0` |
+| `hotpl8 status` and `explain` through the installed stable launcher, median of 20, Windows | `status` 2,598 ms before, 1,150 ms after: 2.3 times faster. `explain` 2,389 ms before, 1,161 ms after: 2.1 times faster |
+| `status` and `explain` under PowerShell 7.6 (`pwsh -File hotpl8.ps1`), median of 20, Windows | `status` 1,926 ms with `HOTPL8_NATIVE=0`, 680 ms with the reader. `explain` 1,851 ms and 687 ms |
+| Parts, in the same runs | Reader asked directly 134 ms; `powershell -NoProfile` doing nothing 310 ms; `cmd /c exit` 141 ms. `status` from a release directory, which also reads `build-info.json`, 754 ms |
+| `hotpl8 version` through `hotpl8.cmd`, median of 20, Windows, stage 1 | 1,615 ms before, 2,276 ms after |
+| `hotpl8 version` through the installed stable launcher, median of 20, Windows, stage 1 | 2,913 ms before, 3,217 ms after |
+| Binary size, Windows | 330,752 bytes at stage 1; 1,034,240 bytes at stage 2 (local builds) |
+| Installed adoption, stage 1 | Main `1079508fffd708dbc266c6813bf286a1539cf8eb` was delivered and activated on Windows on 2026-10-05. The installed reader's `self-check` reported that commit, and `hotpl8 version` printed `0.2.0-rc.1 main 1079508fffd7` with and without `HOTPL8_NATIVE=0` |
+| Installed adoption, stage 2 | Recorded after merge |
 
-The launcher timings include the PowerShell processes that start `hotpl8.ps1`. Those launchers are outside this work, so `version` shows the floor they set rather than the reader's own speed.
+The launcher timings include the PowerShell process that starts `hotpl8.ps1`. That launcher is outside this work and sets the floor.
 
-`version` did not get faster, and on the measuring machine it got slower. The runs were interleaved on a machine at 68% to 93% processor load, where starting any small program (`cmd /c exit` included) took as long as starting the reader. The reader path replaces loading the PowerShell modules, about 0.3 s there, with two program starts: the identity check and the command. It wins only where a program start costs less than half of that module load. `version` was chosen to prove packaging, delivery and fallback, not speed; the commands that follow replace seconds of PowerShell work. Folding the identity check into the command's own start would halve the added cost and is a decision for stage 2.
+The `status` and `explain` runs were interleaved, one of each arrangement per round, on fictional state. Every round printed the same text in every arrangement.
+
+The budget for this stage was three times faster end to end. From a source checkout `status` meets it narrowly and `explain` falls just short. Through the installed launcher neither meets it: that launcher is a second PowerShell start, about 450 ms, paid before and after alike. A request is 1.2 to 1.4 seconds shorter in every arrangement. Of the 704 ms that remain for `status`, the reader's own work is 134 ms, `cmd` and an empty PowerShell are about 450 ms, and the rest is PowerShell reading `hotpl8.ps1` and starting the reader.
+
+Two things were learned on the way. At stage 1 `version` got slower (the rows above), because the identity check was a program start of its own; this stage sends the identity with the request, so a request is one start. `version` was not measured again. And the first `Join-Path`, `New-Object` or `Select-Object` in a fresh Windows PowerShell loads a module, 50 to 80 ms each on the measuring machine, so the hand-over calls .NET directly and a check in `tests/test-native.ps1` keeps it that way. A release still parses `build-info.json` with `ConvertFrom-Json`, which is the 50 ms between 704 and 754 above.
 
 ## Limits
 
@@ -133,4 +176,7 @@ The launcher timings include the PowerShell processes that start `hotpl8.ps1`. T
 - An installer or uninstaller from before this change does not know the `bin/` paths and stops with `Unrecognized file in application directory` when it checks a kept release that has them. On Windows the older installer checks only `previous`, so this appears on the run after a downgrade, while the newer release is still kept there. On Mac it also checks `app` before moving it, so the downgrade itself stops. Removing `bin` from the kept copy that has it (`app/bin` or `previous/bin`) clears it, and PowerShell answers for that copy. On Windows, installing the newer package again also clears it. Managed delivery is unaffected: it keeps whole release directories.
 - The reader's speed is hidden behind the PowerShell launchers until they are replaced, which needs its own lifecycle plan.
 - macOS on Intel is built but only Apple silicon is exercised in CI.
-- A live PR preview runs from the source archive, which has no compiled file, so it shows the PowerShell implementation. Previewing the reader needs the CI-built package and is part of stage 3.
+- A live PR preview of this stage shows the PowerShell dashboard, because this reader has none. Showing a candidate's compiled dashboard needs the installed release to contain the hand-over above, so this stage has to be installed before stage 3 is previewed.
+- The reader built for a live preview comes from the pull request's merge with the target branch, while the PowerShell files come from the pinned head. The two differ when the target branch has moved since the head was pushed.
+- PowerShell 7 before 7.5, and regional formats other than English or invariant, get the PowerShell implementation and none of the speed.
+- The parity suite takes ten to fifteen minutes on Windows, where it runs under both PowerShells at once, and needs PowerShell 7.5 or later beside Windows PowerShell. The Windows job limit in CI is 45 minutes for that reason.
