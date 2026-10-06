@@ -75,10 +75,11 @@ try{
         pathAdded=((-not $NoPath) -or ($old -and $old.pathAdded))
         scheduled=([bool]$Schedule -or ($old -and $old.scheduled))
     }
-    # One line that hands over to the launcher this release ships, app\hotpl8.cmd. cmd comes
-    # back to a command file by position, so this stays one line and shorter than any text
-    # installed here before: a session started from that text ends at the end of this one.
-    # See docs/install.md, "The launcher".
+    # One line that hands over to app\hotpl8.cmd, which every release has: rollback.ps1 puts
+    # an older release under app and leaves this file as it is. cmd comes back to a command
+    # file by position, so this stays one line and shorter than any text installed here
+    # before: a session started from that text ends at the end of this one. See
+    # docs/install.md, "The launcher".
     $shim='@"%~dp0app\hotpl8.cmd" %*'+[Environment]::NewLine
     Write-Hotpl8Text (Join-Path $destination 'hotpl8.cmd') $shim -NoBom
     if(-not $NoPath){Set-Hotpl8UserPath $destination $true}

@@ -11,6 +11,7 @@
     "CONTRIBUTING.md",
     "docs/plans/t3-managed-delivery.md",
     "hotpl8.cmd",
+    "hotpl8-launch.cmd",
     "hotpl8.ps1",
     "tick.ps1",
     "src/common.ps1",

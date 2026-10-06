@@ -30,6 +30,8 @@ $noPolicy='HotPl8: No valid policy.json. Run hotpl8 setup or see docs/install.md
 $stub=Join-Path $lab 'stub'
 $desktop=if($windows){Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'}
 $names=@('HOTPL8_TEST_NATIVE_LOG','HOTPL8_TEST_NATIVE_OUTPUT','HOTPL8_TEST_NATIVE_EXIT')
+# What install.ps1 writes beside an ordinary installation's app directory.
+$shim='@"%~dp0app\hotpl8.cmd" %*'+"`r`n"
 $prior=@{};foreach($name in $names){$prior[$name]=[Environment]::GetEnvironmentVariable($name)}
 $script:passed=0;$script:failed=0
 function Assert($Value,$Message='assertion failed'){if(-not $Value){throw $Message}}
@@ -276,13 +278,56 @@ try{
         # installed where sessions run from is never changed. A launcher that has to change
         # ships under a new name, and the one-line hand-off names it: docs/install.md, "The
         # launcher". A new digest here is that mistake, not an update to make.
-        $pins=@{'hotpl8.cmd'='D111F28A196D1A2D73578DA40E8E8FE4831FD91FC9AD47478C54100170686DAE';'delivery/launch.cmd'='AF6CA4572B7E09C3889F262C2E9503850439138CCCD4FCB0C937ADBB01F4E356';'delivery/hotpl8.cmd'='9D66AA8EC9DA41F7B41C0180ADBE5FDCF5DE73ED2DA02566D8E66F5655C080A9'}
+        $pins=@{'hotpl8.cmd'='79F68986A2102B54F45ABE0B1B222FA0B18C007B642BB50C4AB00060A9A1A20D';'hotpl8-launch.cmd'='43F0883120321A3486CD6679BADFDEAD9863028FA7665B046D2A5D2F8D476013';'delivery/launch.cmd'='AF6CA4572B7E09C3889F262C2E9503850439138CCCD4FCB0C937ADBB01F4E356';'delivery/hotpl8.cmd'='9D66AA8EC9DA41F7B41C0180ADBE5FDCF5DE73ED2DA02566D8E66F5655C080A9'}
         foreach($name in $pins.Keys){Assert ((Get-FileHash -LiteralPath (Join-Path $root $name) -Algorithm SHA256).Hash -eq $pins[$name]) ($name+' is not the text that shipped')}
         # A hand-off is shorter than the place cmd comes back to in the launchers installed before it.
-        Assert ([IO.File]::ReadAllBytes((Join-Path $root 'delivery/hotpl8.cmd')).Length -lt 88)
-        Assert ([IO.File]::ReadAllText((Join-Path $root 'install.ps1')).Contains("`$shim='@`"%~dp0app\hotpl8.cmd`" %*'+[Environment]::NewLine")) 'install.ps1 writes another hand-off'
+        foreach($name in 'hotpl8.cmd','delivery/hotpl8.cmd'){Assert ([IO.File]::ReadAllBytes((Join-Path $root $name)).Length -lt 80) ($name+' is too long')}
+        Assert ($shim.Length -lt 80 -and [IO.File]::ReadAllText((Join-Path $root 'install.ps1')).Contains("`$shim='"+$shim.TrimEnd()+"'+[Environment]::NewLine")) 'install.ps1 writes another hand-off'
     }
     if($windows){
+        Check 'a session started from a launcher of before ends once, as it would have' {
+            # The three texts sessions were started from before the reader was asked first, each
+            # with what is now put in its place while the session is still running.
+            $ended="exit /b %errorlevel%`r`n"
+            $changes=@(
+                @(("@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0hotpl8.ps1`" %*`r`n"+$ended),[IO.File]::ReadAllBytes((Join-Path $root 'hotpl8.cmd')),$true),
+                @(("@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0app\hotpl8.ps1`" %*`r`n"+$ended),[Text.Encoding]::ASCII.GetBytes($shim),$true),
+                @(("@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0launch.ps1`" -Entry hotpl8 %*`r`n"+$ended),[IO.File]::ReadAllBytes((Join-Path $root 'delivery/hotpl8.cmd')),$true),
+                # The mistake the hand-offs are there to prevent: the launcher's own text in that place.
+                @(("@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0hotpl8.ps1`" %*`r`n"+$ended),[IO.File]::ReadAllBytes((Join-Path $root 'hotpl8-launch.cmd')),$false))
+            $number=0
+            foreach($change in $changes){
+                $number++;$session=Join-Path $lab ('session'+$number);[void][IO.Directory]::CreateDirectory($session)
+                $launcher=Join-Path $session 'hotpl8.cmd';$go=Join-Path $session 'go';$err=Join-Path $session 'err'
+                [IO.File]::WriteAllText($launcher,$change[0]);[IO.File]::WriteAllText($log,'')
+                $info=[Diagnostics.ProcessStartInfo]::new()
+                $info.FileName=$env:ComSpec
+                $info.Arguments='/d /s /c ""'+$launcher+'" watch -ReducedMotion < NUL > NUL 2> "'+$err+'""'
+                $info.UseShellExecute=$false;$info.CreateNoWindow=$true
+                $settings=@{PATH=$stub+';'+$env:PATH;HOTPL8_TEST_NATIVE_LOG=$log;HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='7';HOTPL8_TEST_NATIVE_UNTIL=$go}
+                foreach($key in $settings.Keys){$info.EnvironmentVariables[$key]=$settings[$key]}
+                $process=[Diagnostics.Process]::Start($info)
+                try{
+                    # The session is running once the stand-in has written down its words.
+                    for($wait=0;$wait -lt 2000 -and -not [IO.FileInfo]::new($log).Length;$wait++){Start-Sleep -Milliseconds 10}
+                    [IO.File]::WriteAllBytes($launcher,$change[1]);[IO.File]::WriteAllText($go,'')
+                    if(-not $process.WaitForExit(60000)){$process.Kill();throw 'the session did not end'}
+                    $code=$process.ExitCode
+                }finally{$process.Dispose()}
+                $calls=@(Get-Calls);$errors=[IO.File]::ReadAllText($err)
+                $clean=($code -eq 7 -and $calls.Count -eq 1 -and $calls[0].EndsWith('|watch|-ReducedMotion') -and $errors -ceq 'fixture diagnostic')
+                Assert ($clean -eq $change[2]) ('change '+$number+': exit '+$code+', '+$calls.Count+' starts, <'+$errors+'>')
+            }
+            # rollback.ps1 puts an older release under app and leaves the hand-off beside it:
+            # that release's hotpl8.cmd is the first of these texts, and it is what answers.
+            $back=Join-Path $lab 'rolled back';[void][IO.Directory]::CreateDirectory((Join-Path $back 'app'))
+            [IO.File]::WriteAllText((Join-Path $back 'hotpl8.cmd'),$shim);[IO.File]::WriteAllText((Join-Path $back 'app\hotpl8.cmd'),$changes[0][0])
+            Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='7'}
+            $result=Invoke-Typed ('"'+(Join-Path $back 'hotpl8.cmd')+'" status -AsJson') @{PATH=$stub+';'+$env:PATH}
+            Assert ($result.exitCode -eq 7 -and ((Get-Calls) -join ';') -ceq ('-NoProfile|-ExecutionPolicy|Bypass|-File|'+(Join-Path $back 'app\hotpl8.ps1')+'|status|-AsJson')) ([string]$result.exitCode+' '+((Get-Calls) -join ';')+' '+$result.errors)
+            foreach($name in $names){[Environment]::SetEnvironmentVariable($name,'')}
+            Set-Reader $real
+        }
         Check 'the launcher prints what PowerShell printed, byte for byte' {
             $launcher='"'+(Join-Path $release 'hotpl8.cmd')+'"';$slow='"'+$desktop+'" -NoProfile -ExecutionPolicy Bypass -File "'+$entry+'"'
             # Windows PowerShell writes a file or a pipe in the console's code page, which holds part of these labels.
