@@ -187,6 +187,13 @@ impl Dto {
         }
         Ok(Dto { ticks, offset_minutes: self.offset_minutes })
     }
+    /// [datetimeoffset]::UtcNow
+    #[track_caller]
+    pub fn now() -> R<Dto> {
+        let Ok(since) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else { return decline() };
+        let Ok(ticks) = i64::try_from(since.as_nanos() / 100) else { return decline() };
+        Ok(Dto { ticks: UNIX_EPOCH_SECONDS * TICKS_PER_SECOND + ticks, offset_minutes: 0 })
+    }
     /// `$this - $other`, as a TimeSpan.
     pub fn since(self, other: Dto) -> Span {
         Span(self.ticks - other.ticks)
