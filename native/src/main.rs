@@ -85,16 +85,30 @@ fn main() -> ExitCode {
             return batch(Path::new(file));
         }
     }
+    // The PowerShell entry reads UTF-8 from the reader. A launcher's start is the user's own,
+    // and its streams are written to as door.rs says.
+    let user = arguments.first().is_some_and(|word| word == "user");
+    if user {
+        if let Some(status) = door::relayed(&arguments[1..]) {
+            return ExitCode::from(status);
+        }
+    }
     // Written, not `eprintln!`: a closed stream must not turn a refusal into a crash.
     let complain = |why: String| {
-        let _ = writeln!(std::io::stderr().lock(), "HotPl8: {}", ps::safe_text(&why));
+        // A user on Windows is given its line end, as for an answer.
+        let end = if user && cfg!(windows) { "\r\n" } else { "\n" };
+        let line = format!("HotPl8: {}{end}", ps::safe_text(&why));
+        let mut stderr = std::io::stderr().lock();
+        let bytes = if user { door::bytes_for(&line, &stderr) } else { line.as_bytes().into() };
+        let _ = stderr.write_all(&bytes);
         ExitCode::from(FAILED)
     };
     match respond(&arguments) {
         Ok(output) => {
             let mut stdout = std::io::stdout().lock();
+            let bytes = if user { door::bytes_for(&output, &stdout) } else { output.as_bytes().into() };
             // A caller that received part of an answer must not use it.
-            if stdout.write_all(output.as_bytes()).is_err() || stdout.flush().is_err() {
+            if stdout.write_all(&bytes).is_err() || stdout.flush().is_err() {
                 return ExitCode::from(FAILED);
             }
             ExitCode::SUCCESS
@@ -121,8 +135,12 @@ pub fn answer(request: &Request) -> R<String> {
 
 /// The commit this program was built from, for whoever must know which reader it holds.
 fn self_check(build_sha: Option<&str>) -> String {
-    let commit = |value: &&str| value.len() == 40 && value.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
-    format!("hotpl8-native sha={}\n", build_sha.filter(commit).unwrap_or("unknown"))
+    format!("hotpl8-native sha={}\n", build_sha.filter(|sha| is_commit(sha)).unwrap_or("unknown"))
+}
+
+/// A commit as HotPl8 names one: forty lowercase hexadecimal digits.
+fn is_commit(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// Test-only: every request in a file, answered by one start of this program. Comparing a

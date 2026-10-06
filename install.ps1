@@ -75,7 +75,11 @@ try{
         pathAdded=((-not $NoPath) -or ($old -and $old.pathAdded))
         scheduled=([bool]$Schedule -or ($old -and $old.scheduled))
     }
-    $shim="@echo off"+[Environment]::NewLine+'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0app\hotpl8.ps1" %*'+[Environment]::NewLine+'exit /b %errorlevel%'+[Environment]::NewLine
+    # One line that hands over to the launcher this release ships, app\hotpl8.cmd. cmd comes
+    # back to a command file by position, so this stays one line and shorter than any text
+    # installed here before: a session started from that text ends at the end of this one.
+    # See docs/install.md, "The launcher".
+    $shim='@"%~dp0app\hotpl8.cmd" %*'+[Environment]::NewLine
     Write-Hotpl8Text (Join-Path $destination 'hotpl8.cmd') $shim -NoBom
     if(-not $NoPath){Set-Hotpl8UserPath $destination $true}
     if($installation.scheduled){Register-Hotpl8Task $installation $destination}

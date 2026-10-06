@@ -500,6 +500,10 @@ export async function main(config, args) {
         release = self.root / "releases" / B
         release.mkdir(parents=True)
         shutil.copytree(source / "delivery", release / "delivery", ignore=shutil.ignore_patterns("__pycache__"))
+        native = source / "bin/windows/hotpl8-native.exe"
+        self.assertTrue(native.is_file(), "Build the native reader first: scripts/build-native.ps1")
+        (release / "bin/windows").mkdir(parents=True)
+        shutil.copyfile(native, release / "bin/windows/hotpl8-native.exe")
         # A fixture executable entry records the actual arguments and state
         # routing without contacting providers or touching the real scheduler.
         (release / "hotpl8.ps1").write_text("param([string]$Command,[switch]$AsJson)\n@{command=$Command;json=[bool]$AsJson;state=$env:HOTPL8_STATE_DIRECTORY}|ConvertTo-Json\n")
@@ -512,6 +516,13 @@ export async function main(config, args) {
         with patch.object(setup, "update", return_value={"state": "current"}), patch.object(setup.shutil, "which", return_value="gh"):
             setup.setup(self.root, register=False)
             setup.setup(self.root, register=False)
+        # hotpl8 is one line that hands over to launch.cmd, which asks the reader beside it
+        # and starts PowerShell with whatever the reader leaves to it.
+        for name, shipped in (("hotpl8.cmd", "delivery/hotpl8.cmd"), ("launch.cmd", "delivery/launch.cmd"), ("hotpl8-native.exe", "bin/windows/hotpl8-native.exe")):
+            self.assertEqual((self.root / name).read_bytes(), (release / shipped).read_bytes(), name)
+        result = launch([os.environ["ComSpec"], "/d", "/c", str(self.root / "hotpl8.cmd"), "refresh", "-AsJson"])
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        self.assertEqual(json.loads(result.stdout), {"command": "refresh", "json": True, "state": str(self.state)})
         ps = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
         result = launch([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(self.root / "app/hotpl8.ps1"), "status", "-AsJson"])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
@@ -687,13 +698,25 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
                     z.writestr(relative, reader)
             package(self.source, self.archive, "hotpl8", "example/hotpl8", sha)
 
-        def ask(*arguments):
-            # The same command line as the installed hotpl8.cmd.
-            return subprocess.run([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(self.root / "launch.ps1"),
-                                   "-Entry", "hotpl8", "version", *arguments], capture_output=True, timeout=180)
+        # An installation enrolled before the reader has a launcher that starts PowerShell
+        # for every command; one enrolled since has a reader beside it, here an older build.
+        (self.root / "hotpl8.cmd").write_bytes(
+            b'@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch.ps1" -Entry hotpl8 %*\r\nexit /b %errorlevel%\r\n')
+        (self.root / "hotpl8-native.exe").write_bytes(b"an older reader")
+        # A stand-in before the PowerShell on PATH: an answer that arrives with it in place
+        # came from a reader alone.
+        stub = self.root / "stub"
+        stub.mkdir()
+        (stub / "powershell.cmd").write_bytes(b"@exit /b 99\r\n")
+        alone = dict(os.environ, PATH=str(stub) + os.pathsep + os.environ["PATH"])
 
-        def answer(*arguments):
-            result = ask(*arguments)
+        def ask(*arguments, environment=None):
+            # What a user types.
+            return subprocess.run([os.environ["ComSpec"], "/d", "/c", str(self.root / "hotpl8.cmd"), "version", *arguments],
+                                  capture_output=True, timeout=180, env=environment)
+
+        def answer(*arguments, environment=None):
+            result = ask(*arguments, environment=environment)
             self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
             return result.stdout.decode().replace("\r\n", "\n")
 
@@ -717,8 +740,15 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         self.assertEqual(d.read(self.root / "current.json")["sha"], new)
         installed = self.root / "releases" / new / relative
         self.assertEqual(d.digest(installed), d.digest(native))
-        self.assertEqual(answer(), version + " main " + new[:12] + "\n")
-        self.assertEqual(json.loads(answer("-AsJson")), {"version": version, "build": {
+        # Activation gives the installation the launcher that asks a reader first, and the
+        # reader of the release it activated. The one in use is moved aside, not written over.
+        self.assertEqual((self.root / "hotpl8.cmd").read_bytes(), (source / "delivery/hotpl8.cmd").read_bytes())
+        self.assertEqual((self.root / "launch.cmd").read_bytes(), (source / "delivery/launch.cmd").read_bytes())
+        self.assertEqual(d.digest(self.root / "hotpl8-native.exe"), d.digest(native))
+        self.assertEqual([path.read_bytes() for path in self.root.glob("hotpl8-native.*.old")], [b"an older reader"])
+        # It reads the registration and the pointer as the runner and the adapter wrote them.
+        self.assertEqual(answer(environment=alone), version + " main " + new[:12] + "\n")
+        self.assertEqual(json.loads(answer("-AsJson", environment=alone)), {"version": version, "build": {
             "protocol": 1, "product": "hotpl8", "repository": "example/hotpl8", "sha": new, "channel": "main"}})
         # Damage after installation is said plainly: nothing else answers these commands.
         installed.write_bytes(b"not a program")
@@ -729,7 +759,8 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": new}})
         self.assertEqual(d.update(self.root, self.github)["state"], "pending")
         self.assertEqual(d.read(self.root / "current.json")["sha"], A)
-        self.assertEqual(answer(), version + " main " + A[:12] + "\n")
+        self.assertEqual(answer(environment=alone), version + " main " + A[:12] + "\n")
+        self.assertEqual(list(self.root.glob("hotpl8-native.*.old")), [])
 
     def test_preview_is_repeatable_and_never_selects_production(self):
         self.config["previewWorkflow"] = "ci.yml"

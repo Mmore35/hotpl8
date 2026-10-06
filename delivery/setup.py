@@ -34,6 +34,13 @@ def setup(root, register=True):
         release = root / current["release"]
         for src, dst in (("launch.ps1", "launch.ps1"), ("bootstrap.py", "delivery.py")):
             shutil.copyfile(release / "delivery" / src, root / dst)
+        # hotpl8 asks the reader beside the launcher before it starts PowerShell
+        # (docs/install.md, "The launcher"). Activation keeps that reader current. launch.cmd
+        # is installed once: cmd comes back to a command file by position, so one that
+        # sessions run from is never given other text.
+        for src, dst in (("bin/windows/hotpl8-native.exe", "hotpl8-native.exe"), ("delivery/launch.cmd", "launch.cmd")):
+            if not (root / dst).exists():
+                shutil.copyfile(release / src, root / dst)
         # Keep the entire pre-delivery app as a recovery copy. The app path then
         # becomes compatibility launchers for existing scheduled tasks/shortcuts.
         app = root / "app"
@@ -45,7 +52,8 @@ def setup(root, register=True):
             (app / (entry + ".ps1")).write_text(
                 "& (Join-Path (Split-Path $PSScriptRoot -Parent) 'launch.ps1') -Entry " + entry + " @args\nexit $LASTEXITCODE\n", encoding="utf-8")
         marker.write_text("Local Delivery compatibility entrypoints\n", encoding="utf-8")
-        (root / "hotpl8.cmd").write_text('@echo off\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch.ps1" -Entry hotpl8 %*\nexit /b %errorlevel%\n')
+        # One line that hands over to launch.cmd, and shorter than any text installed here before.
+        shutil.copyfile(release / "delivery/hotpl8.cmd", root / "hotpl8.cmd")
         owned.update(sourceSha=current["sha"], channel="main", managedBy="local-delivery")
         write(root / "installation.json", owned)
     if register:

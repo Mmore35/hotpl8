@@ -45,12 +45,13 @@ function Exit-Hotpl8Native([string]$Root,[string]$Command,[string]$StateDirector
         exit 1
     }
     if($result.exitCode -ne 0){
-        [Console]::Error.Write($result.errors)
+        [Console]::Error.Write($result.errors.Replace("`n",[Environment]::NewLine))
         exit 1
     }
     $text=$result.output
     if($text.EndsWith("`n",[StringComparison]::Ordinal)){$text=$text.Substring(0,$text.Length-1)}
-    # Text is one line per output object, as every other command writes it; JSON is one string.
-    if($AsJson){$text}else{$text.Split("`n")}
+    # Text is one line per output object, as every other command writes it; JSON is one
+    # string, with the line ends ConvertTo-Json gave it here.
+    if($AsJson){$text.Replace("`n",[Environment]::NewLine)}else{$text.Split("`n")}
     exit 0
 }

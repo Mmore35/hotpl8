@@ -61,6 +61,32 @@ if($Operation -in @('activate','recover')){
         $owned.version=(Get-Content -LiteralPath (Join-Path $ReleaseDirectory 'VERSION') -Raw).Trim()
         Write-Hotpl8Text (Join-Path $InstallDirectory 'installation.json') ($owned|ConvertTo-Json -Depth 6) -NoBom
     }
+    # hotpl8 asks a reader beside the installed launcher before it starts PowerShell
+    # (docs/install.md, "The launcher"). Nothing here may stop an activation: without these
+    # files every command still starts through launch.ps1.
+    try{
+        . (Join-Path $ReleaseDirectory 'src/native.ps1')
+        $shipped=Get-Hotpl8NativePath $ReleaseDirectory
+        $launcher=Join-Path $ReleaseDirectory 'delivery/launch.cmd'
+        $handOff=Join-Path $ReleaseDirectory 'delivery/hotpl8.cmd'
+        if((Test-Path -LiteralPath $shipped -PathType Leaf) -and (Test-Path -LiteralPath $launcher -PathType Leaf) -and (Test-Path -LiteralPath $handOff -PathType Leaf)){
+            $beside=Join-Path $InstallDirectory 'hotpl8-native.exe'
+            foreach($old in @(Get-ChildItem -LiteralPath $InstallDirectory -Filter 'hotpl8-native.*.old' -File)){try{Remove-Item -LiteralPath $old.FullName -Force}catch{}}
+            if(-not (Test-Path -LiteralPath $beside -PathType Leaf) -or (Get-FileHash -LiteralPath $beside -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $shipped -Algorithm SHA256).Hash){
+                # A reader that is answering cannot be written over, but it can be moved aside.
+                if(Test-Path -LiteralPath $beside -PathType Leaf){Move-Item -LiteralPath $beside -Destination (Join-Path $InstallDirectory ('hotpl8-native.'+[guid]::NewGuid().ToString('N')+'.old'))}
+                Copy-Item -LiteralPath $shipped -Destination $beside
+            }
+            $installed=Join-Path $InstallDirectory 'launch.cmd'
+            if(-not (Test-Path -LiteralPath $installed -PathType Leaf)){Copy-Item -LiteralPath $launcher -Destination $installed}
+            # An installation enrolled before the reader has a launcher that starts PowerShell
+            # for every command. Sessions started from it come back to it by position; the
+            # hand-off is one line and shorter, so they end at the end of it.
+            $door=Join-Path $InstallDirectory 'hotpl8.cmd'
+            $enrolled="@echo off`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0launch.ps1`" -Entry hotpl8 %*`nexit /b %errorlevel%`n"
+            if((Test-Path -LiteralPath $door -PathType Leaf) -and [IO.File]::ReadAllText($door).Replace("`r`n","`n") -ceq $enrolled){Copy-Item -LiteralPath $handOff -Destination $door -Force}
+        }
+    }catch{}
 }
 # No HotPl8 daemon is killed: the collector is a scheduled one-shot. The runner
 # holds runtime.lock and tick.lock across activation, so the next wake selects

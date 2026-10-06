@@ -1,7 +1,7 @@
-# version, status and explain are the compiled reader's alone. This checks the two ways a
-# request reaches it -- through the PowerShell entry, and as the words a user typed, handed
-# to it directly -- and what a copy without a reader it can start says instead of an answer.
-# Offline, against a synthetic release.
+# version, status and explain are the compiled reader's alone. This checks the ways a request
+# reaches it -- through the PowerShell entry, and as the words a user typed, which the
+# launchers hand it before they start PowerShell -- and what a copy without a reader it can
+# start says instead of an answer. Offline, against a synthetic release.
 # What the reader answers from a set of files is tests/test-native-parity.ps1.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
@@ -25,7 +25,10 @@ $buildFile=Join-Path $release 'build-info.json'
 $fixtureSha='a'*40
 $line=[Environment]::NewLine
 $noReader='HotPl8: This copy has no compiled reader it can start, and version, status and explain are answered by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.'+$line
-$noPolicy="HotPl8: No valid policy.json. Run hotpl8 setup or see docs/install.md.`n"
+$noPolicy='HotPl8: No valid policy.json. Run hotpl8 setup or see docs/install.md.'+$line
+# The launchers start the Windows PowerShell on PATH by name; a stand-in is put before it.
+$stub=Join-Path $lab 'stub'
+$desktop=if($windows){Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'}
 $names=@('HOTPL8_TEST_NATIVE_LOG','HOTPL8_TEST_NATIVE_OUTPUT','HOTPL8_TEST_NATIVE_EXIT')
 $prior=@{};foreach($name in $names){$prior[$name]=[Environment]::GetEnvironmentVariable($name)}
 $script:passed=0;$script:failed=0
@@ -47,11 +50,8 @@ function Invoke-Entry([string[]]$Arguments) {
     Invoke-Hotpl8NativeProcess $shell (@('-NoProfile','-ExecutionPolicy','Bypass','-File',$entry)+$Arguments)
 }
 function Invoke-Reader([string[]]$Arguments) { Invoke-Hotpl8NativeProcess $reader $Arguments }
-# An answer of the reader as PowerShell's output shows it: text is one line per object, each
-# ended the platform's way; JSON is one string with its own line feeds, ended once.
-function ConvertTo-EntryOutput([string]$Text,[bool]$AsJson) {
-    if($AsJson){$Text.Substring(0,$Text.Length-1)+$line}else{$Text.Replace("`n",$line)}
-}
+# An answer of the reader as PowerShell's output shows it: every line ended the platform's way.
+function ConvertTo-EntryOutput([string]$Text) { $Text.Replace("`n",$line) }
 # Two starts read the clock twice. The instant an answer was computed at always differs and
 # is left out; anything else that changed between them is asked again, and a difference
 # that is still there on the third try is a difference.
@@ -72,6 +72,29 @@ function Use-Fake([hashtable]$Settings=@{}) {
     [IO.File]::WriteAllText($log,'')
 }
 function Get-Calls {@([IO.File]::ReadAllLines($log))}
+# What cmd makes of a line typed at it: the status it ends with and the bytes each stream was
+# given, a character for a byte. The line reaches cmd as it is written here.
+function Invoke-Typed([string]$Typed,[hashtable]$Environment=@{}) {
+    $out=Join-Path $lab 'typed.out';$err=Join-Path $lab 'typed.err'
+    $info=[Diagnostics.ProcessStartInfo]::new()
+    $info.FileName=$env:ComSpec
+    $info.Arguments='/d /s /c "'+$Typed+' < NUL > "'+$out+'" 2> "'+$err+'""'
+    $info.UseShellExecute=$false;$info.CreateNoWindow=$true
+    foreach($key in $Environment.Keys){$info.EnvironmentVariables[$key]=$Environment[$key]}
+    $process=[Diagnostics.Process]::Start($info)
+    try{$process.WaitForExit();$code=$process.ExitCode}finally{$process.Dispose()}
+    $bytes=[Text.Encoding]::GetEncoding(28591)
+    [pscustomobject]@{exitCode=$code;output=$bytes.GetString([IO.File]::ReadAllBytes($out));errors=$bytes.GetString([IO.File]::ReadAllBytes($err))}
+}
+# Two whole starts that must end the same way with the same bytes on both streams, the
+# instant aside and asked again as above. Gives back the first of them.
+function Assert-SameStart([string]$Label,[scriptblock]$Through,[scriptblock]$Direct) {
+    for($try=1;;$try++){
+        $got=& $Through;$wanted=& $Direct
+        if($got.exitCode -eq $wanted.exitCode -and (Hide-Clock $got.output) -ceq (Hide-Clock $wanted.output) -and $got.errors -ceq $wanted.errors){return $got}
+        if($try -ge 3){throw ($Label+': exit '+$got.exitCode+' <'+$got.output+'> <'+$got.errors+'>, expected exit '+$wanted.exitCode+' <'+$wanted.output+'> <'+$wanted.errors+'>')}
+    }
+}
 try{
     [void][IO.Directory]::CreateDirectory($release)
     foreach($file in @(Get-Hotpl8ReleaseFiles $root|Where-Object{-not $_.StartsWith('bin/')})){
@@ -87,6 +110,26 @@ try{
     foreach($name in $plain.files.Keys){Write-Hotpl8Text (Join-Path $state $name) (Expand-Hotpl8ParityText $plain.files[$name] ([datetimeoffset]::UtcNow))}
     $previewPolicy=Join-Path $lab 'preview-policy.json'
     Write-Hotpl8Text $previewPolicy (Edit-Hotpl8ParityText (Expand-Hotpl8ParityText $plain.files['policy.json'] ([datetimeoffset]::UtcNow)) '"mode":"monitor"' '"mode":"automate"')
+    # The same readings under labels no code page holds whole.
+    $farState=Join-Path $lab 'far state';[void][IO.Directory]::CreateDirectory($farState)
+    $far=@(Get-Hotpl8ParityCases|Where-Object{$_.name -ceq 'labels outside ASCII'})[0]
+    foreach($name in $far.files.Keys){Write-Hotpl8Text (Join-Path $farState $name) (Expand-Hotpl8ParityText $far.files[$name] ([datetimeoffset]::UtcNow))}
+    # A program that stands in for a reader, and on Windows for PowerShell: it records the
+    # words it was started with and ends as its environment says.
+    if($windows){
+        $source=Join-Path $PSScriptRoot 'native-fake.cs'
+        if($PSVersionTable.PSEdition -eq 'Core'){
+            # PowerShell 7 cannot build a program; the Windows PowerShell beside it can.
+            $compile="Add-Type -TypeDefinition ([IO.File]::ReadAllText('"+$source.Replace("'","''")+"')) -OutputAssembly '"+$fake.Replace("'","''")+"' -OutputType ConsoleApplication"
+            $null=Invoke-Hotpl8Process $desktop @('-NoProfile','-ExecutionPolicy','Bypass','-Command',$compile) 60000
+        }else{Add-Type -TypeDefinition ([IO.File]::ReadAllText($source)) -OutputAssembly $fake -OutputType ConsoleApplication}
+        if(-not [IO.File]::Exists($fake)){throw 'Could not build the stand-in program.'}
+        [void][IO.Directory]::CreateDirectory($stub);[IO.File]::Copy($fake,(Join-Path $stub 'powershell.exe'))
+    }else{
+        $script=@('#!/bin/sh','if [ -n "$HOTPL8_TEST_NATIVE_LOG" ]; then (IFS="|"; printf ''%s\n'' "$*" >> "$HOTPL8_TEST_NATIVE_LOG"); fi','printf ''%s'' "$HOTPL8_TEST_NATIVE_OUTPUT"; printf ''fixture diagnostic'' >&2; exit "${HOTPL8_TEST_NATIVE_EXIT:-0}"','')
+        [IO.File]::WriteAllText($fake,($script -join "`n"))
+        [IO.File]::SetUnixFileMode($fake,[IO.UnixFileMode]'UserRead,UserWrite,UserExecute')
+    }
     Set-Reader $real;Set-Build $fixtureSha
 
     Check 'the hand-over calls no command that would load a module first' {
@@ -124,15 +167,15 @@ try{
             foreach($json in $false,$true){
                 $asked=@($command,'--root',$release,'--state',$state);$typed=@($command,'-StateDirectory',$state)
                 if($json){$asked+='-AsJson';$typed+='-AsJson'}
-                Assert-SameAnswer ($typed -join ' ') {Invoke-Entry $typed} {ConvertTo-EntryOutput (Invoke-Reader $asked).output $json}
+                Assert-SameAnswer ($typed -join ' ') {Invoke-Entry $typed} {ConvertTo-EntryOutput (Invoke-Reader $asked).output}
             }
         }
         $asked=@('status','--root',$release,'--state',$state,'--policy',$previewPolicy)
         Assert ((Invoke-Reader @('status','--root',$release,'--state',$state)).output.Contains('monitor only') -and -not (Invoke-Reader $asked).output.Contains('monitor only')) 'the preview policy does not show'
-        Assert-SameAnswer 'a preview policy' {Invoke-Entry @('status','-PreviewPolicy',$previewPolicy,'-StateDirectory',$state,'-CodexExecutable',$real)} {ConvertTo-EntryOutput (Invoke-Reader $asked).output $false}
+        Assert-SameAnswer 'a preview policy' {Invoke-Entry @('status','-PreviewPolicy',$previewPolicy,'-StateDirectory',$state,'-CodexExecutable',$real)} {ConvertTo-EntryOutput (Invoke-Reader $asked).output}
         # A parameter the three do not read takes the long way round to the same answer.
-        Assert-SameAnswer 'status -NoColor' {Invoke-Entry @('status','-NoColor','-StateDirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader @('status','--root',$release,'--state',$state)).output $false}
-        Assert-SameAnswer 'explain -ReducedMotion -AsJson' {Invoke-Entry @('explain','-ReducedMotion','-StateDirectory',$state,'-AsJson')} {ConvertTo-EntryOutput (Invoke-Reader @('explain','--root',$release,'--state',$state,'-AsJson')).output $true}
+        Assert-SameAnswer 'status -NoColor' {Invoke-Entry @('status','-NoColor','-StateDirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader @('status','--root',$release,'--state',$state)).output}
+        Assert-SameAnswer 'explain -ReducedMotion -AsJson' {Invoke-Entry @('explain','-ReducedMotion','-StateDirectory',$state,'-AsJson')} {ConvertTo-EntryOutput (Invoke-Reader @('explain','--root',$release,'--state',$state,'-AsJson')).output}
     }
     Check 'text arrives one line at a time and JSON as one value' {
         $lines=(Invoke-Reader @('explain','--root',$release,'--state',$state)).output.Split("`n").Count-1
@@ -145,7 +188,7 @@ try{
     Check 'a refusal is said in the reader''s words and ends with 1' {
         foreach($arguments in @(@('status'),@('explain','-AsJson'),@('status','-NoColor'))){
             $result=Invoke-Entry ($arguments+@('-StateDirectory',$emptyState))
-            Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors.TrimEnd() -ceq $noPolicy.TrimEnd()) (($arguments -join ' ')+': '+$result.exitCode+' '+$result.output+$result.errors)
+            Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq $noPolicy) (($arguments -join ' ')+': '+$result.exitCode+' '+$result.output+$result.errors)
         }
         # A parameter that belongs to another command is the entry's to refuse, as for any command.
         $result=Invoke-Entry @('status','-StateDirectory',$state,'-TrustRevision','x')
@@ -156,8 +199,8 @@ try{
     Check 'the words a user types are answered without PowerShell' {
         $result=Invoke-Reader @('user','version')
         Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output -ceq ($version+' main '+$fixtureSha.Substring(0,12)+$line)) $result.output
-        Assert-SameAnswer 'user explain' {Invoke-Reader @('user','Explain','-statedirectory',$state)} {(Invoke-Reader @('explain','--root',$release,'--state',$state)).output.Replace("`n",$line)}
-        Assert-SameAnswer 'user status -AsJson' {Invoke-Reader @('user','status','-AsJson','-StateDirectory',$state,'-PreviewPolicy',$previewPolicy,'-CodexExecutable',$real)} {(Invoke-Reader @('status','--root',$release,'--state',$state,'--policy',$previewPolicy,'-AsJson')).output.Replace("`n",$line)}
+        Assert-SameAnswer 'user explain' {Invoke-Reader @('user','Explain','-statedirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader @('explain','--root',$release,'--state',$state)).output}
+        Assert-SameAnswer 'user status -AsJson' {Invoke-Reader @('user','status','-AsJson','-StateDirectory',$state,'-PreviewPolicy',$previewPolicy,'-CodexExecutable',$real)} {ConvertTo-EntryOutput (Invoke-Reader @('status','--root',$release,'--state',$state,'--policy',$previewPolicy,'-AsJson')).output}
         $result=Invoke-Reader @('user','status','-StateDirectory',$emptyState)
         Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq $noPolicy) $result.errors
     }
@@ -206,19 +249,6 @@ try{
     }
     Check 'the live preview asks a candidate''s reader for the dashboard, and shows PowerShell''s when it has none' {
         # delivery/live-preview.ps1 runs from the installed release against a candidate's source.
-        if($windows){
-            $source=Join-Path $PSScriptRoot 'native-fake.cs'
-            if($PSVersionTable.PSEdition -eq 'Core'){
-                # PowerShell 7 cannot build a program; the Windows PowerShell beside it can.
-                $compile="Add-Type -TypeDefinition ([IO.File]::ReadAllText('"+$source.Replace("'","''")+"')) -OutputAssembly '"+$fake.Replace("'","''")+"' -OutputType ConsoleApplication"
-                $null=Invoke-Hotpl8Process (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-Command',$compile) 60000
-            }else{Add-Type -TypeDefinition ([IO.File]::ReadAllText($source)) -OutputAssembly $fake -OutputType ConsoleApplication}
-            if(-not [IO.File]::Exists($fake)){throw 'Could not build the stand-in reader.'}
-        }else{
-            $script=@('#!/bin/sh','if [ -n "$HOTPL8_TEST_NATIVE_LOG" ]; then (IFS="|"; printf ''%s\n'' "$*" >> "$HOTPL8_TEST_NATIVE_LOG"); fi','printf ''%s'' "$HOTPL8_TEST_NATIVE_OUTPUT"; printf ''fixture diagnostic'' >&2; exit "${HOTPL8_TEST_NATIVE_EXIT:-0}"','')
-            [IO.File]::WriteAllText($fake,($script -join "`n"))
-            [IO.File]::SetUnixFileMode($fake,[IO.UnixFileMode]'UserRead,UserWrite,UserExecute')
-        }
         $demo=Join-Path $lab 'preview state';[void][IO.Directory]::CreateDirectory($demo)
         $url='https://github.com/example/hotpl8/pull/1'
         $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'delivery/live-preview.ps1'),'-SourceDirectory',$release,'-StateDirectory',$demo,'-PrUrl',$url,'-Revision',$fixtureSha)
@@ -238,6 +268,102 @@ try{
             Set-Reader $candidate
             $result=Invoke-Hotpl8Process $shell $arguments 60000
             Assert ($result.exitCode -eq 0 -and $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
+        }
+        Set-Reader $real
+    }
+    Check 'a launcher that sessions are started from keeps the text it shipped with' {
+        # cmd comes back to a command file by position after every line, so text that is
+        # installed where sessions run from is never changed. A launcher that has to change
+        # ships under a new name, and the one-line hand-off names it: docs/install.md, "The
+        # launcher". A new digest here is that mistake, not an update to make.
+        $pins=@{'hotpl8.cmd'='D111F28A196D1A2D73578DA40E8E8FE4831FD91FC9AD47478C54100170686DAE';'delivery/launch.cmd'='AF6CA4572B7E09C3889F262C2E9503850439138CCCD4FCB0C937ADBB01F4E356';'delivery/hotpl8.cmd'='9D66AA8EC9DA41F7B41C0180ADBE5FDCF5DE73ED2DA02566D8E66F5655C080A9'}
+        foreach($name in $pins.Keys){Assert ((Get-FileHash -LiteralPath (Join-Path $root $name) -Algorithm SHA256).Hash -eq $pins[$name]) ($name+' is not the text that shipped')}
+        # A hand-off is shorter than the place cmd comes back to in the launchers installed before it.
+        Assert ([IO.File]::ReadAllBytes((Join-Path $root 'delivery/hotpl8.cmd')).Length -lt 88)
+        Assert ([IO.File]::ReadAllText((Join-Path $root 'install.ps1')).Contains("`$shim='@`"%~dp0app\hotpl8.cmd`" %*'+[Environment]::NewLine")) 'install.ps1 writes another hand-off'
+    }
+    if($windows){
+        Check 'the launcher prints what PowerShell printed, byte for byte' {
+            $launcher='"'+(Join-Path $release 'hotpl8.cmd')+'"';$slow='"'+$desktop+'" -NoProfile -ExecutionPolicy Bypass -File "'+$entry+'"'
+            # Windows PowerShell writes a file or a pipe in the console's code page, which holds part of these labels.
+            Assert ((Invoke-Reader @('status','--root',$release,'--state',$farState)).output -cmatch '[^\x00-\x7f]') 'the labels are plain'
+            foreach($words in @(('status -StateDirectory "'+$farState+'"'),('Explain -statedirectory "'+$farState+'"'),('explain -StateDirectory "'+$farState+'" -AsJson'))){
+                $got=Assert-SameStart $words {Invoke-Typed ($launcher+' '+$words)} {Invoke-Typed ($slow+' '+$words)}
+                Assert ($got.exitCode -eq 0 -and $got.errors -eq '' -and $got.output.EndsWith("`r`n")) ($words+': '+$got.exitCode+' '+$got.errors)
+            }
+            $words='status -StateDirectory "'+$emptyState+'"'
+            $got=Assert-SameStart $words {Invoke-Typed ($launcher+' '+$words)} {Invoke-Typed ($slow+' '+$words)}
+            Assert ($got.exitCode -eq 1 -and $got.output -eq '' -and $got.errors -ceq $noPolicy) ($words+': '+$got.exitCode+' '+$got.errors)
+        }
+        Check 'the launcher starts PowerShell with the words the reader leaves to it, and only then' {
+            $launcher='"'+(Join-Path $release 'hotpl8.cmd')+'"';$started='-NoProfile|-ExecutionPolicy|Bypass|-File|'+$entry
+            $path=@{PATH=$stub+';'+$env:PATH}
+            Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='99'};Set-Reader $real
+            foreach($words in @('version',('status -StateDirectory "'+$state+'"'),('Explain -asjson -statedirectory "'+$state+'"'))){
+                $result=Invoke-Typed ($launcher+' '+$words) $path
+                Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output.Length -gt 0 -and -not (Get-Calls).Count) ($words+': '+$result.exitCode+' '+$result.errors+((Get-Calls) -join ';'))
+            }
+            $result=Invoke-Typed ($launcher+' status -StateDirectory "'+$emptyState+'"') $path
+            Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq $noPolicy -and -not (Get-Calls).Count) ([string]$result.exitCode+' '+$result.errors)
+            # Everything else is PowerShell's, in the same words, and ends as PowerShell ended.
+            foreach($pair in @(@('refresh -Slot main','|refresh|-Slot|main'),@(('status -NoColor -StateDirectory "'+$state+'"'),('|status|-NoColor|-StateDirectory|'+$state)),@('',''))){
+                [IO.File]::WriteAllText($log,'')
+                $result=Invoke-Typed ($launcher+' '+$pair[0]) $path
+                Assert ($result.exitCode -eq 99 -and $result.output -eq '' -and ((Get-Calls) -join ';') -ceq ($started+$pair[1])) ($pair[0]+': '+$result.exitCode+' '+((Get-Calls) -join ';'))
+            }
+            # So is a copy with no reader: the entry says what is missing.
+            Set-Reader '';[IO.File]::WriteAllText($log,'')
+            $result=Invoke-Typed ($launcher+' version') $path
+            Assert ($result.exitCode -eq 99 -and ((Get-Calls) -join ';') -ceq ($started+'|version')) ([string]$result.exitCode+' '+((Get-Calls) -join ';'))
+            # A reader ends with 0 for an answer and 1 for a refusal. Any other status, a crash
+            # among them, is no answer of its own, and PowerShell is asked.
+            foreach($status in 0,1,2,64,255,-1,-1073740791){
+                Use-Fake @{HOTPL8_TEST_NATIVE_EXIT=[string]$status}
+                $result=Invoke-Typed ($launcher+' refresh') $path
+                $asked=if($status -in 0,1){@('user|refresh')}else{@('user|refresh',($started+'|refresh'))}
+                Assert ($result.exitCode -eq $status -and $result.output -ceq ("native-sentinel`n"*$asked.Count) -and ((Get-Calls) -join ';') -ceq ($asked -join ';')) ([string]$status+': '+$result.exitCode+' '+((Get-Calls) -join ';'))
+            }
+            foreach($name in $names){[Environment]::SetEnvironmentVariable($name,'')}
+            Set-Reader $real
+        }
+        Check 'an installation that updates itself answers from the release in force' {
+            # As delivery/setup.py lays one out: the launcher, the reader beside it, and releases.
+            $managed=Join-Path $lab 'managed';$inForce=Join-Path $managed ('releases\'+$fixtureSha)
+            [void][IO.Directory]::CreateDirectory((Join-Path $managed 'releases'))
+            Copy-Item -LiteralPath $release -Destination $inForce -Recurse
+            foreach($pair in @(@('delivery/hotpl8.cmd','hotpl8.cmd'),@('delivery/launch.cmd','launch.cmd'),@('delivery/launch.ps1','launch.ps1'),@($relative,'hotpl8-native.exe'))){[IO.File]::Copy((Join-Path $release $pair[0]),(Join-Path $managed $pair[1]))}
+            Write-Hotpl8Text (Join-Path $managed 'delivery.json') (@{stateDirectory=$state}|ConvertTo-Json) -NoBom
+            $point={param($Release) Write-Hotpl8Text (Join-Path $managed 'current.json') ([ordered]@{protocol=1;sha=$fixtureSha;release=$Release}|ConvertTo-Json) -NoBom}
+            & $point ('releases/'+$fixtureSha)
+            $script=Join-Path $managed 'launch.ps1'
+            $launcher='"'+(Join-Path $managed 'hotpl8.cmd')+'"';$slow='"'+$desktop+'" -NoProfile -ExecutionPolicy Bypass -File "'+$script+'" -Entry hotpl8'
+            # The state directory is the installation's, whatever the caller's environment names.
+            $path=@{PATH=$stub+';'+$env:PATH;HOTPL8_STATE_DIRECTORY=$emptyState}
+            Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='99'};Set-Reader $real
+            $result=Invoke-Typed ($launcher+' version') $path
+            Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output -ceq ($version+' main '+$fixtureSha.Substring(0,12)+$line) -and -not (Get-Calls).Count) ([string]$result.exitCode+' '+$result.output+$result.errors)
+            foreach($words in 'status','explain -AsJson'){
+                $got=Assert-SameStart $words {Invoke-Typed ($launcher+' '+$words) $path} {Invoke-Typed ($slow+' '+$words)}
+                Assert ($got.exitCode -eq 0 -and $got.errors -eq '' -and -not (Get-Calls).Count) ($words+': '+$got.exitCode+' '+$got.errors+((Get-Calls) -join ';'))
+            }
+            # Everything else goes to launch.ps1 in the same words.
+            $result=Invoke-Typed ($launcher+' refresh -Slot main') $path
+            Assert ($result.exitCode -eq 99 -and ((Get-Calls) -join ';') -ceq ('-NoProfile|-ExecutionPolicy|Bypass|-File|'+$script+'|-Entry|hotpl8|refresh|-Slot|main')) ([string]$result.exitCode+' '+((Get-Calls) -join ';'))
+            foreach($name in $names){[Environment]::SetEnvironmentVariable($name,'')}
+            # What is out of the ordinary is launch.ps1's to report, in the words it has for it:
+            # an update in progress,
+            $update=[IO.File]::Open((Join-Path $managed 'runtime.lock'),'OpenOrCreate','ReadWrite','None')
+            try{$result=Invoke-Typed ($launcher+' status')}finally{$update.Dispose()}
+            Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors.Contains('HotPl8 is updating; retry shortly.')) ([string]$result.exitCode+' '+$result.output+$result.errors)
+            # a pointer that names no release,
+            & $point 'releases/other'
+            $result=Invoke-Typed ($launcher+' status')
+            Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors.Contains('Invalid installed release pointer.')) ([string]$result.exitCode+' '+$result.output+$result.errors)
+            & $point ('releases/'+$fixtureSha)
+            # and a release whose reader does not start.
+            [IO.File]::Delete((Join-Path $inForce $relative))
+            $result=Invoke-Typed ($launcher+' status')
+            Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq $noReader) ([string]$result.exitCode+' '+$result.output+$result.errors)
         }
     }
 }finally{

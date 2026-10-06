@@ -2,6 +2,7 @@
 //! PowerShell when they spell a request the reader owns. Everything else is not this
 //! program's to refuse: the launcher starts the PowerShell entry with the same words.
 
+use std::borrow::Cow;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -69,6 +70,101 @@ fn value(word: &OsString) -> Option<&std::ffi::OsStr> {
     (!text.is_empty() && !text.starts_with(parameter)).then_some(word.as_os_str())
 }
 
+/// The exit status of the release in force, asked the same words, when this program is the
+/// copy an installation that updates itself keeps beside its launcher (delivery/launch.cmd).
+/// That copy answers nothing itself, so it is never stale: it is `None` everywhere else.
+#[cfg(windows)]
+pub fn relayed(said: &[OsString]) -> Option<u8> {
+    let program = std::env::current_exe().ok()?;
+    let installation = program.parent()?;
+    if !installation.join("current.json").is_file() {
+        return None;
+    }
+    let status = held(installation, said).and_then(|(lease, reader, state)| {
+        let child = std::process::Command::new(reader).arg("user").args(said).env("HOTPL8_STATE_DIRECTORY", state).env("HOTPL8_INSTALL_DIRECTORY", installation).status();
+        // The release stays in place until its reader has ended.
+        drop(lease);
+        child.ok()?.code()
+    });
+    // Whatever is out of the ordinary is launch.ps1's to report, in the words it has for it.
+    Some(match status {
+        Some(0) => 0,
+        Some(1) => crate::FAILED,
+        _ => crate::NOT_MINE,
+    })
+}
+#[cfg(not(windows))]
+pub fn relayed(_said: &[OsString]) -> Option<u8> {
+    None
+}
+
+/// What delivery/launch.ps1 does before it starts a release, for the requests the reader
+/// owns: the lease an update waits for, the reader of the release in force, and the state
+/// directory that release is told to use.
+#[cfg(windows)]
+fn held(installation: &Path, said: &[OsString]) -> Option<(std::fs::File, PathBuf, String)> {
+    use std::os::windows::fs::OpenOptionsExt;
+    // Only words the reader owns go past PowerShell. The release's own reader reads them
+    // again, so this copy may be older or newer than the release.
+    request(said, installation)?;
+    let text = |file: &str, name: &str| Some(crate::json::read_file(&installation.join(file)).ok()??.g(name).ok()?.as_str()?.to_owned());
+    let state = text("delivery.json", "stateDirectory")?;
+    // An update opens this file sharing it with no one; every command in progress holds it shared.
+    let lease = std::fs::OpenOptions::new().read(true).write(true).create(true).share_mode(3).open(installation.join("runtime.lock")).ok()?;
+    let sha = text("current.json", "sha")?;
+    if !crate::is_commit(&sha) || text("current.json", "release")? != format!("releases/{sha}") {
+        return None;
+    }
+    let reader = installation.join("releases").join(sha).join("bin").join("windows").join("hotpl8-native.exe");
+    Some((lease, reader, state))
+}
+
+/// The bytes a stream of this start is given for `text`. Windows PowerShell writes to a file
+/// or a pipe in the console's code page, and whatever read HotPl8's output from one before
+/// reads it the same way now. A console is given the text as it is.
+#[cfg(windows)]
+pub fn bytes_for<'a>(text: &'a str, stream: &impl std::os::windows::io::AsRawHandle) -> Cow<'a, [u8]> {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetConsoleMode(console: *mut core::ffi::c_void, mode: *mut u32) -> i32;
+        fn GetConsoleOutputCP() -> u32;
+        fn WideCharToMultiByte(page: u32, flags: u32, wide: *const u16, units: i32, bytes: *mut u8, capacity: i32, default: *const u8, used_default: *mut i32) -> i32;
+    }
+    const UTF8: u32 = 65001;
+    let plain = Cow::Borrowed(text.as_bytes());
+    if text.is_ascii() {
+        return plain;
+    }
+    let mut mode = 0;
+    // SAFETY: the handle is one of this process's own streams and `mode` is a live u32; the
+    // call fails, and writes nothing, for a handle that is no console.
+    if unsafe { GetConsoleMode(stream.as_raw_handle(), &mut mode) } != 0 {
+        return plain;
+    }
+    // SAFETY: takes no arguments. Without a console it gives 0, which the conversion below
+    // reads as the system's own page, as PowerShell does.
+    let page = unsafe { GetConsoleOutputCP() };
+    if page == UTF8 {
+        return plain;
+    }
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    let Ok(units) = i32::try_from(wide.len()) else { return plain };
+    // SAFETY: `wide` holds `units` units, and no buffer with no capacity asks for the size.
+    let size = unsafe { WideCharToMultiByte(page, 0, wide.as_ptr(), units, core::ptr::null_mut(), 0, core::ptr::null(), core::ptr::null_mut()) };
+    let Ok(length) = usize::try_from(size) else { return plain };
+    let mut bytes = vec![0u8; length];
+    // SAFETY: `bytes` holds `size` bytes, the size the same call asked for a moment ago.
+    let written = unsafe { WideCharToMultiByte(page, 0, wide.as_ptr(), units, bytes.as_mut_ptr(), size, core::ptr::null(), core::ptr::null_mut()) };
+    if written != size || size == 0 {
+        return plain;
+    }
+    Cow::Owned(bytes)
+}
+#[cfg(not(windows))]
+pub fn bytes_for<'a, S>(text: &'a str, _stream: &S) -> Cow<'a, [u8]> {
+    Cow::Borrowed(text.as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,9 +172,12 @@ mod tests {
     const ROOT: &str = if cfg!(windows) { r"C:\hotpl8" } else { "/hotpl8" };
     const STATE: &str = if cfg!(windows) { r"D:\my state" } else { "/my state" };
 
+    fn words(items: &[&str]) -> Vec<OsString> {
+        items.iter().map(OsString::from).collect()
+    }
+
     fn spelled(items: &[&str]) -> Option<Request> {
-        let words: Vec<OsString> = items.iter().map(OsString::from).collect();
-        request(&words, Path::new(ROOT))
+        request(&words(items), Path::new(ROOT))
     }
 
     #[test]
@@ -121,5 +220,47 @@ mod tests {
         ] {
             assert_eq!(spelled(items), None, "{items:?}");
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_installation_that_updates_itself_names_the_release_in_force() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+        let root = std::env::temp_dir().join(format!("hotpl8-native-relay-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let pointer = |sha: &str, release: &str| std::fs::write(root.join("current.json"), format!("{{\"protocol\":1,\"sha\":\"{sha}\",\"release\":\"{release}\"}}")).unwrap();
+        let found = |items: &[&str]| held(&root, &words(items)).map(|(_, reader, state)| (reader, state));
+        std::fs::write(root.join("delivery.json"), "{\"stateDirectory\":\"D:\\\\my state\"}").unwrap();
+        pointer(SHA, &format!("releases/{SHA}"));
+        // Words for the rest of HotPl8 go to launch.ps1 before anything is opened.
+        for items in [&["refresh"][..], &["status", "-Live"], &["-Command", "status"], &[]] {
+            assert_eq!(found(items), None, "{items:?}");
+        }
+        assert!(!root.join("runtime.lock").exists());
+        let reader = root.join("releases").join(SHA).join("bin").join("windows").join("hotpl8-native.exe");
+        assert_eq!(found(&["status", "-AsJson"]), Some((reader, STATE.to_owned())));
+        // Two commands hold the lease together; an update holds it alone.
+        let first = held(&root, &words(&["explain"])).unwrap();
+        assert!(found(&["version"]).is_some());
+        drop(first);
+        let update = std::fs::OpenOptions::new().read(true).write(true).share_mode(0).open(root.join("runtime.lock")).unwrap();
+        assert_eq!(found(&["status"]), None);
+        drop(update);
+        for (sha, release) in [("main", "releases/main".to_owned()), (SHA, "releases/other".to_owned()), (&*SHA.to_uppercase(), format!("releases/{}", SHA.to_uppercase()))] {
+            pointer(sha, &release);
+            assert_eq!(found(&["status"]), None, "{sha} {release}");
+        }
+        std::fs::write(root.join("current.json"), "not a pointer").unwrap();
+        assert_eq!(found(&["status"]), None);
+        std::fs::remove_file(root.join("delivery.json")).unwrap();
+        pointer(SHA, &format!("releases/{SHA}"));
+        assert_eq!(found(&["status"]), None);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn text_in_ascii_is_written_as_it_is() {
+        assert!(matches!(bytes_for("5h 62% remaining\r\n", &std::io::stdout()), Cow::Borrowed(bytes) if bytes == b"5h 62% remaining\r\n"));
     }
 }

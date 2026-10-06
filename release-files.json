@@ -113,6 +113,8 @@
     "delivery/package.py",
     "delivery/setup.py",
     "delivery/launch.ps1",
+    "delivery/launch.cmd",
+    "delivery/hotpl8.cmd",
     "delivery/register.ps1",
     "delivery/hotpl8-adapter.ps1",
     "tests/test_delivery.py",
