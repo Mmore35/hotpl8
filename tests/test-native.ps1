@@ -106,6 +106,20 @@ try{
         $script:plainJson=Invoke-Entry @('version','-AsJson')
         Assert ($script:plainJson.exitCode -eq 0 -and ($script:plainJson.output|ConvertFrom-Json).build.sha -ceq $fixtureSha)
     }
+    Check 'the hand-over calls no command that would load a module first' {
+        # Each of these costs a fresh Windows PowerShell 50 to 80 ms on first use.
+        $allowed=@('ForEach-Object','Where-Object','ConvertFrom-Json','Invoke-Hotpl8NativeProcess','Get-Hotpl8NativePath','Get-Hotpl8NativeIdentity')
+        $tree=[Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'src/native.ps1'),[ref]$null,[ref]$null)
+        $used=@($tree.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)|ForEach-Object{$_.GetCommandName()}|Where-Object{$_}|Sort-Object -Unique)
+        $extra=@($used|Where-Object{$_ -notin $allowed})
+        Assert (-not $extra.Count) ('src/native.ps1 calls '+($extra -join ', '))
+        $entry=[IO.File]::ReadAllText((Join-Path $root 'hotpl8.ps1'))
+        $handOver=$entry.Substring(0,$entry.IndexOf(". (Join-Path `$PSScriptRoot 'src/common.ps1')",[StringComparison]::Ordinal))
+        $tree=[Management.Automation.Language.Parser]::ParseInput($handOver+'}catch{}',[ref]$null,[ref]$null)
+        $used=@($tree.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)|ForEach-Object{$_.GetCommandName()}|Where-Object{$_}|Sort-Object -Unique)
+        $extra=@($used|Where-Object{$_ -notin @('Where-Object','Invoke-Hotpl8Native')})
+        Assert ($used -contains 'Invoke-Hotpl8Native' -and -not $extra.Count) ('the hand-over in hotpl8.ps1 calls '+($used -join ', '))
+    }
     Check 'the reader is told which PowerShell is asking, or is not asked' {
         Use-Fake
         $identity=Get-Hotpl8NativeIdentity $release

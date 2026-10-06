@@ -55,7 +55,8 @@ try {
         {$_ -in 'status','explain'}{@('Command','AsJson','StateDirectory','PreviewPolicy','CodexExecutable')}
     }
     if($nativeAllowed -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin $nativeAllowed}).Count){
-        . (Join-Path $PSScriptRoot 'src/native.ps1')
+        # No Join-Path here: see the note on modules at the top of src/native.ps1.
+        . ([IO.Path]::Combine($PSScriptRoot,'src','native.ps1'))
         $nativeArguments=@($Command,'--root',$PSScriptRoot)
         if($StateDirectory){$nativeArguments+=@('--state',$StateDirectory)}
         if($PreviewPolicy){$nativeArguments+=@('--policy',$PreviewPolicy)}

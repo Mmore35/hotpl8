@@ -1,11 +1,14 @@
 # Hands display commands to the compiled reader when the release ships one that matches it.
 # hotpl8.ps1 loads this before src/common.ps1, so it must stay self-contained: the fast path
-# is only fast while it does not load the modules it replaces. Every failure here means
-# "PowerShell answers", never an error.
+# is only fast while it does not load the modules it replaces. That includes PowerShell's
+# own: the first Join-Path, New-Object or Select-Object in a fresh Windows PowerShell loads a
+# module and costs 50 to 80 ms, so this file and the hand-over in hotpl8.ps1 call .NET
+# directly. ConvertFrom-Json is the one exception, and only a release pays for it.
+# Every failure here means "PowerShell answers", never an error.
 function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[int]$TimeoutMs=5000) {
     $process=$null
     try{
-        $info=New-Object Diagnostics.ProcessStartInfo
+        $info=[Diagnostics.ProcessStartInfo]::new()
         $info.FileName=$Path
         # Windows CRT quoting, also understood by .NET's Unix Arguments parser.
         $info.Arguments=(@($Arguments|ForEach-Object{
@@ -14,7 +17,7 @@ function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[int]$Tim
         }) -join ' ')
         $info.UseShellExecute=$false;$info.CreateNoWindow=$true
         $info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
-        $info.StandardOutputEncoding=New-Object Text.UTF8Encoding($false)
+        $info.StandardOutputEncoding=[Text.UTF8Encoding]::new($false)
         $process=[Diagnostics.Process]::Start($info)
         # Drain both pipes before waiting; diagnostics from the reader are not shown.
         $output=$process.StandardOutput.ReadToEndAsync();$errors=$process.StandardError.ReadToEndAsync()
@@ -34,7 +37,7 @@ function Get-Hotpl8NativePath([string]$Root) {
         if($env:HOTPL8_NATIVE -eq '0'){return $null}
         $windows=$env:OS -eq 'Windows_NT'
         if(-not $windows -and -not $IsMacOS){return $null}
-        $path=Join-Path $Root $(if($windows){'bin/windows/hotpl8-native.exe'}else{'bin/macos/hotpl8-native'})
+        $path=if($windows){[IO.Path]::Combine($Root,'bin','windows','hotpl8-native.exe')}else{[IO.Path]::Combine($Root,'bin','macos','hotpl8-native')}
         if(-not [IO.File]::Exists($path)){return $null}
         if(-not $windows -and -not ([IO.File]::GetUnixFileMode($path) -band [IO.UnixFileMode]::UserExecute)){return $null}
         return $path
@@ -59,7 +62,7 @@ function Get-Hotpl8NativeIdentity([string]$Root) {
         if($culture.DateTimeFormat.TimeSeparator -cne ':' -or $culture.DateTimeFormat.Calendar -isnot [Globalization.GregorianCalendar]){return $null}
         $identity=@('--protocol','2','--shell',$shell)
         # A source checkout has no build identity; there the protocol alone decides.
-        $buildFile=Join-Path $Root 'build-info.json'
+        $buildFile=[IO.Path]::Combine($Root,'build-info.json')
         if([IO.File]::Exists($buildFile)){
             $build=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($buildFile)) -ErrorAction Stop
             if($build.sha -isnot [string] -or $build.sha -cnotmatch '\A[a-f0-9]{40}\z'){return $null}
@@ -77,7 +80,8 @@ function Invoke-Hotpl8Native([string]$Root,[string[]]$Arguments) {
     if(-not $path){return $null}
     $identity=Get-Hotpl8NativeIdentity $Root
     if(-not $identity){return $null}
-    $result=Invoke-Hotpl8NativeProcess $path (@($Arguments[0])+$identity+@($Arguments|Select-Object -Skip 1))
+    $own=if($Arguments.Count -gt 1){$Arguments[1..($Arguments.Count-1)]}
+    $result=Invoke-Hotpl8NativeProcess $path (@($Arguments[0])+$identity+@($own))
     if(-not $result -or $result.exitCode -ne 0 -or -not $result.output.EndsWith("`n",[StringComparison]::Ordinal)){return $null}
     return $result.output.Substring(0,$result.output.Length-1)
 }
