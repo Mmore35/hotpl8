@@ -7,9 +7,14 @@
 
 #![allow(dead_code)]
 
+mod contract;
+mod critical;
+mod decision;
 mod json;
 mod num;
+mod observation;
 mod ps;
+mod selection;
 mod time;
 
 use std::ffi::OsString;

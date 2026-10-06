@@ -1010,6 +1010,164 @@ pub fn measure_sum(values: &[V]) -> R<V> {
     dbl(sum)
 }
 
+/// `$left -eq $right` for two strings.
+#[track_caller]
+pub fn text_eq(left: &str, right: &str) -> R<bool> {
+    same_text(left, right, false)
+}
+/// `$text -match '[\x00-\x1f\x7f]'`
+pub fn has_control(text: &str) -> bool {
+    text.chars().any(|c| c < '\u{20}' || c == '\u{7f}')
+}
+/// ConvertTo-Hotpl8SafeText
+pub fn safe_text(text: &str) -> String {
+    text.chars().filter(|c| *c >= '\u{20}' && *c != '\u{7f}').collect()
+}
+/// `$text.Length`
+pub fn length(text: &str) -> usize {
+    text.encode_utf16().count()
+}
+/// [string]::IsNullOrWhiteSpace, for text whose blank characters .NET and Rust agree on.
+#[track_caller]
+pub fn blank(text: &str) -> R<bool> {
+    let mut unsure = false;
+    for c in text.chars() {
+        if c.is_ascii() {
+            if !(c == ' ' || ('\t'..='\r').contains(&c)) {
+                return Ok(false);
+            }
+        } else if c.is_whitespace() || matches!(c, '\u{180e}' | '\u{200b}' | '\u{feff}') {
+            unsure = true;
+        } else {
+            return Ok(false);
+        }
+    }
+    if unsure {
+        return decline();
+    }
+    Ok(true)
+}
+/// `$text -match '^[a-zA-Z0-9_-]{1,max}$'`. The pattern's `$` also matches before a final
+/// line feed.
+pub fn slot_name(text: &str, max: usize) -> bool {
+    let body = text.strip_suffix('\n').unwrap_or(text);
+    (1..=max).contains(&body.len()) && body.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// A `@{}` used as a set of string keys. Its comparison ignores case by the rules of the
+/// current culture, so only keys of printable ASCII are modelled, and two keys that
+/// differ by case alone decline.
+#[derive(Default)]
+pub struct Keys(Vec<String>);
+impl Keys {
+    pub fn new() -> Keys {
+        Keys(Vec::new())
+    }
+    /// `.ContainsKey($key)`
+    #[track_caller]
+    pub fn contains(&self, key: &str) -> R<bool> {
+        for known in &self.0 {
+            if known == key {
+                return Ok(true);
+            }
+            if !printable(known) || !printable(key) || known.eq_ignore_ascii_case(key) {
+                return decline();
+            }
+        }
+        Ok(false)
+    }
+    /// `$set[$key] = $true`
+    #[track_caller]
+    pub fn insert(&mut self, key: &str) -> R<()> {
+        if !self.contains(key)? {
+            self.0.push(key.to_string());
+        }
+        Ok(())
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl V {
+    /// `$value -eq $true`
+    #[track_caller]
+    pub fn is_true(&self) -> R<bool> {
+        self.eq(&V::Bool(true))
+    }
+    /// `$value -eq $false`
+    #[track_caller]
+    pub fn is_false(&self) -> R<bool> {
+        self.eq(&V::Bool(false))
+    }
+    /// `$value -is [bool]`
+    pub fn is_bool(&self) -> bool {
+        matches!(self, V::Bool(_))
+    }
+    /// `$value -is [pscustomobject]`, for a value read out of an object.
+    pub fn is_obj(&self) -> bool {
+        matches!(self, V::Obj(_))
+    }
+    pub fn is_arr(&self) -> bool {
+        matches!(self, V::Arr(_))
+    }
+    /// Whether two values are the same object.
+    pub fn same_ref(&self, other: &V) -> bool {
+        match (self, other) {
+            (V::Obj(a), V::Obj(b)) | (V::Hash(a), V::Hash(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+    /// `$value.PSObject.Properties[$name]`: whether an object has the member at all.
+    #[track_caller]
+    pub fn has(&self, name: &str) -> R<bool> {
+        match self {
+            V::Null => Ok(false),
+            V::Obj(o) => Ok(o.borrow().find(name).is_some()),
+            _ => decline(),
+        }
+    }
+    /// `-$value` as a double: `-[double]$value`.
+    #[track_caller]
+    pub fn neg_dbl(&self) -> R<V> {
+        Ok(V::Dbl(-self.dbl()?))
+    }
+    /// [math]::Round($value, 1)
+    #[track_caller]
+    pub fn round1(&self) -> R<V> {
+        match self {
+            V::Null => Ok(V::Dbl(0.0)),
+            V::Dbl(x) => dbl(num::round1(*x)?),
+            V::I32(x) => Ok(V::Dec(Dec::from_i64(*x as i64))),
+            V::I64(x) => Ok(V::Dec(Dec::from_i64(*x))),
+            V::Dec(x) => Ok(V::Dec(x.round1()?)),
+            _ => decline(),
+        }
+    }
+    /// [math]::Floor($value)
+    #[track_caller]
+    pub fn floor(&self) -> R<V> {
+        match self {
+            V::Dbl(x) => dbl(x.floor()),
+            V::I32(x) => Ok(V::Dec(Dec::from_i64(*x as i64))),
+            V::I64(x) => Ok(V::Dec(Dec::from_i64(*x))),
+            V::Dec(x) => Ok(V::Dec(x.floor()?)),
+            _ => decline(),
+        }
+    }
+    /// `'{0:0.#}' -f $value`
+    #[track_caller]
+    pub fn tenths(&self) -> R<String> {
+        match self {
+            V::Dbl(x) => Ok(num::double_tenths(*x)),
+            V::Dec(x) => Ok(x.text_tenths()),
+            V::I32(x) => Ok(x.to_string()),
+            V::I64(x) => Ok(x.to_string()),
+            _ => decline(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
