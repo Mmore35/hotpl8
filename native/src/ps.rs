@@ -214,13 +214,12 @@ impl N {
     }
     #[track_caller]
     fn dec(self) -> R<Dec> {
-        if !desktop() {
-            return decline();
-        }
         match self {
             N::I32(x) => Ok(Dec::from_i64(x as i64)),
             N::I64(x) => Ok(Dec::from_i64(x)),
             N::Dec(x) => Ok(x),
+            // PowerShell 7 converts a double to a decimal by other rules than these.
+            N::Dbl(_) if !desktop() => decline(),
             N::Dbl(x) => Dec::from_f64(x),
         }
     }
