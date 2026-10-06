@@ -873,9 +873,14 @@ pub fn pluck(list: &[V], name: &str) -> R<Vec<V>> {
     }
     Ok(out)
 }
-/// `($list | Select-Object -Unique).Count`, for lists of strings or of one whole-number type.
+/// `($list | Select-Object -Unique).Count`
 #[track_caller]
 pub fn unique_count(list: &[V]) -> R<usize> {
+    Ok(unique(list)?.len())
+}
+/// `$list | Select-Object -Unique`, for lists of strings or of one whole-number type.
+#[track_caller]
+pub fn unique(list: &[V]) -> R<Vec<V>> {
     let mut seen: Vec<&V> = Vec::new();
     for item in list {
         let mut known = false;
@@ -900,7 +905,7 @@ pub fn unique_count(list: &[V]) -> R<usize> {
             seen.push(item);
         }
     }
-    Ok(seen.len())
+    Ok(seen.into_iter().cloned().collect())
 }
 /// `Sort-Object`: Windows PowerShell's sort is not stable, so a tie between items the
 /// caller could tell apart has no single answer there.

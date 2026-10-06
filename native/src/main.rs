@@ -7,6 +7,7 @@
 
 #![allow(dead_code)]
 
+mod capacity;
 mod contract;
 mod critical;
 mod decision;
