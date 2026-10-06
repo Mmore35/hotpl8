@@ -316,7 +316,8 @@ try {
     }
     Check 'enroll command validates the native home and preserves monitoring on repeat' {
         $enrollment=Join-Path $dir 'cli enrollment';New-Item -ItemType Directory $enrollment|Out-Null
-        Copy-Item (Join-Path $root 'policy.example.json') (Join-Path $enrollment 'policy.json')
+        $monitor=Read-Hotpl8Json (Join-Path $root 'policy.example.json');$monitor.mode='monitor'
+        Write-Hotpl8Text (Join-Path $enrollment 'policy.json') ($monitor|ConvertTo-Json -Depth 24)
         $arguments=@('enroll','-Slot','main','-AccountHome',$homeA,'-Label','Everyday','-StateDirectory',$enrollment,'-CodexExecutable',$fake)
         foreach($attempt in 1..2){
             $out=& (Join-Path $root 'hotpl8.cmd') @arguments

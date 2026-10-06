@@ -83,7 +83,7 @@ function Add-Hotpl8RegisteredAccountCore([string]$Directory,[string]$Provider,[s
         if($Slot -notmatch '^[1-9][0-9]{0,3}$' -or $AccountHome){throw 'This driver enrolls an existing native numeric account, without an account home.'}
         if([int]$Slot -in @($part.prefer)){'Account already enrolled; policy unchanged.';return}
         $exe=Resolve-CswapExecutable $Executable;if(-not $exe){throw 'Native account manager is not installed.'}
-        $read=Invoke-Hotpl8Process $exe @('list','--json') 20000
+        $read=Invoke-Hotpl8Process $exe @('list','--json') (Get-CswapReadTimeoutMs)
         if($read.exitCode -ne 0){throw 'Native account inventory is unavailable.'}
         $data=$read.output|ConvertFrom-Json
         if($data.schemaVersion -ne 1 -or @($data.accounts|Where-Object number -EQ ([int]$Slot)).Count -ne 1){throw 'Account not found in native inventory.'}
@@ -187,7 +187,7 @@ function Invoke-Hotpl8Setup([string]$Directory, [string]$CodeDirectory, [switch]
     $path=Join-Path $Directory 'policy.json'
     if(-not (Test-Path -LiteralPath $path)){[IO.File]::Copy((Join-Path $CodeDirectory 'policy.example.json'),$path,$false)}
     if(-not $Interactive){
-        'Monitoring policy ready. Use hotpl8 setup -Interactive for guided enrollment.'
+        'Policy ready. Use hotpl8 setup -Interactive for guided enrollment.'
         foreach($item in @(Get-Hotpl8ProviderDiscovery (Read-Hotpl8Json $path))){$item.name+' ['+$item.id+']: '+$(if($item.installed){'native integration found'}else{'native integration required'})}
         'Codex: hotpl8 enroll -Slot main -AccountHome PATH'
         'Claude: sign in and enroll using cswap, then hotpl8 enroll -Provider claude -Slot NUMBER'
@@ -213,14 +213,14 @@ function Invoke-Hotpl8Setup([string]$Directory, [string]$CodeDirectory, [switch]
         $available=@($discovered|Where-Object id -CEQ $provider);foreach($homePath in @($available.nativeHomes)){'Existing native home: '+$homePath}
         Add-Hotpl8RegisteredAccount $Directory $provider $slot $accountPath $label
     }else{Add-Hotpl8RegisteredAccount $Directory $provider $slot '' $label}
-    'Account enrolled. Run hotpl8 refresh, then hotpl8. Automation is configured separately.'
+    'Account enrolled. Run hotpl8 refresh, then hotpl8.'
 }
 function Add-Hotpl8ClaudeAccount([string]$Directory,[string]$Slot,[string]$Label) {
     if($Slot -notmatch '^[1-9][0-9]{0,3}$'){throw 'Claude slot must be an existing cswap account number.'}
     $path=Join-Path $Directory 'policy.json';$hash=(Get-FileHash $path -Algorithm SHA256).Hash
     $p=ConvertTo-Hotpl8PolicyV2 (Read-Hotpl8Json $path)
     $exe=Resolve-CswapExecutable '';if(-not $exe){throw 'Install claude-swap and enroll with cswap first.'}
-    $read=Invoke-Hotpl8Process $exe @('list','--json') 20000
+    $read=Invoke-Hotpl8Process $exe @('list','--json') (Get-CswapReadTimeoutMs)
     if($read.exitCode -ne 0){throw 'Could not read cswap inventory.'}
     $data=$read.output|ConvertFrom-Json
     if($data.schemaVersion -ne 1 -or @($data.accounts|Where-Object number -EQ ([int]$Slot)).Count -ne 1){throw 'Slot not found in supported cswap inventory.'}
@@ -228,7 +228,7 @@ function Add-Hotpl8ClaudeAccount([string]$Directory,[string]$Slot,[string]$Label
     if(-not $p.labels){$p|Add-Member NoteProperty labels ([pscustomobject]@{}) -Force}
     if($Label){$p.labels|Add-Member NoteProperty $Slot $Label -Force}
     Save-Hotpl8Policy $Directory $p $hash
-    'Claude account enrolled for monitoring. Native credentials remain managed by cswap.'
+    'Claude account enrolled. Native credentials remain managed by cswap.'
 }
 
 function Set-Hotpl8CapacityProfile($Policy,[string]$Provider,[string]$Slot,[string]$Profile,$Weekly,$FiveHour) {

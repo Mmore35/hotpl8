@@ -161,4 +161,4 @@ All arguments are typed and allowlisted. Requests cannot supply paths, shell com
 
 The direct CLI allows onboarding writes. MCP remains read-only by default: explicitly start `hotpl8 mcp -AllowAgentOnboarding` to expose `hotpl8_onboard`. This permission is separate from `-AllowAgentPause`; an existing read-only client gains no new write access. `capabilities` works before installation and reports `onboardingWrites` and available operations.
 
-Onboarding does not send model prompts, switch the active Claude profile, or log out another account. It leaves monitoring policy unchanged. The first account and every later account use this same operation; no private skill, workspace, or owner-specific wrapper is needed.
+Onboarding does not send model prompts, switch the active Claude profile, or log out another account. It leaves the policy's mode and action settings unchanged. The first account and every later account use this same operation; no private skill, workspace, or owner-specific wrapper is needed.

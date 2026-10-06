@@ -9,7 +9,7 @@ hotpl8 add -Provider claude
 hotpl8 add -Provider codex
 ```
 
-If you have neither account, choose a provider and use its official account flow, or finish later. HotPl8 does not purchase a subscription. One account provides the full monitoring experience. Setup starts in monitor mode; existing installations retain their settings.
+If you have neither account, choose a provider and use its official account flow, or finish later. HotPl8 does not purchase a subscription. One account provides the full monitoring experience. A new installation starts with automatic account switching and [automatic continue](plans/automatic-continue.md) on and warming off. Interactive setup asks whether to turn warming on; only `y` does. Existing installations retain their settings.
 
 ## What you actually have to do
 
@@ -47,4 +47,4 @@ The finite onboarding worker is shipped with the application and starts from tha
 
 Dependency setup pins Codex 0.155.1, Claude Code 2.1.281, and claude-swap 0.26.0. It reuses existing tools when available. Downloaded native binaries are checked against publisher release checksums; Claude also passes platform signature verification. The optional Python environment belongs to the Claude adapter and is installed by uv. HotPl8's provider actions remain subject to the existing policy.
 
-The [installation guide](install.md) describes the ordinary collector schedule and the separate opt-in main delivery channel. Provider login alone does not enable switching, warming, routing, or T3 integration.
+The [installation guide](install.md) describes the ordinary collector schedule and the separate opt-in main delivery channel. Provider login alone does not change the policy's switching or warming settings and does not enable routing or T3 integration.

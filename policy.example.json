@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "mode": "monitor",
+  "mode": "automate",
   "prefer": [],
   "reserve": [],
   "order": "soonest-reset",
@@ -12,7 +12,7 @@
   "labels": {},
   "maxUsageAgeS": 900,
   "staleQuarantineS": 21600,
-  "switchEnabled": false,
+  "switchEnabled": true,
   "warm": false,
   "probeEnabled": false,
   "warmMin7d": 20,

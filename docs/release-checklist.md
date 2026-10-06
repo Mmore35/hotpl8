@@ -26,7 +26,7 @@ The first release is a Windows source-and-download preview. A stable-support cla
 - [ ] Check every public ref, tracked file, commit author/message, and release archive for secrets and unintended personal data.
 - [ ] Pass the complete offline suite, static checks, secret scan, and package/lifecycle checks on the exact source revision.
 - [ ] Verify the downloaded CI ZIP, its per-file hashes, and SHA256SUMS. Ship the exact reviewed archive.
-- [ ] Keep monitor-only defaults and prominent compatibility limits; make no unsupported provider-approval or stable-automation claim.
+- [ ] Keep warming and recovery probes off by default and compatibility limits prominent; make no unsupported provider-approval or stable-automation claim.
 - [ ] Provide installation, account enrollment, troubleshooting, uninstall, licensing, and best-effort support instructions.
 - [ ] Obtain the owner's approval for the concrete public repository and release publication batch.
 - [ ] Enable Issues and private vulnerability reporting; configure the existing Windows CI check as required after it succeeds in the public repository.

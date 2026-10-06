@@ -15,17 +15,32 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-safety-'+[guid]::NewGuid().To
 $savedFixture=$env:HOTPL8_SAFE_FIXTURE;$savedCalls=$env:HOTPL8_SAFE_CALLS;$savedState=$env:HOTPL8_STATE_DIRECTORY
 try{
     $policy=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
-    Check 'new policy disables every automatic action' {
+    Check 'new policy switches and continues by itself but never warms or probes' {
         Assert-Hotpl8Policy $policy
         $a=Get-Hotpl8Actions $policy $false
-        Assert (-not $a.switching -and -not $a.warming -and -not $a.probing)
+        Assert ($a.switching -and $a.continuing -and -not $a.warming -and -not $a.probing)
+    }
+    Check 'continue follows the mode and its own setting, which is true or false only' {
+        $p=Copy-Value $policy
+        Assert (-not (Get-Hotpl8Actions $p $true).continuing)
+        $p.mode='monitor';$a=Get-Hotpl8Actions $p $false
+        Assert (-not $a.continuing -and -not $a.switching -and -not $a.warming -and -not $a.probing)
+        $p.mode='automate';$p.switchEnabled=$false
+        Assert (Get-Hotpl8Actions $p $false).continuing
+        $p.automation|Add-Member NoteProperty continue $false;Assert-Hotpl8Policy $p
+        Assert (-not (Get-Hotpl8Actions $p $false).continuing)
+        $p.automation.continue=$true;Assert-Hotpl8Policy $p
+        Assert (Get-Hotpl8Actions $p $false).continuing
+        $p.automation.continue='false';$threw=$false
+        try{Assert-Hotpl8Policy $p}catch{$threw=$true}
+        Assert $threw
     }
     Check 'legacy actions preserved while refresh overrides them' {
         $p=Copy-Value @{prefer=@(1);warm=$true}
         $a=Get-Hotpl8Actions $p $false
-        Assert ($a.switching -and $a.warming -and $a.probing)
+        Assert ($a.switching -and $a.warming -and $a.probing -and $a.continuing)
         $a=Get-Hotpl8Actions $p $true
-        Assert (-not $a.switching -and -not $a.warming -and -not $a.probing)
+        Assert (-not $a.switching -and -not $a.warming -and -not $a.probing -and -not $a.continuing)
     }
     Check 'invalid numeric, boolean, duplicate, and mode fields rejected' {
         foreach($entry in @(@('warm','false'),@('margin5h',101),@('maxUsageAgeS',-1),@('mode','monitr'),@('prefer',@(1,1)))){
@@ -162,6 +177,72 @@ try{
         $p.mode='monitor';$null=Invoke-ClaudeTick $p $dir $stub
         Assert (-not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
         Assert (-not (Test-Path -LiteralPath (Join-Path $dir 'cred-audit.log')))
+    }
+    Check 'a token that failed two probes is not probed again and reads as needing re-login' {
+        function Invoke-SlotPing { $script:probes++;return $false }
+        function Get-CredMark { return $script:storedMark }
+        # Lift the time floor, so only the remembered token can hold the next probe back.
+        function Clear-ProbeFloor([string]$Path){$saved=Read-Hotpl8Json $Path;$saved.lastProbe=[pscustomobject]@{};Write-Hotpl8Text $Path ($saved|ConvertTo-Json -Depth 4)}
+        $script:probes=0;$script:storedMark='aaaaaaaaaaaa@10-04 23:03'
+        $pp=Copy-Value $p;$pp.mode='automate';$pp.switchEnabled=$false;$pp.warm=$false
+        $f=Copy-Value $fixture
+        $f.accounts[1].usage=$null;$f.accounts[1].usageStatus='relogin_required'
+        $f.accounts[1]|Add-Member NoteProperty lastGoodAgeSeconds 90000
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
+        $caseDirectory=Join-Path $dir 'spent-token';[void][IO.Directory]::CreateDirectory($caseDirectory)
+        $r=Invoke-ClaudeTick $pp $caseDirectory $stub
+        Assert ($script:probes -eq 1 -and $r.payload.verdict -match 'slot 2 QUARANTINE STALE')
+        $statePath=Join-Path $caseDirectory 'warm-state.json'
+        # One failed probe proves nothing about the sign-in: a timeout or an outage
+        # fails it the same way, so the token gets a second look.
+        Clear-ProbeFloor $statePath
+        $r=Invoke-ClaudeTick $pp $caseDirectory $stub
+        Assert ($script:probes -eq 2 -and $r.payload.verdict -match 'slot 2 QUARANTINE STALE')
+        Clear-ProbeFloor $statePath
+        $r=Invoke-ClaudeTick $pp $caseDirectory $stub
+        Assert ($script:probes -eq 2 -and $r.payload.verdict -match 'slot 2 NEEDS RE-LOGIN' -and $r.payload.verdict -notmatch 'QUARANTINE STALE')
+        Assert (($r.lines -join "`n") -match 'relogin_required - re-login' -and ($r.lines -join "`n") -notmatch 'UNCHECKED')
+        # A new sign-in stores a new token, and that one has not been asked about.
+        $script:storedMark='bbbbbbbbbbbb@10-06 07:00'
+        $r=Invoke-ClaudeTick $pp $caseDirectory $stub
+        Assert ($script:probes -eq 3 -and $r.payload.verdict -match 'slot 2 QUARANTINE STALE')
+        Assert ((Read-Hotpl8Json $statePath).probeDead.'2'.fails -eq 1)
+        # A stored token that cannot be read is never treated as spent.
+        $script:storedMark='-'
+        $caseDirectory=Join-Path $dir 'unreadable-token';[void][IO.Directory]::CreateDirectory($caseDirectory)
+        $null=Invoke-ClaudeTick $pp $caseDirectory $stub
+        Assert ($script:probes -eq 4 -and -not (Read-Hotpl8Json (Join-Path $caseDirectory 'warm-state.json')).probeDead.'2')
+    }
+    Check 'a ping is unrenewed only when it worked through a profile and left the stored token as it was' {
+        $before='aaaaaaaaaaaa@10-04 23:03'
+        Assert (Test-PingUnrenewed $true $before $before 'cleared')
+        Assert (-not (Test-PingUnrenewed $true $before 'bbbbbbbbbbbb@10-05 07:00' 'cleared'))
+        # The default login takes cswap's fast path: no second copy, nothing to renew.
+        Assert (-not (Test-PingUnrenewed $true $before $before 'absent'))
+        Assert (-not (Test-PingUnrenewed $false $before $before 'cleared'))
+        foreach($unreadable in @('-','?')){Assert (-not (Test-PingUnrenewed $true $unreadable $unreadable 'cleared'))}
+    }
+    Check 'a warm ping that left the token unrenewed is reported and recorded' {
+        . (Join-Path $root 'src/insights.ps1')
+        $wp=Copy-Value $p;$wp.mode='automate';$wp.switchEnabled=$false;$wp.probeEnabled=$false
+        $f=Copy-Value $fixture;$f.accounts[1].usage.fiveHour.resetsAt=''
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($f|ConvertTo-Json -Depth 12)
+        foreach($unrenewed in @($true,$false)){
+            $script:pingUnrenewed=$unrenewed
+            function Invoke-SlotPing { $script:ClaudePingUnrenewed=$script:pingUnrenewed;return $true }
+            $caseDirectory=Join-Path $dir ('unrenewed-'+$unrenewed);[void][IO.Directory]::CreateDirectory($caseDirectory)
+            $r=Invoke-ClaudeTick $wp $caseDirectory $stub
+            $events=@((Read-Hotpl8Json (Join-Path $caseDirectory 'activity.json')).events|Where-Object kind -eq 'credential_unrenewed')
+            Assert ($r.payload.verdict -match 'warm request sent to slot 2')
+            if($unrenewed){Assert ($r.payload.verdict -match 'slot 2 SIGN-IN NOT RENEWED' -and $events.Count -eq 1 -and $events[0].slot -eq '2')}
+            else{Assert ($r.payload.verdict -notmatch 'NOT RENEWED' -and $events.Count -eq 0)}
+        }
+    }
+    Check 'the account read outlasts cswap''s waits for a renewal reply' {
+        # cswap: 10 s lock wait and 30 s reply wait, a 5 s usage request, then the
+        # same two waits once more. Killing the read inside that span can discard a
+        # token the server has already replaced.
+        Assert ((Get-CswapReadTimeoutMs) -ge 85000)
     }
     Check 'bounded process times out and redacts its output' {
         $hostExe=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'

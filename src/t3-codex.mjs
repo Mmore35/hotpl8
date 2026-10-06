@@ -115,11 +115,23 @@ export function createBroker(config) {
   });
 }
 
+// The waiter is continue.ps1, the same script Claude runs as its hook, so both providers
+// share one readiness rule. It sleeps until HotPl8 has an account ready (exit 2) or stands
+// down (anything else), and ends by itself if this bridge goes away.
+export function createWaiter(config) {
+  return (threadId, slot) => {
+    const proc = spawn(config.powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, '..', 'continue.ps1'),
+      '-Provider', 'codex', '-StateDirectory', config.stateDirectory, '-Conversation', threadId, '-Slot', slot,
+      '-After', new Date().toISOString(), '-WatchPid', String(process.pid)], { windowsHide: true, stdio: 'ignore' });
+    return { done: new Promise(done => { proc.on('error', () => done(0)); proc.on('exit', code => done(code)); }), kill: () => killTree(proc) };
+  };
+}
+
 // The dispatcher is transport-independent so tests drive the exact production state machine.
 export class CodexBridge {
-  constructor({ broker, toNative, toClient, cwd, onFatal = () => {}, onRoutingError = () => {}, timeoutMs = 30000 }) {
-    Object.assign(this, { broker, toNative, toClient, cwd, onFatal, onRoutingError, timeoutMs });
-    this.internal = new Map(); this.pending = new Map(); this.threads = new Map();
+  constructor({ broker, waiter = null, toNative, toClient, cwd, onFatal = () => {}, onRoutingError = () => {}, timeoutMs = 30000 }) {
+    Object.assign(this, { broker, waiter, toNative, toClient, cwd, onFatal, onRoutingError, timeoutMs });
+    this.internal = new Map(); this.pending = new Map(); this.threads = new Map(); this.waiters = new Map();
     this.active = new Map(); this.reservations = new Map(); this.route = null; this.initialized = false; this.closed = false;
     this.counter = 0; this.serial = Promise.resolve();
     this.routing = Promise.resolve(); this.observing = null; this.observationPending = false;
@@ -140,6 +152,8 @@ export class CodexBridge {
     if (typeof message.id === 'string' && message.id.startsWith('hotpl8-internal-')) { this.fail(message, 'routing_reserved_id'); return Promise.resolve(); }
     // Approval responses must never wait behind a turn admission or token refresh.
     if (!message.method) { this.toNative(message); return Promise.resolve(); }
+    // The owner wrote first: their message is the continuation, so none is sent for them.
+    if (message.method === 'turn/start') this.stopWaiting(message.params?.threadId);
     // Native input/control must remain responsive during private quota reads.
     const thread = this.threads.get(message.params?.threadId);
     const followup = message.method === 'turn/start' && this.active.has(message.params?.threadId) && thread &&
@@ -286,6 +300,8 @@ export class CodexBridge {
         (!this.active.get(message.params.threadId) || this.active.get(message.params.threadId) === message.params.turn?.id)) {
       this.active.delete(message.params.threadId);
     }
+    if (message.method === 'turn/completed' && message.params?.turn?.status === 'failed' &&
+        message.params.turn.error?.codexErrorInfo === 'usageLimitExceeded') this.wait(message.params.threadId);
     if (message.method === 'thread/status/changed' && message.params?.threadId) {
       if (message.params.status?.type === 'active' && !this.active.has(message.params.threadId)) this.active.set(message.params.threadId, null);
       if (message.params.status?.type === 'idle' && !this.active.get(message.params.threadId)) this.active.delete(message.params.threadId);
@@ -308,8 +324,42 @@ export class CodexBridge {
       this.toNative({ id: message.id, error: { code: -32001, message: 'HotPl8: routing_refresh_failed' } });
     }
   }
+  // A turn that died on a usage limit is continued once, when the waiter says an account
+  // is ready. The continue is a new turn: the failed turn's input is never sent again.
+  wait(threadId) {
+    if (!this.waiter || this.closed || !this.threads.has(threadId) || !this.route?.slot) return;
+    this.stopWaiting(threadId);
+    const waiter = this.waiter(threadId, this.route.slot);
+    this.waiters.set(threadId, waiter);
+    waiter.done.then(code => {
+      if (this.waiters.get(threadId) !== waiter) return;
+      if (code !== 2) { this.waiters.delete(threadId); return; }
+      // Any failure drops this continue; the owner's next message works as it always has.
+      this.serial = this.serial.then(() => this.resume(threadId, waiter))
+        .catch(() => { if (!this.closed) this.onRoutingError('routing_continue_failed'); });
+    });
+  }
+  stopWaiting(threadId) {
+    this.waiters.get(threadId)?.kill();
+    this.waiters.delete(threadId);
+  }
+  async resume(threadId, waiter) {
+    const thread = this.threads.get(threadId);
+    // Still registered means the owner has not written since the waiter finished.
+    if (this.waiters.get(threadId) !== waiter) return;
+    this.waiters.delete(threadId);
+    if (this.closed || !thread || this.active.has(threadId)) return;
+    await this.checkConfig(thread.cwd);
+    await this.select(thread.cwd);
+    const reservation = `continue:${threadId}`;
+    this.reservations.set(reservation, threadId);
+    try { await this.rpc('turn/start', { threadId, input: [{ type: 'text', text: 'Automated message: continue.', text_elements: [] }] }); }
+    finally { this.reservations.delete(reservation); }
+  }
   close() {
     this.closed = true;
+    for (const waiter of this.waiters.values()) waiter.kill();
+    this.waiters.clear();
     for (const pending of this.internal.values()) { clearTimeout(pending.timer); pending.reject(error('routing_closed')); }
     this.internal.clear(); this.route = null; this.rebinding = null;
     this.active.clear(); this.reservations.clear(); this.observationPending = false;
@@ -353,7 +403,7 @@ export async function main(config, args) {
   };
   let watcher;
   const diagnostic = code => process.stderr.write(`HotPl8: ${code}\n`);
-  const bridge = new CodexBridge({ broker, cwd: process.cwd(), toNative: msg => write(child.stdin, msg), toClient: msg => write(process.stdout, msg),
+  const bridge = new CodexBridge({ broker, waiter: createWaiter(config), cwd: process.cwd(), toNative: msg => write(child.stdin, msg), toClient: msg => write(process.stdout, msg),
     onFatal: () => stop(true), onRoutingError: diagnostic });
   // Subscribe to the existing collector's atomic publications, including rename.
   // No second quota collector or periodic account-switch scheduler is introduced.

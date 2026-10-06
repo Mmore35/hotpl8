@@ -393,6 +393,8 @@ Add-Hotpl8Insights $snapshot $policy $state $snapshot $at
 Assert (@($snapshot.recentActions|Where-Object provider -CEQ fictional).Count -ge 2) 'native or registered activity event omitted'
 $note=Get-DashboardActivityNote ([pscustomobject]@{provider='fictional';slot='one';kind='recommendation';at=$at.ToString('o')}) $policy $at
 Assert ($note.text -match '^fictional next' -and $note.text -notmatch '^codex') 'activity mislabeled registered provider'
+$note=Get-DashboardActivityNote ([pscustomobject]@{provider='fictional';slot='one';kind='credential_unrenewed';reason='warm';at=$at.ToString('o')}) $policy $at
+Assert ($note.text -match '^sign-in not renewed' -and $note.tone -eq 'amber') 'an unrenewed sign-in must read as a warning'
 $failedSnapshot=Copy-Hotpl8ProviderValue $snapshot;$failedSnapshot.providers.fictional.slots[0].status='authentication_required'
 $failedRows=@(Get-Hotpl8DashboardRows $failedSnapshot $policy $at 110 -ReducedMotion).text -join "`n"
 Assert ($failedRows -match 'AUTHENTICATION REQUIRED' -and $failedRows -notmatch 'account unavailable') 'a later registered provider must show its failed account on its own row'

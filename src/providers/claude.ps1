@@ -187,13 +187,33 @@ function Get-CredMark([string]$path, [bool]$b64) {
     } catch { return '?' }
 }
 
-function Save-TickState($path, $warmMap, $probeMap) {
-    # The ONLY writer of warm-state.json. Always writes BOTH maps: the warmer and
+function Save-TickState($path, $warmMap, $probeMap, $deadMap) {
+    # The ONLY writer of warm-state.json. Always writes EVERY map: the warmer and
     # the probe each have a floor stored here, and a partial write would erase the
     # other's -- which fails silently, as that actor simply firing every tick.
     # Best-effort like the rest of this state: a lost stamp costs one extra ping,
     # never a wrong decision.
-    try { Write-Hotpl8Text $path (@{ lastWarm = $warmMap; lastProbe = $probeMap } | ConvertTo-Json -Depth 4) } catch { }
+    try { Write-Hotpl8Text $path (@{ lastWarm = $warmMap; lastProbe = $probeMap; probeDead = $deadMap } | ConvertTo-Json -Depth 4) } catch { }
+}
+
+function Get-SlotEncPath($n, [string]$email) {
+    # cswap's stored credential for a slot, keyed by the RAW email.
+    return (Join-Path $HOME ".claude-swap-backup/credentials/.creds-$n-$email.enc")
+}
+
+function Test-PingUnrenewed([bool]$ok, [string]$preEnc, [string]$postEnc, [string]$cleared) {
+    # A ping that runs through a session profile renews the slot's stored token
+    # first: cswap consumes the backup grant before it bootstraps the profile this
+    # script cleared last time. So a ping that worked, had a profile to clear and
+    # still left the same generation stored means that renewal got no usable
+    # reply. If the request reached the server, the stored token is already
+    # retired and the slot dies when its access token expires -- hours later, with
+    # nothing else on record to connect the two.
+    #
+    # 'absent' is the same-account fast path (the slot is the default login, no
+    # second copy is made and nothing is renewed): unchanged is normal there.
+    # An unreadable mark proves nothing either way.
+    return ($ok -and $cleared -ne 'absent' -and $preEnc -match '@' -and $preEnc -eq $postEnc)
 }
 
 function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
@@ -223,7 +243,7 @@ function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
     # Record the generation on both sides of the ping (see Get-CredMark), then
     # guarantee only ONE copy of that token survives. Paths mirror cswap's own
     # layout: the backup .enc is keyed by the RAW email, the profile by the slug.
-    $encPath  = Join-Path $HOME ".claude-swap-backup/credentials/.creds-$n-$email.enc"
+    $encPath  = Get-SlotEncPath $n $email
     $profPath = Join-Path $HOME ".claude-swap-backup/sessions/$n-$(Get-SlugEmail $email)/.credentials.json"
     $preEnc   = Get-CredMark $encPath  $true
     $preProf  = Get-CredMark $profPath $false
@@ -265,6 +285,10 @@ function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
     # runs. Unconditional, including after a FAILED ping: a ping that died
     # mid-flight is exactly when a stale second copy is most likely to be
     # left behind.
+    # Read the profile's generation BEFORE clearing it. Equal to the stored one
+    # means cswap handed over what it had; different means the client renewed
+    # inside the profile and the copy cleared below was the newer one.
+    $postProf = Get-CredMark $profPath $false
     $cleared = 'absent'
     if (Test-Path $profPath) {
         try { Remove-Item -LiteralPath $profPath -Force -ErrorAction Stop; $cleared = 'cleared' }
@@ -275,10 +299,12 @@ function Invoke-SlotPing($cswap, $n, $email, $root, $kind) {
     # With cleanup in force, prof-before should read '-'; a fingerprint means
     # another credential copy existed before this invocation.
     # Best-effort by construction: instrumentation must never fail a tick.
+    $postEnc = Get-CredMark $encPath $true
+    $script:ClaudePingUnrenewed = Test-PingUnrenewed $ok $preEnc $postEnc $cleared
     try {
-        $auditLine = '{0} slot {1} kind={2} ok={3} enc {4} -> {5} prof-before={6} prof={7}' -f
+        $auditLine = '{0} slot {1} kind={2} ok={3} enc {4} -> {5} prof-before={6} prof={7} prof-after={8}' -f
             ([datetimeoffset]::UtcNow.ToString('o')), $n, $kind, $ok, $preEnc,
-            (Get-CredMark $encPath $true), $preProf, $cleared
+            $postEnc, $preProf, $cleared, $postProf
         $auditPath=Join-Path $root 'cred-audit.log'
         if((Test-Path -LiteralPath $auditPath) -and (Get-Item -LiteralPath $auditPath).Length -gt 262144){
             [IO.File]::Copy($auditPath,$auditPath+'.1',$true)
@@ -384,6 +410,19 @@ function Get-PhaseOffsetOf($a) {
     } catch { return $null }
 }
 
+function Get-CswapReadTimeoutMs {
+    # How long `cswap list --json` may run before this script kills it. The read
+    # renews any stored token that has expired, and that grant is single-use:
+    # killing cswap after its request left but before the reply is saved retires
+    # the slot's only token. So this must outlast the longest road cswap takes to
+    # a saved reply. A renewal waits up to 10 s for the slot lock and then for the
+    # reply (10 s through 0.26.0, 30 s where oauth.OAUTH_REFRESH_TIMEOUT_S exists).
+    # When the first one gets no reply, cswap asks for usage with the expired
+    # token (5 s), is refused and renews once more: 10+30 + 5 + 10+30 = 85 s.
+    # The old 20 s sat inside the first of those waits.
+    return 90000
+}
+
 function Resolve-CswapExecutable([string]$CswapExecutable) {
     # Resolve cswap explicitly. A launchd agent's PATH excludes ~/.local/bin.
     # Probe common installation locations without requiring a particular
@@ -454,7 +493,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     if(Get-Hotpl8Pause $ControlDirectory){$actions.switching=$false;$actions.warming=$false;$actions.probing=$false}
     $cswap=Resolve-CswapExecutable $CswapExecutable
     if (-not $cswap) { throw 'claude_missing' }
-    $read=Invoke-Hotpl8Process $cswap @('list','--json') 20000
+    $read=Invoke-Hotpl8Process $cswap @('list','--json') (Get-CswapReadTimeoutMs)
     if ($read.exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($read.output)) { throw 'claude_read_failed' }
     $data=$read.output | ConvertFrom-Json
     if ($null -ne $data.schemaVersion -and $data.schemaVersion -ne 1) { throw 'claude_schema_unsupported' }
@@ -584,6 +623,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     # (W1). One minimal request costs ~1% of a window (W4) and buys the other 99%.
     $warmed     = @()
     $warmFailed = @()
+    $unrenewed  = @()   # pings that worked but left the slot's stored token as it was
     $offsets    = $null
     # The weekly warm floor is now PER SLOT (Get-WarmMin7dFor), so there is no single
     # $wMin7d to hoist any more -- both consumers below resolve it from the slot they
@@ -602,12 +642,33 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     $statePath = Join-Path $StateDirectory 'warm-state.json'
     $state  = @{}   # lastWarm  : slot -> ISO8601 of last warm ping
     $pstate = @{}   # lastProbe : slot -> ISO8601 of last stale-quarantine probe
+    $dstate = @{}   # probeDead : slot -> @{ mark = stored generation; fails = probes failed on it }
     if (Test-Path $statePath) {
         try {
             $sj = Get-Content $statePath -Raw | ConvertFrom-Json
             if ($sj.lastWarm)  { foreach ($p in $sj.lastWarm.PSObject.Properties)  { $state[$p.Name]  = [string]$p.Value } }
             if ($sj.lastProbe) { foreach ($p in $sj.lastProbe.PSObject.Properties) { $pstate[$p.Name] = [string]$p.Value } }
-        } catch { $state = @{}; $pstate = @{} }
+            if ($sj.probeDead) { foreach ($p in $sj.probeDead.PSObject.Properties) { $dstate[$p.Name] = @{ mark = [string]$p.Value.mark; fails = [int]$p.Value.fails } } }
+        } catch { $state = @{}; $pstate = @{}; $dstate = @{} }
+    }
+
+    # A stale verdict is worth TWO probes per stored token, not one every $staleS
+    # for as long as it stays. cswap condemns a generation, not a slot, so once
+    # the generation still stored has been refused, asking again cannot answer
+    # differently: only a new sign-in writes a new one. Until then the honest
+    # status is "needs re-login", not "unchecked". Two, because a probe reports
+    # only that it failed: a timeout, an outage or a missing client fails it just
+    # the same, and one such failure must not retire a slot that a second look
+    # would revive. A slot whose stored token cannot be read keeps the old
+    # behaviour.
+    $spentAfter = 2
+    $spent = @($stuck | Where-Object {
+        $d = $dstate["$_"]
+        $d -and $d.fails -ge $spentAfter -and $d.mark -eq (Get-CredMark (Get-SlotEncPath $_ ([string]$acc[$_].obj.email)) $true)
+    })
+    if ($spent.Count -gt 0) {
+        $stuck        = @($stuck | Where-Object { $spent -notcontains $_ })
+        $reallyBroken = @($reallyBroken) + $spent
     }
 
     if ($actions.warming) {
@@ -668,7 +729,12 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             $outcome.outcome='requested'
             $outcomes|Add-Member NoteProperty $outcomeKey $outcome -Force
             Save-Hotpl8WarmOutcomes $StateDirectory $outcomes
+            $script:ClaudePingUnrenewed = $false
             $ok = Invoke-SlotPing $cswap $n ([string]$e.obj.email) $StateDirectory 'warm'
+            if ($script:ClaudePingUnrenewed) {
+                $unrenewed += $n
+                if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'credential_unrenewed' 'warm'}
+            }
             $outcome.outcome=if($ok){'sent'}else{'failed'}
             $outcomes|Add-Member NoteProperty $outcomeKey $outcome -Force
             Save-Hotpl8WarmOutcomes $StateDirectory $outcomes
@@ -680,7 +746,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
             # is a call to action and silence is how it would stay dead.
             if ($ok) { $warmed += $n } else { $warmFailed += $n }
             $state["$n"] = [datetimeoffset]::UtcNow.ToString('o')
-            Save-TickState $statePath $state $pstate
+            Save-TickState $statePath $state $pstate $dstate
             break
         }
     }
@@ -715,8 +781,8 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $e = $acc[$n]
         if (-not $e) { continue }
         # No new knob and no flag: the floor IS the staleness that defined $stuck.
-        # A slot is probed at most once per $staleS, so a genuinely dead slot costs
-        # 4 pings a day rather than one every 5 minutes.
+        # A slot is probed at most once per $staleS, and (see $spent above) only
+        # twice per stored token where that token can be read.
         $last = $pstate["$n"]
         if ($last) {
             try {
@@ -729,9 +795,16 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $pok = Invoke-SlotPing $cswap $n ([string]$e.obj.email) $StateDirectory 'probe'
         if(Get-Command Add-Hotpl8ActionEvent -ErrorAction SilentlyContinue){Add-Hotpl8ActionEvent $StateDirectory $ProviderId ([string]$n) 'recovery_probe' $(if($pok){'sent'}else{'failed'})}
         $probed += $n
-        if ($pok) { $revived += $n }
+        if ($pok) { $revived += $n; $dstate.Remove("$n") }
+        else {
+            $mark = Get-CredMark (Get-SlotEncPath $n ([string]$e.obj.email)) $true
+            if ($mark -match '@') {
+                $d = $dstate["$n"]
+                $dstate["$n"] = @{ mark = $mark; fails = $(if ($d -and $d.mark -eq $mark) { [int]$d.fails + 1 } else { 1 }) }
+            }
+        }
         $pstate["$n"] = [datetimeoffset]::UtcNow.ToString('o')
-        Save-TickState $statePath $state $pstate
+        Save-TickState $statePath $state $pstate $dstate
         break   # ONE per tick, for the same reason the warmer takes one
     }
 
@@ -779,6 +852,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     # about something that happened is how a rotted timer stays invisible.
     if ($warmed.Count -gt 0)     { $verdict += " · warm request sent to slot $($warmed -join '+'); window unconfirmed" }
     if ($warmFailed.Count -gt 0) { $verdict += " · WARM FAILED slot $($warmFailed -join '+') -> check cswap run" }
+    if ($unrenewed.Count -gt 0)  { $verdict += " · slot $($unrenewed -join '+') SIGN-IN NOT RENEWED by its ping -> may need re-login when it expires" }
     # A probe is an ACTION, reported for the same reason a switch and a warm are.
     # REVIVED is the loud one: it means a slot cswap had written off is serving
     # again, with no human involved -- the outcome the probe exists to produce, and
@@ -812,7 +886,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
         $flag = ''
         # A stale quarantine must not read as "re-login" on the per-slot line either,
         # or the detail rows quietly contradict the verdict line above them.
-        if ($needsHuman -contains $st -and (Test-QuarantineStale $e.obj $staleS)) {
+        if ($needsHuman -contains $st -and (Test-QuarantineStale $e.obj $staleS) -and $spent -notcontains $n) {
             $flag = "  [$st - UNCHECKED $([int]([double]$e.obj.lastGoodAgeSeconds / 3600))h, verdict may be stale]"
         }
         elseif ($needsHuman -contains $st)  { $flag = "  [$st - re-login]" }
@@ -935,7 +1009,7 @@ function Invoke-ClaudeTick($policy, [string]$StateDirectory, [string]$CswapExecu
     } catch { }
 
     $action = $null
-    if ($switched -or $warmed.Count -gt 0 -or $warmFailed.Count -gt 0) {
+    if ($switched -or $warmed.Count -gt 0 -or $warmFailed.Count -gt 0 -or $unrenewed.Count -gt 0) {
         $action = "{0}  {1}" -f (Get-Date -Format 'HH:mm:ss'), $verdict.Trim(' ·')
     }
     $payload | Add-Member NoteProperty proposedSlot $target -Force

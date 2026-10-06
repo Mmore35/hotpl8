@@ -12,7 +12,7 @@
 
 [How the provider bars work](docs/provider-overview.md) · Scroll down for individual quotas, resets and selection details.
 
-Windows and macOS candidate. Starts in monitoring mode; Claude switching and warming are opt-in and experimental. Warming consumes quota and does not increase subscription limits. Codex warming remains unavailable pending native qualification. [Compatibility and provider boundaries](docs/compatibility.md).
+Windows and macOS candidate. A new installation switches accounts by itself and [continues a conversation that stopped on a usage limit](docs/plans/automatic-continue.md); warming stays off until you turn it on. All three are experimental, and `mode: monitor` turns every action off. Warming consumes quota and does not increase subscription limits. Codex warming remains unavailable pending native qualification. [Compatibility and provider boundaries](docs/compatibility.md).
 
 ## How it chooses
 

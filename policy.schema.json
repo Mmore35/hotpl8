@@ -348,6 +348,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "continue": {
+          "type": "boolean"
+        },
         "dailyAttemptLimit": {
           "type": "integer",
           "minimum": 1,
