@@ -156,11 +156,6 @@ impl Dto {
         let (_, month, day, hour, minute, _, _) = self.fields();
         format!("{month:02}-{day:02} {hour:02}:{minute:02} {}", self.offset_text())
     }
-    /// .UtcDateTime.ToString('yyyy-MM-dd')
-    pub fn utc_date(self) -> String {
-        let (year, month, day) = date_of(self.ticks / TICKS_PER_DAY);
-        format!("{year:04}-{month:02}-{day:02}")
-    }
     /// .ToUniversalTime()
     pub fn utc(self) -> Dto {
         Dto { ticks: self.ticks, offset_minutes: 0 }

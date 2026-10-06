@@ -188,14 +188,6 @@ pub enum N {
     Dbl(f64),
 }
 impl N {
-    fn v(self) -> V {
-        match self {
-            N::I32(x) => V::I32(x),
-            N::I64(x) => V::I64(x),
-            N::Dec(x) => V::Dec(x),
-            N::Dbl(x) => V::Dbl(x),
-        }
-    }
     fn negative(self) -> bool {
         match self {
             N::I32(x) => x < 0,
@@ -1105,9 +1097,6 @@ impl Keys {
             self.0.push(key.to_string());
         }
         Ok(())
-    }
-    pub fn len(&self) -> usize {
-        self.0.len()
     }
 }
 
