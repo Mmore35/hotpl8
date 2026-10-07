@@ -70,6 +70,33 @@ function Set-Hotpl8UserPath([string]$Directory,[bool]$Add) {
     if($Add){$parts+=@($Directory)}
     [Environment]::SetEnvironmentVariable('Path',($parts -join ';'),'User')
 }
+# Whether the scheduler of an installation that keeps its release under app can start that
+# release's compiled collector, with no PowerShell before it. rollback.ps1 puts the release
+# kept under previous back under app and leaves the scheduler as it is, and a release from
+# before the collector was compiled answers only to tick.ps1: the collector is named only
+# when the release kept for a rollback has one too.
+function Test-Hotpl8CompiledStart([string]$Directory) {
+    . (Join-Path $PSScriptRoot 'native.ps1')
+    $compiled={param([string]$Release) (Test-Path -LiteralPath (Join-Path $Release 'src/lane.ps1') -PathType Leaf) -and (Test-Path -LiteralPath (Get-Hotpl8NativePath $Release) -PathType Leaf)}
+    $previous=Join-Path $Directory 'previous'
+    return [bool]((& $compiled (Join-Path $Directory 'app')) -and (-not (Test-Path -LiteralPath $previous) -or (& $compiled $previous)))
+}
+# What launchd starts every minute for an ordinary Mac installation, as install-macos.ps1
+# writes it when collection is first scheduled. $Shell is the PowerShell the collector uses
+# for what it leaves to PowerShell: launchd gives a job no path to find one on.
+function Get-Hotpl8MacCollectorStart([string]$Directory,[string]$State,[string]$Shell) {
+    . (Join-Path $PSScriptRoot 'native.ps1')
+    $app=Join-Path $Directory 'app'
+    if(Test-Hotpl8CompiledStart $Directory){return @((Get-Hotpl8NativePath $app),'collect','--root',$app,'--state',$State,'--scheduled','--powershell',$Shell)}
+    return @($Shell,'-NoProfile','-NonInteractive','-File',(Join-Path $app 'tick.ps1'),'-Scheduled','-StateDirectory',$State)
+}
+# Whether a launchd job is this installation's collector: its label, its state directory, and
+# either start above. An update leaves the job as the installation first wrote it.
+function Test-Hotpl8MacCollectorJob([xml]$Job,[string]$Label,[string]$Directory,[string]$State) {
+    . (Join-Path $PSScriptRoot 'native.ps1')
+    $words=@($Job.plist.dict.array.string);$app=Join-Path $Directory 'app'
+    return [bool](($Job.plist.dict.string -contains $Label) -and ($words -contains $State) -and (($words -contains (Join-Path $app 'tick.ps1')) -or ($words -contains (Get-Hotpl8NativePath $app))))
+}
 # Separated from registration so the command line that actually collects unattended can be
 # asserted and run by a test without creating, editing or deleting a real scheduled task.
 function Get-Hotpl8TaskDefinition($Installation,[string]$Directory) {
@@ -81,11 +108,17 @@ function Get-Hotpl8TaskDefinition($Installation,[string]$Directory) {
     # An installation that updates itself keeps the compiled program beside its launcher, and
     # that copy wakes the release in force without starting PowerShell (native/src/door.rs).
     # It is named only when it is this release's own: an older copy does not know the word.
-    # Every other installation keeps the start above, which reaches the same collector.
     try{
         $beside=Join-Path $Directory 'hotpl8-native.exe';$shipped=Get-Hotpl8NativePath (Split-Path $PSScriptRoot -Parent)
         if((Test-Path -LiteralPath (Join-Path $Directory 'current.json') -PathType Leaf) -and (Test-Path -LiteralPath $beside -PathType Leaf) -and (Test-Path -LiteralPath $shipped -PathType Leaf) -and (Get-FileHash -LiteralPath $beside -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $shipped -Algorithm SHA256).Hash){$wake=@($beside,'wake')}
     }catch{}
+    # Every other installation keeps its release under app, and its task starts that release's
+    # compiled collector as tick.ps1 would. Until the release kept for a rollback has one too,
+    # the task keeps the start above, which every release answers to.
+    if(Test-Hotpl8CompiledStart $Directory){
+        $app=Join-Path $Directory 'app'
+        $wake=@((Get-Hotpl8NativePath $app),'collect','--root',$app,'--state',$Installation.stateDirectory,'--scheduled')
+    }
     $argv=@('225',(Join-Path $Directory 'job-runs/collector'),$Directory)+$wake
     [pscustomobject]@{
         name='HotPl8-'+$Installation.id

@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import shlex
 import shutil
 import signal
 import subprocess
@@ -340,16 +341,40 @@ class Lifecycle(unittest.TestCase):
 
     def test_installed_bootstrap_job_dispatch_and_overlap(self):
         # Build a checksummed fixture collector: native scheduling never reads
-        # credentials or invokes a real provider during qualification.
+        # credentials or invokes a real provider during qualification. The job starts the
+        # release's compiled program, so the fixture's program hands the wake to the real
+        # one, which holds the installation and starts the release's collector: the fixture.
         with zipfile.ZipFile(self.source) as source:
             files = {name: source.read(name) for name in source.namelist()}
         self.config['macos']['runtimes'] = dict(codex=sys.executable, cswap=sys.executable)
         d.write(self.root / 'delivery.json', self.config)
-        files['tick.ps1'] = b'''param([switch]$Scheduled,[switch]$ObserveOnly,[string]$CodexExecutable,[string]$CswapExecutable)
-if(-not $Scheduled){exit 9}
-if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
-@{startedAt=[datetimeoffset]::UtcNow.ToString('o');completedAt=[datetimeoffset]::UtcNow.ToString('o');status='ok';runningSha=('a'*40);observeOnly=[bool]$ObserveOnly}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'collector.json')
-'''
+        files['bin/macos/hotpl8-native'] = ("#!/bin/sh\nexec " + shlex.quote(sys.executable) + ''' - "$@" <<'PY'
+import datetime, json, os, sys
+said = sys.argv[1:]
+if said[:1] == ['version']:
+    raise SystemExit(0)
+if said[:1] == ['wake']:
+    os.execv(@NATIVE@, [@NATIVE@] + said)
+named, plain, words = {}, set(), said[1:]
+while words:
+    if words[0] in ('--root', '--state', '--powershell', '--codex', '--cswap'):
+        named[words[0]] = words[1]
+        words = words[2:]
+    else:
+        plain.add(words.pop(0))
+if said[:1] != ['collect'] or '--scheduled' not in plain or plain - {'--scheduled', '--observe-only'}:
+    raise SystemExit(9)
+if not named.get('--codex') or named.get('--cswap') != named['--codex'] or named.get('--powershell') != @SHELL@:
+    raise SystemExit(10)
+if os.path.realpath(named.get('--root', '')) != @RELEASE@:
+    raise SystemExit(11)
+if os.environ.get('HOTPL8_STATE_DIRECTORY') != named.get('--state') or os.environ.get('HOTPL8_INSTALL_DIRECTORY') != @INSTALL@:
+    raise SystemExit(12)
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+with open(os.path.join(named['--state'], 'collector.json'), 'w') as receipt:
+    json.dump(dict(startedAt=now, completedAt=now, status='ok', runningSha='a' * 40, observeOnly='--observe-only' in plain), receipt)
+PY
+''').replace('@NATIVE@', repr(str(self.native))).replace('@SHELL@', repr(self.pwsh)).replace('@INSTALL@', repr(str(self.root))).replace('@RELEASE@', repr(str(self.root / 'releases' / A))).encode()
         with zipfile.ZipFile(self.source, 'w') as source:
             for name, body in files.items():
                 source.writestr(name, body)
@@ -370,6 +395,11 @@ if(-not $CodexExecutable -or $CswapExecutable -ne $CodexExecutable){exit 10}
         d.write(self.root / 'delivery.json', config)
         self.assertEqual(subprocess.run(command, timeout=20).returncode, 0)
         self.assertTrue(d.read(self.state / 'collector.json')['observeOnly'])
+        # A wake leaves an installation alone while an update holds it, and reports no failure.
+        (self.state / 'collector.json').unlink()
+        with d.lock(self.root / 'runtime.lock'):
+            self.assertEqual(subprocess.run([str(self.native), 'wake', str(self.root)], timeout=20).returncode, 0)
+        self.assertFalse((self.state / 'collector.json').exists())
         unfinished = dict(record, state='running', runId='c' * 32)
         d.write(self.root / 'job-runs/collector.json', unfinished)
         self.assertEqual(subprocess.run(command, timeout=20).returncode, 0)

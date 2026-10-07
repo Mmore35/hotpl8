@@ -106,11 +106,9 @@ fn main() -> ExitCode {
             return batch(Path::new(file));
         }
     }
-    // The scheduler's start: the copy beside the launcher wakes the release in force.
-    if let [command] = arguments.as_slice() {
-        if command == "wake" {
-            return ExitCode::from(door::woken());
-        }
+    // The scheduler's start: the release in force is woken, whichever this program is part of.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "wake") {
+        return ExitCode::from(door::woken(words));
     }
     // A wake prints what it did, and never an answer a reader would.
     if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "collect") {

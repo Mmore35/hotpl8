@@ -24,6 +24,49 @@ try{
   Assert ($receipt.platform -eq 'macos' -and -not $receipt.scheduled -and -not $receipt.pathAdded)
   Assert (([IO.File]::GetUnixFileMode((Join-Path $script:installed 'state')) -band [IO.UnixFileMode]'OtherRead,GroupRead') -eq 0)
  }
+ Check 'a schedule starts the installed collector, and a job with either start is this installation''s' {
+  # install-macos.ps1 writes this start into the launchd job it creates, and a broken one
+  # is silent: it is asserted and run. Nothing here creates or changes a launchd job.
+  $state=Join-Path $script:installed 'state';$app=Join-Path $script:installed 'app';$kept=Join-Path $script:installed 'previous'
+  $compiled=@((Join-Path $app 'bin/macos/hotpl8-native'),'collect','--root',$app,'--state',$state,'--scheduled','--powershell',$shell)
+  $older=@($shell,'-NoProfile','-NonInteractive','-File',(Join-Path $app 'tick.ps1'),'-Scheduled','-StateDirectory',$state)
+  Assert ((@(Get-Hotpl8MacCollectorStart $script:installed $state $shell) -join "`n") -ceq ($compiled -join "`n")) 'a fresh installation does not name its collector'
+  # rollback.ps1 puts the release under previous back and leaves the job alone. While that
+  # release is one from before the collector was compiled, the job gets the start every
+  # release answers to.
+  [void][IO.Directory]::CreateDirectory($kept)
+  try{Assert ((@(Get-Hotpl8MacCollectorStart $script:installed $state $shell) -join "`n") -ceq ($older -join "`n")) 'a release that cannot answer the collector start is kept for a rollback'}
+  finally{Remove-Item -LiteralPath $kept -Recurse -Force}
+  $label='com.hotpl8.collector.abcdef123456'
+  $job={param($Label,$Words) [xml]('<plist version="1.0"><dict><key>Label</key><string>'+$Label+'</string><key>ProgramArguments</key><array>'+(@($Words|ForEach-Object{'<string>'+[Security.SecurityElement]::Escape($_)+'</string>'}) -join '')+'</array><key>StartInterval</key><integer>60</integer></dict></plist>')}
+  foreach($start in @(,$compiled)+@(,$older)){Assert (Test-Hotpl8MacCollectorJob (& $job $label $start) $label $script:installed $state) 'an installation does not know its own job'}
+  Assert (-not (Test-Hotpl8MacCollectorJob (& $job 'com.hotpl8.collector.000000000000' $compiled) $label $script:installed $state)) 'a job under another label is taken'
+  Assert (-not (Test-Hotpl8MacCollectorJob (& $job $label $compiled) $label (Join-Path $lab 'another') $state)) 'another installation''s job is taken'
+  Assert (-not (Test-Hotpl8MacCollectorJob (& $job $label $compiled) $label $script:installed (Join-Path $lab 'another state'))) 'a job over another state is taken'
+  Assert (-not (Test-Hotpl8MacCollectorJob (& $job $label @($shell,'-File',(Join-Path $app 'hotpl8.ps1'),$state)) $label $script:installed $state)) 'a job that starts no collector is taken'
+  $policyPath=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllBytes($policyPath);$homeBefore=$env:HOME;$claudeBefore=$env:CLAUDE_CONFIG_DIR
+  try{
+   # A preferred slot makes the wake collect. The backoff marker keeps that collection
+   # away from cswap, so no account or credential home is touched.
+   $env:HOME=Join-Path $lab 'user home';[void][IO.Directory]::CreateDirectory($env:HOME);$env:CLAUDE_CONFIG_DIR=Join-Path $env:HOME 'claude'
+   $p=Read-Hotpl8Json $policyPath;$p.prefer=@(1)
+   Write-Hotpl8Text $policyPath ($p|ConvertTo-Json -Depth 12) -NoBom
+   foreach($start in @(,$compiled)+@(,$older)){
+    $now=[datetimeoffset]::UtcNow
+    Write-Hotpl8Text (Join-Path $state 'collector.json') (@{schemaVersion=1;providers=@{claude=@{lastAttemptAt=$now.ToString('o');failures=1;nextAttemptAt=$now.AddMinutes(30).ToString('o');status='unavailable'}}}|ConvertTo-Json -Depth 8) -NoBom
+    Remove-Item -LiteralPath (Join-Path $state 'status.txt') -Force -ErrorAction SilentlyContinue
+    $r=Invoke-Hotpl8Process $start[0] @($start|Select-Object -Skip 1) 60000
+    Assert ($r.exitCode -eq 0) ('the scheduled start failed: '+$start[0])
+    Assert (Test-Path -LiteralPath (Join-Path $state 'status.txt')) ('the scheduled start published nothing: '+$start[0])
+    $status=Read-Hotpl8Json (Join-Path $state 'status.json')
+    Assert ($status.collector.scheduled -eq $true -and $status.claudeError -eq 'backoff') ('the scheduled start did not collect as scheduled: '+$start[0])
+   }
+  }finally{
+   $env:HOME=$homeBefore;$env:CLAUDE_CONFIG_DIR=$claudeBefore
+   [IO.File]::WriteAllBytes($policyPath,$original)
+   foreach($name in @('status.txt','status.js','status.json','collector.json')){Remove-Item -LiteralPath (Join-Path $state $name) -Force -ErrorAction SilentlyContinue}
+  }
+ }
  Check 'a reader that arrives without its executable bit is installed executable' {
   # Archive extraction drops the bit, and File.Copy keeps whatever the source has, so a
   # checkout cannot show the loss. This copy of the package has the bit cleared.

@@ -435,10 +435,18 @@ def dispatch(root, command, arguments):
                 write(root / 'job-runs' / ('unfinished-' + prior['runId'] + '.json'), prior)
             record = dict(schemaVersion=1, runId=uuid.uuid4().hex, startedAt=now(), sha=read(release / "build-info.json")["sha"], state="running")
             write(path, record)
-            tail = ["run", "tick", "-Scheduled"] if role == "collector" else ["update"]
-            if role == 'collector' and config['macos'].get('collectorObserveOnly', False):
-                tail.append('-ObserveOnly')
-            result = guardian.execute([config["python"], str(root / "delivery.py"), *tail], 225 if role == "collector" else 540)
+            if role == "collector":
+                # The release's compiled program holds the installation as a command does,
+                # and starts the collector of the release in force (native/src/door.rs):
+                # a wake that leaves nothing to PowerShell starts none.
+                command = [str(release / "bin/macos/hotpl8-native"), "wake", str(root), "--powershell", config["powershell"]]
+                for key, value in config['macos'].get('runtimes', {}).items():
+                    command += ["--" + key, value]
+                if config['macos'].get('collectorObserveOnly', False):
+                    command.append('--observe-only')
+            else:
+                command = [config["python"], str(root / "delivery.py"), "update"]
+            result = guardian.execute(command, 225 if role == "collector" else 540)
             record.update(result, completedAt=now())
             outcome = read(root / 'delivery-status.json', {}) if role == 'updater' else read(Path(config['stateDirectory']) / 'collector.json', {})
             fields = ('state', 'lastCheck', 'installedSha', 'desiredSha', 'reason') if role == 'updater' else ('status', 'startedAt', 'completedAt', 'runningSha')

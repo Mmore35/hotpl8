@@ -38,7 +38,7 @@ if($receipt.pathAdded -and (Test-Path $link)){
 if(Test-Path $launch){
     if(-not $old.scheduled){throw 'Collector ownership is not established.'}
     [xml]$installedJob=[IO.File]::ReadAllText($launch)
-    if($installedJob.plist.dict.string -notcontains $label -or $installedJob.plist.dict.array.string -notcontains (Join-Path $destination 'app/tick.ps1') -or $installedJob.plist.dict.array.string -notcontains $state){throw 'Collector ownership mismatch.'}
+    if(-not (Test-Hotpl8MacCollectorJob $installedJob $label $destination $state)){throw 'Collector ownership mismatch.'}
 }
 $oldShim=if(Test-Path $shim){[IO.File]::ReadAllText($shim)}else{$null}
 $lock=$null;$promoted=$false;$moved=$false;$createdLink=$false;$createdLaunch=$false
@@ -76,7 +76,7 @@ try{
         $label='com.hotpl8.collector.'+$id
         $launch=Join-Path (Get-Hotpl8UserHome) ('Library/LaunchAgents/'+$label+'.plist')
         [void][IO.Directory]::CreateDirectory((Split-Path $launch -Parent))
-        $argv=@($shell,'-NoProfile','-NonInteractive','-File',(Join-Path $app 'tick.ps1'),'-Scheduled','-StateDirectory',$state)
+        $argv=@(Get-Hotpl8MacCollectorStart $destination $state $shell)
         $arguments=(@($argv|ForEach-Object{'<string>'+[Security.SecurityElement]::Escape($_)+'</string>'}) -join '')
         $xml='<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>'+$label+'</string><key>ProgramArguments</key><array>'+$arguments+'</array><key>StartInterval</key><integer>60</integer><key>RunAtLoad</key><true/><key>StandardOutPath</key><string>/dev/null</string><key>StandardErrorPath</key><string>/dev/null</string></dict></plist>'
         if(Test-Path $launch){
