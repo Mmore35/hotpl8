@@ -318,12 +318,18 @@ fn same_text(left: &str, right: &str, case_sensitive: bool) -> R<bool> {
     }
     unreadable()
 }
-/// Culture ordering, modelled for strings of ASCII letters and digits, and for hyphens
-/// between them where every culture table agrees.
+/// Culture ordering, modelled for strings of ASCII letters and digits, for hyphens between
+/// them where every culture table agrees, and for strings of one shape such as timestamps.
 #[track_caller]
 pub fn order_text(left: &str, right: &str) -> R<Ordering> {
     let (left, right) = (left.to_ascii_lowercase(), right.to_ascii_lowercase());
     if alphanumeric(&left) && alphanumeric(&right) {
+        return Ok(left.cmp(&right));
+    }
+    // Two strings that differ only in which digit stands at a place are decided by the
+    // first such place: whatever stands between the digits weighs the same in both.
+    let shaped = |a: u8, b: u8| a == b || (a.is_ascii_digit() && b.is_ascii_digit());
+    if left.len() == right.len() && printable(&left) && printable(&right) && left.bytes().zip(right.bytes()).all(|(a, b)| shaped(a, b)) {
         return Ok(left.cmp(&right));
     }
     let hyphenated = |text: &str| text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
@@ -1406,6 +1412,10 @@ mod tests {
         assert_eq!(order("a-b", "aa"), None);
         assert_eq!(order("codex", "codex-"), None);
         assert_eq!(order("a b", "a"), None);
+        // Timestamps of one spelling differ only in their digits.
+        assert_eq!(order("2026-10-06T11:00:00.0000000+00:00", "2026-10-06T10:59:59.9999999+00:00"), Some(Ordering::Greater));
+        assert_eq!(order("2026-10-06T11:00:00.0000000+00:00", "2026-10-06T11:00:00.0000000-07:00"), None);
+        assert_eq!(order("2026-10-06T11:00:00Z", "2026-10-06T11:00:00.0000000+00:00"), None);
     }
 
     #[test]

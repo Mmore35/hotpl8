@@ -17,6 +17,7 @@ mod decision;
 mod display;
 mod door;
 mod files;
+mod forecast;
 mod insights;
 mod json;
 mod num;
@@ -32,6 +33,7 @@ mod selection;
 mod sha256;
 mod time;
 mod version;
+mod warming;
 
 use std::ffi::OsString;
 use std::io::Write;
