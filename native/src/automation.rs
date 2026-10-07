@@ -119,7 +119,12 @@ pub fn hold(directory: &Path, now: Dto) -> Option<Hold> {
             return Ok(None);
         }
         let reason = hold.g("reason")?;
-        Ok(Some(Hold { until, reason: if reason.t()? { reason.s()? } else { "hold".into() } }))
+        // [string] of a list is its items with a space between them.
+        let said = match &reason {
+            V::Arr(items) => items.iter().map(V::s).collect::<R<Vec<String>>>()?.join(" "),
+            _ => reason.s()?,
+        };
+        Ok(Some(Hold { until, reason: if reason.t()? { said } else { "hold".into() } }))
     };
     read().unwrap_or(None)
 }
@@ -240,6 +245,16 @@ mod tests {
         for gone in [r#"{"until":"2026-10-06T12:00:00Z"}"#, r#"{"until":"not a timestamp"}"#, "{oh no", r#"{"reason":"x"}"#, r#"{"until":5}"#] {
             write(gone);
             assert!(hold(&directory, now).is_none(), "{gone}");
+        }
+        // A holder's own spelling of the time and of its reason is read as PowerShell reads it.
+        write(r#"{"until":"2026-10-06t13:00:00z","reason":["long","job",7]}"#);
+        assert_eq!(hold(&directory, now).unwrap().reason, "long job 7");
+        // A hold is one object. PowerShell read the members of a list's items too, and
+        // held for this one; a reason with an object inside it held under PowerShell's
+        // name for that object.
+        for refused in [r#"[{"until":"2026-10-06T13:00:00Z"}]"#, r#"{"until":"2026-10-06T13:00:00Z","reason":[{"a":1}]}"#] {
+            write(refused);
+            assert!(hold(&directory, now).is_none(), "{refused}");
         }
         std::fs::remove_dir_all(&directory).unwrap();
     }

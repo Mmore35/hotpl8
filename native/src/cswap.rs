@@ -9,6 +9,7 @@ use crate::process;
 use crate::ps::*;
 use crate::sha256;
 use crate::time::Dto;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Get-CswapReadTimeoutMs. Reading the accounts renews a sign-in that has expired, and a
@@ -27,17 +28,46 @@ pub fn user_home() -> R<PathBuf> {
     fail("Neither USERPROFILE nor HOME is set.")
 }
 
+/// Where a cswap may be: what this machine's environment says, or what a test names.
+pub struct Places {
+    /// HOTPL8_NATIVE_BIN, the directory of the programs HotPl8 installed.
+    pub owned: Option<PathBuf>,
+    pub home: Option<PathBuf>,
+    /// The one place every user of the machine shares.
+    pub shared: PathBuf,
+    pub path: Option<OsString>,
+    pub extensions: Option<String>,
+    /// LOCALAPPDATA and APPDATA, under which Windows keeps a person's Pythons.
+    pub local: Option<PathBuf>,
+    pub roaming: Option<PathBuf>,
+}
+
+impl Places {
+    pub fn here() -> Places {
+        let directory = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+        Places {
+            owned: directory("HOTPL8_NATIVE_BIN"),
+            home: user_home().ok(),
+            shared: PathBuf::from("/usr/local/bin/cswap"),
+            path: std::env::var_os("PATH"),
+            extensions: std::env::var("PATHEXT").ok(),
+            local: directory("LOCALAPPDATA"),
+            roaming: directory("APPDATA"),
+        }
+    }
+}
+
 /// `(Get-Command cswap).Source`: the first cswap a directory of PATH holds.
-fn on_path() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
+fn on_path(places: &Places) -> Option<PathBuf> {
+    let path = places.path.as_ref()?;
     let extensions: Vec<String> = if cfg!(windows) {
-        let known = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+        let known = places.extensions.clone().unwrap_or_else(|| ".COM;.EXE;.BAT;.CMD".into());
         // The collector starts programs, and a batch shim only with the words it knows.
         known.split(';').map(str::to_ascii_lowercase).filter(|e| [".com", ".exe", ".bat", ".cmd"].contains(&e.as_str())).collect()
     } else {
         vec![String::new()]
     };
-    for directory in std::env::split_paths(&path).filter(|directory| directory.is_absolute()) {
+    for directory in std::env::split_paths(path).filter(|directory| directory.is_absolute()) {
         for extension in &extensions {
             let candidate = directory.join(format!("cswap{extension}"));
             if runnable(&candidate) {
@@ -78,26 +108,26 @@ pub fn resolve_executable(named: Option<&str>) -> Option<String> {
     if let Some(named) = named.filter(|named| !named.is_empty()) {
         return Some(named.to_string());
     }
-    let text = |path: PathBuf| path.to_string_lossy().into_owned();
-    if let Some(owned) = std::env::var_os("HOTPL8_NATIVE_BIN").filter(|owned| !owned.is_empty()) {
-        let owned = PathBuf::from(owned).join(if cfg!(windows) { "cswap.exe" } else { "cswap" });
+    found_in(&Places::here()).map(|path| path.to_string_lossy().into_owned())
+}
+
+/// The cswap that is used when none is named.
+fn found_in(places: &Places) -> Option<PathBuf> {
+    if let Some(owned) = &places.owned {
+        let owned = owned.join(if cfg!(windows) { "cswap.exe" } else { "cswap" });
         if owned.is_file() {
-            return Some(text(owned));
+            return Some(owned);
         }
     }
-    let home = user_home().ok();
-    let usual = [home.map(|home| home.join(".local").join("bin").join("cswap")), Some(PathBuf::from("/usr/local/bin/cswap"))];
+    let usual = [places.home.as_ref().map(|home| home.join(".local").join("bin").join("cswap")), Some(places.shared.clone())];
     if let Some(found) = usual.into_iter().flatten().find(|candidate| candidate.exists()) {
-        return Some(text(found));
+        return Some(found);
     }
-    if let Some(found) = on_path() {
-        return Some(text(found));
+    if let Some(found) = on_path(places) {
+        return Some(found);
     }
-    let under = |name: &str, rest: &[&str]| {
-        let base = std::env::var_os(name).filter(|base| !base.is_empty())?;
-        beside_python(rest.iter().fold(PathBuf::from(base), |path, part| path.join(part)))
-    };
-    under("LOCALAPPDATA", &["Programs", "Python"]).or_else(|| under("APPDATA", &["Python"])).map(text)
+    let local = places.local.as_ref().and_then(|base| beside_python(base.join("Programs").join("Python")));
+    local.or_else(|| places.roaming.as_ref().and_then(|base| beside_python(base.join("Python"))))
 }
 
 /// The name cswap gives an account's own session directory.
@@ -262,7 +292,7 @@ fn audit(path: &Path, line: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::files::tests::scratch;
+    use crate::files::tests::{scratch, shared_rules};
 
     /// A sign-in no account has: `{"claudeAiOauth":{"refreshToken":"fictional-refresh-token","expiresAt":1791288000000}}`.
     const SESSION: &str = r#"{"claudeAiOauth":{"refreshToken":"fictional-refresh-token","expiresAt":1791288000000}}"#;
@@ -377,6 +407,54 @@ mod tests {
         assert_eq!(std::fs::metadata(directory.join("cred-audit.log.1")).unwrap().len(), 262_145);
         assert_eq!(std::fs::read_to_string(directory.join("cred-audit.log")).unwrap().lines().count(), 1);
         std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn cswap_is_found_where_the_shared_cases_say() {
+        let cases = shared_rules("cswap").arr();
+        assert!(cases.len() > 8);
+        let mut wrong = Vec::new();
+        for case in &cases {
+            let field = |name: &str| case.g(name).ok().unwrap();
+            let root = scratch("shared-cswap");
+            for place in ["owned", "home", "path", "local", "roaming"] {
+                std::fs::create_dir_all(root.join(place)).unwrap();
+            }
+            // Each staged cswap holds the name of its place, which is how the one found is told.
+            for place in field("present").each() {
+                let place = place.s().ok().unwrap();
+                let file = match place.as_str() {
+                    "owned" | "path" => root.join(&place).join(if cfg!(windows) { "cswap.exe" } else { "cswap" }),
+                    _ => root.join(&place),
+                };
+                std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+                std::fs::write(&file, &place).unwrap();
+                #[cfg(unix)]
+                std::fs::set_permissions(&file, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            }
+            let places = Places {
+                owned: Some(root.join("owned")),
+                home: Some(root.join("home")),
+                shared: root.join("shared").join("cswap"),
+                path: Some(root.join("path").into_os_string()),
+                extensions: None,
+                local: Some(root.join("local")),
+                roaming: Some(root.join("roaming")),
+            };
+            let named = field("named").s().ok().unwrap();
+            let answer = match named.is_empty() {
+                true => found_in(&places).map(|found| std::fs::read_to_string(found).unwrap()),
+                false => resolve_executable(Some(&named)),
+            };
+            let expected = field("expected");
+            let expected = if expected.is_null() { None } else { Some(expected.s().ok().unwrap()) };
+            if answer != expected {
+                wrong.push(format!("{}: expected {expected:?}, answered {answer:?}", field("name").s().ok().unwrap()));
+            }
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+        assert!(wrong.is_empty(), "{} of {} cases differ:\n{}", wrong.len(), cases.len(), wrong.join("\n"));
+        assert!(shared_rules("readTimeoutMs").eq_i(READ_TIMEOUT_MS as i32).ok().unwrap());
     }
 
     #[test]

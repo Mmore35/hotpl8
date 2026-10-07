@@ -188,6 +188,14 @@ pub mod tests {
         path
     }
 
+    /// One part of tests/parity/shared-rules.json. It holds what PowerShell's side of a
+    /// rule answers for each case, tests/test-shared-rules.ps1 holds PowerShell to it, and
+    /// the test beside the rule here holds this side to it.
+    pub fn shared_rules(part: &str) -> V {
+        let rules = crate::json::parse(include_str!("../../tests/parity/shared-rules.json"), "shared-rules.json").ok().unwrap();
+        rules.g(part).ok().unwrap()
+    }
+
     #[test]
     fn names_are_new_each_time() {
         let (first, second) = (guid(), guid());

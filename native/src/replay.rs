@@ -200,21 +200,22 @@ pub fn replay(frames: &[V], policy: &V) -> R<V> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::files::tests::shared_rules;
     use crate::json::parse;
     use std::path::Path;
 
-    const FRAMES: &str = include_str!("replay-frames.txt");
-    const CODEX: &str = r#""codex":{"slots":[{"id":"work","label":"Work"},{"id":"personal","label":"Personal"}],"reserve":["personal"],"defaultMeter":"codex","margin5h":25,"margin7d":20}"#;
-    /// What Invoke-Hotpl8Replay answers for these under Windows PowerShell: each
-    /// decision's stream, time, pick and reserve mark, each stream's totals, and the
+    /// The readings and cases are the ones tests/test-shared-rules.ps1 gives to
+    /// Invoke-Hotpl8Replay, and the lines are what it answers under Windows PowerShell:
+    /// each decision's stream, time, pick and reserve mark, each stream's totals, and the
     /// number of readings. PowerShell 7 answers the same with the totals in its own order.
-    const REPLAYED: &str = include_str!("replay-expected.txt");
+    const FRAMES: &str = include_str!("../../tests/parity/replay-frames.txt");
+    const REPLAYED: &str = include_str!("../../tests/parity/replay-expected.txt");
 
-    fn replayed(name: &str, policy: &str, pick: &[usize]) -> Vec<String> {
+    fn replayed(name: &str, policy: &V, pick: &[usize]) -> Vec<String> {
         let lines: Vec<&str> = FRAMES.lines().collect();
         let frames: Vec<V> = pick.iter().map(|at| parse(lines[*at], "").ok().unwrap()).collect();
         let text = |value: R<V>| value.and_then(|value| if value.is_null() { Ok("null".to_string()) } else { value.s() }).ok().unwrap();
-        let r = match replay(&frames, &parse(policy, "").ok().unwrap()) {
+        let r = match replay(&frames, policy) {
             Ok(r) => r,
             Err(stop) => return vec![format!("{name}|THROWN {}", stop.message())],
         };
@@ -232,23 +233,14 @@ mod tests {
         let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data");
         crate::registry::set_source(data.join("providers"));
         crate::capacity::set_source(data.join("capacity-profiles.json"));
-        let both = format!(r#"{{"prefer":[1,2,3],"reserve":[3],"margin5h":25,"margin7d":20,"hysteresis":10,{CODEX}}}"#);
-        let mut said = replayed("one", &both, &[0]);
-        said.extend(replayed("all", &both, &[0, 1, 2, 3, 4]));
-        said.extend(replayed("claude only", r#"{"prefer":[1,2,3],"reserve":[3],"disabled":[2],"margin5h":25,"margin7d":20,"hysteresis":10}"#, &[0, 1, 2]));
-        said.extend(replayed("codex only", &format!("{{{CODEX}}}"), &[0, 1, 2, 3]));
-        said.extend(replayed(
-            "critical",
-            r#"{"prefer":[1,2,3],"reserve":[3],"margin5h":25,"margin7d":20,"hysteresis":10,"critical":{"enabled":true},"codex":{"slots":[{"id":"work"},{"id":"personal"}],"defaultMeter":"codex","margin5h":25,"margin7d":20,"critical":{"enabled":true}}}"#,
-            &[3, 4],
-        ));
-        said.extend(replayed(
-            "registered",
-            r#"{"schemaVersion":3,"mode":"automate","providers":{"codex":{"slots":[{"id":"work"},{"id":"personal"}],"disabled":["work"]},"claude":{"prefer":[2,1],"reserve":[],"margin5h":25,"margin7d":20,"hysteresis":0}}}"#,
-            &[0, 1],
-        ));
-        said.extend(replayed("empty", r#"{"prefer":[],"codex":{"slots":[]}}"#, &[0]));
-        said.extend(replayed("no frames", &both, &[]));
+        let cases = shared_rules("replay").arr();
+        assert!(cases.len() > 7);
+        let mut said = Vec::new();
+        for case in &cases {
+            let field = |name: &str| case.g(name).ok().unwrap();
+            let pick: Vec<usize> = field("pick").each().iter().map(|at| at.s().ok().unwrap().parse().unwrap()).collect();
+            said.extend(replayed(&field("name").s().ok().unwrap(), &field("policy"), &pick));
+        }
         said
     }
 

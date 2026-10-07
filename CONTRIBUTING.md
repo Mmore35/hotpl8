@@ -69,7 +69,12 @@ PowerShell. The tray, dashboard and other commands still calculate some of the s
 PowerShell, and [the plan](docs/plans/rust-read-side.md) lists them. Launching Codex and
 adding an account still read an account's limits in PowerShell: both sides read the cases in
 `tests/parity/codex-buckets.json`, one to a line, and a change to that rule changes both and
-the cases in one commit. The parity suite holds the read rules to
+the cases in one commit. The switch hold, the control files an action is authorized under,
+replay, where cswap is found and the kinds a failure is recorded under are in both as well:
+`tests/parity/shared-rules.json` holds their cases, read by `tests/test-shared-rules.ps1` and
+by the program's own tests. A change to one of those rules adds a case there;
+`tests/test-shared-rules.ps1 -Update` records what PowerShell answers for the control cases,
+and the program's tests must then agree. The parity suite holds the read rules to
 the program: it asks both the same question
 about the fictional cases in `tests/parity/cases.ps1` and about seeded variations of them,
 under the PowerShell the suite runs in, and compares what `status`, `explain` and the tray

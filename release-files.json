@@ -206,6 +206,10 @@
     "tests/parity/expected-explain.txt",
     "tests/parity/expected-tray.txt",
     "tests/parity/codex-buckets.json",
+    "tests/test-shared-rules.ps1",
+    "tests/parity/shared-rules.json",
+    "tests/parity/replay-frames.txt",
+    "tests/parity/replay-expected.txt",
     "docs/plans/rust-read-side.md",
     "src/lane.ps1"
   ],
