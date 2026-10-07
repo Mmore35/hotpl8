@@ -26,6 +26,7 @@ mod observation;
 mod overview;
 mod pause;
 mod phase;
+mod plans;
 mod policy;
 mod process;
 mod ps;
