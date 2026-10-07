@@ -52,7 +52,7 @@ fn command(executable: &str, arguments: &[&str]) -> R<Command> {
 
 /// Stop-Hotpl8Process: a program still running is given a moment, then ended with every
 /// program it started.
-fn stop(child: &mut Child) {
+pub(crate) fn stop(child: &mut Child) {
     if matches!(child.try_wait(), Ok(Some(_))) {
         return;
     }
@@ -95,10 +95,10 @@ fn stop(child: &mut Child) {
 }
 
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Ends the program when the collector stops waiting for it, however it stops.
-struct Running(Child);
+pub(crate) struct Running(pub(crate) Child);
 impl Drop for Running {
     fn drop(&mut self) {
         stop(&mut self.0);

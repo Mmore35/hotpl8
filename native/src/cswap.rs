@@ -49,12 +49,12 @@ fn on_path() -> Option<PathBuf> {
 }
 
 #[cfg(unix)]
-fn runnable(path: &Path) -> bool {
+pub(crate) fn runnable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path).is_ok_and(|file| file.is_file() && file.permissions().mode() & 0o111 != 0)
 }
 #[cfg(not(unix))]
-fn runnable(path: &Path) -> bool {
+pub(crate) fn runnable(path: &Path) -> bool {
     path.is_file()
 }
 

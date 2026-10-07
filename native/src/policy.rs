@@ -380,10 +380,14 @@ pub fn assert_codex_policy(policy: &V) -> R<()> {
     Ok(())
 }
 
-/// A native account home as the checks compare it: `[IO.Path]::GetFullPath` with the
-/// trailing separators trimmed, lower-cased. Only paths that call leaves as written are
-/// modelled: a home it would rewrite is not one HotPl8 enrolls, and is not read.
+/// A native account home as the checks compare it: its full path, lower-cased.
 fn home_key(path: &str) -> R<String> {
+    Ok(home_path(path)?.to_ascii_lowercase())
+}
+
+/// `[IO.Path]::GetFullPath` of a native account home. Only paths that call leaves as
+/// written are modelled: a home it would rewrite is not one HotPl8 enrolls, and is not read.
+pub fn home_path(path: &str) -> R<String> {
     if path.is_empty() {
         // A missing home is not rooted.
         return fail("invalid_home");
@@ -433,7 +437,7 @@ fn home_key(path: &str) -> R<String> {
         }
     }
     let head = if cfg!(windows) { path[..2].to_string() + "\\" } else { "/".to_string() };
-    Ok((head + &rest).to_ascii_lowercase())
+    Ok(head + &rest)
 }
 
 /// What a policy lets the collector do.

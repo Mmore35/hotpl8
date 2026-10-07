@@ -1,6 +1,6 @@
-//! src/lane.ps1 as the collector uses it: the three pieces of a wake PowerShell still does.
+//! src/lane.ps1 as the collector uses it: the two pieces of a wake PowerShell still does.
 //! Each is a program of its own, started only when the wake has that work for it, and it
-//! answers with one line of JSON: what it produced, or the failure it met.
+//! answers with one line of JSON: that it is done, or the failure it met.
 
 use crate::files;
 use crate::json;
@@ -10,8 +10,7 @@ use crate::ps::*;
 use crate::sha256;
 use std::path::{Path, PathBuf};
 
-/// A lane that takes longer is given up on. Reading Codex accounts keeps a budget of its
-/// own well inside this.
+/// A lane that takes longer is given up on.
 const TIMEOUT_MS: u64 = 90_000;
 
 /// The PowerShell files an event may name as the place of a failure.
@@ -70,19 +69,6 @@ impl Lanes<'_> {
             _ => None,
         };
         Stop::reported(&failure.g("code")?.s()?, text("said")?, file, source)
-    }
-
-    /// Invoke-CodexCollection for one registered provider: what its accounts read.
-    pub fn codex(&self, provider: &str, executable: Option<&str>) -> R<V> {
-        let mut words = vec!["-Provider", provider];
-        if let Some(executable) = executable.filter(|executable| !executable.is_empty()) {
-            words.extend(["-CodexExecutable", executable]);
-        }
-        let payload = self.ask("codex", &words)?.g("payload")?;
-        if !payload.is_obj() {
-            return fail("lane_unavailable");
-        }
-        Ok(payload)
     }
 
     /// Everything Set-Hotpl8ContinueHook reads, as one value. Given the same of these it

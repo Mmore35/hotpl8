@@ -4,6 +4,8 @@
 
 use crate::claude_tick::{self, claude_tick};
 use crate::codex::{format_codex_status, select_codex_slot};
+use crate::codex_collect::{self, Collection};
+use crate::codex_read::HomeRead;
 use crate::collection::codex_failure;
 use crate::json;
 use crate::obj;
@@ -12,6 +14,7 @@ use crate::ps::*;
 use crate::registry::{self, provider_driver, provider_state_directory, provider_view};
 use crate::time::Dto;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 /// What a collection is given besides the provider it reads.
 pub struct Reading<'a> {
@@ -27,9 +30,8 @@ pub struct Reading<'a> {
     /// The user's home directory, where cswap keeps what it stores.
     pub home: &'a Path,
     pub clock: &'a dyn Fn() -> R<Dto>,
-    /// Reads the accounts of the Codex provider named. PowerShell still does that, in a
-    /// program of its own; this is what it answered.
-    pub codex: &'a dyn Fn(&str) -> R<V>,
+    /// Reads the Codex account in the home named, within so many milliseconds.
+    pub codex: &'a dyn Fn(&str, u64) -> HomeRead,
 }
 
 /// What one provider's reading came to.
@@ -51,7 +53,8 @@ pub struct Collected {
 const SWITCHES: [(&str, &str); 3] = [("selection", "switchEnabled"), ("warming", "warm"), ("recoveryProbe", "probeEnabled")];
 
 /// One reading of a registered provider, by the routine its definition's driver names.
-pub fn registered_collection(registration: &V, reading: &Reading) -> R<Collected> {
+/// `old` is what the snapshot before this one shows for the provider.
+pub fn registered_collection(registration: &V, reading: &Reading, old: &V) -> R<Collected> {
     let id = registration.g("id")?.s()?;
     let driver = provider_driver(&registration.g("driver")?)?;
     let capabilities = registration.path(&["definition", "capabilities"])?;
@@ -103,8 +106,18 @@ pub fn registered_collection(registration: &V, reading: &Reading) -> R<Collected
             })
         }
         "codex-app-server" => {
-            let payload = (reading.codex)(&id)?;
             let part = registration.g("policy")?;
+            let began = Instant::now();
+            let payload = codex_collect::collect(&Collection {
+                policy: &part,
+                state: &state,
+                control: reading.directory,
+                previous: old,
+                read: reading.codex,
+                clock: reading.clock,
+                elapsed: &|| i64::try_from(began.elapsed().as_millis()).unwrap_or(i64::MAX),
+                pause: &|milliseconds| std::thread::sleep(Duration::from_millis(milliseconds)),
+            })?;
             let slots = payload.g("slots")?;
             let healthy = filter(&slots.each(), |slot| slot.g("status")?.in_s(&["ok", "disabled"]))?.len();
             let meter = part.g("defaultMeter")?;
