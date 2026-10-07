@@ -381,6 +381,9 @@ try {
         $entry=Join-Path $dir 'entry';New-Item -ItemType Directory -Path $entry|Out-Null
         Copy-Item (Join-Path $root 'src') $entry -Recurse
         foreach($name in @('hotpl8.ps1','setup-codex.ps1','VERSION')) {Copy-Item (Join-Path $root $name) $entry}
+        # status is the compiled reader's, so a copy that answers it holds one.
+        New-Item -ItemType Directory -Path (Join-Path $entry 'bin/windows')|Out-Null
+        Copy-Item (Join-Path $root 'bin/windows/hotpl8-native.exe') (Join-Path $entry 'bin/windows')
         Write-Hotpl8Text (Join-Path $entry 'policy.json') '{"prefer":[3,2,1],"warm":true}'
         $output=& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $entry 'hotpl8.ps1') status
         Assert ($LASTEXITCODE -eq 0);Assert ($output -like '*No cached status*')

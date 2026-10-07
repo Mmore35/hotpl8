@@ -123,10 +123,10 @@ function Add-Hotpl8Insights($Snapshot,$Policy,[string]$Directory,$Previous,[date
     $Snapshot|Add-Member NoteProperty shadow $shadow -Force
     $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
 }
-function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$SkipDisplay) {
+function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$SkipDisplay,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     $s=Read-Hotpl8Json (Join-Path $Directory 'status.json')
     $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')
-    $pause=Get-Hotpl8Pause $Directory
+    $pause=Get-Hotpl8Pause $Directory $Now
     # First collection can stall before there is a snapshot. Show that evidence too.
     if(-not $s -and ($c -or $pause)){$s=[pscustomobject]@{schemaVersion=2;generatedAt=$null;slots=@()}}
     if($s){
@@ -150,9 +150,9 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$S
     # and skips the reader-side display summaries, which nothing on that path reads.
     if($s -and -not $SkipDisplay){
         $readerPolicy=if($PolicyOverride){$PolicyOverride}else{Read-Hotpl8Json (Join-Path $Directory 'policy.json')}
-        $s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $readerPolicy) -Force
+        $s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $readerPolicy $Now) -Force
         # Advice only: a detector failure must never cost a reader its snapshot.
-        $candidates=@();try{$candidates=@(Get-Hotpl8ParkCandidates $s $readerPolicy)}catch{}
+        $candidates=@();try{$candidates=@(Get-Hotpl8ParkCandidates $s $readerPolicy $Now)}catch{}
         $s|Add-Member NoteProperty parkCandidates $candidates -Force
     }
     return $s

@@ -5,12 +5,10 @@ $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $native=Join-Path $root 'native'
 $windows=$env:OS -eq 'Windows_NT'
-if(-not $windows -and -not $IsMacOS){throw 'The native reader is built for Windows and macOS.'}
 foreach($tool in @('cargo','rustc')){
     if(-not (Get-Command $tool -ErrorAction SilentlyContinue)){throw 'Rust is required to build the native reader. Install it from https://rustup.rs and retry.'}
 }
-# The binary reports the commit it was built from; src/native.ps1 compares that with the
-# release's build-info.json before using it.
+# The binary carries the commit it was built from, so whoever holds one can ask which it is.
 if(-not $Sha){$Sha=$env:GITHUB_SHA}
 if(-not $Sha -and (Get-Command git -ErrorAction SilentlyContinue)){
     # Outside a checkout git answers on the error stream, which Windows PowerShell raises.
@@ -19,19 +17,21 @@ if(-not $Sha -and (Get-Command git -ErrorAction SilentlyContinue)){
 }
 if($Sha -and $Sha -cnotmatch '^[a-f0-9]{40}$'){throw 'Build identity must be a full commit SHA.'}
 $name=if($windows){'hotpl8-native.exe'}else{'hotpl8-native'}
-$output=Join-Path $root ($(if($windows){'bin/windows/'}else{'bin/macos/'})+$name)
+# Releases ship the Windows and Mac readers. A Linux checkout builds its own.
+$output=Join-Path $root ($(if($windows){'bin/windows/'}elseif($IsMacOS){'bin/macos/'}else{'bin/linux/'})+$name)
 $priorSha=$env:HOTPL8_BUILD_SHA;$priorFloor=$env:MACOSX_DEPLOYMENT_TARGET
 Push-Location $native
 try{
     $env:HOTPL8_BUILD_SHA=$Sha
     if(-not $Target){
-        if($windows){
+        if($IsMacOS){$Target=@('aarch64-apple-darwin','x86_64-apple-darwin')}
+        else{
             $hostLine=@(& rustc -vV|Where-Object{$_ -like 'host: *'})
             if($LASTEXITCODE -ne 0 -or $hostLine.Count -ne 1){throw 'Could not read the Rust host target.'}
             $Target=@($hostLine[0].Substring(6).Trim())
-        }else{$Target=@('aarch64-apple-darwin','x86_64-apple-darwin')}
+        }
     }
-    if(-not $windows){$env:MACOSX_DEPLOYMENT_TARGET='11.0'}
+    if($IsMacOS){$env:MACOSX_DEPLOYMENT_TARGET='11.0'}
     $built=@()
     foreach($triple in $Target){
         if($triple -cnotmatch '^[a-z0-9_]+(-[a-z0-9_]+)+$'){throw 'Invalid Rust target.'}
@@ -44,8 +44,8 @@ try{
         $built+=Join-Path $native ('target/'+$triple+'/release/'+$name)
     }
     [void][IO.Directory]::CreateDirectory((Split-Path $output -Parent))
-    if($windows){
-        if($built.Count -ne 1){throw 'Windows ships one architecture.'}
+    if(-not $IsMacOS){
+        if($built.Count -ne 1){throw 'Only the Mac reader joins architectures.'}
         [IO.File]::Copy($built[0],$output,$true)
     }else{
         # One file for Apple silicon and Intel. Joining invalidates the linker's signature,
@@ -58,7 +58,7 @@ try{
     }
     $identity=@(& $output self-check)
     $expected=if($Sha){$Sha}else{'unknown'}
-    if($LASTEXITCODE -ne 0 -or $identity.Count -ne 1 -or $identity[0] -cnotmatch ('^hotpl8-native protocol=[0-9]+ sha='+$expected+'$')){throw 'The built native reader did not report the expected identity.'}
+    if($LASTEXITCODE -ne 0 -or $identity.Count -ne 1 -or $identity[0] -cnotmatch ('^hotpl8-native sha='+$expected+'$')){throw 'The built native reader did not report the expected identity.'}
     $output
 }finally{
     Pop-Location

@@ -34,7 +34,9 @@ python delivery/setup.py --install "$env:LOCALAPPDATA/HotPl8"
 
 Enrollment preserves the configured state directory and collector task, keeps the
 old app directory as a recovery copy, installs stable compatibility launchers and
-registers `LocalDelivery-hotpl8`. The updater runs hidden every five minutes while
+registers `LocalDelivery-hotpl8`. On Windows the launchers are `hotpl8.cmd`, `launch.cmd`
+and a copy of the compiled reader that they ask first; see
+[the launcher](install.md#the-launcher). The updater runs hidden every five minutes while
 the user is signed in, catches missed executions when available, and checks at
 logon. It does not keep the computer awake or run while Windows is shut down.
 
@@ -112,6 +114,19 @@ code, including for fork PRs. Live preview rejects forks, a moved PR head,
 nonpassing or unrelated CI, and unsafe source archives. It downloads the source
 from GitHub at the pinned SHA, rechecks the head, and never silently substitutes
 a newer revision. If the head changed, review it and obtain a new command.
+
+A source archive holds no compiled file. When the candidate's `release-files.json`
+lists a compiled reader for this platform, the preview also downloads the package
+that the same passing run built, `hotpl8-<platform>-candidate`, checks it against
+its `SHA256SUMS` and the reader against the package's `checksums.json`, and places
+the reader at its release path in the temporary source export. A missing or
+expired package asks for the workflow to be rerun; a package that fails a check
+stops the preview before candidate code runs. The run is what vouches for that
+file: GitHub builds a pull request from its head merged into the target branch,
+so the reader is built from that merge, by the workflow as the PR defines it.
+The preview then asks the candidate's reader for the dashboard and shows the
+candidate's PowerShell dashboard when the reader has none. See
+[the plan](plans/rust-read-side.md#previewing-a-candidates-reader).
 
 Each run owns a temporary source export and fixture directory, removed on exit.
 The `live.json` receipt under `previews/pr-NUMBER/SHA` records the URL, SHA,
@@ -248,7 +263,8 @@ updater. Packaged files alone are insufficient when setup copies them elsewhere.
 |---|---|---|
 | CLI and scheduled collector | Stable launchers select current release; existing short writers drain | Installed SHA and completed collector SHA; pointer rollback |
 | Interactive dashboard | Existing handoff after pointer change | Loaded SHA in window title; retained release |
-| Compiled reader (`bin/`) | An inventoried file of the release; each new `hotpl8` process uses the one in the release it was started from. See [the plan](plans/rust-read-side.md) | `hotpl8-native self-check` reports the commit it was built from, which must equal the release's; pointer rollback, and a missing, unusable or mismatched file gives the PowerShell answer |
+| Compiled reader (`bin/`) | An inventoried file of the release; each new `hotpl8` process uses the one in the release in force. Preflight and health start the candidate's reader and refuse a release whose reader does not answer `version`. See [the plan](plans/rust-read-side.md) | `hotpl8-native self-check` reports the commit it was built from; pointer rollback. `version`, `status` and `explain` have no PowerShell answer: a copy whose reader cannot start says so and ends with status 1 |
+| Windows launcher (`hotpl8.cmd`, `launch.cmd` and `hotpl8-native.exe` in the installation directory) | Enrollment installs them, and the first activation of a release that ships them migrates an installation enrolled earlier. `launch.cmd` is never rewritten. Each activation replaces the reader copy when the release's differs, moving one that is answering aside. That copy answers nothing itself: it reads the pointer under the runtime lease and starts the reader of the release in force. See [the launcher](install.md#the-launcher) | `tests/test-native.ps1` holds the launcher bytes and replaces each earlier launcher under a running session; `tests/test_delivery.py` covers enrollment, activation and rollback. A release from before the arrangement leaves every word to PowerShell, as before |
 | Managed T3 bridge | Bootstrap selects verified current release once per new provider process | Per-process SHA/start/heartbeat, read-only import probe; same pointer rollback, active sessions retained |
 | Standalone T3 bridge | Deliberately pinned setup copy | Doctor reports unmanaged; explicit reinstall |
 | Automatic continue waiter | Claude's hook resolves the current release on each run; the Codex bridge runs the copy beside it | Doctor reports the hook; `hotpl8 continue -Operation disable` removes it |

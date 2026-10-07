@@ -18,7 +18,8 @@ foreach($codeRoot in @($PSScriptRoot,(Join-Path $destination 'app'),(Join-Path $
     if($state -eq $codeRoot -or $state.StartsWith($codeRoot+'/')){throw 'State must be separate from code.'}
 }
 if($state -eq $destination -or $destination -eq $PSScriptRoot -or $destination.StartsWith($PSScriptRoot+'/')){throw 'Installation and source must be separate.'}
-$files=@(Get-Hotpl8ReleaseFiles $PSScriptRoot -Platform macos)
+# The compiled reader is part of the product: version, status and explain have no other answer.
+$files=@(Get-Hotpl8ReleaseFiles $PSScriptRoot -Platform macos -RequirePlatformFiles)
 $checksums=Read-Hotpl8Json (Join-Path $PSScriptRoot 'checksums.json')
 if($checksums){foreach($f in $files){if((Get-FileHash (Join-Path $PSScriptRoot $f)).Hash.ToLowerInvariant() -cne $checksums.$f){throw 'Release checksum mismatch.'}}}
 foreach($dir in @($destination,$state)){[void][IO.Directory]::CreateDirectory($dir);[IO.File]::SetUnixFileMode($dir,[IO.UnixFileMode]'UserRead,UserWrite,UserExecute')}

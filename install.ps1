@@ -19,7 +19,8 @@ if(-not $StateDirectory){$StateDirectory=if($old){$old.stateDirectory}else{Join-
 $state=Assert-Hotpl8Path $StateDirectory
 if($old -and $state -ine $old.stateDirectory){throw 'Update must preserve the existing state directory.'}
 if($state -eq $destination -or $state.StartsWith($destination+'\app',[StringComparison]::OrdinalIgnoreCase) -or $state.StartsWith($destination+'\previous',[StringComparison]::OrdinalIgnoreCase)){throw 'State must be separate from application files.'}
-$files=@(Get-Hotpl8ReleaseFiles $source -Platform windows)
+# The compiled reader is part of the product: version, status and explain have no other answer.
+$files=@(Get-Hotpl8ReleaseFiles $source -Platform windows -RequirePlatformFiles)
 $hashes=Read-Hotpl8Json (Join-Path $source 'checksums.json')
 if($hashes){
     foreach($file in $files){
@@ -74,7 +75,12 @@ try{
         pathAdded=((-not $NoPath) -or ($old -and $old.pathAdded))
         scheduled=([bool]$Schedule -or ($old -and $old.scheduled))
     }
-    $shim="@echo off"+[Environment]::NewLine+'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0app\hotpl8.ps1" %*'+[Environment]::NewLine+'exit /b %errorlevel%'+[Environment]::NewLine
+    # One line that hands over to app\hotpl8.cmd, which every release has: rollback.ps1 puts
+    # an older release under app and leaves this file as it is. cmd comes back to a command
+    # file by position, so this stays one line and shorter than any text installed here
+    # before: a session started from that text ends at the end of this one. See
+    # docs/install.md, "The launcher".
+    $shim='@"%~dp0app\hotpl8.cmd" %*'+[Environment]::NewLine
     Write-Hotpl8Text (Join-Path $destination 'hotpl8.cmd') $shim -NoBom
     if(-not $NoPath){Set-Hotpl8UserPath $destination $true}
     if($installation.scheduled){Register-Hotpl8Task $installation $destination}

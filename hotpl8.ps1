@@ -46,13 +46,18 @@ param(
 
 $ErrorActionPreference = 'Stop'
 try {
-    # A plain version request is answered by the compiled reader when this release ships a
-    # matching one. Anything else, including a reader that declines, continues below unchanged.
-    # The Mac launcher adds its Codex binding to every request; version does not read it.
-    if($Command -eq 'version' -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin @('Command','AsJson','CodexExecutable')}).Count){
-        . (Join-Path $PSScriptRoot 'src/native.ps1')
-        $nativeText=Invoke-Hotpl8Native $PSScriptRoot $(if($AsJson){@('version','--root',$PSScriptRoot,'-AsJson')}else{@('version','--root',$PSScriptRoot)})
-        if($null -ne $nativeText){$nativeText;exit 0}
+    # version, status and explain are answered by the compiled reader, their only
+    # implementation. A plain request goes there before anything else is loaded. One with other
+    # parameters is checked below like any command, and then asks the same reader.
+    # No Join-Path here: see the note on modules at the top of src/native.ps1.
+    . ([IO.Path]::Combine($PSScriptRoot,'src','native.ps1'))
+    # The Mac launcher adds its Codex binding to every request; none of the three reads it.
+    $plain=switch($Command){
+        'version'{@('Command','AsJson','CodexExecutable')}
+        {$_ -in 'status','explain'}{@('Command','AsJson','StateDirectory','PreviewPolicy','CodexExecutable')}
+    }
+    if($plain -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin $plain}).Count){
+        Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy $AsJson
     }
     . (Join-Path $PSScriptRoot 'src/common.ps1')
     if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}
@@ -89,13 +94,7 @@ try {
     }
 
     # These commands do not need an existing policy or a provider observation.
-    if ($Command -eq 'version') {
-        $version=(Get-Content (Join-Path $PSScriptRoot 'VERSION') -Raw).Trim()
-        $build=Read-Hotpl8Json (Join-Path $PSScriptRoot 'build-info.json')
-        if($AsJson){[pscustomobject]@{version=$version;build=$build}|ConvertTo-Json -Depth 4}
-        elseif($build.sha){$version+' main '+$build.sha.Substring(0,12)}else{$version}
-        exit 0
-    }
+    if ($Command -eq 'version') { Exit-Hotpl8Native $PSScriptRoot 'version' '' '' $AsJson }
     if ($Command -eq 'help') {
         'nyan: dashboard with animated Nyan Cat; -ReducedMotion / -NoColor supported.'
         'accounts -Operation capacity -Provider claude -Slot 1 -CapacityProfile claude-pro -WeeklyCapacity 1 -FiveHourCapacity 0.1 (supply calibrated values). '
@@ -393,41 +392,10 @@ try {
         $Command = 'status'
     }
 
-    $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -SkipDisplay:($Command -eq 'codex')
-    if($Command -eq 'explain'){
-        if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory) -Force}
-        if($AsJson){[pscustomobject]@{generatedAt=$status.generatedAt;claude=$status.decision;codex=$status.providers.codex.decisions;pause=$status.automationPause;providerOverview=$status.providerOverview}|ConvertTo-Json -Depth 16}
-        else{Format-Hotpl8Explanation $status|ForEach-Object {ConvertTo-Hotpl8SafeText $_}}
-        exit 0
-    }
-    if ($Command -eq 'status') {
-        if (-not $status -or -not $status.generatedAt) { 'No cached status. Run hotpl8 refresh.'; exit 0 }
-        if ($AsJson) { $status | ConvertTo-Json -Depth 24; exit 0 }
-        Format-Hotpl8Overview $status.providerOverview | ForEach-Object {ConvertTo-Hotpl8SafeText $_}
-        'HotPl8 | generated ' + (ConvertTo-Hotpl8SafeText $status.generatedAt)
-        if($status.collector){Get-Hotpl8Health $status.collector}
-        $pause=Get-Hotpl8Pause $StateDirectory
-        if($pause){'AUTOMATION PAUSED: '+(ConvertTo-Hotpl8SafeText $pause.reason)}
-        $age = ([datetimeoffset]::UtcNow - [datetimeoffset]::Parse($status.generatedAt)).TotalSeconds
-        if ($age -gt 900 -or $age -lt -5) { 'STALE: refresh before relying on these readings.' }
-        foreach($registration in @(Get-Hotpl8ConfiguredProviders $policy)){
-            $view=Get-Hotpl8ProviderView $status $policy $registration.id
-            if($view.provider -eq 'claude'){
-                ConvertTo-Hotpl8SafeText ($registration.name+': active slot '+$view.snapshot.active+' | '+$view.snapshot.verdict)
-                foreach($account in @($view.snapshot.slots)){
-                    $fiveHour=if($null -eq $account.used5h){'unknown'}else{[string](100-$account.used5h)+'% remaining'}
-                    $weekly=if($null -eq $account.used7d){'unknown'}else{[string](100-$account.used7d)+'% remaining'}
-                    ConvertTo-Hotpl8SafeText ('  '+$account.label+' ['+$account.slot+'] 5h '+$fiveHour+' | 7d '+$weekly+' | '+$account.status)
-                    if($account.warmOutcome){'    warm: '+$account.warmOutcome.outcome}
-                    if((Test-Hotpl8FreshTimestamp $account.observedAt) -and $account.forecast){'    '+(Format-Hotpl8Forecast $account.forecast)}
-                }
-            }elseif($view.snapshot.providers.codex){
-                Format-CodexStatus $view.snapshot.providers.codex $view.policy.codex|ForEach-Object {ConvertTo-Hotpl8SafeText ($_ -replace '^Codex', $registration.name)}
-            }else{$registration.name+': not configured or no observation yet.'}
-        }
-        exit 0
-    }
+    # refresh and tick end here too, with the status they collected.
+    if ($Command -in @('status', 'explain')) { Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy $AsJson }
 
+    $status = Read-Hotpl8Snapshot $StateDirectory -SkipDisplay
     $launchControls=Get-Hotpl8ControlSnapshot $StateDirectory
     $policy=$launchControls.policy;Assert-Hotpl8Policy $policy
     $view=Get-Hotpl8ProviderView $status $policy $Provider

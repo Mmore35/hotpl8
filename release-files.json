@@ -11,6 +11,7 @@
     "CONTRIBUTING.md",
     "docs/plans/t3-managed-delivery.md",
     "hotpl8.cmd",
+    "hotpl8-launch.cmd",
     "hotpl8.ps1",
     "tick.ps1",
     "src/common.ps1",
@@ -113,6 +114,8 @@
     "delivery/package.py",
     "delivery/setup.py",
     "delivery/launch.ps1",
+    "delivery/launch.cmd",
+    "delivery/hotpl8.cmd",
     "delivery/register.ps1",
     "delivery/hotpl8-adapter.ps1",
     "tests/test_delivery.py",
@@ -199,6 +202,11 @@
     "scripts/build-native.ps1",
     "tests/test-native.ps1",
     "tests/native-fake.cs",
+    "tests/test-native-parity.ps1",
+    "tests/parity/referee.ps1",
+    "tests/parity/cases.ps1",
+    "tests/parity/fuzz.ps1",
+    "tests/parity/expected-status.txt",
     "docs/plans/rust-read-side.md"
   ],
   "platformFiles": {
