@@ -50,7 +50,7 @@ The older `enroll`, `accounts`, and `setup-codex.ps1` commands remain available 
 
 ## Background collection and removal
 
-Ordinary guided installation registers one per-user collector: a hidden Windows task or a Mac LaunchAgent. It wakes every minute while the user is signed in; provider cadence and backoff still apply. Codex normally reads every five minutes. The dashboard shows observation freshness; an installed collector does not guarantee a provider is reachable. `-NoSchedule` installations can collect explicitly with `hotpl8 refresh`.
+Ordinary guided installation registers one per-user collector: a hidden Windows task or a Mac LaunchAgent. It starts the release's compiled collector; a Windows installation updated from a release without one goes through `tick.ps1` until the update after, and a Mac job that already exists is kept as it is. It wakes every minute while the user is signed in; provider cadence and backoff still apply. Codex normally reads every five minutes. The dashboard shows observation freshness; an installed collector does not guarantee a provider is reachable. `-NoSchedule` installations can collect explicitly with `hotpl8 refresh`.
 
 Windows adds its command to user PATH for new terminals. Mac places a command in `~/.local/bin`; setup itself opens the view immediately. If your shell does not include that directory, an agent can use the installed `hotpl8` launcher directly. No terminal restart is required to complete setup.
 

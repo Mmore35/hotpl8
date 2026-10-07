@@ -95,8 +95,44 @@ pub fn provider_action_context(policy: &V, directory: &Path, context: &V, now: D
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::files::tests::scratch;
+    use crate::files::tests::{scratch, shared_rules};
     use crate::obj;
+
+    #[test]
+    fn the_control_files_say_what_the_shared_cases_say() {
+        set_core(false);
+        let cases = shared_rules("control").arr();
+        assert!(cases.len() > 20);
+        let mut wrong = Vec::new();
+        for case in &cases {
+            let field = |name: &str| case.g(name).ok().unwrap();
+            let directory = scratch("shared-control");
+            for (name, text) in field("files").props().ok().unwrap() {
+                std::fs::write(directory.join(&*name), text.s().ok().unwrap()).unwrap();
+            }
+            // The name of the files' bytes, the hold, and what an action is told of them.
+            let answered = || -> R<V> {
+                let now = Dto::of(&field("now"))?;
+                let (policy, generation) = control_snapshot(&directory)?;
+                let hold = match automation::hold(&directory, now) {
+                    Some(hold) => obj! {"until" => hold.until.o(), "reason" => hold.reason},
+                    None => V::Null,
+                };
+                let context = provider_action_context(&policy, &directory, &field("context"), now)?;
+                Ok(obj! {"generation" => generation, "hold" => hold, "context" => context})
+            };
+            let answer = match answered() {
+                Ok(answer) => json::compact(&answer, 12).ok().unwrap(),
+                Err(stop) => format!("stopped: {}", stop.message()),
+            };
+            let expected = json::compact(&field("expected"), 12).ok().unwrap();
+            if answer != expected {
+                wrong.push(format!("{}\n  expected {expected}\n  answered {answer}", field("name").s().ok().unwrap()));
+            }
+            std::fs::remove_dir_all(&directory).unwrap();
+        }
+        assert!(wrong.is_empty(), "{} of {} cases differ:\n{}", wrong.len(), cases.len(), wrong.join("\n"));
+    }
 
     #[test]
     fn the_generation_names_the_bytes_of_the_control_files() {
@@ -145,6 +181,12 @@ mod tests {
         assert_eq!(text, r#"{"intent":"probe","mode":"automate","switching":true,"paused":true,"hold":true,"safetyInvalid":true,"actionEnabled":false}"#);
         let made = provider_action_context(&policy, &directory, &obj! {"intent" => "refresh"}, now).ok().unwrap();
         assert!(made.g("safetyInvalid").ok().unwrap().is_null());
+        // A pause ends at a time spelled as HotPl8 writes it. PowerShell took a date alone
+        // as a pause that can be read; here it is one that cannot, which blocks as much.
+        std::fs::write(directory.join("automation-pause.json"), r#"{"until":"2999-01-01"}"#).unwrap();
+        let made = provider_action_context(&policy, &directory, &obj! {"intent" => "switch"}, now).ok().unwrap();
+        let text = json::write(&made, 4).ok().unwrap().replace(['\n', ' '], "");
+        assert_eq!(text, r#"{"intent":"switch","mode":"automate","switching":true,"paused":true,"hold":true,"safetyInvalid":true}"#);
         std::fs::remove_dir_all(&directory).unwrap();
     }
 }

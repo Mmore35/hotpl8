@@ -32,6 +32,9 @@ struct Detail {
 }
 pub type R<T> = Result<T, Stop>;
 
+/// The kinds Get-Hotpl8FailureCode names a failure by, and so the only ones an event carries.
+pub const KINDS: [&str; 5] = ["access_denied", "state_io_failed", "invalid_cached_shape", "invalid_parameter", "unexpected_collection_error"];
+
 impl Stop {
     #[track_caller]
     fn new<T>(thrown: bool, message: Option<String>) -> R<T> {
@@ -55,7 +58,6 @@ impl Stop {
     /// and its words are kept only for the caller to compare with the few it knows.
     #[track_caller]
     pub fn reported<T>(code: &str, said: Option<String>, file: Option<(String, i32)>, source: Option<(String, u32)>) -> R<T> {
-        const KINDS: [&str; 5] = ["access_denied", "state_io_failed", "invalid_cached_shape", "invalid_parameter", "unexpected_collection_error"];
         let kind = KINDS.iter().find(|kind| **kind == code).copied().unwrap_or("unexpected_collection_error");
         Err(Stop(Box::new(Detail { thrown: true, at: Location::caller(), message: said, file, denied: false, reported: Some((kind, source)) })))
     }
@@ -1345,6 +1347,30 @@ impl V {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failure_is_recorded_under_the_kind_the_shared_cases_say() {
+        let path = std::path::Path::new("status.json");
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let busy = std::io::Error::from(std::io::ErrorKind::WouldBlock);
+        let mut kinds = Vec::new();
+        for case in crate::files::tests::shared_rules("failures").arr() {
+            let kind = case.g("kind").ok().unwrap().s().ok().unwrap();
+            let stop = match case.g("failure").ok().unwrap().s().ok().unwrap().as_str() {
+                "access denied" => Stop::io::<()>(&denied, path),
+                "a file" => Stop::io::<()>(&busy, path),
+                // The program has no failure of these two kinds of its own: a lane's is passed on.
+                "a missing member" | "a wrong parameter" => Stop::reported::<()>(&kind, None, None, None),
+                "anything else" => fail::<()>("fictional"),
+                other => panic!("no failure is made here for '{other}'"),
+            };
+            assert_eq!(stop.err().unwrap().failure_code(), kind);
+            kinds.push(kind);
+        }
+        assert_eq!(kinds, KINDS);
+        // A kind PowerShell never names is not passed on as one.
+        assert_eq!(Stop::reported::<()>("a_new_kind", None, None, None).err().unwrap().failure_code(), "unexpected_collection_error");
+    }
 
     fn s(text: &str) -> V {
         V::s_of(text)

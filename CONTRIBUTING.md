@@ -56,20 +56,32 @@ Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do
 
 Claude plan discovery is isolated in `src/providers/claude_plan.py`, which the collector asks (`native/src/plans.rs`); `claude-plans.ps1` keeps only the check of a stored answer. Run `python tests/test_claude_plan.py` and `tests/test-claude-plans.ps1` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
 
-The compiled program under `native/` is the only implementation of `version`, `status` and
-`explain`, and of the collector: PowerShell hands those requests and every wake to it and has
-no answer or collector of its own, so do not add one. `tick.ps1` only starts it, and
-`src/lane.ps1` holds the three pieces of a wake it still asks PowerShell for. Changes there
+The compiled program under `native/` is the only implementation of `version`, `status`,
+`explain` and what the tray shows, and of the collector: PowerShell hands those requests and
+every wake to it and has no answer or collector of its own, so do not add one. `tick.ps1` only
+starts it, `src/tray.ps1` draws the window around its answer, and `src/lane.ps1` holds the two
+pieces of a wake it still asks PowerShell for. Changes there
 require `cargo test --locked` in `native/`, `tests/test-native.ps1` and
-`tests/test-native-parity.ps1`; a change to a wake also requires `tests/test-tick.sh`. A unit
-test of the collector passes a scratch home, a stand-in for cswap and its own clock and lanes;
-none may reach the machine's accounts or start PowerShell. The tray, dashboard and other
-commands still calculate some of the same rules in PowerShell, and
-[the plan](docs/plans/rust-read-side.md) lists them. The parity suite holds the read rules to
+`tests/test-native-parity.ps1`; a change to a wake also requires `tests/test-tick.sh`, and a
+change to how Codex accounts are read `tests/test-codex.ps1`. A unit test of the collector
+passes a scratch home, a stand-in for cswap and for Codex, and its own clock and lanes; none
+may reach the machine's accounts, look for a program on the machine's path or start
+PowerShell. The dashboard and other commands still calculate some of the same rules in
+PowerShell, and [the plan](docs/plans/rust-read-side.md#what-is-still-calculated-twice) lists
+them with the stage that removes each. Launching Codex and
+adding an account still read an account's limits in PowerShell: both sides read the cases in
+`tests/parity/codex-buckets.json`, one to a line, and a change to that rule changes both and
+the cases in one commit. The switch hold, the control files an action is authorized under,
+replay, where cswap is found and the kinds a failure is recorded under are in both as well:
+`tests/parity/shared-rules.json` holds their cases, read by `tests/test-shared-rules.ps1` and
+by the program's own tests. A change to one of those rules adds a case there;
+`tests/test-shared-rules.ps1 -Update` records what PowerShell answers for the control cases,
+and the program's tests must then agree. The parity suite holds the read rules to
 the program: it asks both the same question
 about the fictional cases in `tests/parity/cases.ps1` and about seeded variations of them,
-under the PowerShell the suite runs in, and compares the text of `status` with
-`tests/parity/expected-status.txt`. Add a case for every input shape a change touches.
+under the PowerShell the suite runs in, and compares what `status`, `explain` and the tray
+show with `tests/parity/expected-status.txt`, `expected-explain.txt` and `expected-tray.txt`.
+Add a case for every input shape a change touches.
 `-Only NAME` runs one case, `-Deep` many more variations, and `-Update` rewrites the expected
 text after a deliberate change. Write the behavior into
 [the contract](docs/plans/rust-read-side.md) before the code. A rule that changes is changed in

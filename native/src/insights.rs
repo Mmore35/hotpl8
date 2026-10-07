@@ -125,8 +125,8 @@ pub fn rename_codex(line: &str, name: &str) -> R<String> {
     }
 }
 
-/// Format-Hotpl8Forecast
-fn format_forecast(forecast: &V) -> R<String> {
+/// A forecast in words.
+pub fn format_forecast(forecast: &V) -> R<String> {
     if !forecast.t()? {
         return Ok("Pace: not enough fresh history".to_string());
     }
@@ -193,7 +193,7 @@ pub fn format_status(status: &V, policy: &V, state_directory: &Path, now: Dto) -
 /// The `slot: reason; rank` lines under a Claude-shaped decision.
 fn decision_lines(lines: &mut Vec<String>, title: &str, decision: &V) -> R<()> {
     lines.push(cat!(title, ": ", decision.g("reason")?, "; policy ", decision.g("policy")?));
-    for r in decision.g("accounts")?.arr() {
+    for r in decision.g("accounts")?.each() {
         lines.push(cat!("  slot ", r.g("slot")?, ": ", r.g("reason")?, "; rank ", r.g("rank")?));
     }
     Ok(())
@@ -202,14 +202,15 @@ fn decision_lines(lines: &mut Vec<String>, title: &str, decision: &V) -> R<()> {
 fn meter_lines(lines: &mut Vec<String>, title: &str, verb: &str, d: &V) -> R<()> {
     let selected = if d.g("selected")?.t()? { d.g("selected")? } else { "none".into() };
     lines.push(cat!(title, " ", d.g("meter")?, ": ", verb, " ", selected, "; policy ", d.g("policy")?));
-    for r in d.g("accounts")?.arr() {
+    for r in d.g("accounts")?.each() {
         lines.push(cat!("  ", r.g("slot")?, ": ", r.g("reason")?, "; reserve=", r.g("reserve")?));
     }
     Ok(())
 }
 
-/// Format-Hotpl8Explanation
-pub fn format_explanation(snapshot: &V, now: Dto) -> R<Vec<String>> {
+/// What `hotpl8 explain` prints, a line at a time. A view that shows the overview of
+/// every provider itself asks for the lines without it.
+pub fn format_explanation(snapshot: &V, now: Dto, with_overview: bool) -> R<Vec<String>> {
     if !snapshot.t()? || !snapshot.g("generatedAt")?.t()? {
         return Ok(vec!["No observation. Run hotpl8 refresh.".to_string()]);
     }
@@ -219,7 +220,7 @@ pub fn format_explanation(snapshot: &V, now: Dto) -> R<Vec<String>> {
         lines.push("STALE: these are the decisions at the last observation, not a current recommendation.".to_string());
     }
     let overview = snapshot.g("providerOverview")?;
-    if overview.t()? {
+    if with_overview && overview.t()? {
         lines.extend(format_overview(&overview)?);
     }
     lines.push(cat!("Observed: ", snapshot.g("generatedAt")?));
@@ -241,7 +242,7 @@ pub fn format_explanation(snapshot: &V, now: Dto) -> R<Vec<String>> {
             lines.push(cat!("Codex ", &*name, " critical: ", c.g("reason")?, " / ", c.g("basis")?, " / checks ", c.g("pollSeconds")?, "s"));
         }
     }
-    for d in codex.g("decisions")?.arr() {
+    for d in codex.g("decisions")?.each() {
         meter_lines(&mut lines, "Codex", "next launch", &d)?;
     }
     lines.push("Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.".to_string());
@@ -254,7 +255,7 @@ pub fn format_explanation(snapshot: &V, now: Dto) -> R<Vec<String>> {
         if value.g("decision")?.t()? {
             decision_lines(&mut lines, &name, &value.g("decision")?)?;
         }
-        for d in value.g("decisions")?.arr() {
+        for d in value.g("decisions")?.each() {
             meter_lines(&mut lines, &name, "proposed", &d)?;
         }
     }
@@ -392,4 +393,72 @@ pub fn add_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, no
     snapshot.add_member("recentActions", events.split_off(events.len().saturating_sub(5)).into(), true)?;
     snapshot.add_member("shadow", shadow.into(), true)?;
     snapshot.add_member("providerOverview", provider_overview(snapshot, policy, now)?, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json::parse;
+
+    const STALE: &str = "STALE: these are the decisions at the last observation, not a current recommendation.";
+    const HEADROOM: &str = "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.";
+    const NATIVE: &str = "Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.";
+
+    #[test]
+    fn an_explanation_gives_the_recorded_reasons_and_says_when_they_are_old() {
+        set_core(false);
+        let now = Dto::parse("2026-09-13T12:00:00.0000000+00:00").ok().unwrap();
+        let explained = |text: &str| format_explanation(&parse(text, "").ok().unwrap(), now, true).ok().unwrap();
+        assert_eq!(format_explanation(&V::Null, now, true).ok().unwrap(), ["No observation. Run hotpl8 refresh."]);
+        assert_eq!(explained(r#"{"slots":[]}"#), ["No observation. Run hotpl8 refresh."]);
+        let decision = r#"{"policy":"balanced","reason":"switch held","accounts":[{"slot":2,"reason":"model_below_margin","rank":1}]}"#;
+        let codex = r#"{"decisions":[{"meter":"codex","selected":"a","policy":"prefer","accounts":[{"slot":"a","reason":"eligible","reserve":false}]}]}"#;
+        assert_eq!(
+            explained(&format!(r#"{{"generatedAt":"2026-09-13T11:00:00.0000000+00:00","decision":{decision},"providers":{{"codex":{codex}}}}}"#)),
+            [
+                STALE,
+                "Observed: 2026-09-13T11:00:00.0000000+00:00",
+                "Claude: switch held; policy balanced",
+                "  slot 2: model_below_margin; rank 1",
+                "Codex codex: next launch a; policy prefer",
+                "  a: eligible; reserve=False",
+                NATIVE,
+            ]
+        );
+        // A provider registered under another name explains itself under that name.
+        let alias = r#"{"policy":"prefer","reason":"switch held","accounts":[{"slot":2,"reason":"scoped_margin","rank":1}]}"#;
+        assert_eq!(
+            explained(&format!(r#"{{"generatedAt":"2026-09-13T12:00:00.0000000+00:00","automationPause":{{"reason":"away"}},"providers":{{"codex":{codex},"fictional":{{"decision":{alias},"decisions":[]}}}},"providerOverview":{{}}}}"#)),
+            [
+                HEADROOM,
+                "Observed: 2026-09-13T12:00:00.0000000+00:00",
+                "Automation paused: away",
+                "Codex codex: next launch a; policy prefer",
+                "  a: eligible; reserve=False",
+                NATIVE,
+                "fictional: switch held; policy prefer",
+                "  slot 2: scoped_margin; rank 1",
+            ]
+        );
+        // Nothing decided is nothing said: no line is made up for a decision, or for the
+        // accounts of one, that is not there.
+        assert_eq!(explained(r#"{"generatedAt":"2026-09-13T12:00:00.0000000+00:00","providers":{}}"#), ["Observed: 2026-09-13T12:00:00.0000000+00:00", NATIVE]);
+        assert_eq!(
+            explained(r#"{"generatedAt":"2026-09-13T12:00:00.0000000+00:00","decision":{"policy":"prefer","reason":"no eligible account"},"providers":{"codex":{"decisions":[{"meter":"codex","policy":"prefer"}]},"fictional":{"decision":{"policy":"prefer","reason":"switch held"}}}}"#),
+            [
+                "Observed: 2026-09-13T12:00:00.0000000+00:00",
+                "Claude: no eligible account; policy prefer",
+                "Codex codex: next launch none; policy prefer",
+                NATIVE,
+                "fictional: switch held; policy prefer",
+            ]
+        );
+        // A view that shows the overview itself is given the rest.
+        let shown = format!(r#"{{"generatedAt":"2026-09-13T12:00:00.0000000+00:00","decision":{decision},"providers":{{}},"providerOverview":{{}}}}"#);
+        assert_eq!(explained(&shown)[0], HEADROOM);
+        assert_eq!(
+            format_explanation(&parse(&shown, "").ok().unwrap(), now, false).ok().unwrap(),
+            ["Observed: 2026-09-13T12:00:00.0000000+00:00", "Claude: switch held; policy balanced", "  slot 2: model_below_margin; rank 1", NATIVE]
+        );
+    }
 }

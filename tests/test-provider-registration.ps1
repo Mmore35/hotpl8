@@ -301,7 +301,7 @@ $rows=@(Get-Hotpl8DashboardRows $snapshot $policy ([datetimeoffset]::UtcNow) 110
 Assert (($rows.text -join "`n") -match 'FICTIONAL' -and ($rows.text -join "`n") -match 'NEXT LAUNCH') 'dashboard omitted registered account'
 $tools=@(Get-Hotpl8McpTools $false)
 Assert ('fictional' -in @($tools|Where-Object name -EQ hotpl8_readiness)[0].inputSchema.properties.provider.enum) 'MCP schema omitted registration'
-$tray=Get-Hotpl8TrayModel $snapshot $policy
+$tray=Read-Hotpl8TrayModel $state $Package
 Assert ($tray.details -match 'Fictional' -or $tray.details -match 'FICTIONAL') 'tray omitted registration'
 $doctor=Get-Hotpl8Doctor $state
 Assert ($doctor.policyValid -and $doctor.providers.fictional.configured) 'diagnostics omitted registration'

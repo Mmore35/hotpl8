@@ -13,6 +13,8 @@ use std::rc::Rc;
 
 const MAX_BYTES: usize = 1_000_000;
 const MAX_DEPTH: usize = 20;
+/// How deep Windows PowerShell follows a message from another program.
+const MAX_FOREIGN_DEPTH: usize = 100;
 const FORBIDDEN_NAMES: [&str; 6] = ["psobject", "psbase", "psadapted", "psextended", "pstypenames", "__type"];
 
 /// The file's value, or `None` when the file does not exist.
@@ -43,7 +45,7 @@ pub fn parse_bytes(bytes: &[u8], name: &str) -> R<V> {
 
 /// A JSON document whose top level is an object.
 pub fn parse(text: &str, name: &str) -> R<V> {
-    let mut parser = Parser { bytes: text.as_bytes(), at: 0 };
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: false };
     parser.document().map_err(|stop| {
         stop.described(|| {
             let before = &text[..parser.at.min(text.len())];
@@ -54,9 +56,25 @@ pub fn parse(text: &str, name: &str) -> R<V> {
     })
 }
 
+/// One message from another program, or a file another program keeps: any JSON value.
+/// HotPl8 asks such a value only for members it names, so a member it has no name for
+/// (none at all, one outside printable ASCII, one PowerShell keeps for itself) is passed
+/// over with everything under it, and a number HotPl8 would not write is read as the
+/// double nearest it. Two members of one name are refused, as PowerShell refuses them.
+pub fn parse_foreign(text: &str) -> R<V> {
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: true };
+    parser.blank();
+    let value = parser.value(0)?;
+    parser.blank();
+    if parser.at != parser.bytes.len() {
+        return unreadable();
+    }
+    Ok(value)
+}
+
 /// A line holding one JSON array of strings: how the parity suite spells a request.
 pub fn strings(line: &str) -> Option<Vec<String>> {
-    let mut parser = Parser { bytes: line.as_bytes(), at: 0 };
+    let mut parser = Parser { bytes: line.as_bytes(), at: 0, foreign: false };
     parser.blank();
     if parser.peek() != Some(b'[') {
         return None;
@@ -72,6 +90,8 @@ pub fn strings(line: &str) -> Option<Vec<String>> {
 struct Parser<'a> {
     bytes: &'a [u8],
     at: usize,
+    /// The text is another program's, not a file HotPl8 wrote.
+    foreign: bool,
 }
 
 impl Parser<'_> {
@@ -106,7 +126,7 @@ impl Parser<'_> {
     }
 
     fn value(&mut self, depth: usize) -> R<V> {
-        if depth > MAX_DEPTH {
+        if depth > if self.foreign { MAX_FOREIGN_DEPTH } else { MAX_DEPTH } {
             return unreadable();
         }
         match self.peek() {
@@ -135,17 +155,20 @@ impl Parser<'_> {
                 }
                 let name = self.string()?;
                 let lower = name.to_ascii_lowercase();
-                if name.is_empty() || !printable(&name) || FORBIDDEN_NAMES.contains(&lower.as_str()) {
+                let unnamed = name.is_empty() || !printable(&name) || FORBIDDEN_NAMES.contains(&lower.as_str());
+                if unnamed && !self.foreign {
                     return unreadable();
                 }
-                if items.iter().any(|(known, _)| known.eq_ignore_ascii_case(&name)) {
+                if !unnamed && items.iter().any(|(known, _)| known.eq_ignore_ascii_case(&name)) {
                     return unreadable();
                 }
                 self.blank();
                 self.expect(":")?;
                 self.blank();
                 let value = self.value(depth + 1)?;
-                items.push((name.into(), value));
+                if !unnamed {
+                    items.push((name.into(), value));
+                }
                 self.blank();
                 match self.peek() {
                     Some(b',') => self.at += 1,
@@ -244,7 +267,7 @@ impl Parser<'_> {
             }
         }
         // Windows PowerShell turns "\/Date(...)\/" text into a date.
-        if out.contains("/Date(") {
+        if out.contains("/Date(") && !self.foreign {
             return unreadable();
         }
         Ok(out)
@@ -291,12 +314,17 @@ impl Parser<'_> {
                 return unreadable();
             }
         }
-        if matches!(self.peek(), Some(b'e' | b'E' | b'.' | b'+' | b'-')) || whole.len() + fraction.len() > 28 {
+        if matches!(self.peek(), Some(b'e' | b'E' | b'.' | b'+' | b'-')) {
             return unreadable();
         }
         let token = std::str::from_utf8(&self.bytes[start..self.at]).unwrap();
         let all_zero = whole.iter().chain(fraction).all(|b| *b == b'0');
-        if negative && all_zero {
+        let unwritten = whole.len() + fraction.len() > 28 || (negative && all_zero);
+        if self.foreign && !exponent && (unwritten || (fraction.is_empty() && token.parse::<i64>().is_err())) {
+            let Ok(value) = token.parse::<f64>() else { return unreadable() };
+            return crate::ps::dbl(if all_zero { 0.0 } else { value });
+        }
+        if unwritten {
             return unreadable();
         }
         if exponent {
@@ -328,7 +356,7 @@ impl Parser<'_> {
 
 /// A number as this edition reads its text.
 pub fn number(text: &str) -> R<V> {
-    let mut parser = Parser { bytes: text.as_bytes(), at: 0 };
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: false };
     let value = parser.number()?;
     if parser.at == text.len() {
         Ok(value)
@@ -468,6 +496,52 @@ pub fn write(value: &V, limit: usize) -> R<String> {
     Ok(out)
 }
 
+fn compact_node(value: &V, depth: usize, limit: usize, out: &mut String) -> R<()> {
+    if depth > limit {
+        return unreadable();
+    }
+    match value {
+        V::Arr(items) => {
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                compact_node(item, depth + 1, limit, out)?;
+            }
+            out.push(']');
+        }
+        V::Obj(o) => {
+            out.push('{');
+            for (index, (name, item)) in o.borrow().items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                write_text(name, out);
+                out.push(':');
+                compact_node(item, depth + 1, limit, out)?;
+            }
+            out.push('}');
+        }
+        scalar => write_node(scalar, depth, limit, out)?,
+    }
+    Ok(())
+}
+
+/// `$value | ConvertTo-Json -Depth $limit -Compress`: the same data on one line.
+pub fn compact(value: &V, limit: usize) -> R<String> {
+    let mut out = String::new();
+    compact_node(value, 0, limit, &mut out)?;
+    Ok(out)
+}
+
+/// One string as JSON spells it.
+pub fn text(value: &str) -> String {
+    let mut out = String::new();
+    write_text(value, &mut out);
+    out
+}
+
 /// `$value | ConvertTo-Json -Compress`, for a flat record of text and whole numbers: one
 /// line of an event log.
 pub fn line(record: &[(&str, V)]) -> R<String> {
@@ -592,11 +666,34 @@ mod tests {
     }
 
     #[test]
+    fn another_programs_message_is_read_for_the_members_hotpl8_names() {
+        set_core(false);
+        let read = |text: &str| parse_foreign(text).ok().map(|value| compact(&value, 24).ok().unwrap());
+        let message = r#"{"id":2,"result":{"projects":{"C:\\caf\u00e9":{"a":1},"":2,"psobject":3,"plain":4},"at":"\/Date(5)\/","zero":-0}}"#;
+        assert_eq!(read(message).unwrap(), r#"{"id":2,"result":{"projects":{"plain":4},"at":"/Date(5)/","zero":0}}"#);
+        assert_eq!(read(" 5 ").unwrap(), "5");
+        assert_eq!(read("null").unwrap(), "null");
+        assert_eq!(read(r#"["a",{"b":[]}]"#).unwrap(), r#"["a",{"b":[]}]"#);
+        assert!(matches!(parse_foreign("18446744073709551615"), Ok(V::Dbl(value)) if value == 18446744073709551615.0));
+        assert!(matches!(parse_foreign("0.12345678901234567890123456789"), Ok(V::Dbl(value)) if value == 0.123_456_789_012_345_68));
+        let deep = |levels: usize| "[".repeat(levels) + &"]".repeat(levels);
+        assert!(parse_foreign(&deep(MAX_FOREIGN_DEPTH)).is_ok());
+        for text in ["", "{", r#"{"a":1,"A":2}"#, r#"{"a":1} {"b":2}"#, r#"{"a":1e400}"#, r#"{"a":"\ud800"}"#, &deep(MAX_FOREIGN_DEPTH + 2)] {
+            assert!(parse_foreign(text).is_err_and(|stop| !stop.thrown()), "{text}");
+        }
+        // A state file is still held to what HotPl8 writes.
+        assert!(parse(r#"{"a":18446744073709551615}"#, "test").is_err());
+        assert_eq!(text("a\"b\\c\u{e9}"), r#""a\"b\\c\u00e9""#);
+    }
+
+    #[test]
     fn json_text_round_trips() {
         set_core(true);
         let value = parse(r#"{"a":[1,2.5,"x\"y",{"b":null}],"c":{},"d":[]}"#, "test").ok().unwrap();
         let text = write(&value, 24).ok().unwrap();
         assert!(same(&parse(&text, "test").ok().unwrap(), &value));
         assert!(write(&value, 1).is_err());
+        assert_eq!(compact(&value, 24).ok().unwrap(), r#"{"a":[1,2.5,"x\"y",{"b":null}],"c":{},"d":[]}"#);
+        assert!(compact(&value, 1).is_err());
     }
 }

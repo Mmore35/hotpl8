@@ -3,7 +3,6 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/insights.ps1')
 . (Join-Path $root 'src/dashboard.ps1')
-. (Join-Path $root 'src/tray.ps1')
 $now=[datetimeoffset]::Parse('2026-09-13T12:00:00Z')
 $p=@{prefer=@(1,2,3);reserve=@(3);mode='automate';margin5h=20;margin7d=10;margin7dWork=5;codex=@{slots=@(@{id='main'});prefer=@('main');defaultMeter='codex';margin7d=5}}|ConvertTo-Json -Depth 9|ConvertFrom-Json
 $s=@{generatedAt=$now.ToString('o');active=1;slots=@(1..3|ForEach-Object {@{slot=$_;status='ok';fresh=$true;streamKey=('fictional-'+$_);observedAt=$now.ToString('o');used5h=10;used7d=($_-1)*50;reset5h=$now.AddHours(1).ToString('o');reset7d=$now.AddDays(2).ToString('o')}});providers=@{codex=@{recommendedSlot='main';slots=@(@{id='main';status='ok';observedAt=$now.ToString('o');buckets=@{codex=@{status='observed';windows=@{'10080'=@{usedPercent=20;remainingPercent=80;anchorState='observed-active';resetsAt=$now.AddDays(2).ToUnixTimeSeconds()}}}}})}}}|ConvertTo-Json -Depth 15|ConvertFrom-Json
@@ -120,11 +119,9 @@ Check 'collector and sign-in failures remain visible in the overview' {
     Assert ($o.claude.availability -like '*sign-in needed*' -and $o.claude.availability -like '*collector stalled*')
     Assert ($o.codex.availability -like '*collector stalled*')
 }
-Check 'summary and view are pure, shared with tray, and pinned when scrolling' {
+Check 'summary and view are pure and pinned when scrolling' {
     $before=$s|ConvertTo-Json -Depth 24 -Compress
     $overview=Get-Hotpl8ProviderOverview $s $p $now
-    $tray=Get-Hotpl8TrayModel $s $p $now
-    Assert ($tray.providerOverview.claude.remainingPercent -eq $overview.claude.remainingPercent)
     $first=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 0)
     $last=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 999)
     Assert (($first[2..7].text -join '') -eq ($last[2..7].text -join ''))

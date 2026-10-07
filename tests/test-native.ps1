@@ -1,7 +1,7 @@
-# version, status and explain are the compiled reader's alone. This checks the ways a request
-# reaches it -- through the PowerShell entry, and as the words a user typed, which the
-# launchers hand it before they start PowerShell -- and what a copy without a reader it can
-# start says instead of an answer. Offline, against a synthetic release.
+# version, status, explain and the tray's view are the compiled reader's alone. This checks
+# the ways a request reaches it -- through the PowerShell entry, and as the words a user
+# typed, which the launchers hand it before they start PowerShell -- and what a copy without
+# a reader it can start says instead of an answer. Offline, against a synthetic release.
 # What the reader answers from a set of files is tests/test-native-parity.ps1.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
@@ -24,7 +24,7 @@ $fake=Join-Path $lab $(if($windows){'fake.exe'}else{'fake'})
 $buildFile=Join-Path $release 'build-info.json'
 $fixtureSha='a'*40
 $line=[Environment]::NewLine
-$noReader='HotPl8: This copy has no compiled reader it can start, and version, status and explain are answered by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.'+$line
+$noReader='HotPl8: This copy has no compiled reader it can start, and this command is answered by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.'+$line
 $noPolicy='HotPl8: No valid policy.json. Run hotpl8 setup or see docs/install.md.'+$line
 # The launchers start the Windows PowerShell on PATH by name; a stand-in is put before it.
 $stub=Join-Path $lab 'stub'
@@ -198,6 +198,22 @@ try{
         $result=Invoke-Entry @('version','-PreviewPolicy',$previewPolicy)
         Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -like 'HotPl8: PreviewPolicy is display-only.*') $result.errors
     }
+    Check 'tray -Once through the entry is the reader''s answer' {
+        $asked=@('tray','--root',$release,'--state',$state)
+        $value=(Invoke-Reader $asked).output|ConvertFrom-Json
+        Assert ((@($value.PSObject.Properties.Name) -join ',') -ceq 'providerOverview,title,details,alerts,notify') 'the members of the tray''s view changed'
+        Assert ($value.title -clike 'HotPl8 - *' -and $value.details.Contains('Claude Everyday: ok') -and $value.notify -eq $false -and @($value.alerts).Count -eq 0) $value.details
+        Assert-SameAnswer 'tray -Once' {Invoke-Entry @('tray','-Once','-StateDirectory',$state,'-CodexExecutable',$real)} {ConvertTo-EntryOutput (Invoke-Reader $asked).output}
+        # A parameter the view does not read takes the long way round to the same answer.
+        Assert-SameAnswer 'tray -Once -NoColor' {Invoke-Entry @('tray','-Once','-NoColor','-StateDirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader $asked).output}
+        $result=Invoke-Entry @('tray','-Once','-StateDirectory',$emptyState)
+        Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq $noPolicy) ([string]$result.exitCode+' '+$result.output+$result.errors)
+        # The window is PowerShell's, so the words a user types for the tray are left to it.
+        foreach($words in @(@('tray'),@('tray','-Once'))){
+            $result=Invoke-Reader (@('user')+$words+@('-StateDirectory',$state))
+            Assert ($result.exitCode -eq 64 -and $result.output -eq '' -and $result.errors -eq '') (($words -join ' ')+': '+$result.exitCode+' '+$result.output+$result.errors)
+        }
+    }
     Check 'the words a user types are answered without PowerShell' {
         $result=Invoke-Reader @('user','version')
         Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output -ceq ($version+' main '+$fixtureSha.Substring(0,12)+$line)) $result.output
@@ -228,7 +244,7 @@ try{
     }
     Check 'a copy without a reader it can start says so and answers nothing' {
         Set-Reader ''
-        foreach($arguments in @(@('version'),@('status','-StateDirectory',$state),@('explain','-AsJson','-StateDirectory',$state),@('status','-NoColor','-StateDirectory',$state))){
+        foreach($arguments in @(@('version'),@('status','-StateDirectory',$state),@('explain','-AsJson','-StateDirectory',$state),@('status','-NoColor','-StateDirectory',$state),@('tray','-Once','-StateDirectory',$state),@('tray','-Once','-NoColor','-StateDirectory',$state))){
             $result=Invoke-Entry $arguments
             Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq $noReader) (($arguments -join ' ')+': '+$result.exitCode+' '+$result.output+$result.errors)
         }

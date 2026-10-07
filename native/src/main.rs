@@ -13,6 +13,8 @@ mod capacity;
 mod claude;
 mod claude_tick;
 mod codex;
+mod codex_collect;
+mod codex_read;
 mod collection;
 mod contract;
 mod control;
@@ -42,6 +44,7 @@ mod runtime;
 mod selection;
 mod sha256;
 mod time;
+mod tray;
 mod version;
 mod wake;
 mod warming;
@@ -104,11 +107,9 @@ fn main() -> ExitCode {
             return batch(Path::new(file));
         }
     }
-    // The scheduler's start: the copy beside the launcher wakes the release in force.
-    if let [command] = arguments.as_slice() {
-        if command == "wake" {
-            return ExitCode::from(door::woken());
-        }
+    // The scheduler's start: the release in force is woken, whichever this program is part of.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "wake") {
+        return ExitCode::from(door::woken(words));
     }
     // A wake prints what it did, and never an answer a reader would.
     if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "collect") {
@@ -165,7 +166,7 @@ fn respond(arguments: &[OsString]) -> Result<String, Refusal> {
 pub fn answer(request: &Request) -> R<String> {
     match request.command {
         Command::Version => version::answer(request),
-        Command::Status | Command::Explain => display::answer(request),
+        Command::Status | Command::Explain | Command::Tray => display::answer(request),
     }
 }
 

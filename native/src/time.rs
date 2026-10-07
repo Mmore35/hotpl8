@@ -213,7 +213,7 @@ impl Dto {
         let (mut hour, mut minute, mut second, mut fraction) = (0, 0, 0, 0i64);
         let mut at = 10;
         if at < b.len() {
-            if !(b[at] == b'T' || b[at] == b' ') || b.len() < 16 || b[13] != b':' {
+            if !matches!(b[at], b'T' | b't' | b' ') || b.len() < 16 || b[13] != b':' {
                 return throw();
             }
             let (Some(h), Some(m)) = (part(11, 13), part(14, 16)) else { return throw() };

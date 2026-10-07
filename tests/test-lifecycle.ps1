@@ -81,18 +81,31 @@ try{
         Assert $d.policyValid
         Assert (-not (Test-Path -LiteralPath (Join-Path $install 'app/policy.json')))
     }
-    Check 'the scheduled collector command line runs the installed tick' {
-        # Unattended collection happens only through this command line, and
-        # `powershell.exe -File` exits 0 on an unknown parameter, so a broken one is
-        # silent. Assert the definition, then run it and require the output it exists
-        # to produce. Nothing here registers, edits or deletes a scheduled task.
+    Check 'the scheduled collector command line starts the installed collector' {
+        # Unattended collection happens only through this command line, and a broken one is
+        # silent. Assert the definition, then run it and require the output it exists to
+        # produce. Nothing here registers, edits or deletes a scheduled task.
         $installation=Read-Hotpl8Json (Join-Path $install 'installation.json')
         $definition=Get-Hotpl8TaskDefinition $installation $install
         Assert ($definition.name -ceq ('HotPl8-'+$installation.id))
         Assert ($definition.description -ceq ('HotPl8 owned installation '+$installation.id))
         Assert ((Test-Path -LiteralPath $definition.execute -PathType Leaf) -and $definition.workingDirectory -ceq $install)
         # The installed path carries a space, so its quoting is part of the assertion.
-        Assert ($definition.arguments.Contains(' -File "'+(Join-Path $install 'app/tick.ps1')+'" -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $state)))
+        $app=Join-Path $install 'app'
+        $compiled=' '+(ConvertTo-NativeArgument $install)+' '+(ConvertTo-NativeArgument (Join-Path $app 'bin\windows\hotpl8-native.exe'))+' collect --root '+(ConvertTo-NativeArgument $app)+' --state '+(ConvertTo-NativeArgument $state)+' --scheduled'
+        Assert ($definition.arguments.EndsWith($compiled))
+        # rollback.ps1 puts the release under previous back and leaves the task alone. While
+        # that release is one from before the collector was compiled, the task keeps the
+        # start every release answers to.
+        $script=' -File "'+(Join-Path $install 'app/tick.ps1')+'" -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $state)
+        $lane=Join-Path $install 'previous/src/lane.ps1';$aside=$lane+'.aside'
+        Move-Item -LiteralPath $lane -Destination $aside
+        try{$older=Get-Hotpl8TaskDefinition $installation $install}finally{Move-Item -LiteralPath $aside -Destination $lane}
+        Assert ($older.arguments.EndsWith($script))
+        # An installation with nothing to roll back to names its collector at once.
+        $kept=Join-Path $install 'previous';$aside=Join-Path $install 'previous aside'
+        Move-Item -LiteralPath $kept -Destination $aside
+        try{Assert ((Get-Hotpl8TaskDefinition $installation $install).arguments.EndsWith($compiled))}finally{Move-Item -LiteralPath $aside -Destination $kept}
         $policyPath=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllBytes($policyPath);$homeBefore=$env:USERPROFILE
         try{
             # A preferred slot makes the tick collect. The backoff marker keeps that
@@ -100,19 +113,38 @@ try{
             $env:USERPROFILE=Join-Path $dir 'user home';[void][IO.Directory]::CreateDirectory($env:USERPROFILE)
             $p=Read-Hotpl8Json $policyPath;$p.prefer=@(1)
             Write-Hotpl8Text $policyPath ($p|ConvertTo-Json -Depth 12)
-            $now=[datetimeoffset]::UtcNow
-            Write-Hotpl8Text (Join-Path $state 'collector.json') (@{schemaVersion=1;providers=@{claude=@{lastAttemptAt=$now.ToString('o');failures=1;nextAttemptAt=$now.AddMinutes(30).ToString('o');status='unavailable'}}}|ConvertTo-Json -Depth 8)
-            Remove-Item -LiteralPath (Join-Path $state 'status.txt') -Force -ErrorAction SilentlyContinue
-            $proc=Start-Process -FilePath $definition.execute -ArgumentList $definition.arguments -WorkingDirectory $definition.workingDirectory -WindowStyle Hidden -Wait -PassThru
-            Assert ($proc.ExitCode -eq 0)
-            Assert (Test-Path -LiteralPath (Join-Path $state 'status.txt'))
-            $status=Read-Hotpl8Json (Join-Path $state 'status.json')
-            Assert ($status.collector.scheduled -eq $true -and $status.claudeError -eq 'backoff')
+            foreach($start in @($definition,$older)){
+                $now=[datetimeoffset]::UtcNow
+                Write-Hotpl8Text (Join-Path $state 'collector.json') (@{schemaVersion=1;providers=@{claude=@{lastAttemptAt=$now.ToString('o');failures=1;nextAttemptAt=$now.AddMinutes(30).ToString('o');status='unavailable'}}}|ConvertTo-Json -Depth 8)
+                Remove-Item -LiteralPath (Join-Path $state 'status.txt') -Force -ErrorAction SilentlyContinue
+                $proc=Start-Process -FilePath $start.execute -ArgumentList $start.arguments -WorkingDirectory $start.workingDirectory -WindowStyle Hidden -Wait -PassThru
+                Assert ($proc.ExitCode -eq 0)
+                Assert (Test-Path -LiteralPath (Join-Path $state 'status.txt'))
+                $status=Read-Hotpl8Json (Join-Path $state 'status.json')
+                Assert ($status.collector.scheduled -eq $true -and $status.claudeError -eq 'backoff')
+            }
         }finally{
             $env:USERPROFILE=$homeBefore
             [IO.File]::WriteAllBytes($policyPath,$original)
             foreach($name in @('status.txt','status.js','status.json','collector.json')){Remove-Item -LiteralPath (Join-Path $state $name) -Force -ErrorAction SilentlyContinue}
         }
+    }
+    Check 'a launchd job with either start is its installation''s own' {
+        # An ordinary Mac's job keeps the start it was first written with, so both installers
+        # and the uninstaller must know either. The rule reads no Mac file: it is checked here.
+        $label='com.hotpl8.collector.abcdef123456';$app=Join-Path $install 'app'
+        $compiled=@(Get-Hotpl8MacCollectorStart $install $state 'pwsh')
+        Assert ($compiled[0] -ceq (Join-Path $app 'bin\windows\hotpl8-native.exe') -and ($compiled[1..8] -join ' ') -ceq ('collect --root '+$app+' --state '+$state+' --scheduled --powershell pwsh'))
+        $lane=Join-Path $install 'previous/src/lane.ps1';$aside=$lane+'.aside'
+        Move-Item -LiteralPath $lane -Destination $aside
+        try{$older=@(Get-Hotpl8MacCollectorStart $install $state 'pwsh')}finally{Move-Item -LiteralPath $aside -Destination $lane}
+        Assert (($older -join ' ') -ceq ('pwsh -NoProfile -NonInteractive -File '+(Join-Path $app 'tick.ps1')+' -Scheduled -StateDirectory '+$state))
+        $job={param($Label,$Words) [xml]('<plist version="1.0"><dict><key>Label</key><string>'+$Label+'</string><key>ProgramArguments</key><array>'+(@($Words|ForEach-Object{'<string>'+[Security.SecurityElement]::Escape($_)+'</string>'}) -join '')+'</array><key>StartInterval</key><integer>60</integer></dict></plist>')}
+        foreach($start in @(,$compiled)+@(,$older)){Assert (Test-Hotpl8MacCollectorJob (& $job $label $start) $label $install $state)}
+        Assert (-not (Test-Hotpl8MacCollectorJob (& $job 'com.hotpl8.collector.000000000000' $compiled) $label $install $state))
+        Assert (-not (Test-Hotpl8MacCollectorJob (& $job $label $compiled) $label (Join-Path $dir 'another') $state))
+        Assert (-not (Test-Hotpl8MacCollectorJob (& $job $label $compiled) $label $install (Join-Path $dir 'another state')))
+        Assert (-not (Test-Hotpl8MacCollectorJob (& $job $label @('pwsh','-File',(Join-Path $app 'hotpl8.ps1'),$state)) $label $install $state))
     }
     Check 'an installation that updates itself is woken by the compiled program beside its launcher' {
         # As delivery/setup.py and an activation lay one out: releases, the pointer to the one
@@ -164,9 +196,24 @@ try{
             & $beside wake
             Assert ($LASTEXITCODE -eq 7 -and [IO.File]::ReadAllText($seen) -ieq (@('True',$state,$state,$managed) -join '|'))
             Assert (-not (Test-Path -LiteralPath $text))
+            # A Mac keeps no copy beside its launcher: its job starts the release's own program,
+            # names the installation, and says what else the collector is told. That job is
+            # the release's own, so a release with no compiled collector is left to its own job.
+            $own=Join-Path $inForce 'bin\windows\hotpl8-native.exe'
+            Remove-Item -LiteralPath $seen -Force
+            & $own wake $managed --observe-only
+            Assert ($LASTEXITCODE -eq 0 -and -not (Test-Path -LiteralPath $seen) -and -not (Test-Path -LiteralPath $text))
+            Copy-Item -LiteralPath (Join-Path $install 'app/src/lane.ps1') -Destination (Join-Path $inForce 'src/lane.ps1')
+            Write-Hotpl8Text (Join-Path $state 'collector.json') (@{schemaVersion=1;providers=@{claude=@{lastAttemptAt=$now.ToString('o');failures=1;nextAttemptAt=$now.AddMinutes(30).ToString('o');status='unavailable'}}}|ConvertTo-Json -Depth 8)
+            & $own wake $managed --observe-only
+            Assert ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $text))
+            $status=Read-Hotpl8Json (Join-Path $state 'status.json')
+            Assert ($status.collector.scheduled -eq $true -and $status.mode -eq 'monitor')
             # An installation that cannot name its release is one.
             & $point 'releases/other'
             & $beside wake
+            Assert ($LASTEXITCODE -eq 1)
+            & $own wake $managed
             Assert ($LASTEXITCODE -eq 1)
         }finally{
             $env:USERPROFILE=$homeBefore

@@ -1,18 +1,5 @@
 # Shared action controls. Collector callers hold tick.lock while updating state.
 . (Join-Path $PSScriptRoot 'leases.ps1')
-function Test-Hotpl8WorkTime($Schedule, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    if (-not $Schedule) { return $true }
-    $zone = if ($Schedule.timeZone) { [TimeZoneInfo]::FindSystemTimeZoneById($Schedule.timeZone) } else { [TimeZoneInfo]::Local }
-    $local = [TimeZoneInfo]::ConvertTime($Now, $zone)
-    $start = [timespan]::ParseExact($Schedule.start, 'hh\:mm', [Globalization.CultureInfo]::InvariantCulture)
-    $end = [timespan]::ParseExact($Schedule.end, 'hh\:mm', [Globalization.CultureInfo]::InvariantCulture)
-    $day = [int]$local.DayOfWeek; $time = $local.TimeOfDay
-    if ($start -eq $end) { return $false }
-    if ($start -lt $end) { return ($day -in @($Schedule.days) -and $time -ge $start -and $time -lt $end) }
-    # An overnight interval belongs to the day on which it starts.
-    if ($time -ge $start) { return $day -in @($Schedule.days) }
-    return ($time -lt $end -and (($day + 6) % 7) -in @($Schedule.days))
-}
 function Get-Hotpl8Pause([string]$Directory, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
     $leases=Get-Hotpl8LeasePause $Directory $Now
     if ($leases.invalid) { return $leases }

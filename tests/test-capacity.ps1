@@ -10,6 +10,11 @@ function Clone($Value){$Value|ConvertTo-Json -Depth 24|ConvertFrom-Json}
 function Near($Actual,$Expected){Assert ([math]::Abs($Actual-$Expected) -lt 0.00001) ('expected '+$Expected+' got '+$Actual)}
 function Policy { $p=Clone $fixture.policy;$p.mode='automate';$p.reserve=@();$p|Add-Member NoteProperty critical @{enabled=$true};return $p }
 function Snapshot {Clone $fixture.status}
+# What a provider can use at once: the estimate across its accounts when there is one, the
+# calibrated capacity otherwise. The words shown for it are the compiled program's and are
+# checked there (capacity_display in native/src/overview.rs).
+function Usable($ProviderOverview){if($ProviderOverview.immediate){$ProviderOverview.immediate}else{$ProviderOverview.capacity}}
+function WeeklyLeft($Account){@($Account.windows|Where-Object name -EQ '10080')[0].remaining}
 Check 'mixed tiers use units and both window constraints, not average percentages' {
     $p=Policy;$s=Snapshot;$c=Get-Hotpl8ProviderCapacity $s $p claude $now
     Assert $c.complete;Near $c.totalUnits 6;Near $c.usableNowPercent 26.1
@@ -286,13 +291,6 @@ Check 'new Codex account remains visible beside confirmed exhausted subscription
     $empty.observedAt=$now.ToString('o');$empty.buckets.codex.status='constraint_unknown'
     Assert (-not (Get-Hotpl8ProviderCapacity $s $p.codex codex $now).complete)
 }
-Check 'tray capacity and projection lines appear once per provider' {
-    . (Join-Path $root 'src/tray.ps1')
-    $p=Policy;$s=Snapshot;$s|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $s $p $now) -Force
-    $details=(Get-Hotpl8TrayModel $s $p $now).details
-    Assert ([regex]::Matches($details,'(?m)^  Capacity:').Count -eq 2)
-    Assert ([regex]::Matches($details,'(?m)^  Next reset:').Count -eq 2)
-}
 Check 'detected plan weights estimate current session allowance without inventing conversions' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
     foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force}
@@ -300,18 +298,17 @@ Check 'detected plan weights estimate current session allowance without inventin
     $s.slots[0].used5h=100;$s.slots[0].used7d=10
     $s.slots[1].used5h=50;$s.slots[1].used7d=10
     $o=Get-Hotpl8ProviderOverview $s $p $now
-    $d=Get-Hotpl8CapacityDisplay $o.claude
-    Assert (-not $d.weekly -and $d.title -eq 'Available now')
-    Near $d.value (250/6);Near $o.claude.remainingPercent 90
+    $d=Usable $o.claude
+    Near $d.knownUsablePercent (250/6);Near $o.claude.remainingPercent 90
     Assert ($o.claude.immediate.metric -eq 'plan-weighted-quota-headroom')
-    Assert ($null -ne $d.gain -and $null -eq $o.claude.capacity.usableNowPercent)
+    Assert ($null -ne $d.projectedGainPercent -and $null -eq $o.claude.capacity.usableNowPercent)
     $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
     Assert ($text.Contains('~42% now') -and $text.Contains('7d 90%') -and -not $text.Contains('Weekly remaining'))
     # An expired reading drops out of the displayed total and is recorded; the
     # calibrated model keeps it unknown.
     $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
-    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Get-Hotpl8CapacityDisplay $o.claude
-    Near $d.value 50;Assert ($d.capacity.complete -and $null -eq $o.claude.capacity.usableNowPercent)
+    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Usable $o.claude
+    Near $d.knownUsablePercent 50;Assert ($d.complete -and $null -eq $o.claude.capacity.usableNowPercent)
     Assert ((@($o.claude.immediate.coverage.excluded|ForEach-Object {$_.slot+':'+$_.reason}) -join ',') -eq '1:unreadable' -and $o.claude.immediate.coverage.measured -eq 1)
 }
 Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exclusions' {
@@ -334,17 +331,17 @@ Check 'weekly allowance cannot fill the main bar while short windows are exhaust
         $slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
         $slot.used5h=100;$slot.used7d=10;$slot.reset5h=$now.AddHours(5).ToString('o')
     }
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Near $d.value 0;Near $d.gain 100
+    $d=Usable (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.knownUsablePercent 0;Near $d.projectedGainPercent 100
     Assert ([datetimeoffset]::Parse($d.nextResetAt) -eq $now.AddHours(5))
     foreach($slot in $s.slots){$slot.used7d=100}
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Near $d.value 0;Assert ($null -eq $d.gain -and $null -eq $d.nextResetAt)
+    $d=Usable (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.knownUsablePercent 0;Assert ($null -eq $d.projectedGainPercent -and $null -eq $d.nextResetAt)
     # Already expired on arrival, so it cannot refill the exhausted fleet.
     $s.slots[0].observedAt=$now.AddSeconds(-20).ToString('o')
     $s.slots[0].reset7d=$now.AddSeconds(-30).ToString('o')
-    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Get-Hotpl8CapacityDisplay $o.claude
-    Near $d.value 0;Assert ($null -eq $d.gain -and '1' -in @($o.claude.immediate.coverage.excluded.slot))
+    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Usable $o.claude
+    Near $d.knownUsablePercent 0;Assert ($null -eq $d.projectedGainPercent -and '1' -in @($o.claude.immediate.coverage.excluded.slot))
 }
 Check 'hatching means refill only and is contiguous with the measured fill at every viewport' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
@@ -377,10 +374,10 @@ Check 'unknown plans stay unknown in the calibrated model while the display coun
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
     $o=Get-Hotpl8ProviderOverview $s $p $now
     Assert (-not $o.claude.capacity.complete -and $null -eq $o.claude.capacity.totalUnits -and $null -eq $o.claude.capacity.usableNowPercent)
-    $d=Get-Hotpl8CapacityDisplay $o.claude
-    Assert ($d.title -eq 'Available now' -and $d.capacity.complete -and (@($o.claude.immediate.accounts.weightBasis|Select-Object -Unique) -join ',') -eq 'equal')
+    $d=Usable $o.claude
+    Assert ($d.complete -and (@($o.claude.immediate.accounts.weightBasis|Select-Object -Unique) -join ',') -eq 'equal')
     # Each account counts its current window equally: (62 + 92) / 2.
-    Near $d.value 77
+    Near $d.knownUsablePercent 77
 }
 Check 'the displayed metric survives unreadable accounts, timeouts and switching off' {
     $p=Policy;$s=Snapshot
@@ -505,48 +502,48 @@ Check 'three equal plans show 91.7 now and refill to 100 despite unequal weekly 
     foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force;$slot.used5h=0}
     $s.slots[0].used7d=22;$s.slots[1].used7d=20;$s.slots[2].used7d=29
     $s.slots[1].used5h=25;$s.slots[1].reset5h=$now.AddMinutes(42).ToString('o')
-    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Get-Hotpl8CapacityDisplay $o.claude
-    Near $d.value (275/3);Near ($d.value+$d.gain) 100
+    $o=Get-Hotpl8ProviderOverview $s $p $now;$d=Usable $o.claude
+    Near $d.knownUsablePercent (275/3);Near ($d.knownUsablePercent+$d.projectedGainPercent) 100
     Assert ([datetimeoffset]::Parse($d.nextResetAt) -eq $now.AddMinutes(42))
     Assert ($o.claude.immediate.accounts[0].unconvertedConstraints -contains '10080')
 }
 Check 'known weekly conversion caps a full session in session units and caps its refill' {
     $p=Policy;$s=Snapshot;$p.prefer=@(1)
     $s.slots[0].used5h=0;$s.slots[0].used7d=98
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Near $d.value (100*0.02/0.3)
-    Assert ($null -eq $d.gain)
+    $d=Usable (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.knownUsablePercent (100*0.02/0.3)
+    Assert ($null -eq $d.projectedGainPercent)
     $s.slots[0].reset7d=$now.AddHours(2).ToString('o')
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Near ($d.value+$d.gain) 100
+    $d=Usable (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near ($d.knownUsablePercent+$d.projectedGainPercent) 100
 }
 Check 'unconverted weekly limits gate zero and policy reserve but never cap session percentages directly' {
     $p=Policy;$s=Snapshot;$p.prefer=@(1);$p.PSObject.Properties.Remove('capacity')
     $s.slots[0].used5h=0;$s.slots[0].used7d=98
-    $d=Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude
-    Near $d.value 100;Assert ($d.capacity.accounts[0].unconvertedConstraints -contains '10080' -and $d.state.Contains('weekly cap uncertain'))
+    $d=Usable (Get-Hotpl8ProviderOverview $s $p $now).claude
+    Near $d.knownUsablePercent 100;Assert ($d.accounts[0].unconvertedConstraints -contains '10080');Near (WeeklyLeft $d.accounts[0]) 2
     $s.slots[0].used7d=100
-    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 0
+    Near (Usable (Get-Hotpl8ProviderOverview $s $p $now).claude).knownUsablePercent 0
     $s.slots[0].used7d=98;$p|Add-Member NoteProperty margin7dWork 5;$p.critical.enabled=$false
-    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 0
+    Near (Usable (Get-Hotpl8ProviderOverview $s $p $now).claude).knownUsablePercent 0
 }
 Check 'calibrated mixed tiers normalize against session capacity and preserve the same ratio under unit changes' {
     $p=Policy;$s=Snapshot
-    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
+    Near (Usable (Get-Hotpl8ProviderOverview $s $p $now).claude).knownUsablePercent 87
     foreach($entry in $p.capacity.PSObject.Properties){$entry.Value.weekly*=10;$entry.Value.fiveHour*=10}
-    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
+    Near (Usable (Get-Hotpl8ProviderOverview $s $p $now).claude).knownUsablePercent 87
     # Calibrated and plan bases cannot be mixed, so the display falls back to equal weights.
     $s.slots[0]|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force
     $mixed=(Get-Hotpl8ProviderOverview $s $p $now).claude.immediate
     Assert ($mixed.complete -and (@($mixed.accounts.weightBasis|Select-Object -Unique) -join ',') -eq 'equal')
     # The fallback's derived fields follow the equal basis: a low weekly balance
-    # is unconverted again, so the display still says the cap is uncertain.
+    # is unconverted again, which is what the display reads to say the cap is uncertain.
     $low=Clone $s;$low.slots[1].used5h=0;$low.slots[1].used7d=90
     $o=Get-Hotpl8ProviderOverview $low $p $now
     Assert (@($o.claude.immediate.accounts|Where-Object {$_.unconvertedConstraints -notcontains '10080' -or $_.confidence -ne 'weekly/model conversion unavailable'}).Count -eq 0)
-    Assert ((Get-Hotpl8CapacityDisplay $o.claude).state.Contains('(weekly cap uncertain)'))
+    Near (WeeklyLeft $o.claude.immediate.accounts[1]) 10
     $s.slots[1]|Add-Member NoteProperty plan @{status='detected';profile='claude-max-5x';observedAt=$now.ToString('o')} -Force
-    Near (Get-Hotpl8CapacityDisplay (Get-Hotpl8ProviderOverview $s $p $now).claude).value 87
+    Near (Usable (Get-Hotpl8ProviderOverview $s $p $now).claude).knownUsablePercent 87
 }
 Check 'Codex details give two distinct account headers with one availability verdict each' {
     $p=Policy;$s=Snapshot;$first=$s.providers.codex.slots[0];$first.buckets.codex.status='blocked'

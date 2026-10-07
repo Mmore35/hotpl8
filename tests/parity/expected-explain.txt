@@ -1,4 +1,4 @@
-# What `hotpl8 status` prints for each parity case at 2026-09-12T12:00:00Z, read in UTC.
+# What `hotpl8 explain` prints for each parity case at 2026-09-12T12:00:00Z, read in UTC.
 # Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.
 
 == plain
@@ -12,15 +12,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == operations
 CLAUDE: 93.7% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -33,18 +26,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-recent collection completed
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-    Weekly pace: behind; ~98.8h to limit at cycle-average usage; likely lasts to reset
-  Reserve [2] 5h 100% remaining | 7d 83% remaining | ok
-    warm: unconfirmed
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector shape
 CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -57,19 +40,17 @@ CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for nex
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-recent collection completed
-Claude: active slot 1 | ok
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-    warm: confirmed
-    Weekly pace: behind; ~98.8h to limit at cycle-average usage; likely lasts to reset
-  Reserve [2] 5h unknown | 7d 83% remaining | ok
-    warm: unconfirmed
-Codex: next launch = work | ok | observed 2026-09-12T11:59:17.0000000+00:00
-  Work [work] eligible | quota observed 2026-09-12T11:59:17.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: not_applicable
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:17.0000000+00:00
-    codex: observed | 5h 100% remaining; reset 09-12 17:00 +00:00 (observed-idle) | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: not_applicable
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Claude: active account remains eligible; policy prefer
+  slot 1: eligible; rank 1
+  slot 2: window_unmeasured; rank 2
+Codex codex: next launch work; policy prefer
+  work: eligible; reserve=False
+  personal: below_margin; reserve=False
+Codex codex_bengalfox: next launch none; policy prefer
+  work: model_quota_unknown; reserve=False
+  personal: model_quota_unknown; reserve=False
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector shape with Windows line ends and no byte order mark
 CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -82,21 +63,20 @@ CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for nex
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-recent collection completed
-Claude: active slot 1 | ok
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-    warm: confirmed
-    Weekly pace: behind; ~98.8h to limit at cycle-average usage; likely lasts to reset
-  Reserve [2] 5h unknown | 7d 83% remaining | ok
-    warm: unconfirmed
-Codex: next launch = work | ok | observed 2026-09-12T11:59:17.0000000+00:00
-  Work [work] eligible | quota observed 2026-09-12T11:59:17.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: not_applicable
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:17.0000000+00:00
-    codex: observed | 5h 100% remaining; reset 09-12 17:00 +00:00 (observed-idle) | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: not_applicable
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Claude: active account remains eligible; policy prefer
+  slot 1: eligible; rank 1
+  slot 2: window_unmeasured; rank 2
+Codex codex: next launch work; policy prefer
+  work: eligible; reserve=False
+  personal: below_margin; reserve=False
+Codex codex_bengalfox: next launch none; policy prefer
+  work: model_quota_unknown; reserve=False
+  personal: model_quota_unknown; reserve=False
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings twenty minutes old
+STALE: these are the decisions at the last observation, not a current recommendation.
 CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - refresh; collector overdue; monitor only
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -105,19 +85,11 @@ CODEX: No account readable now / 2 expired; awaiting update; Readings stale - re
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:40:00.0000000+00:00
-collector overdue
-STALE: refresh before relying on these readings.
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] stale | quota observed 2026-09-12T11:40:00.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] stale | quota observed 2026-09-12T11:40:00.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:40:00.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings from the future
+STALE: these are the decisions at the last observation, not a current recommendation.
 CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - refresh; monitor only
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -126,16 +98,8 @@ CODEX: No account readable now / 2 expired; awaiting update; Readings stale - re
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T12:02:00.0000000+00:00
-STALE: refresh before relying on these readings.
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] stale | quota observed 2026-09-12T12:02:00.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] stale | quota observed 2026-09-12T12:02:00.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T12:02:00.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings at the age limit
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -148,17 +112,11 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:45:00.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:45:00.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:45:00.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:45:00.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings one second past the age limit
+STALE: these are the decisions at the last observation, not a current recommendation.
 CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - refresh; monitor only
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -167,16 +125,8 @@ CODEX: No account readable now / 2 expired; awaiting update; Readings stale - re
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:44:59.0000000+00:00
-STALE: refresh before relying on these readings.
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] stale | quota observed 2026-09-12T11:44:59.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] stale | quota observed 2026-09-12T11:44:59.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:44:59.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == one account stale
 CLAUDE: 62% available now (estimate) / 1 expired; awaiting update; Ready; monitor only
@@ -189,27 +139,20 @@ CODEX: 74% available now (estimate) / 1 expired; awaiting update; Ready for next
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] stale | quota observed 2026-09-12T11:40:00.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == policy only
-No cached status. Run hotpl8 refresh.
+No observation. Run hotpl8 refresh.
 
 == policy and collector only
-No cached status. Run hotpl8 refresh.
+No observation. Run hotpl8 refresh.
 
 == policy and pause only
-No cached status. Run hotpl8 refresh.
+No observation. Run hotpl8 refresh.
 
 == status without a generation time
-No cached status. Run hotpl8 refresh.
+No observation. Run hotpl8 refresh.
 
 == collector running
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -222,16 +165,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-collecting
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector stalled
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector stalled; monitor only
@@ -244,16 +179,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-collector stalled
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector overdue
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector overdue; monitor only
@@ -266,16 +193,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-collector overdue
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector started in the future
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector state invalid; monitor only
@@ -288,16 +207,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-collector state invalid
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector without a start time
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector state invalid; monitor only
@@ -310,16 +221,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-collector state invalid
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector with one provider failing
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -332,16 +235,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-provider checks incomplete
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector unable to write state
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -354,16 +249,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-local state write failed; retrying
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector with stale provider success
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; provider readings stale; monitor only
@@ -376,16 +263,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-recent collection completed
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == stored collector newer than the collector file
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -398,16 +277,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-recent collection completed
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == manual pause
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -420,16 +291,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: owner asked
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: owner asked
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == manual pause that ended
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -442,15 +306,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == pause file without an end
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -463,16 +320,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: invalid_pause
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: invalid_pause
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == pause reason with control characters
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -485,16 +335,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: line oneline twotabbed
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: line oneline twotabbed
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == one agent lease
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -507,16 +350,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: agent_leases
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: agent_leases
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == several agent leases
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -529,16 +365,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: invalid_leases
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: invalid_leases
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == only released leases
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -551,16 +380,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: invalid_leases
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: invalid_leases
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == empty lease ledger
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -573,15 +395,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease with the wrong end
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -594,16 +409,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: invalid_leases
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: invalid_leases
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease ledger with an extra field
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -616,16 +424,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: invalid_leases
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: invalid_leases
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease ledger that is not an object
 refused: automation-leases.json is not JSON as HotPl8 writes it (line 1, column 1).
@@ -641,16 +442,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: manual_and_agent_leases
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: manual_and_agent_leases
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease and manual pause, lease later
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -663,16 +457,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: manual_and_agent_leases
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: manual_and_agent_leases
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease and a pause file without an end
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -685,16 +472,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: invalid_pause
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: invalid_pause
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == automatic selection
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -707,15 +487,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == automatic mode with selection off
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; manual selection
@@ -728,15 +501,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == automatic selection while paused
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
@@ -749,16 +515,9 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-AUTOMATION PAUSED: owner asked
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Automation paused: owner asked
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == policy without a version
 CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -771,15 +530,8 @@ CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == policy version one
 CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; manual selection
@@ -791,15 +543,8 @@ CODEX: 37% available now (estimate) / 35% weekly left; Ready for next launch; na
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Claude only
 CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -810,10 +555,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex only
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
@@ -824,12 +567,8 @@ CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == no providers configured
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
@@ -839,7 +578,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == one Codex account without capacity
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
@@ -850,12 +590,8 @@ CODEX: 11% available now (estimate) / 11% weekly left; Unavailable now - see det
   Membership: 1 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == one Codex account without an id
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
@@ -865,12 +601,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == two Codex accounts without an id
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
@@ -880,12 +612,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 2 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex configured but never observed
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -897,11 +625,8 @@ CODEX: No account readable now; Unavailable now - see details; native launches; 
   Capacity: No account readable now; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: not configured or no observation yet.
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == capacity profiles
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -915,15 +640,8 @@ CODEX: 63.5% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +21.7% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == capacity profile of the other provider
 CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -937,15 +655,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == no capacity settings
 CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -958,15 +669,8 @@ CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == disabled accounts
 CLAUDE: 62% available now (estimate) / 46% weekly left; Ready; monitor only
@@ -978,15 +682,8 @@ CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; na
   Membership: 1 enabled; 1 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] disabled | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == every account disabled
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
@@ -996,15 +693,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 2 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] disabled | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] disabled | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == account enrolled but not observed
 CLAUDE: 87% available now (estimate); Ready; monitor only
@@ -1017,15 +707,8 @@ CODEX: 48.8% available now (estimate); Ready for next launch; native launches; m
   Membership: 3 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == display settings and history flags
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1038,15 +721,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == policy version three with one provider
 CLAUDE: No account readable now / 64.5% weekly left; Unavailable now - see details; monitor only
@@ -1056,10 +732,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == policy version three with no providers
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
@@ -1069,7 +743,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == a third provider that is not configured
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1085,15 +760,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == providers that share a place in the display order
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1112,15 +780,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == two providers of the Claude driver
 refused: The native global activation driver supports only one configured provider owner.
@@ -1136,15 +797,8 @@ CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == a copy without the Claude definition
 refused: Configured legacy provider is missing from the catalog.
@@ -1155,12 +809,8 @@ CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; na
   Membership: 1 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == definition with an unknown driver
 refused: Unknown provider driver. Only shipped native contracts may be registered.
@@ -1197,15 +847,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == preview policy without a stored policy
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1218,15 +861,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == preview policy that is invalid
 refused: Invalid policy: mode must be monitor or automate.
@@ -1242,15 +878,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == rotation hold that ended
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1263,15 +892,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex selection held
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1284,15 +906,8 @@ CODEX: 44.4% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == active account below its margin
 CLAUDE: 78.2% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1305,15 +920,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 9% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == every account below its margin
 CLAUDE: 9.8% available now (estimate) / 24.5% weekly left; Ready; automatic selection on
@@ -1326,15 +934,8 @@ CODEX: 0% available now (estimate) / 30% weekly left; Unavailable now - see deta
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 9% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 3% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 10% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 1% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == no active account
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1347,15 +948,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 0 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == active account not enrolled
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1368,15 +962,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 7 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order soonest-reset
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1388,15 +975,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order soonest-reset with the second account active
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1408,15 +988,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 2 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = personal |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order weekly-expiry
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1428,15 +1001,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order weekly-expiry with the second account active
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1448,15 +1014,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 2 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = personal |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order balanced
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1468,15 +1027,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order balanced with the second account active
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1488,15 +1040,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 2 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = personal |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == weekly allowance nearly spent
 CLAUDE: 45.6% available now (estimate) / 13% weekly left; Unavailable now - see details; automatic selection on
@@ -1508,15 +1053,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 12% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 14% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical allowance
 CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
@@ -1528,15 +1066,8 @@ CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch /
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 15% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 8% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 22% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical allowance with stored state
 CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
@@ -1548,15 +1079,10 @@ CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch /
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 15% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 8% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 22% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Claude critical: largest remaining allowance / usable capacity / checks 60s
+Codex codex critical: largest remaining allowance / usable capacity / checks 90s
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical allowance drained to zero
 CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
@@ -1568,15 +1094,8 @@ CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch /
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 15% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 8% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 22% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical setting off while low
 CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready; automatic selection on
@@ -1588,15 +1107,8 @@ CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch /
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 15% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 8% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 22% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == scoped model limits
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1609,15 +1121,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == scoped model limits not observed
 CLAUDE: No account readable now / 64.5% weekly left; Unavailable now - see details; automatic selection on
@@ -1629,15 +1134,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == scoped model limits with capacity
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
@@ -1650,15 +1148,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == account needs sign-in
 CLAUDE: 62% available now (estimate); Ready; sign-in needed; monitor only
@@ -1671,14 +1162,8 @@ CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; nati
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h unknown | 7d unknown | relogin_required
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] authentication_required | quota observed 2026-09-03T12:00:00.0000000+00:00
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == account signed out recently
 CLAUDE: 62% available now (estimate); Ready; sign-in needed; monitor only
@@ -1691,14 +1176,8 @@ CODEX: 74% available now (estimate); Ready for next launch; native launches; man
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h unknown | 7d unknown | no_credentials
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] subscription_login_required | quota observed 2026-09-09T12:00:00.0000000+00:00
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex plan ended
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1711,15 +1190,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == same subscription enrolled twice
 CLAUDE: 62% available now (estimate) / 46% weekly left; Ready; monitor only
@@ -1731,15 +1203,8 @@ CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; na
   Membership: 1 enabled; 0 disabled; 1 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | duplicate_subscription
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == same slot observed twice
 CLAUDE: 92% available now (estimate); Account available - manual selection needed; monitor only
@@ -1752,18 +1217,8 @@ CODEX: 11% available now (estimate); Ready for next launch; native launches; man
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex account blocked until its reset
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1776,15 +1231,8 @@ CODEX: 44.4% available now (estimate) / 29.5% weekly left; Ready for next launch
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] blocked | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: blocked | 7d 0% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex account blocked without a reason
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1797,15 +1245,8 @@ CODEX: 44.4% available now (estimate) / 29.5% weekly left; Ready for next launch
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] blocked | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: blocked | 7d 0% remaining; reset 09-13 06:00 +00:00 (inferred) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex meter missing
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1818,14 +1259,8 @@ CODEX: 74% available now (estimate); Ready for next launch; native launches; man
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] meter_unknown | quota observed 2026-09-12T11:59:18.0000000+00:00
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex windows that do not add up
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1838,15 +1273,8 @@ CODEX: 46.4% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +18% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] window_malformed | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 70% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex window with an unknown name
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -1859,15 +1287,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 95% remaining; reset 09-12 18:00 +00:00 (observed-active) | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == windows that already reset
 CLAUDE: 93.3% available now (estimate) / 73% weekly left; Ready; monitor only
@@ -1879,15 +1300,8 @@ CODEX: No account readable now; Ready for next launch; native launches; managed 
   Capacity: No account readable now; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 11:59 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-12 11:59 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == windows that reset before the reading
 CLAUDE: No account readable now; Unavailable now - see details; monitor only
@@ -1898,15 +1312,8 @@ CODEX: No account readable now; Unavailable now - see details; native launches; 
   Capacity: No account readable now; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] reset_unconfirmed | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 11:58 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] reset_unconfirmed | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-12 11:58 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings without usage
 CLAUDE: No account readable now; Unavailable now - see details; monitor only
@@ -1918,15 +1325,8 @@ CODEX: 11% available now (estimate); Ready for next launch; native launches; man
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h unknown | 7d unknown | ok
-  Reserve [2] 5h unknown | 7d unknown | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] unknown | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed |  | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings without reset times
 CLAUDE: 87% available now (estimate); Unavailable now - see details; monitor only
@@ -1937,15 +1337,8 @@ CODEX: 48.8% available now (estimate); Ready for next launch; native launches; m
   Capacity: 48.8% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset unknown (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset unknown (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == account marked not fresh
 CLAUDE: 92% available now (estimate) / 1 expired; awaiting update; Account available - manual selection needed; monitor only
@@ -1958,15 +1351,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == fully used
 CLAUDE: 83.3% available now (estimate) / 50% weekly left; Account available - manual selection needed; monitor only
@@ -1978,17 +1364,10 @@ CODEX: 4.4% available now (estimate) / 35% weekly left; Ready for next launch; n
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 0% remaining | 7d 0% remaining | ok
-  Reserve [2] 5h 100% remaining | 7d 100% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 0% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
-== fractional readings [Windows PowerShell numbers]
+== fractional readings
 CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; monitor only
   Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -1999,38 +1378,10 @@ CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 61.5% remaining | 7d 45.75% remaining | ok
-  Reserve [2] 5h 92.0% remaining | 7d 82.875% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 73.6% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 58.95% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11.1% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
-== fractional readings [PowerShell 7 numbers]
-CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; monitor only
-  Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
-  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-  Includes reserve allowance.
-CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
-  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 61.5% remaining | 7d 45.75% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 82.875% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 73.6% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 58.95% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11.1% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
-
-== fractional readings and automatic selection [Windows PowerShell numbers]
+== fractional readings and automatic selection
 CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
   Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -2040,35 +1391,8 @@ CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 61.5% remaining | 7d 45.75% remaining | ok
-  Reserve [2] 5h 92.0% remaining | 7d 82.875% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 73.6% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 58.95% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11.1% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
-
-== fractional readings and automatic selection [PowerShell 7 numbers]
-CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
-  Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
-  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
-  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 61.5% remaining | 7d 45.75% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 82.875% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 73.6% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 58.95% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11.1% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == fractional settings
 CLAUDE: 82.3% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2081,17 +1405,10 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
-== fractional settings and readings [Windows PowerShell numbers]
+== fractional settings and readings
 CLAUDE: 82.2% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
   Capacity: 82.2% available now (estimate) / 64.3% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -2102,36 +1419,8 @@ CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 61.5% remaining | 7d 45.75% remaining | ok
-  Reserve [2] 5h 92.0% remaining | 7d 82.875% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 73.6% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 58.95% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11.1% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
-
-== fractional settings and readings [PowerShell 7 numbers]
-CLAUDE: 82.2% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
-  Capacity: 82.2% available now (estimate) / 64.3% weekly left; normal policy
-  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +12.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-  Includes reserve allowance.
-CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
-  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 61.5% remaining | 7d 45.75% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 82.875% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 73.6% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 58.95% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11.1% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == thirds
 CLAUDE: 50.5% available now (estimate) / 49.5% weekly left; Ready; monitor only
@@ -2144,15 +1433,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 67% remaining | 7d 33% remaining | ok
-  Reserve [2] 5h 34% remaining | 7d 66% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == forecast hours
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2165,17 +1447,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-    Weekly pace: ahead; ~2h to limit at cycle-average usage; may run out before reset
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-    Weekly pace: on pace; ~34.3h to limit at cycle-average usage; likely lasts to reset
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == forecast without a time to limit
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2188,16 +1461,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-    Weekly pace: behind; ~0h to limit at cycle-average usage; likely lasts to reset
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == large whole numbers
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2210,15 +1475,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex margin beyond one hundred
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2231,15 +1489,8 @@ CODEX: 4.4% available now (estimate) / 35% weekly left; Ready for next launch; n
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +35.6% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == stored decisions
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2252,15 +1503,17 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Claude critical: largest remaining allowance / usable capacity / checks 60s
+Claude: active account remains eligible; policy prefer
+  slot 1: eligible; rank 1
+  slot 2: reserve; rank 2
+Codex codex critical: retained to avoid churn / binding-window percentage; capacity unknown / checks 90s
+Codex codex: next launch work; policy prefer
+  work: eligible; reserve=False
+  personal: below_margin; reserve=True
+Codex codex_bengalfox: next launch none; policy prefer
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == stored decisions for another provider
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2273,15 +1526,12 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+example: only account; policy prefer
+  slot a: eligible; rank 1
+example m: proposed none; policy prefer
+  a: eligible; reserve=False
 
 == announcements
 CLAUDE: 62% available now (estimate); Ready; sign-in needed; collector stalled; monitor only
@@ -2294,16 +1544,14 @@ CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; coll
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-collector stalled
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-    Weekly pace: ahead; ~2h to limit at cycle-average usage; may run out before reset
-  Reserve [2] 5h unknown | 7d unknown | relogin_required
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] authentication_required | quota observed 2026-09-03T12:00:00.0000000+00:00
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Claude: no eligible account; policy prefer
+  slot 1: below_margin; rank 1
+  slot 2: relogin_required; rank 2
+Codex codex: next launch none; policy prefer
+  work: below_margin; reserve=False
+  personal: authentication_required; reserve=False
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == announcements outside working days
 CLAUDE: 62% available now (estimate); Ready; sign-in needed; collector stalled; monitor only
@@ -2316,16 +1564,14 @@ CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; coll
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-collector stalled
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-    Weekly pace: ahead; ~2h to limit at cycle-average usage; may run out before reset
-  Reserve [2] 5h unknown | 7d unknown | relogin_required
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] authentication_required | quota observed 2026-09-03T12:00:00.0000000+00:00
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Claude: no eligible account; policy prefer
+  slot 1: below_margin; rank 1
+  slot 2: relogin_required; rank 2
+Codex codex: next launch none; policy prefer
+  work: below_margin; reserve=False
+  personal: authentication_required; reserve=False
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == announcements with nothing wrong
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2338,15 +1584,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == announcements with Claude only
 CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2357,10 +1596,8 @@ CODEX: No accounts enabled; No accounts enabled; native launches; managed sessio
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == no policy
 refused: No valid policy.json. Run hotpl8 setup or see docs/install.md.
@@ -2421,15 +1658,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Café 日本 — x [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Café 日本 — x [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == number with an exponent
 CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2442,15 +1672,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings too small to write without an exponent
 CLAUDE: 93.3% available now (estimate) / 64.5% weekly left; Ready; monitor only
@@ -2463,15 +1686,8 @@ CODEX: 40% available now (estimate) / 79.5% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 99.99999% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = unavailable |  | observed 
-  Work [work] below_margin | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 5.00000000016598E-05% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 100% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == reading too large to write without an exponent
 CLAUDE: 92% available now (estimate); Account available - manual selection needed; monitor only
@@ -2484,15 +1700,8 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d -9.9999999999999E+15% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == text where a percentage belongs
 CLAUDE: 92% available now (estimate) / 64.5% weekly left; Account available - manual selection needed; monitor only
@@ -2505,18 +1714,22 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
-HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
-Claude: active slot 1 | 
-  Everyday [1] 5h 62% remaining | 7d 46% remaining | ok
-  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
-Codex: next launch = work |  | observed 
-  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
-  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
-    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == usage that is an object
-refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/insights.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.
+CLAUDE: 92% available now (estimate); Account available - manual selection needed; monitor only
+  Capacity: 92% available now (estimate); normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+  Includes reserve allowance.
+CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Observed: 2026-09-12T11:59:18.0000000+00:00
+Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == time in a regional form
 refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/contract.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.

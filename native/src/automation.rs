@@ -8,7 +8,7 @@ use crate::ps::*;
 use crate::time::{hours_minutes, Dto};
 use std::path::Path;
 
-/// Test-Hotpl8WorkTime
+/// Whether an instant falls in the hours a schedule names. No schedule means always.
 pub fn work_time(schedule: &V, now: Dto) -> R<bool> {
     if !schedule.t()? {
         return Ok(true);
@@ -119,7 +119,12 @@ pub fn hold(directory: &Path, now: Dto) -> Option<Hold> {
             return Ok(None);
         }
         let reason = hold.g("reason")?;
-        Ok(Some(Hold { until, reason: if reason.t()? { reason.s()? } else { "hold".into() } }))
+        // [string] of a list is its items with a space between them.
+        let said = match &reason {
+            V::Arr(items) => items.iter().map(V::s).collect::<R<Vec<String>>>()?.join(" "),
+            _ => reason.s()?,
+        };
+        Ok(Some(Hold { until, reason: if reason.t()? { said } else { "hold".into() } }))
     };
     read().unwrap_or(None)
 }
@@ -147,6 +152,13 @@ mod tests {
         assert!(work_time(&night, at("2026-10-07T05:59:00.0000000+00:00")).ok().unwrap());
         assert!(!work_time(&night, at("2026-10-07T06:00:00.0000000+00:00")).ok().unwrap());
         assert!(!work_time(&night, at("2026-10-06T05:00:00.0000000+00:00")).ok().unwrap());
+        // 2026-09-13 is a Sunday: day 0, and the day an overnight shift that starts on it belongs to.
+        let sunday = parse(r#"{"start":"10:00","end":"14:00","days":[0],"timeZone":"UTC"}"#, "").ok().unwrap();
+        assert!(work_time(&sunday, at("2026-09-13T12:00:00.0000000+00:00")).ok().unwrap());
+        assert!(!work_time(&sunday, at("2026-09-13T14:00:00.0000000+00:00")).ok().unwrap());
+        let late = parse(r#"{"start":"22:00","end":"02:00","days":[0],"timeZone":"UTC"}"#, "").ok().unwrap();
+        assert!(work_time(&late, at("2026-09-14T01:00:00.0000000+00:00")).ok().unwrap());
+        assert!(!work_time(&late, at("2026-09-13T01:00:00.0000000+00:00")).ok().unwrap());
         let never = parse(r#"{"start":"09:00","end":"09:00","days":[2],"timeZone":"UTC"}"#, "").ok().unwrap();
         assert!(!work_time(&never, at("2026-10-06T09:00:00.0000000+00:00")).ok().unwrap());
         let nowhere = parse(r#"{"start":"09:00","end":"17:00","days":[2],"timeZone":"No/Such_Zone"}"#, "").ok().unwrap();
@@ -233,6 +245,21 @@ mod tests {
         for gone in [r#"{"until":"2026-10-06T12:00:00Z"}"#, r#"{"until":"not a timestamp"}"#, "{oh no", r#"{"reason":"x"}"#, r#"{"until":5}"#] {
             write(gone);
             assert!(hold(&directory, now).is_none(), "{gone}");
+        }
+        // A holder's own spelling of the time and of its reason is read as PowerShell reads it.
+        write(r#"{"until":"2026-10-06t13:00:00z","reason":["long","job",7]}"#);
+        assert_eq!(hold(&directory, now).unwrap().reason, "long job 7");
+        // A date alone is midnight where the machine is, so no shared case can hold it.
+        crate::time::set_zone(Some(-300));
+        write(r#"{"until":"2999-01-01","reason":"long job"}"#);
+        assert_eq!(hold(&directory, now).unwrap().until.o(), "2999-01-01T00:00:00.0000000-05:00");
+        crate::time::set_zone(None);
+        // A hold is one object. PowerShell read the members of a list's items too, and
+        // held for this one; a reason with an object inside it held under PowerShell's
+        // name for that object.
+        for refused in [r#"[{"until":"2026-10-06T13:00:00Z"}]"#, r#"{"until":"2026-10-06T13:00:00Z","reason":[{"a":1}]}"#] {
+            write(refused);
+            assert!(hold(&directory, now).is_none(), "{refused}");
         }
         std::fs::remove_dir_all(&directory).unwrap();
     }

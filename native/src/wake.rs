@@ -3,6 +3,7 @@
 //! replaced whole. A scheduled wake is quiet; a caller who asks is told when it fell short.
 
 use crate::codex::format_codex_status;
+use crate::codex_read::{read_home, HomeRead, Search};
 use crate::collection::{collection_due, collection_state, set_collection_result};
 use crate::control::control_snapshot;
 use crate::cswap::user_home;
@@ -29,7 +30,7 @@ const NEWLINE: &str = if cfg!(windows) { "\r\n" } else { "\n" };
 /// for the provider; any other failure is shown as one that is not explained.
 const REASONS: [&str; 7] = ["claude_missing", "claude_no_accounts", "claude_schema_unsupported", "claude_read_failed", "claude_switch_failed", "process_timeout", "process_output_limit"];
 
-/// What a wake leaves to PowerShell once the snapshot is stored.
+/// What a wake asks PowerShell for once the snapshot is stored.
 pub enum Upkeep {
     /// An account addition the snapshot now shows is closed.
     Onboarding,
@@ -48,7 +49,8 @@ pub struct Wake<'a> {
     /// Read, and act on nothing.
     pub observe_only: bool,
     pub clock: &'a dyn Fn() -> R<Dto>,
-    pub codex: &'a dyn Fn(&str) -> R<V>,
+    /// Reads the Codex account in the home named, within so many milliseconds.
+    pub codex: &'a dyn Fn(&str, u64) -> HomeRead,
     pub upkeep: &'a dyn Fn(Upkeep) -> R<()>,
 }
 
@@ -113,7 +115,7 @@ fn gathered(wake: &Wake) -> R<Outcome> {
         let old = if id == "claude" { previous.clone() } else { previous.g("providers").and_then(|providers| providers.gd(&id)).unwrap_or(V::Null) };
         let mut read = || -> R<V> {
             if collection_due(&collector, &id, wake.scheduled, now()?) {
-                let result = registered_collection(registration, &reading)?;
+                let result = registered_collection(registration, &reading, &old)?;
                 set_collection_result(&collector, &id, result.success, now()?, result.healthy_seconds, None)?;
                 if result.incomplete {
                     failed = true;
@@ -300,6 +302,8 @@ pub fn started(arguments: &[OsString]) -> Result<bool, String> {
     let [cswap, codex, powershell] = &started.programs;
     let powershell = lane::powershell(powershell.as_deref());
     let lanes = Lanes { root: &started.root, directory: &directory, powershell: &powershell };
+    // Looked for once, by the first account that is read, and not at all by a wake that reads none.
+    let program = std::cell::OnceCell::new();
     let outcome = collect(&Wake {
         root: &started.root,
         directory: &directory,
@@ -308,7 +312,7 @@ pub fn started(arguments: &[OsString]) -> Result<bool, String> {
         scheduled: started.scheduled,
         observe_only: started.observe_only,
         clock: &Dto::now,
-        codex: &|provider| lanes.codex(provider, codex.as_deref()),
+        codex: &|home, budget| read_home(home, program.get_or_init(|| Search::here().program(codex.as_deref())), budget),
         upkeep: &|upkeep| match upkeep {
             Upkeep::Onboarding => lanes.onboarding(),
             Upkeep::ContinueHook { remove } => lanes.continue_hook(remove, &home),

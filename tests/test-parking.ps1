@@ -46,25 +46,6 @@ try{
         Assert ((ConvertTo-Hotpl8CodexPlanType 'free') -ceq 'free')
         foreach($bad in @($null,'','Pro Plus',('x'*30),'<script>',7)){Assert ((ConvertTo-Hotpl8CodexPlanType $bad) -eq 'unknown') ('accepted '+$bad)}
     }
-    Check 'Codex collection records a plan change once and forgets it for another login' {
-        $d=New-StateDirectory;$homeDir=Join-Path $d 'home'
-        $p=Clone @{slots=@(@{id='work';home=$homeDir;label='Work'});prefer=@('work')}
-        $script:plan='prolite';$script:who='identity-a'
-        $reader={param($homePath,$executable,$budget) [pscustomobject]@{status='ok';identityKey=$script:who;planType=$script:plan;standardTransport=$true;quota=$null;elapsedMs=1}}
-        $null=Invoke-CodexCollection $p $d '' $null $reader
-        $state=(Read-Hotpl8Json (Join-Path $d 'codex-state.json')).slots.work
-        Assert ($state.planType -ceq 'prolite' -and -not $state.previousPlanType)
-        $script:plan='free';$null=Invoke-CodexCollection $p $d '' $null $reader
-        $state=(Read-Hotpl8Json (Join-Path $d 'codex-state.json')).slots.work
-        Assert ($state.planType -ceq 'free' -and $state.previousPlanType -ceq 'prolite' -and $state.planChangedAt) 'transition recorded'
-        $changed=$state.planChangedAt
-        $script:plan='unknown';$null=Invoke-CodexCollection $p $d '' $null $reader
-        $state=(Read-Hotpl8Json (Join-Path $d 'codex-state.json')).slots.work
-        Assert ($state.planType -ceq 'free' -and $state.planChangedAt -eq $changed) 'an unknown reading neither erases nor repeats the change'
-        $script:who='identity-b';$script:plan='plus';$null=Invoke-CodexCollection $p $d '' $null $reader
-        $state=(Read-Hotpl8Json (Join-Path $d 'codex-state.json')).slots.work
-        Assert ($state.planType -ceq 'plus' -and -not $state.previousPlanType -and -not $state.planChangedAt) 'another login starts a new record'
-    }
     Check 'detector names week-long sign-in failures and ended plans, and nothing else' {
         $policy=Clone @{schemaVersion=2;mode='monitor';prefer=@(1,2,3,4,5);disabled=@(5);labels=@{'2'='Old plan'};codex=@{slots=@(@{id='a';home='/fixture/a';label='Ended'},@{id='b';home='/fixture/b';label='Paid'},@{id='c';home='/fixture/c';label='Signed out'},@{id='d';home='/fixture/d';label='Recent'});prefer=@('a','b','c','d')}}
         $old=$now.AddDays(-36).ToString('o');$recent=$now.AddDays(-2).ToString('o')

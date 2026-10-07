@@ -55,7 +55,7 @@ try{
         $launch=Join-Path (Get-Hotpl8UserHome) ('Library/LaunchAgents/'+$label+'.plist')
         if($installation.scheduled -and (Test-Path $launch)){
             [xml]$job=[IO.File]::ReadAllText($launch)
-            if($job.plist.dict.string -notcontains $label -or $job.plist.dict.array.string -notcontains (Join-Path $root 'app/tick.ps1') -or $job.plist.dict.array.string -notcontains $state){throw 'Collector ownership mismatch.'}
+            if(-not (Test-Hotpl8MacCollectorJob $job $label $root $state)){throw 'Collector ownership mismatch.'}
             $uid=(& /usr/bin/id -u).Trim()
             & /bin/launchctl bootout ('gui/'+$uid+'/'+$label) 2>$null
             Remove-Item -LiteralPath $launch
