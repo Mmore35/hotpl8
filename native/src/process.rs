@@ -169,7 +169,9 @@ pub fn run(executable: &str, arguments: &[&str], timeout_ms: u64) -> R<Finished>
                 };
                 #[cfg(not(unix))]
                 let code = status.code().unwrap_or(-1);
-                return Ok(Finished { exit_code: code, output: String::from_utf8_lossy(&output).into_owned() });
+                // A byte-order mark is not part of what the program said.
+                let said = output.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&output);
+                return Ok(Finished { exit_code: code, output: String::from_utf8_lossy(said).into_owned() });
             }
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -205,6 +207,18 @@ mod tests {
         let done = run(&stub, &["switch", "12"], 20_000).ok().unwrap();
         assert_eq!(done.exit_code, 3);
         assert_eq!(done.output.trim(), "switch 12");
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// A file saved with a byte-order mark and printed as it is: the mark is dropped, as
+    /// the PowerShell collector dropped it.
+    #[test]
+    fn a_byte_order_mark_is_not_output() {
+        let directory = scratch("mark");
+        std::fs::write(directory.join("said.json"), b"\xef\xbb\xbf{\"a\":1}").unwrap();
+        let stub = script(&directory, "type \"%~dp0said.json\"", "cat \"$(dirname \"$0\")/said.json\"");
+        let done = run(&stub, &["list", "--json"], 20_000).ok().unwrap();
+        assert_eq!((done.exit_code, done.output.as_str()), (0, "{\"a\":1}"));
         std::fs::remove_dir_all(&directory).unwrap();
     }
 
