@@ -49,6 +49,17 @@ try{
         if($Update){[IO.File]::WriteAllText($shared,($lines -join "`n"),$utf8)}
         Assert ($wrong.Count -eq 0) ('differ: '+($wrong -join '; '))
     }
+    Check 'a hold by date alone ends at the midnight of this machine' {
+        # What it answers depends on the machine's time zone, so it is not a shared case. The
+        # program's test of the same hold gives it a zone (native/src/automation.rs).
+        $at=New-Stage 'date'
+        [IO.File]::WriteAllText((Join-Path $at 'hold.json'),'{"until":"2999-01-01","reason":"long job"}',$utf8)
+        $hold=Get-Hold $at
+        $midnight=New-Object datetime 2999,1,1
+        Assert ($hold.until.DateTime -eq $midnight) ('until '+$hold.until.ToString('o'))
+        Assert ($hold.until.Offset -eq [TimeZoneInfo]::Local.GetUtcOffset($midnight)) ('offset '+$hold.until.Offset)
+        Assert ($hold.reason -ceq 'long job') ('reason '+$hold.reason)
+    }
     Check 'cswap is found where the shared cases say' {
         # The one place every user of a machine shares cannot be staged, so a machine that
         # has a cswap there cannot run these cases.

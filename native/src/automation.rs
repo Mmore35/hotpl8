@@ -249,6 +249,11 @@ mod tests {
         // A holder's own spelling of the time and of its reason is read as PowerShell reads it.
         write(r#"{"until":"2026-10-06t13:00:00z","reason":["long","job",7]}"#);
         assert_eq!(hold(&directory, now).unwrap().reason, "long job 7");
+        // A date alone is midnight where the machine is, so no shared case can hold it.
+        crate::time::set_zone(Some(-300));
+        write(r#"{"until":"2999-01-01","reason":"long job"}"#);
+        assert_eq!(hold(&directory, now).unwrap().until.o(), "2999-01-01T00:00:00.0000000-05:00");
+        crate::time::set_zone(None);
         // A hold is one object. PowerShell read the members of a list's items too, and
         // held for this one; a reason with an object inside it held under PowerShell's
         // name for that object.
