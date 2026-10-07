@@ -8,8 +8,9 @@ use crate::time::Dto;
 /// The length of a short window, in minutes: the cycle every offset is a minute of.
 pub const CYCLE_MINUTES: i32 = 300;
 
-/// Get-CycleMinute. The cycle is counted from the Unix epoch, not from when anything
-/// started, so every machine and every run agrees on where in the cycle a minute falls.
+/// The minute of the five-hour cycle. The cycle is counted from the Unix epoch, not from
+/// when anything started, so every machine and every run agrees on where in the cycle a
+/// minute falls.
 pub fn cycle_minute(now: Dto) -> i32 {
     (now.unix_seconds().div_euclid(60) % i64::from(CYCLE_MINUTES)) as i32
 }
@@ -29,10 +30,11 @@ impl Offsets {
     }
 }
 
-/// Get-WarmOffsets. `maintain` has no schedule: a cold window is opened when it is seen.
-/// The other patterns give each cluster of accounts a share of the cycle in proportion to
-/// its weight, so an account that lasts twenty times longer holds the floor twenty times
-/// longer. Offsets fall on a ten-minute grid.
+/// The minute of the cycle each account's window is opened at. `maintain` has no schedule:
+/// a cold window is opened when it is seen. The other patterns give each cluster of
+/// accounts a share of the cycle in proportion to its weight, so an account that lasts
+/// twenty times longer holds the floor twenty times longer. Offsets fall on a ten-minute
+/// grid.
 pub fn warm_offsets(policy: &V, prefer: &[i32]) -> R<Option<Offsets>> {
     let named = policy.g("pattern")?;
     let pattern = if named.t()? { named.sv()? } else { V::s_of("maintain") };
@@ -91,7 +93,7 @@ pub fn warm_offsets(policy: &V, prefer: &[i32]) -> R<Option<Offsets>> {
     Ok(Some(offsets))
 }
 
-/// Test-AtPhase: whether the cycle is within `window` minutes after `offset`. The arc is
+/// Whether the cycle is within `window` minutes after `offset`. The arc is
 /// one-sided on purpose: a window opened early ends early, and the accounts drift
 /// together again.
 pub fn at_phase(offset: i32, window: i32, now: Dto) -> bool {
@@ -102,7 +104,7 @@ pub fn at_phase(offset: i32, window: i32, now: Dto) -> bool {
     d < window
 }
 
-/// Get-PhaseOffsetOf: the minute of the cycle this account's open window ends at. None
+/// The minute of the cycle this account's open window ends at. None
 /// for an account with no window open.
 pub fn phase_offset_of(account: &V) -> R<Option<i32>> {
     let short = account.path(&["usage", "fiveHour"])?;
@@ -131,7 +133,7 @@ mod tests {
         slots.iter().map(|slot| format!("{slot}={}", offsets.of(*slot).unwrap())).collect::<Vec<_>>().join(" ")
     }
 
-    /// The fleet shapes tests/test-tick.sh held Get-WarmOffsets to.
+    /// The fleet shapes the PowerShell collector's offsets were held to.
     #[test]
     fn a_pattern_spreads_the_accounts_over_the_cycle() {
         assert_eq!(offsets(&[3, 2, 1], r#"{"pattern":"maintain"}"#), "null");
@@ -150,6 +152,10 @@ mod tests {
         assert_eq!(offsets(&[1, 2], r#"{"pattern":"even","weights":{"1":20,"2":1}}"#), "1=0 2=290");
         assert_eq!(offsets(&[2, 1], r#"{"pattern":"even","weights":{"2":1}}"#), "1=150 2=0");
         assert_eq!(offsets(&[2, 1], r#"{"pattern":"even","weights":{"2":0,"1":-3}}"#), "1=150 2=0");
+        // Parking the heavy account moves the others: tests/test-parking.ps1 held the
+        // offsets before and after one to these.
+        assert_eq!(offsets(&[2, 1, 3], r#"{"pattern":"even","weights":{"2":2,"1":1}}"#), "1=150 2=0 3=220");
+        assert_eq!(offsets(&[1, 3], r#"{"pattern":"even","weights":{"1":1}}"#), "1=0 3=150");
     }
 
     #[test]

@@ -128,26 +128,6 @@ Check 'unknown and disabled accounts cannot become emergency candidates' {
     $a=@(Get-Hotpl8CapacityAccounts $s $p claude $now)
     Assert ((Get-Hotpl8CriticalDecision $a $p '1' $null $now).selected -eq '2')
 }
-Check 'backoff skips preserve original retry deadline and can recover' {
-    $state=[pscustomobject]@{providers=[pscustomobject]@{}}
-    Set-Hotpl8CollectionResult $state codex $false $now
-    $deadline=$state.providers.codex.nextAttemptAt
-    $failure=Get-Hotpl8CodexFailure $null collection_failed invalid_cached_shape
-    foreach($second in @(60,120,240)){
-        Assert (-not (Test-Hotpl8CollectionDue $state codex $true $now.AddSeconds($second)))
-        $failure=Get-Hotpl8CodexFailure $failure backoff $null
-        Assert ($state.providers.codex.nextAttemptAt -eq $deadline -and $state.providers.codex.failures -eq 1)
-    }
-    Assert (Test-Hotpl8CollectionDue $state codex $true $now.AddMinutes(5))
-    Set-Hotpl8CollectionResult $state codex $true $now.AddMinutes(5) 60
-    Assert ($state.providers.codex.failures -eq 0 -and (Test-Hotpl8CollectionDue $state codex $true $now.AddMinutes(6)))
-}
-Check 'failure preserves stale account evidence without mutating previous snapshot' {
-    $s=Snapshot;$before=$s|ConvertTo-Json -Depth 24
-    $f=Get-Hotpl8CodexFailure $s.providers.codex collection_failed invalid_cached_shape
-    Assert ($f.slots.Count -eq 2 -and $f.slots[0].status -eq 'collection_failed' -and -not $f.recommendedSlot)
-    Assert (($s|ConvertTo-Json -Depth 24) -eq $before)
-}
 Check 'capacity profile edits are validated and preserve existing action defaults' {
     $p=Set-Hotpl8CapacityProfile $fixture.policy claude 1 claude-pro 1 0.3
     Assert-Hotpl8Policy $p
@@ -172,6 +152,12 @@ Check 'combined dashboard is bounded at all supported viewports including nyan' 
     }
 }
 
+# A program that answers as Codex does, with one fictional account.
+function New-FakeCodex([string]$Directory){
+    $path=Join-Path $Directory 'fake codex.exe'
+    Add-Type -Path (Join-Path $root 'tests/fake-codex.cs') -ReferencedAssemblies System.Web.Extensions -OutputAssembly $path -OutputType ConsoleApplication
+    return $path
+}
 Check 'real scheduled tick normalizes sparse failure and retries only when due' {
     $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-capacity-'+[guid]::NewGuid().ToString('N'))
     [void][IO.Directory]::CreateDirectory($dir)
@@ -179,18 +165,19 @@ Check 'real scheduled tick normalizes sparse failure and retries only when due' 
         $p=@{schemaVersion=2;mode='monitor';prefer=@();codex=@{slots=@(@{id='fixture';home=$dir});defaultMeter='codex'}}
         Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 8)
         Write-Hotpl8Text (Join-Path $dir 'status.json') '{"providers":{"codex":{"status":"collection_failed","slots":[],"recommendedSlot":null}}}'
-        $clock=[datetimeoffset]::UtcNow;$state=[pscustomobject]@{providers=[pscustomobject]@{}}
-        Set-Hotpl8CollectionResult $state codex $false $clock
-        $deadline=$state.providers.codex.nextAttemptAt
+        # One failed read as the collector records it, with its retry five minutes on.
+        $clock=[datetimeoffset]::UtcNow;$deadline=$clock.AddMinutes(5).ToString('o')
+        $state=[pscustomobject]@{providers=[pscustomobject]@{codex=[pscustomobject]@{lastAttemptAt=$clock.ToString('o');lastSuccessAt=$null;failures=1;nextAttemptAt=$deadline;status='unavailable'}}}
         Write-Hotpl8Text (Join-Path $dir 'collector.json') ($state|ConvertTo-Json -Depth 8)
         foreach($attempt in 1..2){
-            & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexReader {throw 'reader must not run during backoff'}
+            # No such program: a read during the wait would be a second failure and a new deadline.
+            & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexExecutable (Join-Path $dir 'no-codex.exe')
             $after=Read-Hotpl8Json (Join-Path $dir 'collector.json')
             Assert ($after.providers.codex.failures -eq 1 -and $after.providers.codex.nextAttemptAt -eq $deadline)
         }
         $after.providers.codex.nextAttemptAt=$clock.AddSeconds(-1).ToString('o')
         Write-Hotpl8Text (Join-Path $dir 'collector.json') ($after|ConvertTo-Json -Depth 8)
-        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexReader {return [pscustomobject]@{status='ok';standardTransport=$true;identityKey='fictional';quota=$null;elapsedMs=0}}
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexExecutable (New-FakeCodex $dir)
         $after=Read-Hotpl8Json (Join-Path $dir 'collector.json')
         Assert ($after.providers.codex.failures -eq 0)
         Assert ((Read-Hotpl8Json (Join-Path $dir 'status.json')).providers.codex.slots[0].status -eq 'ok')
@@ -206,28 +193,27 @@ Check 'actual state lock does not become a five-minute Codex outage' {
     try{
         $p=@{schemaVersion=2;mode='monitor';prefer=@();codex=@{slots=@(@{id='fixture';home=$dir});defaultMeter='codex'}}
         Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 8)
-        $script:nativeReads=0
-        $reader={$script:nativeReads++;return [pscustomobject]@{status='ok';standardTransport=$true;identityKey='fictional';quota=$null;elapsedMs=0}}
-        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        $codex=New-FakeCodex $dir
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexExecutable $codex
         $before=Read-Hotpl8Json (Join-Path $dir 'status.json')
         $handle=[IO.File]::Open((Join-Path $dir 'codex-state.json'),'Open','Read','ReadWrite')
-        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexExecutable $codex
         $after=Read-Hotpl8Json (Join-Path $dir 'status.json');$c=Read-Hotpl8Json (Join-Path $dir 'collector.json')
         Assert ($after.providers.codex.failureCode -eq 'state_io_failed' -and $null -eq $after.providers.codex.recommendedSlot)
         Assert ($after.providers.codex.slots[0].observedAt -eq $before.providers.codex.slots[0].observedAt)
         $provider=$c.providers.codex
         Assert (([datetimeoffset]::Parse($provider.nextAttemptAt)-[datetimeoffset]::Parse($provider.lastAttemptAt)).TotalSeconds -eq 60)
-        $reads=$script:nativeReads
-        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexReader $reader
-        Assert ($script:nativeReads -eq $reads)
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexExecutable $codex
+        $waiting=(Read-Hotpl8Json (Join-Path $dir 'collector.json')).providers.codex
+        Assert ($waiting.lastAttemptAt -eq $provider.lastAttemptAt -and $waiting.nextAttemptAt -eq $provider.nextAttemptAt -and $waiting.failures -eq $provider.failures) 'a wake inside the wait reads nothing'
         $handle.Dispose();$handle=$null
         $c.providers.codex.nextAttemptAt=[datetimeoffset]::UtcNow.AddSeconds(-1).ToString('o')
         Write-Hotpl8Text (Join-Path $dir 'collector.json') ($c|ConvertTo-Json -Depth 8)
-        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexReader $reader
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -Scheduled -ObserveOnly -CodexExecutable $codex
         $recovered=Read-Hotpl8Json (Join-Path $dir 'status.json')
         Assert ($recovered.providers.codex.slots[0].status -eq 'ok' -and -not $recovered.collector.providers.codex.failureCode)
         $handle=[IO.File]::Open((Join-Path $dir 'status.js'),'Open','Read','ReadWrite')
-        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexExecutable $codex
         $mirrored=Read-Hotpl8Snapshot $dir
         Assert ($mirrored.collector.status -eq 'ok' -and $mirrored.providers.codex.slots[0].status -eq 'ok') 'a locked compatibility mirror must not break the primary snapshot'
         $handle.Dispose();$handle=$null
@@ -235,15 +221,18 @@ Check 'actual state lock does not become a five-minute Codex outage' {
         Write-Hotpl8Text (Join-Path $dir 'policy.json') ($p|ConvertTo-Json -Depth 8)
         Write-Hotpl8Text (Join-Path $dir 'usage-history.json') '{"samples":[]}'
         $handle=[IO.File]::Open((Join-Path $dir 'usage-history.json'),'Open','Read','ReadWrite')
-        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexReader $reader
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexExecutable $codex
         $withHistory=Read-Hotpl8Snapshot $dir
         Assert ($withHistory.generationId -ne $mirrored.generationId -and $withHistory.collector.status -eq 'ok') 'optional history cannot block a fresh snapshot'
         $handle.Dispose();$handle=$null
         Write-Hotpl8Text (Join-Path $dir 'activity.json') '{"events":[]}'
+        # A recommendation that differs from the last one recorded is an event to write down.
+        $stored=Read-Hotpl8Json (Join-Path $dir 'status.json');$stored.providers.codex.recommendedSlot='another'
+        Write-Hotpl8Text (Join-Path $dir 'status.json') ($stored|ConvertTo-Json -Depth 24)
         $handle=[IO.File]::Open((Join-Path $dir 'activity.json'),'Open','Read','ReadWrite')
-        $withHistory.active=2
-        Add-Hotpl8Insights $withHistory ([pscustomobject]$p) $dir ([pscustomobject]@{active=1})
-        Assert ($withHistory.providerOverview -and $withHistory.collector.status -eq 'ok') 'activity output cannot invalidate the current observation'
+        & (Join-Path $root 'tick.ps1') -StateDirectory $dir -ObserveOnly -CodexExecutable $codex
+        $withActivity=Read-Hotpl8Snapshot $dir
+        Assert ($withActivity.generationId -ne $withHistory.generationId -and $withActivity.providerOverview -and $withActivity.collector.status -eq 'ok') 'activity output cannot invalidate the current observation'
         $handle.Dispose();$handle=$null
         $events=@(Get-Content -LiteralPath (Join-Path $dir 'events.jsonl')|ForEach-Object {$_|ConvertFrom-Json})
         Assert ('history_output_failed' -in $events.code -and 'activity_output_failed' -in $events.code) 'optional write failures remain diagnosable'

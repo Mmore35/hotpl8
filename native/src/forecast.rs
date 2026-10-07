@@ -34,7 +34,7 @@ fn by_time(rows: &[V]) -> R<Vec<V>> {
     }
 }
 
-/// Get-Hotpl8Forecast. Null when the reading is too old, too early in its cycle, or not a
+/// Where a weekly reading is heading at the average rate of its cycle. Null when the reading is too old, too early in its cycle, or not a
 /// reading at all.
 pub fn forecast(used: &V, reset_at: &V, observed_at: &V, minutes: i32, now: Dto, samples: &[V]) -> R<V> {
     if !used.is_number() || used.le_i(0)? || used.gt_i(100)? {
@@ -85,7 +85,7 @@ pub fn forecast(used: &V, reset_at: &V, observed_at: &V, minutes: i32, now: Dto,
     })
 }
 
-/// Update-Hotpl8History: two weeks of readings, one per stream each half hour or whenever
+/// The usage history with these readings added: two weeks of readings, one per stream each half hour or whenever
 /// its cycle changes, and never more than 4,096.
 pub fn update_history(directory: &Path, rows: &[V], now: Dto) -> R<Vec<V>> {
     let path = directory.join("usage-history.json");

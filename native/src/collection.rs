@@ -9,7 +9,7 @@ use crate::registry::{self, provider_definition, provider_driver};
 use crate::time::Dto;
 use std::path::Path;
 
-/// Get-Hotpl8CollectionState
+/// When each provider was last read and is next due, as collector.json holds it.
 pub fn collection_state(directory: &Path) -> R<V> {
     let mut state = json::read_or_null(&directory.join("collector.json"));
     if !state.is_obj() {
@@ -23,7 +23,7 @@ pub fn collection_state(directory: &Path) -> R<V> {
     Ok(state)
 }
 
-/// Test-Hotpl8CollectionDue. cswap keeps each account's own polling deadlines, so a healthy
+/// Whether a provider is read at this wake. cswap keeps each account's own polling deadlines, so a healthy
 /// provider that asks to be read every minute is read on every wake; a second cache here
 /// could let its valid readings expire. Neither path cancels the wait after a failure.
 pub fn collection_due(state: &V, provider: &str, scheduled: bool, now: Dto) -> bool {
@@ -41,7 +41,7 @@ pub fn collection_due(state: &V, provider: &str, scheduled: bool, now: Dto) -> b
     due().unwrap_or(true)
 }
 
-/// Set-Hotpl8CollectionResult. Failing to write this machine's own state is not a provider
+/// Records how a provider's reading went and when it is next due. Failing to write this machine's own state is not a provider
 /// turning a request down: it is tried again at the next wake, while a failed provider is
 /// left for longer each time.
 pub fn set_collection_result(state: &V, provider: &str, success: bool, now: Dto, healthy_seconds: i32, failure_code: Option<&str>) -> R<()> {
@@ -72,7 +72,7 @@ pub fn set_collection_result(state: &V, provider: &str, success: bool, now: Dto,
     providers.add_member(provider, record, true)
 }
 
-/// Get-Hotpl8CodexFailure: what is shown for Codex while it cannot be read. A retry that
+/// What is shown for Codex while it cannot be read. A retry that
 /// was skipped is not a new failure, so the earlier reason is kept when none is given.
 pub fn codex_failure(previous: &V, status: &str, failure_code: &V) -> R<V> {
     let mut slots = Vec::new();
@@ -145,6 +145,114 @@ mod tests {
         std::fs::write(directory.join("collector.json"), r#"{"startedAt":"x","providers":[]}"#).unwrap();
         assert_eq!(text(&collection_state(&directory).ok().unwrap()), r#"{"startedAt":"x","providers":{}}"#);
         std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// The definitions this tree ships: how often a healthy provider is asked depends on them.
+    fn shipped() {
+        crate::registry::set_source(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/providers"));
+    }
+    fn after(now: Dto, seconds: i64) -> Dto {
+        now.plus_seconds(seconds).ok().unwrap()
+    }
+    fn record(state: &V, provider: &str) -> V {
+        state.path(&["providers", provider]).ok().unwrap()
+    }
+    fn next(state: &V, provider: &str) -> String {
+        record(state, provider).g("nextAttemptAt").ok().unwrap().s().ok().unwrap().to_string()
+    }
+    fn failures(state: &V, provider: &str) -> Option<i32> {
+        record(state, provider).g("failures").ok().unwrap().to_int().ok()
+    }
+
+    /// The cases the PowerShell collector's due times were held to.
+    #[test]
+    fn a_local_write_failure_is_retried_at_the_next_wake() {
+        shipped();
+        let now = at("2026-09-13T12:00:00.0000000+00:00");
+        let state = json::parse(r#"{"providers":{}}"#, "").ok().unwrap();
+        for provider in ["claude", "codex"] {
+            for _ in 0..4 {
+                set_collection_result(&state, provider, false, now, 300, Some("state_io_failed")).ok().unwrap();
+            }
+            assert_eq!(next(&state, provider), after(now, 60).o());
+            assert!(!collection_due(&state, provider, true, after(now, 59)));
+            assert!(collection_due(&state, provider, true, after(now, 60)));
+            set_collection_result(&state, provider, false, now, 300, Some("unexpected_collection_error")).ok().unwrap();
+            assert_eq!((failures(&state, provider), next(&state, provider)), (Some(1), after(now, 300).o()));
+            set_collection_result(&state, provider, true, now, 300, None).ok().unwrap();
+            assert!(!record(&state, provider).g("failureCode").ok().unwrap().t().ok().unwrap());
+            assert_eq!(failures(&state, provider), Some(0));
+        }
+    }
+
+    #[test]
+    fn a_wait_is_shared_by_a_refresh_and_the_scheduler_and_has_a_limit() {
+        shipped();
+        let now = at("2026-09-13T12:00:00.0000000+00:00");
+        let directory = scratch("backoff");
+        // A marker from before providers were recorded: only the times of the last collection.
+        std::fs::write(directory.join("collector.json"), r#"{"status":"ok","completedAt":"2026-09-13T12:00:00.0000000+00:00","startedAt":"2026-09-13T12:00:01.0000000+00:00"}"#).unwrap();
+        let marker = collection_state(&directory).ok().unwrap();
+        set_collection_result(&marker, "codex", true, now, 300, None).ok().unwrap();
+        assert_eq!(
+            text(&marker),
+            r#"{"status":"ok","completedAt":"2026-09-13T12:00:00.0000000+00:00","startedAt":"2026-09-13T12:00:01.0000000+00:00","providers":{"codex":{"lastAttemptAt":"2026-09-13T12:00:00.0000000+00:00","lastSuccessAt":"2026-09-13T12:00:00.0000000+00:00","failures":0,"nextAttemptAt":"2026-09-13T12:05:00.0000000+00:00","status":"ok"}}}"#
+        );
+        let state = collection_state(&directory).ok().unwrap();
+        set_collection_result(&state, "codex", false, now, 300, None).ok().unwrap();
+        assert!(!collection_due(&state, "codex", false, after(now, 60)));
+        assert!(!collection_due(&state, "codex", true, after(now, 60)));
+        assert!(collection_due(&state, "codex", true, after(now, 300)));
+        for _ in 0..10 {
+            set_collection_result(&state, "codex", false, now, 300, None).ok().unwrap();
+        }
+        assert_eq!(next(&state, "codex"), after(now, 1800).o());
+        // A healthy provider is read whenever it is asked for, and on its own beat otherwise.
+        set_collection_result(&state, "codex", true, now, 300, None).ok().unwrap();
+        assert!(collection_due(&state, "codex", false, after(now, 1)));
+        assert!(!collection_due(&state, "codex", true, after(now, 1)));
+        set_collection_result(&state, "claude", true, now, 60, None).ok().unwrap();
+        assert!(collection_due(&state, "claude", true, after(now, 59)));
+        set_collection_result(&state, "claude", false, now, 300, None).ok().unwrap();
+        assert!(!collection_due(&state, "claude", true, after(now, 59)));
+        assert!(!collection_due(&state, "claude", false, after(now, 59)));
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_wake_that_waits_keeps_the_time_it_waits_for() {
+        shipped();
+        let now = at("2026-09-13T12:00:00.0000000+00:00");
+        let state = json::parse(r#"{"providers":{}}"#, "").ok().unwrap();
+        set_collection_result(&state, "codex", false, now, 300, None).ok().unwrap();
+        assert_eq!(
+            text(&state),
+            r#"{"providers":{"codex":{"lastAttemptAt":"2026-09-13T12:00:00.0000000+00:00","lastSuccessAt":null,"failures":1,"nextAttemptAt":"2026-09-13T12:05:00.0000000+00:00","status":"unavailable"}}}"#
+        );
+        let deadline = next(&state, "codex");
+        let mut failure = codex_failure(&V::Null, "collection_failed", &V::from("invalid_cached_shape")).ok().unwrap();
+        for second in [60, 120, 240] {
+            assert!(!collection_due(&state, "codex", true, after(now, second)));
+            failure = codex_failure(&failure, "backoff", &V::Null).ok().unwrap();
+            assert_eq!((next(&state, "codex"), failures(&state, "codex")), (deadline.clone(), Some(1)));
+        }
+        assert_eq!(failure.g("failureCode").ok().unwrap().s().ok().unwrap(), "invalid_cached_shape");
+        assert!(collection_due(&state, "codex", true, after(now, 300)));
+        set_collection_result(&state, "codex", true, after(now, 300), 60, None).ok().unwrap();
+        assert_eq!(failures(&state, "codex"), Some(0));
+        assert!(collection_due(&state, "codex", true, after(now, 360)));
+    }
+
+    #[test]
+    fn a_failure_keeps_the_accounts_last_seen_and_leaves_that_snapshot_alone() {
+        let seen = r#"{"status":"ok","observedAt":"2026-09-12T11:59:18.0000000+00:00","recommendedSlot":"main","slots":[{"id":"main","status":"ok","buckets":{"codex":{"usedPercent":41}}},{"id":"spare","status":"ok"}]}"#;
+        let previous = json::parse(seen, "").ok().unwrap();
+        let failed = codex_failure(&previous, "collection_failed", &V::from("invalid_cached_shape")).ok().unwrap();
+        let slots = failed.g("slots").ok().unwrap();
+        assert_eq!(slots.arr().len(), 2);
+        assert_eq!(slots.arr()[0].g("status").ok().unwrap().s().ok().unwrap(), "collection_failed");
+        assert!(!failed.g("recommendedSlot").ok().unwrap().t().ok().unwrap());
+        assert_eq!(text(&previous), seen);
     }
 
     #[test]

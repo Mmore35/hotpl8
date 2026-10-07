@@ -270,7 +270,7 @@ fn kept_aside(directory: &Path, code: &str, body: impl FnOnce() -> R<()>) {
     }
 }
 
-/// Add-Hotpl8NativeInsights: what one provider's reading says besides its numbers. Each
+/// What one provider's reading says besides its numbers. Each
 /// fresh weekly reading gets a pace, a change of account or recommendation is recorded,
 /// and the decision the rules would have made is set beside the one that was made.
 fn add_native_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, now: Dto) -> R<()> {
@@ -335,7 +335,7 @@ fn add_native_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V,
     snapshot.add_member("shadow", shadow.g("decisions")?.arr().into(), true)
 }
 
-/// Add-Hotpl8Insights: the insights of every registered provider, each worked out in the
+/// The insights of every registered provider, each worked out in the
 /// provider's own shape and then named for the provider it belongs to.
 pub fn add_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, now: Dto) -> R<()> {
     let (mut events, mut shadow) = (Vec::new(), Vec::new());

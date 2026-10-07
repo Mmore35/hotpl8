@@ -73,7 +73,8 @@ impl Reasons {
     }
 }
 
-/// Format-CodexStatus
+/// The lines of status.txt for Codex: the account the next launch takes, then each
+/// account and its windows.
 pub fn format_codex_status(codex: &V, policy: &V, now: Dto) -> R<Vec<String>> {
     let recommended = codex.g("recommendedSlot")?;
     let mut chosen = if recommended.t()? { recommended.s()? } else { "unavailable".to_string() };
@@ -127,4 +128,51 @@ pub fn format_codex_status(codex: &V, policy: &V, now: Dto) -> R<Vec<String>> {
         }
     }
     Ok(lines)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json::parse;
+
+    /// An account as a collection leaves it: one weekly window, read at `observed`.
+    fn slot(id: &str, observed: &str, used: i32) -> String {
+        format!(
+            r#"{{"id":"{id}","label":"{id}","status":"ok","observedAt":"{observed}","buckets":{{"codex":{{"meter":"codex","status":"observed","blockReason":null,"windows":{{"10080":{{"usedPercent":{used},"remainingPercent":{},"resetsAt":1789304400,"anchorState":"observed-active","observedAt":"2026-09-13T12:00:00.0000000+00:00"}}}},"warm":"not applicable: no five-hour window"}}}},"defaultModel":"fixture-model","modelProvider":"openai"}}"#,
+            100 - used
+        )
+    }
+
+    /// A choice made at collection is looked at again when it is shown, and what was
+    /// collected is left as it was. The PowerShell collector's lines were held to these.
+    #[test]
+    fn a_choice_that_no_longer_holds_is_shown_as_none() {
+        crate::display::packaged_data(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".."));
+        crate::time::set_zone(Some(-300));
+        let noon = "2026-09-13T12:00:00.0000000+00:00";
+        let now = Dto::parse(noon).ok().unwrap();
+        let policy = parse(r#"{"prefer":["a","b"],"defaultMeter":"codex","margin7dWork":5,"order":"soonest-reset","reserve":[],"margin5h":25,"margin7d":20,"modelMeters":{"fixture-model":"codex"},"slots":[{"id":"a","home":"home A"},{"id":"b","home":"home B"}]}"#, "").ok().unwrap();
+        let shown = |first: &str| {
+            let text = format!(r#"{{"observedAt":"{noon}","recommendations":{{"codex":"a"}},"slots":[{first},{}],"recommendedSlot":"a","defaultMeter":"codex"}}"#, slot("b", noon, 10));
+            let status = parse(&text, "").ok().unwrap();
+            let lines = format_codex_status(&status, &policy, now).ok().unwrap();
+            assert_eq!(crate::json::write(&status, 24).ok().unwrap(), crate::json::write(&parse(&text, "").ok().unwrap(), 24).ok().unwrap());
+            lines
+        };
+        let window = |left: i32| format!("    codex: observed | 7d {left}% remaining; reset 09-13 08:00 -05:00 (observed-active) | warm: not applicable: no five-hour window");
+        let other = "  b [b] eligible | quota observed 2026-09-13T12:00:00.0000000+00:00";
+        assert_eq!(
+            shown(&slot("a", "2026-09-13T11:00:00.0000000+00:00", 10)),
+            ["Codex: next launch = unavailable |  | observed 2026-09-13T12:00:00.0000000+00:00", "  a [a] stale | quota observed 2026-09-13T11:00:00.0000000+00:00", &window(90), other, &window(90)]
+        );
+        assert_eq!(
+            shown(&slot("a", noon, 100)),
+            ["Codex: next launch = unavailable |  | observed 2026-09-13T12:00:00.0000000+00:00", "  a [a] below_margin | quota observed 2026-09-13T12:00:00.0000000+00:00", &window(0), other, &window(90)]
+        );
+        assert_eq!(
+            shown(&slot("a", noon, 10)),
+            ["Codex: next launch = a |  | observed 2026-09-13T12:00:00.0000000+00:00", "  a [a] eligible | quota observed 2026-09-13T12:00:00.0000000+00:00", &window(90), other, &window(90)]
+        );
+        crate::time::set_zone(None);
+    }
 }

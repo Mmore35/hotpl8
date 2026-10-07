@@ -236,7 +236,7 @@ try{
     Check 'descriptor and enrollment only reaches collector CLI UI API MCP controls and diagnostics' {
         $package=Join-Path $lab 'package';[void][IO.Directory]::CreateDirectory($package)
         $manifest=Get-Content (Join-Path $root 'release-files.json') -Raw|ConvertFrom-Json
-        $files=@($manifest.files)+@($manifest.platformFiles.windows)+@('src/provider-runtime.ps1')
+        $files=@($manifest.files)+@($manifest.platformFiles.windows)
         foreach($file in @($files|Select-Object -Unique)){
             $target=Join-Path $package $file;[void][IO.Directory]::CreateDirectory((Split-Path $target -Parent))
             [IO.File]::Copy((Join-Path $root $file),$target,$true)
@@ -280,63 +280,10 @@ $twoOwners=Copy-Hotpl8ProviderValue $policy
 $twoOwners.providers.claude.prefer=@(1)
 $twoOwners.providers|Add-Member NoteProperty 'fictional-claude' ([pscustomobject]@{prefer=@(2)})
 Reject {Assert-Hotpl8Policy $twoOwners} 'two global activation owners accepted'
-# Exercise the sole numeric-driver alias with synthetic reads and a ping spy.
-# The unexcluded controls prove each native action path is otherwise reachable.
-& {
-    function Resolve-CswapExecutable {return 'fixture-only'}
-    function Read-Hotpl8ClaudePlans {return [pscustomobject]@{}}
-    function Invoke-Hotpl8Process($Executable,$Arguments,$TimeoutMs) {
-        Assert ($Executable -eq 'fixture-only' -and ($Arguments -join ' ') -ceq 'list --json') 'unexpected native command in alias fixture'
-        $at=[datetimeoffset]::UtcNow
-        $account=if($script:aliasAction -eq 'warm'){
-            @{number=1;email='alias@example.invalid';usageStatus='ok';usageAgeSeconds=0;usage=@{fiveHour=@{pct=0;resetsAt=''};sevenDay=@{pct=10;resetsAt=$at.AddDays(3).ToString('o')}}}
-        }else{@{number=1;email='alias@example.invalid';usageStatus='relogin_required';lastGoodAgeSeconds=86400;usage=$null}}
-        @{exitCode=0;output=(@{schemaVersion=1;activeAccountNumber=1;accounts=@($account)}|ConvertTo-Json -Depth 10)}
-    }
-    function Invoke-SlotPing($Executable,$Slot,$Email,$Directory,$Kind) {
-        Assert ($Executable -eq 'fixture-only' -and $Slot -eq 1) 'unexpected ping target'
-        $script:aliasPings+=@($Kind);return $false
-    }
-    foreach($kind in @('warm','probe')){
-        foreach($excluded in @($true,$false)){
-            $script:aliasAction=$kind;$script:aliasPings=@()
-            $aliasRoot=Join-Path (Split-Path $Package -Parent) ('claude-alias-'+$kind+'-'+$excluded)
-            [void][IO.Directory]::CreateDirectory($aliasRoot)
-            $aliasPolicy=[pscustomobject]@{schemaVersion=3;mode='automate';switchEnabled=$false;warm=$true;probeEnabled=$true;automation=[pscustomobject]@{warmExcluded=@(if($excluded){'fictional-claude:1'})};providers=[pscustomobject]@{'fictional-claude'=[pscustomobject]@{prefer=@(1);reserve=@()}}}
-            Assert-Hotpl8Policy $aliasPolicy
-            Write-Hotpl8Text (Join-Path $aliasRoot 'policy.json') ($aliasPolicy|ConvertTo-Json -Depth 12)
-            $aliasView=Get-Hotpl8ProviderView $null $aliasPolicy fictional-claude
-            $aliasDirectory=Get-Hotpl8ProviderStateDirectory $aliasRoot fictional-claude
-            [void][IO.Directory]::CreateDirectory($aliasDirectory)
-            $result=Invoke-ClaudeTick $aliasView.policy $aliasDirectory -ControlDirectory $aliasRoot -ProviderId fictional-claude
-            Assert ($result.payload.slots.Count -eq 1) 'sole Claude alias was not collected'
-            if($excluded){
-                Assert ($script:aliasPings.Count -eq 0) ('registered exclusion allowed '+$kind)
-                Assert ($result.payload.slots[0].actionBlock -ceq 'account_excluded') ('registered '+$kind+' exclusion missing from diagnostic block')
-                Assert (-not (Test-Path -LiteralPath (Join-Path $aliasDirectory 'attempt-budget.json'))) 'excluded action consumed attempt budget'
-            }else{
-                Assert ($script:aliasPings.Count -eq 1 -and $script:aliasPings[0] -ceq $kind) ('unexcluded '+$kind+' control did not reach ping spy')
-                Assert (-not $result.payload.slots[0].actionBlock) 'unexcluded action reported an exclusion'
-                $ledger=Read-Hotpl8Json (Join-Path $aliasDirectory 'attempt-budget.json')
-                $expectedKey=[datetimeoffset]::UtcNow.UtcDateTime.ToString('yyyy-MM-dd')+'/fictional-claude/1'
-                Assert ($ledger.$expectedKey -eq 1 -and @($ledger.PSObject.Properties).Count -eq 1) 'attempt budget used native family instead of registration identity'
-                $aliasView.policy.automation|Add-Member NoteProperty dailyAttemptLimit 1 -Force
-                Assert ((Get-Hotpl8ActionBlock $aliasView.policy $aliasDirectory fictional-claude 1 $kind) -ceq 'daily_attempt_limit') 'registered action could not read its own attempt budget'
-                $activity=Read-Hotpl8Json (Join-Path $aliasDirectory 'activity.json')
-                Assert (@($activity.events).Count -gt 0 -and @($activity.events|Where-Object provider -CNE fictional-claude).Count -eq 0) 'action event used native family identity'
-                if($kind -eq 'warm'){
-                    $outcomes=Read-Hotpl8WarmOutcomes $aliasDirectory
-                    Assert ($outcomes.'claude:1'.provider -ceq 'fictional-claude') 'warm outcome lost registration identity'
-                }
-            }
-        }
-    }
-}
-$reader={param($accountPath,$exe,$budget)
-    $now=[datetimeoffset]::UtcNow
-    [pscustomobject]@{status='ok';standardTransport=$true;identityKey='fictional-only';modelProvider='openai';model='fixture-model';elapsedMs=0;quota=[pscustomobject]@{rateLimitsByLimitId=[pscustomobject]@{codex=[pscustomobject]@{limitId='codex';spendControlReached=$false;primary=[pscustomobject]@{windowDurationMins=300;usedPercent=10;resetsAt=$now.AddHours(2).ToUnixTimeSeconds()};secondary=[pscustomobject]@{windowDurationMins=10080;usedPercent=20;resetsAt=$now.AddDays(3).ToUnixTimeSeconds()}}}}}
-}
-& (Join-Path $Package 'tick.ps1') -StateDirectory $state -ObserveOnly -CodexReader $reader -Strict
+# A program that answers as Codex does, with one fictional account.
+$codex=Join-Path (Split-Path $Package -Parent) 'fake codex.exe'
+Add-Type -Path (Join-Path $Package 'tests/fake-codex.cs') -ReferencedAssemblies System.Web.Extensions -OutputAssembly $codex -OutputType ConsoleApplication
+& (Join-Path $Package 'tick.ps1') -StateDirectory $state -ObserveOnly -CodexExecutable $codex -Strict
 Assert ($LASTEXITCODE -eq 0) ('generic collector failed: '+$(if(Test-Path -LiteralPath (Join-Path $state 'events.jsonl')){[IO.File]::ReadAllText((Join-Path $state 'events.jsonl'))}))
 $snapshot=Read-Hotpl8Snapshot $state
 Assert ($snapshot.providers.fictional.slots[0].status -eq 'ok' -and $snapshot.providers.fictional.recommendedSlot -eq 'one') 'generic collection or selection missing'
@@ -388,9 +335,14 @@ Write-Hotpl8Text (Join-Path $Package 'data/providers/fictional.json') ($narrow|C
 $narrowReplay=Invoke-Hotpl8Replay @($snapshot) $policy
 Assert (@($narrowReplay.decisions|Where-Object stream -Like 'fictional/*').Count -eq 4 -and @($narrowReplay.summary|Where-Object stream -Like 'fictional/codex_bengalfox/*').Count -eq 0) 'replay invented unsupported registered meter'
 $at=[datetimeoffset]::UtcNow
-Add-Hotpl8ActionEvent $aliasState codex one recommendation fixture $at.AddSeconds(-2)
-Add-Hotpl8ActionEvent $aliasState fictional one recommendation fixture $at.AddSeconds(-1)
-Add-Hotpl8Insights $snapshot $policy $state $snapshot $at
+# Two events as the collector records them, one under the native family's name.
+$activityPath=Join-Path $aliasState 'activity.json';$recorded=@()
+if(Test-Path -LiteralPath $activityPath){$recorded=@((Read-Hotpl8Json $activityPath).events|Where-Object {$_})}
+foreach($entry in @(@('codex',-2),@('fictional',-1))){$recorded+=[pscustomobject]@{id=[guid]::NewGuid().ToString('N');at=$at.AddSeconds($entry[1]).ToString('o');provider=$entry[0];slot='one';kind='recommendation';reason='fixture'}}
+Write-Hotpl8Text $activityPath ([pscustomobject]@{events=$recorded;schemaVersion=1}|ConvertTo-Json -Depth 4)
+& (Join-Path $Package 'tick.ps1') -StateDirectory $state -ObserveOnly -CodexExecutable $codex -Strict
+Assert ($LASTEXITCODE -eq 0) 'collection with recorded activity failed'
+$snapshot=Read-Hotpl8Snapshot $state
 Assert (@($snapshot.recentActions|Where-Object provider -CEQ fictional).Count -ge 2) 'native or registered activity event omitted'
 $note=Get-DashboardActivityNote ([pscustomobject]@{provider='fictional';slot='one';kind='recommendation';at=$at.ToString('o')}) $policy $at
 Assert ($note.text -match '^fictional next' -and $note.text -notmatch '^codex') 'activity mislabeled registered provider'
@@ -420,7 +372,7 @@ $manual.providers.fictional|Add-Member NoteProperty disabled @() -Force
 $manual.providers.codex.slots=@([pscustomobject]@{id='other';home=$anotherHome})
 $manual.providers.codex|Add-Member NoteProperty prefer @('other') -Force
 Save-Hotpl8Policy $state $manual (Get-FileHash $policyPath).Hash
-& (Join-Path $Package 'tick.ps1') -StateDirectory $state -ObserveOnly -CodexReader $reader
+& (Join-Path $Package 'tick.ps1') -StateDirectory $state -ObserveOnly -CodexExecutable $codex
 $duplicates=Read-Hotpl8Snapshot $state
 Assert ($duplicates.providers.codex.slots[0].status -eq 'duplicate_subscription' -and $duplicates.providers.fictional.slots[0].status -eq 'duplicate_subscription') 'manual cross-provider duplicate escaped collector quarantine'
 Assert (-not $duplicates.providers.codex.recommendedSlot -and -not $duplicates.providers.fictional.recommendedSlot) 'duplicate subscription retained a recommendation'

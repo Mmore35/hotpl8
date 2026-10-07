@@ -1,4 +1,4 @@
-//! Invoke-ClaudeTick of src/providers/claude.ps1: one reading of every Claude account
+//! The Claude collection: one reading of every Claude account
 //! through cswap, then at most one switch, one request that opens a window and one test of
 //! a sign-in cswap has stopped testing, and what the status files say afterwards.
 //!
@@ -60,7 +60,7 @@ const NEEDS_HUMAN: [&str; 2] = ["relogin_required", "no_credentials"];
 /// How many tests of one stored sign-in may fail before it is called dead.
 const SPENT_AFTER: i32 = 2;
 
-/// Get-WarmMin7dFor: the weekly headroom below which an account's window is not opened.
+/// The weekly headroom below which an account's window is not opened.
 /// A reserve account keeps the stricter guard, since opening its window spends what it is
 /// kept for; a working account may be given a lower one.
 fn warm_min_7d_for(policy: &V, slot: i32) -> R<f64> {
@@ -81,7 +81,7 @@ fn warm_min_7d_for(policy: &V, slot: i32) -> R<f64> {
     }
 }
 
-/// Get-StaleQuarantineS
+/// How long cswap must have left an account untested before its sign-in is tested here.
 fn stale_quarantine_s(policy: &V) -> R<f64> {
     match policy.g("staleQuarantineS")? {
         V::Null => Ok(21_600.0),
@@ -89,7 +89,7 @@ fn stale_quarantine_s(policy: &V) -> R<f64> {
     }
 }
 
-/// Test-QuarantineStale: a "needs a person" verdict that cswap itself has stopped testing.
+/// A "needs a person" verdict that cswap itself has stopped testing.
 ///
 /// cswap sets an account aside after one refused renewal and never reads it again; only
 /// signing in again lifts that. So cswap can hold a working sign-in for an account and go
@@ -100,7 +100,7 @@ fn quarantine_stale(account: &V, stale_s: f64) -> R<bool> {
     Ok(!last_good.is_null() && last_good.dbl()? > stale_s)
 }
 
-/// Get-Proj: the weekly usage each day and the days until the limit, at the average rate
+/// The weekly usage each day and the days until the limit, at the average rate
 /// of this cycle. Both are doubles, or the whole number 0 when there is no rate.
 fn projection(account: &V, now: Dto) -> R<Option<(V, V)>> {
     let age = account.g("usageAgeSeconds")?;
@@ -172,7 +172,7 @@ impl Marks {
         read().unwrap_or_default()
     }
 
-    /// Save-TickState. Best effort: the request has been made whether or not it can be
+    /// Best effort: the request has been made whether or not it can be
     /// written down.
     fn save(&self, path: &Path) {
         let times = |items: &[(String, String)]| new_obj(items.iter().map(|(slot, at)| (slot.as_str(), V::from(at.as_str()))).collect());
@@ -192,7 +192,7 @@ fn joined(slots: &[i32]) -> String {
     slots.iter().map(i32::to_string).collect::<Vec<_>>().join("+")
 }
 
-/// Invoke-ClaudeTick. Nothing is collected for a policy that prefers no Claude account.
+/// One collection. Nothing is collected for a policy that prefers no Claude account.
 pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     let &Request { policy, state, control, provider, home, clock, .. } = request;
     if !policy.g("prefer")?.t()? {
@@ -333,7 +333,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     let hold = hold(control, now);
     let held_switch = hold.is_some() && target.is_some_and(|target| target != active);
 
-    // Test-Hotpl8ClaudeActionAuthorization: the last look before acting, taken under the
+    // The last look before acting, taken under the
     // action lock against the generation the policy was read under. A change of control
     // state since then is a quiet no, not a failure.
     let authorized = |active: i32, intent: &str, slot: i32| -> R<bool> {
@@ -893,9 +893,14 @@ mod tests {
             std::fs::read_to_string(self.directory.join("calls")).unwrap_or_default().lines().map(|line| line.trim().to_string()).collect()
         }
         fn tick_in(&self, state: &Path, policy: &V, observe_only: bool) -> R<Option<Collected>> {
+            self.tick_as("claude", state, state, policy, observe_only)
+        }
+        /// A collection for a provider by its registered name, whose state may be a
+        /// directory of its own under the one that holds the controls.
+        fn tick_as(&self, provider: &str, state: &Path, control: &Path, policy: &V, observe_only: bool) -> R<Option<Collected>> {
             std::fs::create_dir_all(state).unwrap();
             let clock = || Dto::parse(NOON)?.plus_seconds(self.later.get());
-            claude_tick(&Request { policy, state, control: state, generation: self.generation.get(), provider: "claude", cswap: Some(&self.stub), observe_only, root: &self.directory, home: &self.home, clock: &clock })
+            claude_tick(&Request { policy, state, control, generation: self.generation.get(), provider, cswap: Some(&self.stub), observe_only, root: &self.directory, home: &self.home, clock: &clock })
         }
         fn done(self) {
             crate::time::set_zone(None);
@@ -960,7 +965,7 @@ mod tests {
     const LEGACY: &str = r#"{"prefer":[1,2,3,4,5],"reserve":[5],"disabled":[],"margin5h":25,"margin7d":20,"hysteresis":10,"warm":false,"switchEnabled":false,"probeEnabled":false,"labels":{"1":"One","2":"Two"}}"#;
     const MODELS: &str = r#"{"prefer":[2,1],"reserve":[],"margin5h":25,"margin7d":20,"hysteresis":10,"warm":false,"switchEnabled":false,"probeEnabled":false,"claudeModels":["Opus"],"order":"balanced","pattern":"clustered"}"#;
 
-    /// The lines Invoke-ClaudeTick gave for the same accounts, policy, hold and parked
+    /// The lines the PowerShell collector gave for the same accounts, policy, hold and parked
     /// record under Windows PowerShell, the clock and the hold's end apart. PowerShell 7
     /// rounds the two weekly figures that end in a half the other way.
     const LEGACY_LINES: [&str; 7] = [
@@ -1180,7 +1185,7 @@ mod tests {
         }
     }
 
-    /// Invoke-ClaudeTick was taken through these collections, one after another on the
+    /// The PowerShell collector was taken through these collections, one after another on the
     /// same records, under Windows PowerShell and PowerShell 7 before it was removed; both
     /// said the same, and that is the text beside this file, with its clock made this one's.
     /// There a request that opens a window or tests a sign-in was a function that counted
@@ -1405,6 +1410,76 @@ mod tests {
             assert_eq!(said, expected, "line {} of the text, in {case}", place + 1);
         }
         assert_eq!(told.text.lines().count(), expected.lines().count());
+        lab.done();
+    }
+
+    /// A second registration of the Claude driver is asked for under its own name: its
+    /// exclusions, its budget, its events and its warm outcomes are its own, never the
+    /// family's. The PowerShell collector was held to these.
+    #[test]
+    fn a_registered_claude_keeps_its_own_name_in_what_it_records() {
+        let lab = Lab::new("tick-alias");
+        // The definitions this tree ships, and one more that is Claude under another name.
+        let shipped = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/providers");
+        let catalog = lab.directory.join("providers");
+        std::fs::create_dir_all(&catalog).unwrap();
+        for name in ["claude.json", "codex.json"] {
+            std::fs::copy(shipped.join(name), catalog.join(name)).unwrap();
+        }
+        let claude = std::fs::read_to_string(shipped.join("claude.json")).unwrap();
+        let alias = with(&with(&claude, r#""id": "claude""#, r#""id": "fictional-claude""#), r#""name": "Claude""#, r#""name": "Fictional Claude""#);
+        std::fs::write(catalog.join("fictional-claude.json"), alias).unwrap();
+        crate::registry::set_source(catalog);
+        let now = Dto::parse(NOON).ok().unwrap();
+        // The ping is refused, as the spy of the PowerShell check refused it.
+        lab.fail("run", true);
+        for kind in ["warm", "probe"] {
+            for excluded in [true, false] {
+                let account = if kind == "warm" {
+                    r#"{"number":1,"email":"alias@example.invalid","usageStatus":"ok","usageAgeSeconds":0,"usage":{"fiveHour":{"pct":0,"resetsAt":""},"sevenDay":{"pct":10,"resetsAt":"2026-10-09T12:00:00.0000000+00:00"}}}"#
+                } else {
+                    r#"{"number":1,"email":"alias@example.invalid","usageStatus":"relogin_required","lastGoodAgeSeconds":86400,"usage":null}"#
+                };
+                lab.list(&format!(r#"{{"schemaVersion":1,"activeAccountNumber":1,"accounts":[{account}]}}"#));
+                let root = lab.directory.join(format!("claude-alias-{kind}-{excluded}"));
+                let whole = policy(&format!(
+                    r#"{{"schemaVersion":3,"mode":"automate","switchEnabled":false,"warm":true,"probeEnabled":true,"automation":{{"warmExcluded":[{}]}},"providers":{{"fictional-claude":{{"prefer":[1],"reserve":[]}}}}}}"#,
+                    if excluded { r#""fictional-claude:1""# } else { "" }
+                ));
+                std::fs::create_dir_all(&root).unwrap();
+                std::fs::write(root.join("policy.json"), json::write(&whole, 12).ok().unwrap()).unwrap();
+                let view = crate::registry::provider_view(&V::Null, &whole, "fictional-claude", &[]).ok().unwrap().g("policy").ok().unwrap();
+                let state = crate::registry::provider_state_directory(&root, "fictional-claude").ok().unwrap();
+                assert_eq!(state, root.join("providers").join("fictional-claude"));
+                let before = lab.calls().len();
+                let collected = lab.tick_as("fictional-claude", &state, &root, &view, false).ok().unwrap().unwrap();
+                let pings: Vec<String> = lab.calls()[before..].iter().filter(|call| call.starts_with("run ")).cloned().collect();
+                let case = format!("{kind} excluded={excluded}");
+                assert_eq!(dig(&collected.payload, "slots").each().len(), 1, "{case}");
+                if excluded {
+                    assert_eq!(pings.len(), 0, "{case}");
+                    assert_eq!(said(&collected.payload, "slots.0.actionBlock"), "account_excluded", "{case}");
+                    assert!(!state.join("attempt-budget.json").exists(), "{case}");
+                    continue;
+                }
+                assert_eq!(pings, ["run 1 -- claude --model haiku --strict-mcp-config -p ."], "{case}");
+                assert!(!truthy(&collected.payload, "slots.0.actionBlock"), "{case}");
+                // Which of the two requests it was is in what the collection wrote down.
+                let request = json::read_or_null(&state.join("warm-state.json"));
+                assert_eq!((truthy(&request, "lastWarm.1"), truthy(&request, "lastProbe.1")), (kind == "warm", kind == "probe"), "{case}");
+                let ledger = json::read_or_null(&state.join("attempt-budget.json"));
+                assert_eq!(text(&ledger, "2026-10-06/fictional-claude/1"), "1", "{case}");
+                assert_eq!(names(&ledger).len(), 1, "{case}");
+                view.g("automation").ok().unwrap().add_member("dailyAttemptLimit", V::I32(1), true).ok().unwrap();
+                assert_eq!(action_block(&view, &state, "fictional-claude", "1", kind, now).ok().unwrap(), Some("daily_attempt_limit"), "{case}");
+                let events = dig(&json::read_or_null(&state.join("activity.json")), "events").each();
+                assert!(!events.is_empty(), "{case}");
+                assert!(events.iter().all(|event| said(event, "provider") == "fictional-claude"), "{case}");
+                if kind == "warm" {
+                    assert_eq!(said(&json::read_or_null(&state.join("warm-outcomes.json")), "claude:1.provider"), "fictional-claude", "{case}");
+                }
+            }
+        }
         lab.done();
     }
 }

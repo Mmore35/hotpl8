@@ -69,7 +69,7 @@ function Complete-IsolatedSuite($Suite){
 # leaving the 4-minute Claude regression until last made a 16-way run barely faster
 # than a serial one.
 $work=@()
-foreach($suite in @(@('tests/test-codex.ps1',99),@('tests/test-provider-core.ps1',2),@('tests/test-provider-actions.ps1',2),@('tests/test-delivery-policy.ps1',4),@('tests/test-t3-migration.ps1',15),@('tests/test-provider-registration.ps1',42),@('tests/test-dashboard.ps1',27),@('tests/test-overview.ps1',7),@('tests/test-capacity.ps1',13),@('tests/test-claude-plans.ps1',1),@('tests/test-audit-codex.ps1',1),@('tests/test-safety.ps1',18),@('tests/test-lifecycle.ps1',77),@('tests/test-job-host.ps1',10),@('tests/test-onboarding.ps1',10),@('tests/test-onboarding-flow.ps1',3),@('tests/test-bootstrap.ps1',3),@('tests/test-onboarding-native.ps1',8),@('tests/test-operations.ps1',3),@('tests/test-parking.ps1',3),@('tests/test-tray.ps1',2),@('tests/test-agent-api.ps1',6),@('tests/test-leases.ps1',4),@('tests/test-mcp.ps1',4),@('tests/test-t3-routing.ps1',15),@('tests/test-continue.ps1',60),@('tests/test-native.ps1',46),@('tests/test-native-parity.ps1',103))){
+foreach($suite in @(@('tests/test-codex.ps1',99),@('tests/test-provider-core.ps1',2),@('tests/test-provider-actions.ps1',2),@('tests/test-delivery-policy.ps1',4),@('tests/test-t3-migration.ps1',15),@('tests/test-provider-registration.ps1',42),@('tests/test-dashboard.ps1',27),@('tests/test-overview.ps1',7),@('tests/test-capacity.ps1',34),@('tests/test-claude-plans.ps1',1),@('tests/test-audit-codex.ps1',1),@('tests/test-safety.ps1',18),@('tests/test-lifecycle.ps1',77),@('tests/test-job-host.ps1',10),@('tests/test-onboarding.ps1',10),@('tests/test-onboarding-flow.ps1',3),@('tests/test-bootstrap.ps1',3),@('tests/test-onboarding-native.ps1',8),@('tests/test-operations.ps1',6),@('tests/test-parking.ps1',3),@('tests/test-tray.ps1',2),@('tests/test-agent-api.ps1',6),@('tests/test-leases.ps1',4),@('tests/test-mcp.ps1',4),@('tests/test-t3-routing.ps1',15),@('tests/test-continue.ps1',60),@('tests/test-native.ps1',46),@('tests/test-native-parity.ps1',103))){
     $work+=[pscustomobject]@{name=$suite[0];weight=$suite[1];executable=$ps;arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root $suite[0]))}
 }
 if(-not (Get-Command node -ErrorAction SilentlyContinue)){throw 'Node 22+ is required for the optional T3 integration tests.'}
@@ -83,7 +83,7 @@ if(Get-Command python -ErrorAction SilentlyContinue){
 if(-not $SkipClaude){
     $work+=[pscustomobject]@{name='tests/test_claude_plan.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_claude_plan.py'))}
     # The child already runs in $root, so the suite's own relative path resolves.
-    $work+=[pscustomobject]@{name='tests/test-tick.sh';weight=235;executable=$bash;arguments=@('--login','tests/test-tick.sh')}
+    $work+=[pscustomobject]@{name='tests/test-tick.sh';weight=149;executable=$bash;arguments=@('--login','tests/test-tick.sh')}
 }
 $capture=$Parallel -gt 1
 # Serial runs keep the declaration order they have always reported in.

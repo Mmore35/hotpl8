@@ -100,12 +100,12 @@ pub fn resolve_executable(named: Option<&str>) -> Option<String> {
     under("LOCALAPPDATA", &["Programs", "Python"]).or_else(|| under("APPDATA", &["Python"])).map(text)
 }
 
-/// Get-SlugEmail: the name cswap gives an account's own session directory.
+/// The name cswap gives an account's own session directory.
 pub fn slug_email(email: &str) -> String {
     email.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '_' }).collect()
 }
 
-/// Get-SlotEncPath: where cswap stores the sign-in it will use for this account next.
+/// Where cswap stores the sign-in it will use for this account next.
 pub fn stored_credential(home: &Path, slot: i32, email: &str) -> PathBuf {
     home.join(".claude-swap-backup").join("credentials").join(format!(".creds-{slot}-{email}.enc"))
 }
@@ -146,10 +146,13 @@ fn base64(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Get-CredMark: which sign-in a file holds and when it expires, as text that is no
+/// Which sign-in a file holds and when it expires, as text that is no
 /// secret: the start of a digest of the token, never the token. `-` says there is no such
 /// file and `?` that it cannot be read; the difference matters, because a file that is
-/// absent after a request has been cleaned up and one that cannot be read has not.
+/// absent after a request has been cleaned up and one that cannot be read has not. A
+/// refresh token is used once, so two holders replaying one can get it revoked; the mark
+/// lets the log show one sign-in giving way to the next. It does not show which program
+/// renewed a token, or why the provider refused one.
 pub fn credential_mark(path: &Path, encoded: bool) -> String {
     if !path.exists() {
         return "-".into();
@@ -179,7 +182,7 @@ pub fn credential_mark(path: &Path, encoded: bool) -> String {
     read().unwrap_or_else(|| "?".into())
 }
 
-/// Test-PingUnrenewed: a request that worked through a session of the account's own, yet
+/// A request that worked through a session of the account's own, yet
 /// left the stored sign-in exactly as it was. The session renewed its own copy, that copy
 /// is deleted afterwards, and the stored one was not replaced: the account will need a
 /// person to sign in when it expires. A mark that could not be read proves nothing.
@@ -204,7 +207,7 @@ fn delete(path: &Path) -> std::io::Result<()> {
     std::fs::remove_file(path)
 }
 
-/// Invoke-SlotPing: one smallest request as this account, to open its window or to test a
+/// One smallest request as this account, to open its window or to test a
 /// sign-in cswap has stopped testing.
 ///
 /// `cswap run` belongs to the one process it starts and never moves the account every

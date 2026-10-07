@@ -11,7 +11,7 @@ use std::path::Path;
 /// How many events the record keeps.
 const KEPT: usize = 100;
 
-/// Add-Hotpl8ActionEvent
+/// One more event in activity.json: what was done or decided for an account, and why.
 pub fn add_action_event(directory: &Path, provider: &str, slot: &str, kind: &str, reason: &str, now: Dto) -> R<()> {
     let path = directory.join("activity.json");
     let mut events = filter(&json::read_or_null(&path).g("events")?.each(), |event| event.t())?;

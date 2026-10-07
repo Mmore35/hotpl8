@@ -62,7 +62,7 @@ pub fn helper<'a>(cswap: &'a str, root: &'a Path) -> impl FnOnce(&[String]) -> O
     }
 }
 
-/// Read-Hotpl8ClaudePlans. An account is known by its email and organization together;
+/// The plan each Claude account is on, asked for seldom. An account is known by its email and organization together;
 /// both the inventory and the helper must name the same organization, and an email alone
 /// is never enough. Only an allow-listed projection is kept: no credential, no raw profile.
 pub fn plans(accounts: &[V], directory: &Path, now: Dto, reader: impl FnOnce(&[String]) -> Option<V>) -> R<V> {

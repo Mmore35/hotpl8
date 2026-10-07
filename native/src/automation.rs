@@ -39,7 +39,7 @@ pub fn pause(directory: &Path, now: Dto) -> V {
     crate::pause::pause(directory, now).unwrap_or_else(|_| obj! {"until" => V::Null, "reason" => "invalid_pause", "invalid" => true})
 }
 
-/// Get-Hotpl8ActionBlock
+/// The one reason an automatic action of this kind may not be taken now, if there is one.
 pub fn action_block(policy: &V, directory: &Path, provider: &str, slot: &str, kind: &str, now: Dto) -> R<Option<&'static str>> {
     if pause(directory, now).t()? {
         return Ok(Some("automation_paused"));
@@ -76,7 +76,8 @@ pub fn action_block(policy: &V, directory: &Path, provider: &str, slot: &str, ki
     })
 }
 
-/// Add-Hotpl8Attempt: today's counts are kept, earlier days are dropped.
+/// One more request counted against today's budget: today's counts are kept, earlier
+/// days are dropped.
 pub fn add_attempt(directory: &Path, provider: &str, slot: &str, now: Dto) -> R<()> {
     let day = now.utc().date();
     let path = directory.join("attempt-budget.json");
@@ -181,6 +182,40 @@ mod tests {
         assert!(pause(&directory, now).g("invalid").ok().unwrap().t().ok().unwrap());
         std::fs::write(directory.join("automation-pause.json"), r#"{"until":"2026-10-06T11:00:00.0000000+00:00"}"#).unwrap();
         assert_eq!(block("2", "switch"), None);
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// The cases the PowerShell collector's rule was held to, in their order and in one
+    /// directory, as they were there.
+    #[test]
+    fn a_budget_a_schedule_and_a_pause_each_block_what_they_name() {
+        let directory = scratch("operations");
+        // A Sunday.
+        let now = at("2026-09-13T12:00:00.0000000+00:00");
+        let block = |policy: &V, provider: &str, slot: &str, kind: &str, at: Dto| action_block(policy, &directory, provider, slot, kind, at).ok().unwrap();
+        // The budget outlives the process that spent it and starts again on the next UTC day.
+        let limited = parse(r#"{"automation":{"dailyAttemptLimit":1}}"#, "").ok().unwrap();
+        assert_eq!(block(&limited, "claude", "1", "warm", now), None);
+        add_attempt(&directory, "claude", "1", now).ok().unwrap();
+        assert_eq!(block(&limited, "claude", "1", "probe", now), Some("daily_attempt_limit"));
+        assert_eq!(block(&limited, "claude", "1", "warm", now.plus_seconds(86_400).ok().unwrap()), None);
+        assert_eq!(block(&limited, "claude", "2", "warm", now), None);
+        // A schedule and an exclusion stop prompts; switching is governed separately.
+        let scheduled = parse(r#"{"automation":{"warmExcluded":["codex:main"],"schedule":{"days":[1],"start":"10:00","end":"12:00","timeZone":"UTC"}}}"#, "").ok().unwrap();
+        assert_eq!(block(&scheduled, "claude", "1", "warm", now), Some("outside_work_hours"));
+        assert_eq!(block(&scheduled, "claude", "1", "switch", now), None);
+        let excluded = parse(r#"{"automation":{"warmExcluded":["codex:main"]}}"#, "").ok().unwrap();
+        assert_eq!(block(&excluded, "codex", "main", "warm", now), Some("account_excluded"));
+        // A pause as `hotpl8 pause` writes one stops every automatic action, with no policy at all.
+        let until = now.plus_seconds(3600).ok().unwrap().o();
+        std::fs::write(directory.join("automation-pause.json"), format!(r#"{{"schemaVersion":1,"until":"{until}","reason":"test pause"}}"#)).unwrap();
+        for kind in ["switch", "warm", "probe"] {
+            assert_eq!(block(&V::Null, "claude", "1", kind, now), Some("automation_paused"), "{kind}");
+        }
+        std::fs::remove_file(directory.join("automation-pause.json")).unwrap();
+        // A count that cannot be read is not a count of nothing.
+        std::fs::write(directory.join("attempt-budget.json"), "{").unwrap();
+        assert_eq!(block(&V::Null, "claude", "1", "warm", now), Some("attempt_state_invalid"));
         std::fs::remove_dir_all(&directory).unwrap();
     }
 

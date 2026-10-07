@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 const TIMEOUT_MS: u64 = 90_000;
 
 /// The PowerShell files an event may name as the place of a failure.
-const SOURCES: [&str; 7] = ["common.ps1", "claude.ps1", "codex.ps1", "warming.ps1", "insights.ps1", "collection.ps1", "claude-plans.ps1"];
+const SOURCES: [&str; 6] = ["common.ps1", "claude.ps1", "codex.ps1", "insights.ps1", "collection.ps1", "claude-plans.ps1"];
 
 pub struct Lanes<'a> {
     /// The release whose src/lane.ps1 is run.

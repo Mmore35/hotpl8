@@ -29,27 +29,6 @@ function Get-Hotpl8Pause([string]$Directory, [datetimeoffset]$Now = [datetimeoff
     } catch { return [pscustomobject]@{until=$null;reason='invalid_pause';invalid=$true} }
     return $leases
 }
-function Get-Hotpl8ActionBlock($Policy, [string]$Directory, [string]$Provider, [string]$Slot, [string]$Kind, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    if (Get-Hotpl8Pause $Directory $Now) { return 'automation_paused' }
-    if ($Kind -eq 'switch') { return $null }
-    if (-not (Test-Hotpl8WorkTime $Policy.automation.schedule $Now)) { return 'outside_work_hours' }
-    if (($Provider + ':' + $Slot) -in @($Policy.automation.warmExcluded)) { return 'account_excluded' }
-    $limit = if ($null -ne $Policy.automation.dailyAttemptLimit) { [int]$Policy.automation.dailyAttemptLimit } else { 12 }
-    $ledger = Read-Hotpl8Json (Join-Path $Directory 'attempt-budget.json')
-    if((Test-Path -LiteralPath (Join-Path $Directory 'attempt-budget.json')) -and -not $ledger){return 'attempt_state_invalid'}
-    if($Kind -eq 'warm' -and (Test-Path -LiteralPath (Join-Path $Directory 'warm-outcomes.json')) -and -not (Read-Hotpl8Json (Join-Path $Directory 'warm-outcomes.json'))){return 'warm_state_invalid'}
-    $key = $Now.UtcDateTime.ToString('yyyy-MM-dd') + '/' + $Provider + '/' + $Slot
-    if ($ledger.$key -ge $limit) { return 'daily_attempt_limit' }
-    return $null
-}
-function Add-Hotpl8Attempt([string]$Directory, [string]$Provider, [string]$Slot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    $day = $Now.UtcDateTime.ToString('yyyy-MM-dd')
-    $path = Join-Path $Directory 'attempt-budget.json'; $old = Read-Hotpl8Json $path; $next = @{}
-    foreach ($p in $old.PSObject.Properties) { if ($p.Name.StartsWith($day + '/')) { $next[$p.Name] = [int]$p.Value } }
-    $key = $day + '/' + $Provider + '/' + $Slot
-    $next[$key] = [int]$next[$key] + 1
-    Write-Hotpl8Text $path ($next | ConvertTo-Json)
-}
 function Assert-Hotpl8AutomationPolicy($Policy) {
     $a = $Policy.automation
     foreach($name in @('disabled','claudeModels')){

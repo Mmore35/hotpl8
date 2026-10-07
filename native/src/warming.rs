@@ -1,4 +1,4 @@
-//! src/warming.ps1: what became of a request to open an account's window. A program that
+//! What became of a request to open an account's window. A program that
 //! ran to its end is an attempt, never proof that the provider opened anything.
 
 use crate::files;
@@ -9,7 +9,7 @@ use crate::registry;
 use crate::time::Dto;
 use std::path::Path;
 
-/// New-Hotpl8WarmOutcome
+/// The record of a request just made to open an account's window.
 pub fn new_warm_outcome(provider: &str, slot: &str, identity: &str, meter: &str, succeeded: bool, now: Dto) -> R<V> {
     Ok(obj! {
         "schemaVersion" => 1,
@@ -26,7 +26,7 @@ pub fn new_warm_outcome(provider: &str, slot: &str, identity: &str, meter: &str,
     })
 }
 
-/// Update-Hotpl8WarmOutcome: the outcome as the latest reading leaves it. Null when there
+/// The outcome as the latest reading leaves it. Null when there
 /// was none.
 pub fn update_warm_outcome(outcome: &V, identity: &str, observed_at: &V, reset_at: &V, fresh: bool, now: Dto) -> R<V> {
     if !outcome.t()? {
@@ -73,7 +73,7 @@ pub fn update_warm_outcome(outcome: &V, identity: &str, observed_at: &V, reset_a
     Ok(result)
 }
 
-/// Read-Hotpl8WarmOutcomes
+/// Every recorded request, by account. A record that cannot be read is none.
 pub fn warm_outcomes(directory: &Path) -> V {
     match json::read_or_null(&directory.join("warm-outcomes.json")) {
         V::Null => obj! {},
@@ -81,12 +81,12 @@ pub fn warm_outcomes(directory: &Path) -> V {
     }
 }
 
-/// Save-Hotpl8WarmOutcomes
+/// Writes the recorded requests back.
 pub fn save_warm_outcomes(directory: &Path, outcomes: &V) -> R<()> {
     files::write_json(&directory.join("warm-outcomes.json"), outcomes, 10)
 }
 
-/// Test-Hotpl8WarmPending: a request already made for this account is still open, so
+/// A request already made for this account is still open, so
 /// another must not be sent.
 pub fn warm_pending(outcome: &V, identity: &str, now: Dto) -> R<bool> {
     if !outcome.t()? || outcome.g("identity")?.ne_s(identity)? || outcome.g("outcome")?.in_s(&["failed", "expired", "account_changed"])? {

@@ -78,7 +78,6 @@ try{
     Check 'all read operations preserve directory bytes and never invoke native processes' {
         function Invoke-Hotpl8Process {throw 'Native process called'}
         function Read-CodexQuota {throw 'Native quota called'}
-        function Invoke-ClaudeTick {throw 'Collector called'}
         $before=@(Get-ChildItem -LiteralPath $dir -File|ForEach-Object {$_.Name+':'+(Get-FileHash $_.FullName).Hash}) -join ','
         foreach($op in @('status','explain','capabilities','doctor','accounts')){Assert (Request $op).ok}
         Assert (Request readiness @{provider='claude'}).ok

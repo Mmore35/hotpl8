@@ -1,4 +1,4 @@
-//! src/provider-runtime.ps1: which shipped routine reads a registered provider, what its
+//! Which shipped routine reads a registered provider, what its
 //! reading comes to for the collector, and what is shown for a provider that could not be
 //! read. A definition selects a routine by name; it never names a program.
 
@@ -50,7 +50,7 @@ pub struct Collected {
 /// The switches a provider's routine is given only when its definition allows the act.
 const SWITCHES: [(&str, &str); 3] = [("selection", "switchEnabled"), ("warming", "warm"), ("recoveryProbe", "probeEnabled")];
 
-/// Invoke-Hotpl8RegisteredCollection
+/// One reading of a registered provider, by the routine its definition's driver names.
 pub fn registered_collection(registration: &V, reading: &Reading) -> R<Collected> {
     let id = registration.g("id")?.s()?;
     let driver = provider_driver(&registration.g("driver")?)?;
@@ -135,7 +135,7 @@ struct Seen {
     registration: V,
 }
 
-/// Assert-Hotpl8CollectedOwnership: two providers signed into the same subscription are not
+/// Two providers signed into the same subscription are not
 /// two lots of capacity. Both accounts are marked, each provider chooses again without its
 /// own, and the providers this happened to are named.
 pub fn collected_ownership(registrations: &[V], payloads: &[(String, V)], directory: &Path, now: Dto) -> R<Vec<String>> {
@@ -206,7 +206,7 @@ pub fn collected_ownership(registrations: &[V], payloads: &[(String, V)], direct
     Ok(conflicts.into_iter().map(|(id, _)| id).collect())
 }
 
-/// Get-Hotpl8RegisteredFailure: what is shown for a provider while it cannot be read. Its
+/// What is shown for a provider while it cannot be read. Its
 /// accounts stay listed, and none of them is called fresh or in use.
 pub fn registered_failure(registration: &V, previous: &V, reason: &str, failure_code: Option<&str>) -> R<V> {
     let driver = provider_driver(&registration.g("driver")?)?;

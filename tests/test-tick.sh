@@ -331,49 +331,6 @@ ord soonest-reset '[1]'
 mkr 1 20 60 240 30 ; run "leaving the reserve ignores the lead rule" 2
 cp "$HERE/tests/legacy-policy.json" "$S/policy.json" || exit 2
 
-echo "== warm: pattern -> offsets (fleet-shape portability) =="
-# Offsets are pure: (pattern, prefer, weights) -> slot:minute. Testing the function
-# directly rather than through a tick keeps these independent of wall-clock time,
-# which is what lets them assert fleet shapes nobody here owns (Max20x, N=5, N=1).
-cp "$HERE/src/providers/claude.ps1" "$S/funcs.ps1" || exit 2
-cat > "$S/offsets.ps1" <<'EOF'
-. (Join-Path $PSScriptRoot 'funcs.ps1')
-$spec = Get-Content (Join-Path $PSScriptRoot 'spec.json') -Raw | ConvertFrom-Json
-$off = Get-WarmOffsets $spec.policy @($spec.prefer | ForEach-Object { [int]$_ })
-if ($null -eq $off) { Write-Output 'null'; exit 0 }
-Write-Output ((($off.Keys | Sort-Object) | ForEach-Object { "$_=$($off[$_])" }) -join ' ')
-EOF
-offs() {  # offs <name> <expected> <spec json>
-    printf '%s' "$3" > "$S/spec.json"
-    local got; got=$("$PS_BIN" -NoProfile -ExecutionPolicy Bypass -File "$(winpath "$S/offsets.ps1")" 2>&1 | tr -d '\r' | tail -1)
-    local r="PASS"; [ "$got" = "$2" ] || r="FAIL"
-    case "$r" in PASS) PASS=$((PASS+1));; *) FAIL=$((FAIL+1));; esac
-    printf '%-42s %-24s want=%-24s %s\n' "$1" "$got" "$2" "$r"
-}
-
-offs "maintain = no phasing"        "null" \
-     '{"prefer":[3,2,1],"policy":{"pattern":"maintain"}}'
-offs "N=1 degrades to maintain"     "null" \
-     '{"prefer":[1],"policy":{"pattern":"even"}}'
-offs "even, N=3 -> 0/100/200"       "1=200 2=100 3=0" \
-     '{"prefer":[3,2,1],"policy":{"pattern":"even"}}'
-offs "even, N=5 -> hourly"          "1=240 2=180 3=120 4=60 5=0" \
-     '{"prefer":[5,4,3,2,1],"policy":{"pattern":"even"}}'
-offs "synced -> all together"       "1=0 2=0 3=0" \
-     '{"prefer":[3,2,1],"policy":{"pattern":"synced"}}'
-# The target shape: N=4 g=2 => two pairs 2.5h apart => 2h burst / 30m gap.
-offs "clustered g2, N=4 -> 0/0/150/150" "1=150 2=150 3=0 4=0" \
-     '{"prefer":[4,3,2,1],"policy":{"pattern":"clustered","warmGroup":2}}'
-offs "clustered g1 == even"         "1=200 2=100 3=0" \
-     '{"prefer":[3,2,1],"policy":{"pattern":"clustered","warmGroup":1}}'
-# THE MIXED-FLEET CASE. A Max20x beside a Pro must hold the floor ~20x longer, so
-# the Pro's window opens at minute 290, NOT at the even-spacing answer of 150.
-# This is the assertion that makes the system correct for someone else's fleet.
-offs "mixed weights are proportional, not even" "1=0 2=290" \
-     '{"prefer":[1,2],"policy":{"pattern":"even","weights":{"1":20,"2":1}}}'
-offs "absent weights default to 1"  "1=150 2=0" \
-     '{"prefer":[2,1],"policy":{"pattern":"even","weights":{"2":1}}}'
-
 echo "== hold: the self-expiring lease =="
 # WHY A LEASE RATHER THAN A FLAG, since every case below only makes sense given it:
 # the failure that matters is the holding job dying BEFORE it can clear a durable
