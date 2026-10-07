@@ -111,7 +111,7 @@ pub fn stored_credential(home: &Path, slot: i32, email: &str) -> PathBuf {
 }
 
 /// The copy of the sign-in a request through cswap leaves in the account's own session.
-fn session_credential(home: &Path, slot: i32, email: &str) -> PathBuf {
+pub fn session_credential(home: &Path, slot: i32, email: &str) -> PathBuf {
     home.join(".claude-swap-backup").join("sessions").join(format!("{slot}-{}", slug_email(email))).join(".credentials.json")
 }
 

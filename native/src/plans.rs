@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 const PROFILES: [(&str, &str, i32); 3] = [("claude-pro", "Pro", 1), ("claude-max-5x", "Max 5x", 5), ("claude-max-20x", "Max 20x", 20)];
 
 /// `$id -notmatch '^[1-9][0-9]{0,3}$'`, the other way round.
-fn numbered(id: &str) -> bool {
+pub fn numbered(id: &str) -> bool {
     let body = id.strip_suffix('\n').unwrap_or(id).as_bytes();
     (1..=4).contains(&body.len()) && body[0] != b'0' && body.iter().all(u8::is_ascii_digit)
 }

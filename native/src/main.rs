@@ -9,6 +9,7 @@ mod activity;
 mod automation;
 mod capacity;
 mod claude;
+mod claude_tick;
 mod codex;
 mod collection;
 mod contract;
