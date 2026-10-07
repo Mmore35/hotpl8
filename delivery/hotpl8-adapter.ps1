@@ -41,29 +41,11 @@ if($Operation -in @('preflight','health')){
 }
 Sync-Hotpl8T3Delivery $Operation $InstallDirectory $ReleaseDirectory $StateDirectory
 if($Operation -in @('activate','recover')){
-    $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
-    if($registration.scheduledJobs){
-        # Enrolled native components update through the same verified release.
-        # Hosts are immutable; updating Actions does not stop the admitted updater.
-        & (Join-Path $ReleaseDirectory 'delivery/register.ps1') -InstallDirectory $InstallDirectory -Python $registration.python|Out-Null
-        $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
-    }
-    if($registration){
-        $registration|Add-Member NoteProperty componentHealth $true -Force
-        Write-Hotpl8Text (Join-Path $InstallDirectory 'delivery.json') ($registration|ConvertTo-Json -Depth 10) -NoBom
-    }
-    $owned=Read-Hotpl8Json (Join-Path $InstallDirectory 'installation.json')
-    if($owned){
-        $build=Read-Hotpl8Json (Join-Path $ReleaseDirectory 'build-info.json')
-        $owned|Add-Member NoteProperty sourceSha $build.sha -Force
-        $owned|Add-Member NoteProperty channel 'main' -Force
-        $owned|Add-Member NoteProperty managedBy 'local-delivery' -Force
-        $owned.version=(Get-Content -LiteralPath (Join-Path $ReleaseDirectory 'VERSION') -Raw).Trim()
-        Write-Hotpl8Text (Join-Path $InstallDirectory 'installation.json') ($owned|ConvertTo-Json -Depth 6) -NoBom
-    }
     # hotpl8 asks a reader beside the installed launcher before it starts PowerShell
-    # (docs/install.md, "The launcher"). Nothing here may stop an activation: without these
-    # files every command still starts through launch.ps1.
+    # (docs/install.md, "The launcher"), and the scheduler starts the collector through the
+    # same copy, so it is in place before the tasks are registered. Nothing here may stop an
+    # activation: without these files every command and every wake still starts through
+    # launch.ps1.
     try{
         . (Join-Path $ReleaseDirectory 'src/native.ps1')
         $shipped=Get-Hotpl8NativePath $ReleaseDirectory
@@ -87,6 +69,26 @@ if($Operation -in @('activate','recover')){
             if((Test-Path -LiteralPath $door -PathType Leaf) -and [IO.File]::ReadAllText($door).Replace("`r`n","`n") -ceq $enrolled){Copy-Item -LiteralPath $handOff -Destination $door -Force}
         }
     }catch{}
+    $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
+    if($registration.scheduledJobs){
+        # Enrolled native components update through the same verified release.
+        # Hosts are immutable; updating Actions does not stop the admitted updater.
+        & (Join-Path $ReleaseDirectory 'delivery/register.ps1') -InstallDirectory $InstallDirectory -Python $registration.python|Out-Null
+        $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
+    }
+    if($registration){
+        $registration|Add-Member NoteProperty componentHealth $true -Force
+        Write-Hotpl8Text (Join-Path $InstallDirectory 'delivery.json') ($registration|ConvertTo-Json -Depth 10) -NoBom
+    }
+    $owned=Read-Hotpl8Json (Join-Path $InstallDirectory 'installation.json')
+    if($owned){
+        $build=Read-Hotpl8Json (Join-Path $ReleaseDirectory 'build-info.json')
+        $owned|Add-Member NoteProperty sourceSha $build.sha -Force
+        $owned|Add-Member NoteProperty channel 'main' -Force
+        $owned|Add-Member NoteProperty managedBy 'local-delivery' -Force
+        $owned.version=(Get-Content -LiteralPath (Join-Path $ReleaseDirectory 'VERSION') -Raw).Trim()
+        Write-Hotpl8Text (Join-Path $InstallDirectory 'installation.json') ($owned|ConvertTo-Json -Depth 6) -NoBom
+    }
 }
 # No HotPl8 daemon is killed: the collector is a scheduled one-shot. The runner
 # holds runtime.lock and tick.lock across activation, so the next wake selects

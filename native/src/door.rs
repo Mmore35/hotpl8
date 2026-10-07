@@ -98,25 +98,86 @@ pub fn relayed(_said: &[OsString]) -> Option<u8> {
     None
 }
 
-/// What delivery/launch.ps1 does before it starts a release, for the requests the reader
-/// owns: the lease an update waits for, the reader of the release in force, and the state
-/// directory that release is told to use.
+/// The exit status of one scheduled wake of the release in force, when this program is the
+/// copy beside an installation's launcher: what the scheduler starts every minute. An update
+/// in progress is no failure, and the wake after it collects.
 #[cfg(windows)]
-fn held(installation: &Path, said: &[OsString]) -> Option<(std::fs::File, PathBuf, String)> {
+pub fn woken() -> u8 {
+    let program = std::env::current_exe().ok();
+    let Some(installation) = program.as_deref().and_then(Path::parent) else { return crate::FAILED };
+    match in_force(installation) {
+        None => crate::FAILED,
+        Some(InForce::Updating) => 0,
+        Some(InForce::Release { lease, root, state }) => {
+            let mut collector = collector_of(&root, &state);
+            let child = collector.env("HOTPL8_STATE_DIRECTORY", &state).env("HOTPL8_INSTALL_DIRECTORY", installation).status();
+            // The release stays in place until its collector has ended.
+            drop(lease);
+            child.ok().and_then(|status| status.code()).map_or(crate::FAILED, |code| u8::try_from(code).unwrap_or(crate::FAILED))
+        }
+    }
+}
+#[cfg(not(windows))]
+pub fn woken() -> u8 {
+    crate::FAILED
+}
+
+/// One scheduled wake of a release. A release from before the collector was compiled can
+/// come back into force by a rollback, and its collector is its tick.ps1, started as
+/// delivery/launch.ps1 starts it. Every release whose collector is compiled has src/lane.ps1.
+#[cfg(windows)]
+fn collector_of(release: &Path, state: &str) -> std::process::Command {
+    if release.join("src").join("lane.ps1").is_file() {
+        let mut compiled = std::process::Command::new(reader_of(release));
+        compiled.arg("collect").arg("--root").arg(release).arg("--state").arg(state).arg("--scheduled");
+        return compiled;
+    }
+    let mut script = std::process::Command::new(crate::lane::powershell(None));
+    script.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(release.join("tick.ps1")).args(["-Scheduled", "-StateDirectory", state]);
+    script
+}
+
+/// What an installation that updates itself has in force.
+#[cfg(windows)]
+enum InForce {
+    /// An update holds the installation alone.
+    Updating,
+    /// The lease an update waits for, the release, and the state directory it is told to use.
+    Release { lease: std::fs::File, root: PathBuf, state: String },
+}
+
+#[cfg(windows)]
+fn reader_of(release: &Path) -> PathBuf {
+    release.join("bin").join("windows").join("hotpl8-native.exe")
+}
+
+/// What delivery/launch.ps1 does before it starts a release. `None` is an installation that
+/// cannot say which release is in force.
+#[cfg(windows)]
+fn in_force(installation: &Path) -> Option<InForce> {
     use std::os::windows::fs::OpenOptionsExt;
-    // Only words the reader owns go past PowerShell. The release's own reader reads them
-    // again, so this copy may be older or newer than the release.
-    request(said, installation)?;
     let text = |file: &str, name: &str| Some(crate::json::read_file(&installation.join(file)).ok()??.g(name).ok()?.as_str()?.to_owned());
     let state = text("delivery.json", "stateDirectory")?;
     // An update opens this file sharing it with no one; every command in progress holds it shared.
-    let lease = std::fs::OpenOptions::new().read(true).write(true).create(true).share_mode(3).open(installation.join("runtime.lock")).ok()?;
+    let Ok(lease) = std::fs::OpenOptions::new().read(true).write(true).create(true).share_mode(3).open(installation.join("runtime.lock")) else { return Some(InForce::Updating) };
     let sha = text("current.json", "sha")?;
     if !crate::is_commit(&sha) || text("current.json", "release")? != format!("releases/{sha}") {
         return None;
     }
-    let reader = installation.join("releases").join(sha).join("bin").join("windows").join("hotpl8-native.exe");
-    Some((lease, reader, state))
+    Some(InForce::Release { lease, root: installation.join("releases").join(sha), state })
+}
+
+/// For the requests the reader owns: the lease, the reader of the release in force, and the
+/// state directory that release is told to use.
+#[cfg(windows)]
+fn held(installation: &Path, said: &[OsString]) -> Option<(std::fs::File, PathBuf, String)> {
+    // Only words the reader owns go past PowerShell. The release's own reader reads them
+    // again, so this copy may be older or newer than the release.
+    request(said, installation)?;
+    match in_force(installation)? {
+        InForce::Release { lease, root, state } => Some((lease, reader_of(&root), state)),
+        InForce::Updating => None,
+    }
 }
 
 /// The bytes a stream of this start is given for `text`. Windows PowerShell writes to a file
@@ -246,7 +307,10 @@ mod tests {
         drop(first);
         let update = std::fs::OpenOptions::new().read(true).write(true).share_mode(0).open(root.join("runtime.lock")).unwrap();
         assert_eq!(found(&["status"]), None);
+        // A wake during an update is no failure; one with no release to name is.
+        assert!(matches!(in_force(&root), Some(InForce::Updating)));
         drop(update);
+        assert!(matches!(in_force(&root), Some(InForce::Release { root: release, .. }) if release == root.join("releases").join(SHA)));
         for (sha, release) in [("main", "releases/main".to_owned()), (SHA, "releases/other".to_owned()), (&*SHA.to_uppercase(), format!("releases/{}", SHA.to_uppercase()))] {
             pointer(sha, &release);
             assert_eq!(found(&["status"]), None, "{sha} {release}");
@@ -256,7 +320,29 @@ mod tests {
         std::fs::remove_file(root.join("delivery.json")).unwrap();
         pointer(SHA, &format!("releases/{SHA}"));
         assert_eq!(found(&["status"]), None);
+        assert!(in_force(&root).is_none());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_wake_starts_the_collector_the_release_has() {
+        let release = std::env::temp_dir().join(format!("hotpl8-native-wake-{}", std::process::id()));
+        std::fs::create_dir_all(release.join("src")).unwrap();
+        let started = || {
+            let command = collector_of(&release, STATE);
+            (PathBuf::from(command.get_program()), command.get_args().map(|word| word.to_string_lossy().into_owned()).collect::<Vec<_>>())
+        };
+        let path = |file: PathBuf| file.to_string_lossy().into_owned();
+        // A release from before the collector was compiled.
+        let (program, said) = started();
+        assert!(program.ends_with(r"System32\WindowsPowerShell\v1.0\powershell.exe"), "{program:?}");
+        assert_eq!(said, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &path(release.join("tick.ps1")), "-Scheduled", "-StateDirectory", STATE]);
+        std::fs::write(release.join("src").join("lane.ps1"), "").unwrap();
+        let (program, said) = started();
+        assert_eq!(program, release.join("bin").join("windows").join("hotpl8-native.exe"));
+        assert_eq!(said, ["collect", "--root", &path(release.clone()), "--state", STATE, "--scheduled"]);
+        std::fs::remove_dir_all(&release).unwrap();
     }
 
     #[test]

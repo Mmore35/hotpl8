@@ -150,7 +150,6 @@ pub struct Selection {
     pub active_ok: bool,
     pub ranked: Vec<i32>,
     pub critical: V,
-    pub decision: V,
 }
 
 /// Get-ClaudeSelection
@@ -163,7 +162,7 @@ pub fn claude_selection(policy: &V, prefer: &[i32], accounts: &Accounts, active:
     let critical = decision.g("critical")?;
     let ranked = if critical.g("active")?.t()? { decision.g("ranked")? } else { decision.g("allRanked")? };
     let ranked = ranked.each().iter().map(V::to_int).collect::<R<Vec<i32>>>()?;
-    Ok(Selection { target, active_ok, ranked, critical, decision })
+    Ok(Selection { target, active_ok, ranked, critical })
 }
 
 #[cfg(test)]

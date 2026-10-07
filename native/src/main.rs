@@ -1,9 +1,11 @@
-//! HotPl8's compiled reader: `version`, `status` and `explain`.
+//! HotPl8's compiled program: the reader (`version`, `status` and `explain`) and the
+//! collector (`collect`, one wake).
 //!
-//! These three commands are implemented here and nowhere else. A launcher hands the reader
-//! the words the user typed (`user`, in door.rs); the PowerShell entry, which has the rest of
-//! HotPl8, hands it a request it has already understood (request.rs). Either way the answer
-//! printed is this program's. The contract is docs/plans/rust-read-side.md.
+//! These are implemented here and nowhere else. A launcher hands the reader the words the
+//! user typed (`user`, in door.rs); the PowerShell entry, which has the rest of HotPl8, hands
+//! it a request it has already understood (request.rs). Either way the answer printed is this
+//! program's. The scheduler starts the collector (`wake`, in door.rs, and wake.rs). The
+//! contract is docs/plans/rust-read-side.md.
 
 mod activity;
 mod automation;
@@ -100,6 +102,12 @@ fn main() -> ExitCode {
     if let [command, file] = arguments.as_slice() {
         if command == "batch" {
             return batch(Path::new(file));
+        }
+    }
+    // The scheduler's start: the copy beside the launcher wakes the release in force.
+    if let [command] = arguments.as_slice() {
+        if command == "wake" {
+            return ExitCode::from(door::woken());
         }
     }
     // A wake prints what it did, and never an answer a reader would.

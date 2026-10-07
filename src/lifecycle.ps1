@@ -74,9 +74,19 @@ function Set-Hotpl8UserPath([string]$Directory,[bool]$Add) {
 # asserted and run by a test without creating, editing or deleting a real scheduled task.
 function Get-Hotpl8TaskDefinition($Installation,[string]$Directory) {
     . (Join-Path $PSScriptRoot 'job-host.ps1')
+    . (Join-Path $PSScriptRoot 'native.ps1')
     $hostExe=Install-Hotpl8JobHost $Directory
     $shell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    $argv=@('225',(Join-Path $Directory 'job-runs/collector'),$Directory,$shell,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $Directory 'app/tick.ps1'),'-Scheduled','-StateDirectory',$Installation.stateDirectory)
+    $wake=@($shell,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $Directory 'app/tick.ps1'),'-Scheduled','-StateDirectory',$Installation.stateDirectory)
+    # An installation that updates itself keeps the compiled program beside its launcher, and
+    # that copy wakes the release in force without starting PowerShell (native/src/door.rs).
+    # It is named only when it is this release's own: an older copy does not know the word.
+    # Every other installation keeps the start above, which reaches the same collector.
+    try{
+        $beside=Join-Path $Directory 'hotpl8-native.exe';$shipped=Get-Hotpl8NativePath (Split-Path $PSScriptRoot -Parent)
+        if((Test-Path -LiteralPath (Join-Path $Directory 'current.json') -PathType Leaf) -and (Test-Path -LiteralPath $beside -PathType Leaf) -and (Test-Path -LiteralPath $shipped -PathType Leaf) -and (Get-FileHash -LiteralPath $beside -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $shipped -Algorithm SHA256).Hash){$wake=@($beside,'wake')}
+    }catch{}
+    $argv=@('225',(Join-Path $Directory 'job-runs/collector'),$Directory)+$wake
     [pscustomobject]@{
         name='HotPl8-'+$Installation.id
         description='HotPl8 owned installation '+$Installation.id

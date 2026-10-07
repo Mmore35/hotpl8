@@ -92,9 +92,7 @@ pub fn write_text(path: &Path, text: &str, mark: bool) -> R<()> {
 /// Write-Hotpl8Text $path ($value | ConvertTo-Json -Depth $depth): a state file.
 #[track_caller]
 pub fn write_json(path: &Path, value: &V, depth: usize) -> R<()> {
-    let mut text = json::write(value, depth)?;
-    text.push('\n');
-    write_text(path, &text, true)
+    write_text(path, &json::write(value, depth)?, true)
 }
 
 /// A file opened so that no one else can open it while this is held.
@@ -105,7 +103,7 @@ pub struct Lock {
 /// Why a lock was not taken: someone holds it, or the system refused for another reason.
 pub enum Unlocked {
     Busy,
-    Refused(std::io::Error),
+    Refused,
 }
 
 /// [IO.File]::Open($path,'OpenOrCreate','ReadWrite','None')
@@ -120,14 +118,14 @@ pub fn lock(path: &Path) -> Result<Lock, Unlocked> {
     let file = match options.open(path) {
         Ok(file) => file,
         Err(error) if cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33)) => return Err(Unlocked::Busy),
-        Err(error) => return Err(Unlocked::Refused(error)),
+        Err(_) => return Err(Unlocked::Refused),
     };
     // Off Windows .NET holds an advisory lock on the open file; so does this.
     #[cfg(not(windows))]
     match file.try_lock() {
         Ok(()) => {}
         Err(std::fs::TryLockError::WouldBlock) => return Err(Unlocked::Busy),
-        Err(std::fs::TryLockError::Error(error)) => return Err(Unlocked::Refused(error)),
+        Err(std::fs::TryLockError::Error(_)) => return Err(Unlocked::Refused),
     }
     Ok(Lock { _file: file })
 }
@@ -207,7 +205,7 @@ pub mod tests {
         write_text(&path, "two", false).ok().unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"two");
         write_json(&path, &crate::obj! {"a" => V::I32(1)}, 4).ok().unwrap();
-        assert_eq!(std::fs::read(&path).unwrap(), b"\xef\xbb\xbf{\n  \"a\": 1\n}\n");
+        assert_eq!(std::fs::read(&path).unwrap(), b"\xef\xbb\xbf{\n  \"a\": 1\n}");
         assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
         let missing = directory.join("none").join("status.json");
         let stop = write_text(&missing, "x", true).err().unwrap();
@@ -225,7 +223,7 @@ pub mod tests {
         assert!(matches!(lock(&path), Err(Unlocked::Busy)));
         drop(held);
         assert!(lock(&path).is_ok());
-        assert!(matches!(lock(&directory.join("none").join("x.lock")), Err(Unlocked::Refused(_))));
+        assert!(matches!(lock(&directory.join("none").join("x.lock")), Err(Unlocked::Refused)));
         std::fs::remove_dir_all(&directory).unwrap();
     }
 

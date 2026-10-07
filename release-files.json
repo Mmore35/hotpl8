@@ -207,7 +207,8 @@
     "tests/parity/cases.ps1",
     "tests/parity/fuzz.ps1",
     "tests/parity/expected-status.txt",
-    "docs/plans/rust-read-side.md"
+    "docs/plans/rust-read-side.md",
+    "src/lane.ps1"
   ],
   "platformFiles": {
     "windows": [

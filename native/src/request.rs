@@ -32,8 +32,8 @@ pub struct Request {
     pub policy: Option<PathBuf>,
     pub as_json: bool,
     /// Numbers and durations as PowerShell 7 computes them rather than Windows PowerShell 5.1.
-    /// The collector that writes the state is PowerShell, and the reader shows its numbers
-    /// the way that collector would: 5.1 on Windows, 7 elsewhere.
+    /// The collector writes the state with the numbers PowerShell gave it before it was
+    /// compiled, and the reader shows them the same way: 5.1 on Windows, 7 elsewhere.
     pub core: bool,
     /// Test-only: the instant to answer for instead of the clock.
     pub now: Option<Dto>,

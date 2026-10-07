@@ -1,4 +1,4 @@
-//! PowerShell's dynamic values and operators, as far as `status` and `explain` use them.
+//! PowerShell's dynamic values and operators, as far as the reader and the collector use them.
 //!
 //! The ported modules follow the PowerShell source line by line on top of these helpers.
 //! Each helper models exactly the type combinations real state files produce and stops as

@@ -21,7 +21,7 @@ pub fn control_write<T>(directory: &Path, timeout_ms: u64, action: impl FnOnce()
     let _lock = loop {
         match files::lock(&directory.join("action-control.lock")) {
             Ok(lock) => break lock,
-            Err(Unlocked::Refused(_)) => return fail("action_state_unavailable"),
+            Err(Unlocked::Refused) => return fail("action_state_unavailable"),
             Err(Unlocked::Busy) if clock.elapsed() >= Duration::from_millis(timeout_ms) => return fail("action_control_busy"),
             Err(Unlocked::Busy) => std::thread::sleep(Duration::from_millis(15)),
         }
