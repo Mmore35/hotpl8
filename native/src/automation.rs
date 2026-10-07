@@ -8,7 +8,7 @@ use crate::ps::*;
 use crate::time::{hours_minutes, Dto};
 use std::path::Path;
 
-/// Test-Hotpl8WorkTime
+/// Whether an instant falls in the hours a schedule names. No schedule means always.
 pub fn work_time(schedule: &V, now: Dto) -> R<bool> {
     if !schedule.t()? {
         return Ok(true);
@@ -147,6 +147,13 @@ mod tests {
         assert!(work_time(&night, at("2026-10-07T05:59:00.0000000+00:00")).ok().unwrap());
         assert!(!work_time(&night, at("2026-10-07T06:00:00.0000000+00:00")).ok().unwrap());
         assert!(!work_time(&night, at("2026-10-06T05:00:00.0000000+00:00")).ok().unwrap());
+        // 2026-09-13 is a Sunday: day 0, and the day an overnight shift that starts on it belongs to.
+        let sunday = parse(r#"{"start":"10:00","end":"14:00","days":[0],"timeZone":"UTC"}"#, "").ok().unwrap();
+        assert!(work_time(&sunday, at("2026-09-13T12:00:00.0000000+00:00")).ok().unwrap());
+        assert!(!work_time(&sunday, at("2026-09-13T14:00:00.0000000+00:00")).ok().unwrap());
+        let late = parse(r#"{"start":"22:00","end":"02:00","days":[0],"timeZone":"UTC"}"#, "").ok().unwrap();
+        assert!(work_time(&late, at("2026-09-14T01:00:00.0000000+00:00")).ok().unwrap());
+        assert!(!work_time(&late, at("2026-09-13T01:00:00.0000000+00:00")).ok().unwrap());
         let never = parse(r#"{"start":"09:00","end":"09:00","days":[2],"timeZone":"UTC"}"#, "").ok().unwrap();
         assert!(!work_time(&never, at("2026-10-06T09:00:00.0000000+00:00")).ok().unwrap());
         let nowhere = parse(r#"{"start":"09:00","end":"17:00","days":[2],"timeZone":"No/Such_Zone"}"#, "").ok().unwrap();

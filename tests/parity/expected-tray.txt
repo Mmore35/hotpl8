@@ -1,0 +1,3589 @@
+# What the tray shows for each parity case at 2026-09-12T12:00:00Z, read in UTC.
+# Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.
+
+== plain
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== operations
+title: HotPl8 - recent collection completed
+announces: no
+window:
+  CLAUDE: 93.7% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 93.7% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+    Weekly pace: behind; ~98.8h to limit at cycle-average usage; likely lasts to reset
+  Claude Reserve: ok
+    5h used: 0%; weekly used: 17%
+    warm: unconfirmed
+    warming: outside_work_hours
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+    Weekly pace: behind; ~138.1h to limit at cycle-average usage; likely lasts to reset
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector shape
+title: HotPl8 - recent collection completed
+announces: no
+window:
+  CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 62% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.2500000+00:00; assumes no further consumption.
+    Profiles: 1=claude-max-5x
+  CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 87% available now (weekly cap uncertain) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+    slot 1: eligible; rank 1
+    slot 2: window_unmeasured; rank 2
+  Codex codex: next launch work; policy prefer
+    work: eligible; reserve=False
+    personal: below_margin; reserve=False
+  Codex codex_bengalfox: next launch none; policy prefer
+    work: model_quota_unknown; reserve=False
+    personal: model_quota_unknown; reserve=False
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+    Weekly pace: behind; ~98.8h to limit at cycle-average usage; likely lasts to reset
+    warm: confirmed
+  Claude Reserve: ok
+    5h used: unknown; weekly used: 17%
+    warm: unconfirmed
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+    Weekly pace: behind; ~138.1h to limit at cycle-average usage; likely lasts to reset
+  Codex Personal [personal]: AVAILABLE
+    codex 300m: 0% used; reset observed-idle
+    codex 10080m: 89% used; reset observed-active
+
+== collector shape with Windows line ends and no byte order mark
+title: HotPl8 - recent collection completed
+announces: no
+window:
+  CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 62% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.2500000+00:00; assumes no further consumption.
+    Profiles: 1=claude-max-5x
+  CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 87% available now (weekly cap uncertain) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+    slot 1: eligible; rank 1
+    slot 2: window_unmeasured; rank 2
+  Codex codex: next launch work; policy prefer
+    work: eligible; reserve=False
+    personal: below_margin; reserve=False
+  Codex codex_bengalfox: next launch none; policy prefer
+    work: model_quota_unknown; reserve=False
+    personal: model_quota_unknown; reserve=False
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+    Weekly pace: behind; ~98.8h to limit at cycle-average usage; likely lasts to reset
+    warm: confirmed
+  Claude Reserve: ok
+    5h used: unknown; weekly used: 17%
+    warm: unconfirmed
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+    Weekly pace: behind; ~138.1h to limit at cycle-average usage; likely lasts to reset
+  Codex Personal [personal]: AVAILABLE
+    codex 300m: 0% used; reset observed-idle
+    codex 10080m: 89% used; reset observed-active
+
+== readings twenty minutes old
+title: HotPl8 - collector overdue
+announces: no
+window:
+  CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - refresh; collector overdue; monitor only
+    Capacity: No account readable now / 2 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: No account readable now / 2 expired; awaiting update; Readings stale - refresh; collector overdue; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now / 2 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  STALE: these are the decisions at the last observation, not a current recommendation.
+  Observed: 2026-09-12T11:40:00.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok / stale
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok / stale
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: STALE
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: STALE
+    codex 10080m: 89% used; reset observed-active
+
+== readings from the future
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - refresh; monitor only
+    Capacity: No account readable now / 2 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: No account readable now / 2 expired; awaiting update; Readings stale - refresh; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now / 2 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  STALE: these are the decisions at the last observation, not a current recommendation.
+  Observed: 2026-09-12T12:02:00.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok / stale
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok / stale
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: STALE
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: STALE
+    codex 10080m: 89% used; reset observed-active
+
+== readings at the age limit
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:45:00.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== readings one second past the age limit
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - refresh; monitor only
+    Capacity: No account readable now / 2 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: No account readable now / 2 expired; awaiting update; Readings stale - refresh; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now / 2 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  STALE: these are the decisions at the last observation, not a current recommendation.
+  Observed: 2026-09-12T11:44:59.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok / stale
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok / stale
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: STALE
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: STALE
+    codex 10080m: 89% used; reset observed-active
+
+== one account stale
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 62% available now (estimate) / 1 expired; awaiting update; Ready; monitor only
+    Capacity: 62% available now (estimate) / 1 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 74% available now (estimate) / 1 expired; awaiting update; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate) / 1 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok / stale
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: STALE
+    codex 10080m: 89% used; reset observed-active
+
+== policy only
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now; Unavailable now - see details; monitor only
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: No account readable now; Unavailable now - see details; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  No observation. Run hotpl8 refresh.
+  Codex  []: NO OBSERVATION
+  Codex  []: NO OBSERVATION
+
+== policy and collector only
+title: HotPl8 - recent collection completed
+announces: no
+window:
+  CLAUDE: No account readable now; Unavailable now - see details; monitor only
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: No account readable now; Unavailable now - see details; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  No observation. Run hotpl8 refresh.
+  Codex  []: NO OBSERVATION
+  Codex  []: NO OBSERVATION
+
+== policy and pause only
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now; Unavailable now - see details; automation paused
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: No account readable now; Unavailable now - see details; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  No observation. Run hotpl8 refresh.
+  Codex  []: NO OBSERVATION
+  Codex  []: NO OBSERVATION
+
+== status without a generation time
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  No observation. Run hotpl8 refresh.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector running
+title: HotPl8 - collecting
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector stalled
+title: HotPl8 - collector stalled
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector stalled; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector stalled; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector overdue
+title: HotPl8 - collector overdue
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector overdue; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector overdue; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector started in the future
+title: HotPl8 - collector state invalid
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector state invalid; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector state invalid; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector without a start time
+title: HotPl8 - collector state invalid
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector state invalid; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector state invalid; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector with one provider failing
+title: HotPl8 - provider checks incomplete
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; provider checks incomplete; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector unable to write state
+title: HotPl8 - local state write failed; retrying
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; local state write failed; retrying; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== collector with stale provider success
+title: HotPl8 - recent collection completed
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; provider readings stale; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== stored collector newer than the collector file
+title: HotPl8 - recent collection completed
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== manual pause
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: owner asked
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== manual pause that ended
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== pause file without an end
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: invalid_pause
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== pause reason with control characters
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: line oneline twotabbed
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== one agent lease
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: agent_leases
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== several agent leases
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: invalid_leases
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== only released leases
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: invalid_leases
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== empty lease ledger
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== lease with the wrong end
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: invalid_leases
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== lease ledger with an extra field
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: invalid_leases
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== lease ledger that is not an object
+refused: automation-leases.json is not JSON as HotPl8 writes it (line 1, column 1).
+
+== lease and manual pause, pause later
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: manual_and_agent_leases
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== lease and manual pause, lease later
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: manual_and_agent_leases
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== lease and a pause file without an end
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: invalid_pause
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== automatic selection
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== automatic mode with selection off
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; manual selection
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== automatic selection while paused
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Automation paused: owner asked
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== policy without a version
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 42.5% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== policy version one
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; manual selection
+    Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 37% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 37% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== Claude only
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+
+== Codex only
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 42.5% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== no providers configured
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+
+== one Codex account without capacity
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: 11% available now (estimate) / 11% weekly left; Unavailable now - see details; native launches; managed sessions need adoption evidence
+    Capacity: 11% available now (estimate) / 11% weekly left; normal policy
+    Membership: 1 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== one Codex account without an id
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== two Codex accounts without an id
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 2 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== Codex configured but never observed
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: No account readable now; Unavailable now - see details; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex  []: NO OBSERVATION
+
+== capacity profiles
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+    Profiles: 1=claude-pro, 2=claude-max-5x
+  CODEX: 63.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 63.5% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +21.7% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== capacity profile of the other provider
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+    Profiles: 1=codex-plus
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== no capacity settings
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 42.5% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== disabled accounts
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 62% available now (estimate) / 46% weekly left; Ready; monitor only
+    Capacity: 62% available now (estimate) / 46% weekly left; normal policy
+    Membership: 1 enabled; 1 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate) / 59% weekly left; normal policy
+    Membership: 1 enabled; 1 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: DISABLED
+    codex 10080m: 89% used; reset observed-active
+
+== every account disabled
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 2 disabled; 0 duplicate entries excluded.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 2 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: DISABLED
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: DISABLED
+    codex 10080m: 89% used; reset observed-active
+
+== account enrolled but not observed
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate); Ready; monitor only
+    Capacity: 87% available now (estimate); normal policy
+    Membership: 3 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate); Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate); normal policy
+    Membership: 3 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== display settings and history flags
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== policy version three with one provider
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now / 64.5% weekly left; Unavailable now - see details; monitor only
+    Capacity: No account readable now / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+
+== policy version three with no providers
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+
+== a third provider that is not configured
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Codex : proposed none; policy
+    : ; reserve=
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== providers that share a place in the display order
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CLAUDE: No accounts enabled; No accounts enabled; monitor only
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== two providers of the Claude driver
+refused: The native global activation driver supports only one configured provider owner.
+
+== a shipped provider moved in the display order
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+
+== a copy without the Claude definition
+refused: Configured legacy provider is missing from the catalog.
+
+== a copy without the Claude definition and no Claude accounts
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate) / 59% weekly left; normal policy
+    Membership: 1 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 89% used; reset observed-active
+
+== definition with an unknown driver
+refused: Unknown provider driver. Only shipped native contracts may be registered.
+
+== definition with an unknown field
+refused: Invalid provider definition: unknown field.
+
+== definition under another file name
+refused: Duplicate provider ID or mismatched definition filename.
+
+== definition of a capability its driver has not
+refused: Provider capability is not implemented by its driver.
+
+== definition with a window its driver has not
+refused: Provider windows do not match the native contract.
+
+== definition with a fractional display order
+refused: Invalid provider display ordering.
+
+== definition that is not JSON
+refused: codex.json is not JSON as HotPl8 writes it (line 15, column 26).
+
+== no definitions at all
+refused: Invalid provider catalog size.
+
+== preview policy
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== preview policy without a stored policy
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== preview policy that is invalid
+refused: Invalid policy: mode must be monitor or automate.
+
+== rotation held
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 10.3% available now (estimate) / 64.5% weekly left; Ready; rotation held
+    Capacity: 10.3% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== rotation hold that ended
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== Codex selection held
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 44.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 44.4% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== active account below its margin
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 78.2% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 78.2% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 91%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== every account below its margin
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 9.8% available now (estimate) / 24.5% weekly left; Ready; automatic selection on
+    Capacity: 9.8% available now (estimate) / 24.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 0% available now (estimate) / 30% weekly left; Unavailable now - see details; native launches; managed sessions need adoption evidence
+    Capacity: 0% available now (estimate) / 30% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 91%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 97%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LOW BALANCE
+    codex 300m: 90% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LOW BALANCE
+    codex 10080m: 99% used; reset observed-active
+
+== no active account
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== active account not enrolled
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== order soonest-reset
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== order soonest-reset with the second account active
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: AVAILABLE
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: NEXT LAUNCH
+    codex 10080m: 89% used; reset observed-active
+
+== order weekly-expiry
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== order weekly-expiry with the second account active
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: AVAILABLE
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: NEXT LAUNCH
+    codex 10080m: 89% used; reset observed-active
+
+== order balanced
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== order balanced with the second account active
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: AVAILABLE
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: NEXT LAUNCH
+    codex 10080m: 89% used; reset observed-active
+
+== weekly allowance nearly spent
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 45.6% available now (estimate) / 13% weekly left; Unavailable now - see details; automatic selection on
+    Capacity: 45.6% available now (estimate) / 13% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 88%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 86%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== critical allowance
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
+    Capacity: 24.7% available now (estimate) / 27% weekly left; retained to avoid churn
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+    Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 85%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 92%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LOW BALANCE
+    codex 300m: 78% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== critical allowance with stored state
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
+    Capacity: 24.7% available now (estimate) / 27% weekly left; retained to avoid churn
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+    Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Claude critical: largest remaining allowance / usable capacity / checks 60s
+  Codex codex critical: largest remaining allowance / usable capacity / checks 90s
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 85%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 92%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 78% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== critical allowance drained to zero
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
+    Capacity: 24.7% available now (estimate) / 27% weekly left; retained to avoid churn
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+    Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 85%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 92%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LOW BALANCE
+    codex 300m: 78% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== critical setting off while low
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready; automatic selection on
+    Capacity: 24.7% available now (estimate) / 27% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+    Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 85%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 92%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LOW BALANCE
+    codex 300m: 78% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== scoped model limits
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== scoped model limits not observed
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now / 64.5% weekly left; Unavailable now - see details; automatic selection on
+    Capacity: No account readable now / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== scoped model limits with capacity
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +1.8% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== account needs sign-in
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 62% available now (estimate); Ready; sign-in needed; monitor only
+    Capacity: 62% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: relogin_required / stale
+    5h used: unknown; weekly used: unknown
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AUTHENTICATION REQUIRED
+
+== account signed out recently
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 62% available now (estimate); Ready; sign-in needed; monitor only
+    Capacity: 62% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 74% available now (estimate); Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: no_credentials / stale
+    5h used: unknown; weekly used: unknown
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: SUBSCRIPTION LOGIN REQUIRED
+
+== Codex plan ended
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== same subscription enrolled twice
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 62% available now (estimate) / 46% weekly left; Ready; monitor only
+    Capacity: 62% available now (estimate) / 46% weekly left; normal policy
+    Membership: 1 enabled; 0 disabled; 1 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate) / 59% weekly left; normal policy
+    Membership: 1 enabled; 0 disabled; 1 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: duplicate_subscription
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== same slot observed twice
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 92% available now (estimate); Account available - manual selection needed; monitor only
+    Capacity: 92% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 11% available now (estimate); Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 11% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== Codex account blocked until its reset
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 44.4% available now (estimate) / 29.5% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 44.4% available now (estimate) / 29.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: EXHAUSTED
+    codex 10080m: 100% used; reset observed-active
+
+== Codex account blocked without a reason
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 44.4% available now (estimate) / 29.5% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 44.4% available now (estimate) / 29.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: EXHAUSTED
+    codex 10080m: 100% used; reset inferred
+
+== Codex meter missing
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 74% available now (estimate); Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LIMIT UNCONFIRMED
+
+== Codex windows that do not add up
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 46.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 46.4% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +18% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LIMIT UNCONFIRMED
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== Codex window with an unknown name
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 1440m: 5% used; reset observed-active
+    codex 10080m: 89% used; reset observed-active
+
+== windows that already reset
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 93.3% available now (estimate) / 73% weekly left; Ready; monitor only
+    Capacity: 93.3% available now (estimate) / 73% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.7% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: No account readable now; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== windows that reset before the reading
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now; Unavailable now - see details; monitor only
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: No account readable now; Unavailable now - see details; native launches; managed sessions need adoption evidence
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LIMIT UNCONFIRMED
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: LIMIT UNCONFIRMED
+    codex 10080m: 89% used; reset observed-active
+
+== readings without usage
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: No account readable now; Unavailable now - see details; monitor only
+    Capacity: No account readable now; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: 11% available now (estimate); Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 11% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: unknown; weekly used: unknown
+  Claude Reserve: ok
+    5h used: unknown; weekly used: unknown
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LIMIT UNCONFIRMED
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== readings without reset times
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate); Unavailable now - see details; monitor only
+    Capacity: 87% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate); Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== account marked not fresh
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 92% available now (estimate) / 1 expired; awaiting update; Account available - manual selection needed; monitor only
+    Capacity: 92% available now (estimate) / 1 expired; awaiting update; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok / stale
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== fully used
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 83.3% available now (estimate) / 50% weekly left; Account available - manual selection needed; monitor only
+    Capacity: 83.3% available now (estimate) / 50% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Includes reserve allowance.
+  CODEX: 4.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 4.4% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 100%; weekly used: 100%
+  Claude Reserve: ok
+    5h used: 0%; weekly used: 0%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: EXHAUSTED
+    codex 300m: 100% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== fractional readings [Windows PowerShell numbers]
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; monitor only
+    Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38.5%; weekly used: 54.25%
+  Claude Reserve: ok
+    5h used: 8.0%; weekly used: 17.125%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26.4% used; reset observed-active
+    codex 10080m: 41.05% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 88.9% used; reset observed-active
+
+== fractional readings [PowerShell 7 numbers]
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; monitor only
+    Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38.5%; weekly used: 54.25%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17.125%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26.4% used; reset observed-active
+    codex 10080m: 41.05% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 88.9% used; reset observed-active
+
+== fractional readings and automatic selection [Windows PowerShell numbers]
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
+    Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38.5%; weekly used: 54.25%
+  Claude Reserve: ok
+    5h used: 8.0%; weekly used: 17.125%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26.4% used; reset observed-active
+    codex 10080m: 41.05% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 88.9% used; reset observed-active
+
+== fractional readings and automatic selection [PowerShell 7 numbers]
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
+    Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38.5%; weekly used: 54.25%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17.125%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26.4% used; reset observed-active
+    codex 10080m: 41.05% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 88.9% used; reset observed-active
+
+== fractional settings
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 82.3% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 82.3% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +12.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== fractional settings and readings [Windows PowerShell numbers]
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 82.2% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
+    Capacity: 82.2% available now (estimate) / 64.3% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +12.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38.5%; weekly used: 54.25%
+  Claude Reserve: ok
+    5h used: 8.0%; weekly used: 17.125%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26.4% used; reset observed-active
+    codex 10080m: 41.05% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 88.9% used; reset observed-active
+
+== fractional settings and readings [PowerShell 7 numbers]
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 82.2% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
+    Capacity: 82.2% available now (estimate) / 64.3% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +12.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38.5%; weekly used: 54.25%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17.125%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26.4% used; reset observed-active
+    codex 10080m: 41.05% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 88.9% used; reset observed-active
+
+== thirds
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 50.5% available now (estimate) / 49.5% weekly left; Ready; monitor only
+    Capacity: 50.5% available now (estimate) / 49.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +16% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 33%; weekly used: 67%
+  Claude Reserve: ok
+    5h used: 66%; weekly used: 34%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== forecast hours
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+    Weekly pace: ahead; ~2h to limit at cycle-average usage; may run out before reset
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+    Weekly pace: on pace; ~34.3h to limit at cycle-average usage; likely lasts to reset
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== forecast without a time to limit
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+    Weekly pace: behind; ~0h to limit at cycle-average usage; likely lasts to reset
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== large whole numbers
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== Codex margin beyond one hundred
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 4.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 4.4% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +35.6% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LOW BALANCE
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== stored decisions
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Claude critical: largest remaining allowance / usable capacity / checks 60s
+    slot 1: eligible; rank 1
+    slot 2: reserve; rank 2
+  Codex codex critical: retained to avoid churn / binding-window percentage; capacity unknown / checks 90s
+  Codex codex: next launch work; policy prefer
+    work: eligible; reserve=False
+    personal: below_margin; reserve=True
+  Codex codex_bengalfox: next launch none; policy prefer
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== stored decisions for another provider
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  example: only account; policy prefer
+    slot a: eligible; rank 1
+  example m: proposed none; policy prefer
+    a: eligible; reserve=False
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== announcements
+title: HotPl8 - collector stalled
+announces: yes
+alert: collector | HotPl8 needs attention | collector stalled. Run hotpl8 doctor.
+alert: claude/everyday/weekly | Claude weekly quota may run out | Weekly pace: ahead; ~2h to limit at cycle-average usage; may run out before reset
+alert: claude/2/auth | Claude sign-in needed | Slot 2 needs sign-in. Run: hotpl8 add -Provider claude
+alert: claude/no-eligible | No eligible Claude account | Run hotpl8 explain for the recorded reasons.
+alert: codex//no-eligible | No eligible Codex account | Run hotpl8 explain before the next launch.
+alert: codex/work/codex/weekly | Codex weekly quota may run out | Weekly pace: ahead; ~1h to limit at cycle-average usage; may run out before reset
+alert: codex/personal/auth | Codex sign-in needed | Slot personal needs native sign-in.
+alert: codex/codex/no-eligible | No eligible Codex account | Run hotpl8 explain before the next launch.
+window:
+  CLAUDE: 62% available now (estimate); Ready; sign-in needed; collector stalled; monitor only
+    Capacity: 62% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; collector stalled; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+    slot 1: below_margin; rank 1
+    slot 2: relogin_required; rank 2
+  Codex codex: next launch none; policy prefer
+    work: below_margin; reserve=False
+    personal: authentication_required; reserve=False
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+    Weekly pace: ahead; ~2h to limit at cycle-average usage; may run out before reset
+  Claude Reserve: relogin_required / stale
+    5h used: unknown; weekly used: unknown
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+    Weekly pace: ahead; ~1h to limit at cycle-average usage; may run out before reset
+  Codex Personal [personal]: AUTHENTICATION REQUIRED
+
+== announcements outside working days
+title: HotPl8 - collector stalled
+announces: no
+window:
+  CLAUDE: 62% available now (estimate); Ready; sign-in needed; collector stalled; monitor only
+    Capacity: 62% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +38% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; collector stalled; native launches; managed sessions need adoption evidence
+    Capacity: 74% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+    slot 1: below_margin; rank 1
+    slot 2: relogin_required; rank 2
+  Codex codex: next launch none; policy prefer
+    work: below_margin; reserve=False
+    personal: authentication_required; reserve=False
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+    Weekly pace: ahead; ~2h to limit at cycle-average usage; may run out before reset
+  Claude Reserve: relogin_required / stale
+    5h used: unknown; weekly used: unknown
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+    Weekly pace: ahead; ~1h to limit at cycle-average usage; may run out before reset
+  Codex Personal [personal]: AUTHENTICATION REQUIRED
+
+== announcements with nothing wrong
+title: HotPl8 - manual / no collector evidence
+announces: yes
+alert: codex//no-eligible | No eligible Codex account | Run hotpl8 explain before the next launch.
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== announcements with Claude only
+title: HotPl8 - manual / no collector evidence
+announces: yes
+alert: codex//no-eligible | No eligible Codex account | Run hotpl8 explain before the next launch.
+window:
+  CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
+    Capacity: No accounts enabled; normal policy
+    Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+
+== no policy
+refused: No valid policy.json. Run hotpl8 setup or see docs/install.md.
+
+== policy with an unknown field
+refused: Invalid policy: unknown versioned field.
+
+== policy with an unknown mode
+refused: Invalid policy: mode must be monitor or automate.
+
+== policy with a margin out of range
+refused: Invalid policy field: margin5h
+
+== policy with a repeated account
+refused: Invalid policy field: prefer
+
+== policy with a reserve that is not enrolled
+refused: Invalid policy field: reserve
+
+== policy version four
+refused: Invalid policy: unsupported schemaVersion.
+
+== policy version one with newer settings
+refused: New operational settings require schemaVersion 2.
+
+== policy with an unknown capacity profile
+refused: Unknown capacity profile.
+
+== policy with critical exit below entry
+refused: Critical exit must exceed entry.
+
+== policy version three with a version two field
+refused: Invalid version 3 policy field.
+
+== policy version three with an unknown provider
+refused: Provider is not registered.
+
+== policy that is an array
+refused: policy.json is not JSON as HotPl8 writes it (line 1, column 1).
+
+== policy that is not JSON
+refused: policy.json is not JSON as HotPl8 writes it (line 1, column 20).
+
+== empty policy file
+refused: policy.json is not JSON as HotPl8 writes it (line 1, column 1).
+
+== generation time that is not a time
+refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/contract.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.
+
+== labels outside ASCII
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Café 日本 — x: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Café 日本 — x [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== number with an exponent
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== readings too small to write without an exponent
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 93.3% available now (estimate) / 64.5% weekly left; Ready; monitor only
+    Capacity: 93.3% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +6.7% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 40% available now (estimate) / 79.5% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 40% available now (estimate) / 79.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 1E-05%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: LOW BALANCE
+    codex 300m: 99.99995% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 1.4210854715202E-14% used; reset observed-active
+
+== reading too large to write without an exponent
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 92% available now (estimate); Account available - manual selection needed; monitor only
+    Capacity: 92% available now (estimate); normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 1E+16%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== text where a percentage belongs
+title: HotPl8 - manual / no collector evidence
+announces: no
+window:
+  CLAUDE: 92% available now (estimate) / 64.5% weekly left; Account available - manual selection needed; monitor only
+    Capacity: 92% available now (estimate) / 64.5% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+    Includes reserve allowance.
+  CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+    Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+    Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+    Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+  Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Observed: 2026-09-12T11:59:18.0000000+00:00
+  Codex : next launch none; policy
+    : ; reserve=
+  Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
+  Claude Everyday: ok
+    5h used: 38%; weekly used: 54%
+  Claude Reserve: ok
+    5h used: 8%; weekly used: 17%
+  Codex  []: NO OBSERVATION
+  Codex Work [work]: NEXT LAUNCH
+    codex 300m: 26% used; reset observed-active
+    codex 10080m: 41% used; reset observed-active
+  Codex Personal [personal]: AVAILABLE
+    codex 10080m: 89% used; reset observed-active
+
+== usage that is an object
+refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/tray.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.
+
+== time in a regional form
+refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/contract.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.
+
+== time without an offset
+refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/contract.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.
+
+== time without seconds
+refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/contract.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.
+
+== negative zero
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 216).
+
+== number beyond 64 bits
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 232).
+
+== number with more digits than a decimal holds
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 244).
+
+== repeated property name
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 71).
+
+== property name outside ASCII
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 69).
+
+== empty property name
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 65).
+
+== old Microsoft date text
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 127).
+
+== comment in a state file
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 2).
+
+== trailing comma
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 1245).
+
+== single quoted text
+refused: status.json is not JSON as HotPl8 writes it (line 1, column 102).
+
+== array where the provider object belongs
+refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/overview.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.

@@ -35,13 +35,8 @@ try{
         $s=Read-Hotpl8Snapshot $dir $p
         Assert ($s.collector.startedAt -eq $now.AddSeconds(1).ToString('o')) 'a genuinely newer in-progress collection stays visible'
     }
-    Check 'work hours handle Sunday and overnight day ownership' {
-        $s=[pscustomobject]@{days=@(0);start='10:00';end='14:00';timeZone='UTC'}
-        Assert (Test-Hotpl8WorkTime $s $now)
-        Assert (-not (Test-Hotpl8WorkTime $s $now.AddHours(2)))
-        $s.start='22:00';$s.end='02:00'
-        Assert (Test-Hotpl8WorkTime $s $now.AddHours(13))
-        Assert (-not (Test-Hotpl8WorkTime $s $now.AddHours(-11)))
+    Check 'a Sunday overnight schedule is a valid policy' {
+        $s=[pscustomobject]@{days=@(0);start='22:00';end='02:00';timeZone='UTC'}
         Assert-Hotpl8AutomationPolicy (Clone @{automation=@{schedule=$s}})
     }
     Check 'invalid work days time zone and budgets fail validation' {
@@ -152,20 +147,6 @@ try{
         $s=Clone @{observedAt=$now.ToString('o');slots=@(@{id='off';label='off';status='disabled'},@{id='on';label='on';status='home_missing'})}
         Reject {Get-CodexLaunchPlan $p $s off '' @() $now}
     }
-    Check 'explanations show recorded reasons and warn on stale snapshots' {
-        $s=Clone @{generatedAt=$now.AddHours(-1).ToString('o');decision=@{policy='balanced';reason='switch held';accounts=@(@{slot=2;reason='model_below_margin';rank=1})}}
-        $text=(Format-Hotpl8Explanation $s $now)-join ' '
-        Assert ($text.Contains('STALE') -and $text.Contains('model_below_margin') -and $text.Contains('switch held'))
-        $alias=Clone @{generatedAt=$now.ToString('o');providers=@{fictional=@{decision=@{policy='prefer';reason='switch held';accounts=@(@{slot=2;reason='scoped_margin';rank=1})}}};providerOverview=@{}}
-        $text=(Format-Hotpl8Explanation $alias $now)-join ' '
-        Assert ($text.Contains('fictional: switch held') -and $text.Contains('scoped_margin')) 'numeric-driver alias lost recorded decision details'
-    }
-    Check 'notifications are opt-in and quiet-hour aware' {
-        $s=Clone @{collector=@{startedAt=$now.AddHours(-1).ToString('o')}}
-        Assert (@(Get-Hotpl8Alerts $s (Clone @{notificationsEnabled=$false}) $now).Count -eq 0)
-        $p=Clone @{notificationsEnabled=$true;automation=@{schedule=@{days=@(1);start='09:00';end='17:00';timeZone='UTC'}}}
-        Assert (@(Get-Hotpl8Alerts $s $p $now).Count -eq 0)
-    }
     Check 'notifications survive restarts without reset-drift duplicates and rearm on recovery' {
         $c=Clone @{key='codex/opaque/codex/weekly';title='Quota';text='estimate'}
         $first=Select-Hotpl8NewAlerts @($c) $null $now
@@ -173,15 +154,6 @@ try{
         Assert ($first.deliver.Count -eq 1 -and (Select-Hotpl8NewAlerts @($c) $saved $now.AddMinutes(5)).deliver.Count -eq 0)
         $recovered=Select-Hotpl8NewAlerts @() $saved $now
         Assert ((Select-Hotpl8NewAlerts @($c) (Clone $recovered.state) $now).deliver.Count -eq 1)
-    }
-    Check 'stale forecasts cannot emit depletion alerts' {
-        $s=Clone @{slots=@(@{slot=1;fresh=$true;observedAt=$now.AddHours(-1).ToString('o');forecast=@{lastsToReset=$false}})}
-        Assert (@(Get-Hotpl8Alerts $s (Clone @{notificationsEnabled=$true}) $now).Count -eq 0)
-    }
-    Check 'tray model is read-only and has the same decision explanation' {
-        $f=Get-Hotpl8ScreenshotFixture;$before=$f.status|ConvertTo-Json -Depth 24
-        $m=Get-Hotpl8TrayModel $f.status $f.policy $f.now
-        Assert ($m.details.Contains('Managed host sessions require their own confirmed routing evidence') -and ($f.status|ConvertTo-Json -Depth 24) -eq $before)
     }
     Check 'release checks choose stable versus preview and enforce asset origin' {
         $stable=Clone @{tag_name='v1.0.0';prerelease=$false;draft=$false;published_at='2026-09-01';html_url='https://github.com/Mmore35/hotpl8/releases/tag/v1.0.0';assets=@(@{name='hotpl8-1.0.0-windows.zip';browser_download_url='https://github.com/Mmore35/hotpl8/releases/download/v1.0.0/hotpl8-1.0.0-windows.zip'})}

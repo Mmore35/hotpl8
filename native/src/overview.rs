@@ -292,13 +292,12 @@ pub fn provider_overview(snapshot: &V, policy: &V, now: Dto) -> R<V> {
     Ok(result)
 }
 
-/// The members of Get-Hotpl8CapacityDisplay that the text reads.
+/// What a provider can use at once, in the words shown for it.
 struct Display {
     state: String,
     gain: V,
     next_reset_at: V,
 }
-/// Get-Hotpl8CapacityDisplay
 fn capacity_display(p: &V) -> R<Display> {
     let c = if p.g("immediate")?.t()? { p.g("immediate")? } else { p.g("capacity")? };
     let complete = c.g("complete")?.t()?;
@@ -341,14 +340,14 @@ fn capacity_display(p: &V) -> R<Display> {
 }
 
 /// `.ToUpper()` for a name in plain ASCII; any other spelling depends on the culture.
-fn upper(text: &str) -> R<String> {
+pub fn upper(text: &str) -> R<String> {
     if !printable(text) {
         return unreadable();
     }
     Ok(text.to_ascii_uppercase())
 }
 
-/// Format-Hotpl8Overview
+/// The overview of every provider as lines of text.
 pub fn format_overview(overview: &V) -> R<Vec<String>> {
     if !overview.is_obj() {
         return unreadable();
@@ -470,4 +469,64 @@ pub fn park_candidates(snapshot: &V, policy: &V, now: Dto) -> R<Vec<V>> {
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json::parse;
+
+    fn state(provider: &str) -> String {
+        set_core(false);
+        capacity_display(&parse(provider, "").ok().unwrap()).ok().unwrap().state
+    }
+
+    #[test]
+    fn what_is_available_now_is_said_with_how_sure_it_is() {
+        assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":true,"usableNowPercent":26.1}}"#), "26.1% available now");
+        // What can be used at once is said in place of the week's total when both are known.
+        let estimate = |windows: &str| {
+            state(&format!(
+                r#"{{"accounts":2,"remainingPercent":90,"capacity":{{"complete":true,"usableNowPercent":26.1}},"immediate":{{"complete":true,"usableNowPercent":41.66,"metric":"plan-weighted-quota-headroom","accounts":[{{"unconvertedConstraints":["10080"],"windows":[{windows}]}}]}}}}"#
+            ))
+        };
+        assert_eq!(estimate(""), "41.7% available now (estimate) / 90% weekly left");
+        assert_eq!(estimate(r#"{"name":"300","remaining":10},{"name":"10080","remaining":25}"#), "41.7% available now (estimate) / 90% weekly left");
+        assert_eq!(estimate(r#"{"name":"10080","remaining":0}"#), "41.7% available now (estimate) / 90% weekly left");
+        // A weekly limit nearly reached, and no way to say what it is worth in the estimate.
+        assert_eq!(estimate(r#"{"name":"10080","remaining":20}"#), "41.7% available now (weekly cap uncertain) / 90% weekly left");
+        assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":0},"totalUnits":6}}"#), "No account readable now");
+        assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":1},"totalUnits":null,"measured":1}}"#), "Plan allowance unknown; total unavailable");
+        assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":1},"totalUnits":6,"measured":1}}"#), "Partial: 1/2 measured; total unavailable");
+        assert_eq!(state(r#"{"accounts":0,"capacity":{"complete":false,"coverage":{"measured":0}}}"#), "No accounts enabled");
+        assert_eq!(
+            state(r#"{"accounts":2,"capacity":{"complete":true,"usableNowPercent":50},"members":[{"slot":"1","reason":"stale"},{"slot":"2","reason":"eligible"}]}"#),
+            "50% available now / 1 expired; awaiting update"
+        );
+    }
+
+    #[test]
+    fn each_provider_is_one_line_and_what_is_known_of_its_capacity() {
+        set_core(false);
+        let overview = parse(
+            r#"{"claude":{"name":"Claude","driver":"claude-cswap","accounts":2,"disabled":1,"duplicates":0,"availability":"Ready","automation":"monitor only","includesReserve":true,"capacity":{"complete":true,"usableNowPercent":50,"projectedGainPercent":12.5,"nextResetAt":"2026-09-13T13:00:00.0000000+00:00","critical":{"reason":"normal policy"},"accounts":[{"slot":"1","profile":"claude-pro"},{"slot":"2"}]}},"fictional":{"accounts":0,"availability":"No accounts enabled","automation":"none"}}"#,
+            "",
+        )
+        .ok()
+        .unwrap();
+        assert_eq!(
+            format_overview(&overview).ok().unwrap(),
+            [
+                "CLAUDE: 50% available now; Ready; monitor only",
+                "  Capacity: 50% available now; normal policy",
+                "  Membership: 2 enabled; 1 disabled; 0 duplicate entries excluded.",
+                "  Next reset: +12.5% available at 2026-09-13T13:00:00.0000000+00:00; assumes no further consumption.",
+                "  Includes reserve allowance.",
+                "  Profiles: 1=claude-pro",
+                "FICTIONAL: No accounts enabled; No accounts enabled; none",
+                "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.",
+            ]
+        );
+        assert!(format_overview(&V::Null).is_err());
+    }
 }

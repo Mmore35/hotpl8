@@ -1,4 +1,4 @@
-//! src/forecast.ps1: estimates anchored to what a provider reported, never to the clock
+//! Estimates anchored to what a provider reported, never to the clock
 //! rolling over, and the readings kept to make them.
 
 use crate::files;

@@ -14,8 +14,8 @@ $ps=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $bash=Join-Path $env:ProgramFiles 'Git/bin/bash.exe'
 if(-not $SkipClaude -and -not (Test-Path -LiteralPath $bash)){throw 'Install Git Bash to run the Claude regression suite.'}
 if(-not $SkipClaude -and -not (Get-Command python -ErrorAction SilentlyContinue)){throw 'Python is required for Claude fixture generation.'}
-# version, status and explain are answered by the compiled reader alone. Say that it is
-# missing once here rather than as failures in every suite that asks one of them.
+# version, status, explain and the tray's view are answered by the compiled reader alone. Say
+# that it is missing once here rather than as failures in every suite that asks one of them.
 if(-not (Test-Path -LiteralPath (Join-Path $root 'bin/windows/hotpl8-native.exe') -PathType Leaf)){throw 'Build the native reader first: scripts/build-native.ps1 (needs Rust, https://rustup.rs).'}
 $Parallel=[Math]::Max(1,$Parallel)
 $failures=@()

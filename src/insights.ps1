@@ -1,5 +1,4 @@
 . (Join-Path $PSScriptRoot 'overview.ps1')
-. (Join-Path $PSScriptRoot 'forecast.ps1')
 . (Join-Path $PSScriptRoot 'replay.ps1')
 . (Join-Path $PSScriptRoot 'diagnostics.ps1')
 function Get-Hotpl8HistoryStores($Policy,[string]$Directory) {
@@ -77,35 +76,4 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$S
         $s|Add-Member NoteProperty parkCandidates $candidates -Force
     }
     return $s
-}
-function Format-Hotpl8Explanation($Snapshot, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    if(-not $Snapshot -or -not $Snapshot.generatedAt){'No observation. Run hotpl8 refresh.';return}
-    try{$age=($Now-[datetimeoffset]::Parse($Snapshot.generatedAt)).TotalSeconds}catch{$age=99999}
-    if($age -gt 900 -or $age -lt -5){'STALE: these are the decisions at the last observation, not a current recommendation.'}
-    if($Snapshot.providerOverview){Format-Hotpl8Overview $Snapshot.providerOverview}
-    'Observed: '+$Snapshot.generatedAt
-    if($Snapshot.automationPause){'Automation paused: '+$Snapshot.automationPause.reason}
-    if($Snapshot.critical.active){'Claude critical: '+$Snapshot.critical.reason+' / '+$Snapshot.critical.basis+' / checks '+$Snapshot.critical.pollSeconds+'s'}
-    if($Snapshot.decision){
-        'Claude: '+$Snapshot.decision.reason+'; policy '+$Snapshot.decision.policy
-        foreach($r in @($Snapshot.decision.accounts)){'  slot '+$r.slot+': '+$r.reason+'; rank '+$r.rank}
-    }
-    foreach($c in $Snapshot.providers.codex.critical.PSObject.Properties){if($c.Value.active){'Codex '+$c.Name+' critical: '+$c.Value.reason+' / '+$c.Value.basis+' / checks '+$c.Value.pollSeconds+'s'}}
-    foreach($d in @($Snapshot.providers.codex.decisions)){
-        'Codex '+$d.meter+': next launch '+$(if($d.selected){$d.selected}else{'none'})+'; policy '+$d.policy
-        foreach($r in @($d.accounts)){'  '+$r.slot+': '+$r.reason+'; reserve='+$r.reserve}
-    }
-    'Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.'
-    foreach($entry in $Snapshot.providers.PSObject.Properties){
-        if($entry.Name -eq 'codex'){continue}
-        $name=if($Snapshot.providerOverview.($entry.Name).name){$Snapshot.providerOverview.($entry.Name).name}else{$entry.Name}
-        if($entry.Value.decision){
-            $name+': '+$entry.Value.decision.reason+'; policy '+$entry.Value.decision.policy
-            foreach($r in @($entry.Value.decision.accounts)){'  slot '+$r.slot+': '+$r.reason+'; rank '+$r.rank}
-        }
-        foreach($d in @($entry.Value.decisions)){
-            $name+' '+$d.meter+': proposed '+$(if($d.selected){$d.selected}else{'none'})+'; policy '+$d.policy
-            foreach($r in @($d.accounts)){'  '+$r.slot+': '+$r.reason+'; reserve='+$r.reserve}
-        }
-    }
 }

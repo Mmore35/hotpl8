@@ -44,6 +44,7 @@ mod runtime;
 mod selection;
 mod sha256;
 mod time;
+mod tray;
 mod version;
 mod wake;
 mod warming;
@@ -165,7 +166,7 @@ fn respond(arguments: &[OsString]) -> Result<String, Refusal> {
 pub fn answer(request: &Request) -> R<String> {
     match request.command {
         Command::Version => version::answer(request),
-        Command::Status | Command::Explain => display::answer(request),
+        Command::Status | Command::Explain | Command::Tray => display::answer(request),
     }
 }
 

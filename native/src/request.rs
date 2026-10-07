@@ -10,12 +10,14 @@ pub enum Command {
     Version,
     Status,
     Explain,
+    /// What the tray's window shows. The window asks; a user who types `tray` opens it.
+    Tray,
 }
 
 impl Command {
     /// The command a word names. PowerShell, which users have always typed these to, ignores case.
     pub fn named(word: &str) -> Option<Command> {
-        [("version", Command::Version), ("status", Command::Status), ("explain", Command::Explain)]
+        [("version", Command::Version), ("status", Command::Status), ("explain", Command::Explain), ("tray", Command::Tray)]
             .into_iter()
             .find_map(|(name, command)| name.eq_ignore_ascii_case(word).then_some(command))
     }

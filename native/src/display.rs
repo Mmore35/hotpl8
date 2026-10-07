@@ -1,4 +1,5 @@
-//! `hotpl8 status` and `hotpl8 explain`: the state on disk, shown under a policy.
+//! `hotpl8 status`, `hotpl8 explain` and what the tray shows: the state on disk, shown under
+//! a policy.
 
 use std::path::{Path, PathBuf};
 
@@ -6,7 +7,7 @@ use crate::obj;
 use crate::ps::{self, fail, R, V};
 use crate::request::{full_path, Command, Request};
 use crate::time::Dto;
-use crate::{capacity, insights, json, pause, policy, registry};
+use crate::{capacity, insights, json, pause, policy, registry, tray};
 
 /// The data files the rules read are this release's own, the ones its PowerShell reads.
 pub fn packaged_data(root: &Path) {
@@ -70,6 +71,9 @@ pub fn answer(request: &Request) -> R<String> {
     };
     policy::assert_policy(&policy)?;
     let status = insights::read_snapshot(&state, &policy, request.policy.is_some(), now)?;
+    if request.command == Command::Tray {
+        return value(&tray::model(&status, &policy, now)?, 8, request.dump);
+    }
     if request.command == Command::Explain {
         if status.t()? {
             status.add_member("automationPause", pause::pause(&state, now)?, true)?;

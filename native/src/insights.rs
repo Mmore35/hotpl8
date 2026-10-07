@@ -125,8 +125,8 @@ pub fn rename_codex(line: &str, name: &str) -> R<String> {
     }
 }
 
-/// Format-Hotpl8Forecast
-fn format_forecast(forecast: &V) -> R<String> {
+/// A forecast in words.
+pub fn format_forecast(forecast: &V) -> R<String> {
     if !forecast.t()? {
         return Ok("Pace: not enough fresh history".to_string());
     }
@@ -208,7 +208,7 @@ fn meter_lines(lines: &mut Vec<String>, title: &str, verb: &str, d: &V) -> R<()>
     Ok(())
 }
 
-/// Format-Hotpl8Explanation
+/// What `hotpl8 explain` prints, a line at a time.
 pub fn format_explanation(snapshot: &V, now: Dto) -> R<Vec<String>> {
     if !snapshot.t()? || !snapshot.g("generatedAt")?.t()? {
         return Ok(vec!["No observation. Run hotpl8 refresh.".to_string()]);
@@ -392,4 +392,52 @@ pub fn add_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, no
     snapshot.add_member("recentActions", events.split_off(events.len().saturating_sub(5)).into(), true)?;
     snapshot.add_member("shadow", shadow.into(), true)?;
     snapshot.add_member("providerOverview", provider_overview(snapshot, policy, now)?, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json::parse;
+
+    const STALE: &str = "STALE: these are the decisions at the last observation, not a current recommendation.";
+    const HEADROOM: &str = "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.";
+    const NATIVE: &str = "Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.";
+
+    #[test]
+    fn an_explanation_gives_the_recorded_reasons_and_says_when_they_are_old() {
+        set_core(false);
+        let now = Dto::parse("2026-09-13T12:00:00.0000000+00:00").ok().unwrap();
+        let explained = |text: &str| format_explanation(&parse(text, "").ok().unwrap(), now).ok().unwrap();
+        assert_eq!(format_explanation(&V::Null, now).ok().unwrap(), ["No observation. Run hotpl8 refresh."]);
+        assert_eq!(explained(r#"{"slots":[]}"#), ["No observation. Run hotpl8 refresh."]);
+        let decision = r#"{"policy":"balanced","reason":"switch held","accounts":[{"slot":2,"reason":"model_below_margin","rank":1}]}"#;
+        let codex = r#"{"decisions":[{"meter":"codex","selected":"a","policy":"prefer","accounts":[{"slot":"a","reason":"eligible","reserve":false}]}]}"#;
+        assert_eq!(
+            explained(&format!(r#"{{"generatedAt":"2026-09-13T11:00:00.0000000+00:00","decision":{decision},"providers":{{"codex":{codex}}}}}"#)),
+            [
+                STALE,
+                "Observed: 2026-09-13T11:00:00.0000000+00:00",
+                "Claude: switch held; policy balanced",
+                "  slot 2: model_below_margin; rank 1",
+                "Codex codex: next launch a; policy prefer",
+                "  a: eligible; reserve=False",
+                NATIVE,
+            ]
+        );
+        // A provider registered under another name explains itself under that name.
+        let alias = r#"{"policy":"prefer","reason":"switch held","accounts":[{"slot":2,"reason":"scoped_margin","rank":1}]}"#;
+        assert_eq!(
+            explained(&format!(r#"{{"generatedAt":"2026-09-13T12:00:00.0000000+00:00","automationPause":{{"reason":"away"}},"providers":{{"codex":{codex},"fictional":{{"decision":{alias},"decisions":[]}}}},"providerOverview":{{}}}}"#)),
+            [
+                HEADROOM,
+                "Observed: 2026-09-13T12:00:00.0000000+00:00",
+                "Automation paused: away",
+                "Codex codex: next launch a; policy prefer",
+                "  a: eligible; reserve=False",
+                NATIVE,
+                "fictional: switch held; policy prefer",
+                "  slot 2: scoped_margin; rank 1",
+            ]
+        );
+    }
 }

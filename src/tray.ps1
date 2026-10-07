@@ -1,36 +1,22 @@
-function Get-Hotpl8NativeTrayDetails($Snapshot,$Policy,[datetimeoffset]$Now) {
-    foreach($s in @($Snapshot.slots)){if($s){
-        $fresh=$s.fresh -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
-        ('Claude '+$s.label+': '+$s.status+$(if(-not $fresh){' / stale'}else{''}))
-        ('  5h used: '+$(if($null -eq $s.used5h){'unknown'}else{[string]$s.used5h+'%'})+'; weekly used: '+$(if($null -eq $s.used7d){'unknown'}else{[string]$s.used7d+'%'}))
-        if($fresh -and $s.forecast){'  '+(Format-Hotpl8Forecast $s.forecast)}
-        if($s.warmOutcome){'  warm: '+$s.warmOutcome.outcome}
-        if($s.actionBlock){'  warming: '+$s.actionBlock}
-    }}
-    foreach($s in @($Snapshot.providers.codex.slots)){
-        $fresh=$s.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $s.observedAt $Now)
-        ('Codex '+$s.label+' ['+$s.id+']: '+(Get-Hotpl8CodexAccountState $s $Policy.codex $Snapshot.providers.codex $Now))
-        foreach($b in @($s.buckets.PSObject.Properties|Where-Object Name -NE 'codex_bengalfox')){
-            foreach($w in $b.Value.windows.PSObject.Properties){('  '+$b.Name+' '+$w.Name+'m: '+$w.Value.usedPercent+'% used; reset '+$w.Value.anchorState)}
-            if($fresh -and $b.Value.forecast){'  '+(Format-Hotpl8Forecast $b.Value.forecast)}
-        }
-    }
-
+# The tray's window and menu, and the record of which announcements were already made. What
+# the window shows and what it may announce is worked out by the compiled program in one
+# start (native/src/tray.rs): this file holds none of those rules.
+. (Join-Path $PSScriptRoot 'native.ps1')
+function Read-Hotpl8TrayModel([string]$Directory,[string]$CodeDirectory) {
+    $answer=Invoke-Hotpl8NativeProcess (Get-Hotpl8NativePath $CodeDirectory) @('tray','--root',$CodeDirectory,'--state',$Directory)
+    if($answer.exitCode -ne 0){throw $answer.errors.Trim()}
+    return $answer.output|ConvertFrom-Json
 }
-. (Join-Path $PSScriptRoot 'notifications.ps1')
-function Get-Hotpl8TrayModel($Snapshot,$Policy,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    $overview=Get-Hotpl8ProviderOverview $Snapshot $Policy $Now
-    $details=@(Format-Hotpl8Overview $overview)+@(Format-Hotpl8Explanation $Snapshot $Now | Where-Object {$_ -notmatch '^(CLAUDE:|CODEX:|  Includes reserve|Weekly headroom|  Capacity:|  Profiles:|  Membership:|  Next reset:)'})
-    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
-        $v=Get-Hotpl8ProviderView $Snapshot $Policy $r.id
-        $details+=@(Get-Hotpl8NativeTrayDetails $v.snapshot $v.policy $Now|ForEach-Object {$_ -replace ('(?i)^'+[regex]::Escape($v.provider)+' '),($r.name+' ')})
+function Select-Hotpl8NewAlerts($Candidates,$Previous,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
+    $entries=@{};$deliver=@()
+    foreach($c in @($Candidates)){
+        if(-not $c){continue};$old=$Previous.($c.key)
+        if(-not $old){$deliver+=@($c);$entries[$c.key]=$Now.ToString('o')}else{$entries[$c.key]=$old}
     }
-    $details=@($details|ForEach-Object {ConvertTo-Hotpl8SafeText $_})
-    return [pscustomobject]@{providerOverview=$overview;title='HotPl8 - '+(Get-Hotpl8Health $Snapshot.collector $Now);details=($details -join [Environment]::NewLine);alerts=@(Get-Hotpl8Alerts $Snapshot $Policy $Now)}
+    return @{deliver=$deliver;state=$entries}
 }
-function Show-Hotpl8Tray([string]$Directory,[string]$CodeDirectory,[switch]$Once,[switch]$SmokeTest) {
-    $snapshot=Read-Hotpl8Snapshot $Directory;$policy=Read-Hotpl8Json (Join-Path $Directory 'policy.json')
-    if($Once){return Get-Hotpl8TrayModel $snapshot $policy}
+# A smoke run opens nothing visible, announces nothing, and answers with the title it showed.
+function Show-Hotpl8Tray([string]$Directory,[string]$CodeDirectory,[switch]$SmokeTest) {
     if($env:OS -ne 'Windows_NT'){throw 'Native Mac menu-bar delivery is tracked in docs/plans/macos-handoff.md.'}
     $mutex=New-Object Threading.Mutex($false,('Local\HotPl8Tray-'+(Get-Hotpl8Hash ([IO.Path]::GetFullPath($Directory).ToLowerInvariant()))))
     $owned=$false;$icon=$null;$timer=$null;$form=$null
@@ -57,10 +43,9 @@ function Show-Hotpl8Tray([string]$Directory,[string]$CodeDirectory,[switch]$Once
         $form.add_FormClosing({param($sender,$eventArgs) if($eventArgs.CloseReason -eq 'UserClosing'){$eventArgs.Cancel=$true;$sender.Hide()}})
         $refresh={
             try{
-                $s=Read-Hotpl8Snapshot $Directory;$p=Read-Hotpl8Json (Join-Path $Directory 'policy.json')
-                $model=Get-Hotpl8TrayModel $s $p
+                $model=Read-Hotpl8TrayModel $Directory $CodeDirectory
                 $icon.Text=$model.title.Substring(0,[math]::Min(63,$model.title.Length));$box.Text=$model.details
-                if(-not $SmokeTest -and $p.notificationsEnabled -eq $true -and (Test-Hotpl8WorkTime $p.automation.schedule)){
+                if(-not $SmokeTest -and $model.notify){
                     $path=Join-Path $Directory 'notification-state.json'
                     $new=Select-Hotpl8NewAlerts $model.alerts (Read-Hotpl8Json $path)
                     foreach($alert in $new.deliver){$icon.ShowBalloonTip(5000,$alert.title,$alert.text,[Windows.Forms.ToolTipIcon]::Warning)}
@@ -72,6 +57,7 @@ function Show-Hotpl8Tray([string]$Directory,[string]$CodeDirectory,[switch]$Once
         $timer=New-Object Windows.Forms.Timer;$timer.Interval=$(if($SmokeTest){250}else{5000})
         $timer.add_Tick({& $refresh;if($SmokeTest){$context.ExitThread()}});$timer.Start()
         [Windows.Forms.Application]::Run($context)
+        if($SmokeTest){return $icon.Text}
     }finally{
         if($timer){$timer.Stop();$timer.Dispose()};if($icon){$icon.Visible=$false;$icon.Dispose()};if($form){$form.Dispose()}
         if($owned){$mutex.ReleaseMutex()};$mutex.Dispose()

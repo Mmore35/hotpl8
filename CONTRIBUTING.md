@@ -72,8 +72,9 @@ adding an account still read an account's limits in PowerShell: both sides read 
 the cases in one commit. The parity suite holds the read rules to
 the program: it asks both the same question
 about the fictional cases in `tests/parity/cases.ps1` and about seeded variations of them,
-under the PowerShell the suite runs in, and compares the text of `status` with
-`tests/parity/expected-status.txt`. Add a case for every input shape a change touches.
+under the PowerShell the suite runs in, and compares what `status`, `explain` and the tray
+show with `tests/parity/expected-status.txt`, `expected-explain.txt` and `expected-tray.txt`.
+Add a case for every input shape a change touches.
 `-Only NAME` runs one case, `-Deep` many more variations, and `-Update` rewrites the expected
 text after a deliberate change. Write the behavior into
 [the contract](docs/plans/rust-read-side.md) before the code. A rule that changes is changed in

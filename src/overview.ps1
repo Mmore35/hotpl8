@@ -135,47 +135,6 @@ function Get-Hotpl8CodexAccountState($Slot,$Part,$Provider,[datetimeoffset]$Now)
         default{return 'LIMIT UNCONFIRMED'}
     }
 }
-function Get-Hotpl8CapacityDisplay($ProviderOverview) {
-    $p=$ProviderOverview;$c=if($p.immediate){$p.immediate}else{$p.capacity}
-    $state=if($c.complete){'{0:0.#}% available now' -f $c.usableNowPercent}elseif($c.coverage -and $c.coverage.measured -eq 0){'No account readable now'}elseif($null -eq $c.totalUnits){'Plan allowance unknown; total unavailable'}else{'Partial: '+$c.measured+'/'+$p.accounts+' measured; total unavailable'}
-    if($c.metric -eq 'plan-weighted-quota-headroom' -and $c.complete){$state+=' (estimate)'}
-    $weeklyUncertain=@($c.accounts|Where-Object {($_.unconvertedConstraints -contains '10080') -and @($_.windows|Where-Object {$_.name -eq '10080' -and $_.remaining -gt 0 -and $_.remaining -le 20}).Count}).Count
-    if($weeklyUncertain -and $c.complete){$state=$state.Replace('(estimate)','(weekly cap uncertain)')}
-    if($null -ne $p.remainingPercent){$state+=' / '+('{0:0.#}% weekly left' -f $p.remainingPercent)}
-    if($p.accounts -eq 0){$state='No accounts enabled'}
-    $stale=@($p.members|Where-Object reason -EQ 'stale').Count
-    if($stale){$state+=' / '+$stale+' expired; awaiting update'}
-    [pscustomobject]@{
-        title='Available now'
-        value=$c.knownUsablePercent
-        unknown=$c.unknownPercent
-        gain=$c.projectedGainPercent
-        nextResetAt=$c.nextResetAt
-        capacity=$c
-        state=$state
-        weekly=$false
-    }
-}
-function Format-Hotpl8Overview($Overview) {
-    foreach($provider in @($Overview.PSObject.Properties|ForEach-Object Name)){
-        $p=$Overview.$provider
-        $display=Get-Hotpl8CapacityDisplay $p
-        $(if($p.name){$p.name.ToUpper()}else{$provider.ToUpper()})+': '+$display.state+'; '+$p.availability+'; '+$p.automation
-        if($p.capacity){
-            $c=$p.capacity
-            $display=Get-Hotpl8CapacityDisplay $p
-            '  Capacity: '+$display.state+'; '+$c.critical.reason
-            '  Membership: '+$p.accounts+' enabled; '+$p.disabled+' disabled; '+$p.duplicates+' duplicate entries excluded.'
-            if($null -ne $display.gain){'  Next reset: +{0:0.#}% {1} at {2}; assumes no further consumption.' -f $display.gain,$(if($display.weekly){'weekly'}else{'available'}),$display.nextResetAt}
-        }
-        if($p.includesReserve){'  Includes reserve allowance.'}
-        if($p.driver -eq 'claude-cswap' -and $p.capacity){
-            $profiles=@($p.capacity.accounts|Where-Object profile|ForEach-Object {$_.slot+'='+$_.profile})
-            if($profiles.Count){'  Profiles: '+($profiles -join ', ')}
-        }
-    }
-    'Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.'
-}
 # Accounts that look unfunded, from cached evidence only so that doctor and park
 # stay offline. 'canceled' needs a current reading that reports no paid plan.
 # 'dormant' is a sign-in failure that has outlasted a week; it never claims a cause.

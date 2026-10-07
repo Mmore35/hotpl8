@@ -1,5 +1,4 @@
 ﻿# Claude adapter. Historical incident comments and behavior retained from tick.ps1.
-. (Join-Path (Split-Path $PSScriptRoot -Parent) 'forecast.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'provider-observation.ps1')
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'provider-actions.ps1')
 . (Join-Path $PSScriptRoot 'claude-plans.ps1')

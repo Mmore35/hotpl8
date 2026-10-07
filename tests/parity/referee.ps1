@@ -1,8 +1,9 @@
-# The referee for the compiled reader. `hotpl8 status` and `hotpl8 explain` are the reader's,
-# but the rules they show are still computed twice: the collector, the dashboard and the tray
-# read the state through PowerShell (Read-Hotpl8Snapshot). Until those ask the reader too,
-# this holds the two to each other. It computes, in this process and at a pinned instant,
-# what PowerShell's rules give for the files the reader is shown.
+# The referee for the compiled reader. `hotpl8 status`, `hotpl8 explain` and the tray's view
+# are the reader's, but the rules they show are still computed twice: the dashboard, the
+# agent interface and account management read the state through PowerShell
+# (Read-Hotpl8Snapshot). Until those ask the reader too, this holds the two to each other.
+# It computes, in this process and at a pinned instant, what PowerShell's rules give for the
+# files the reader is shown.
 #
 # It holds no rule of its own: it calls what the product calls, in the order
 # hotpl8.ps1 called it when these commands were PowerShell's.
@@ -21,7 +22,7 @@ function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,
         $status = Read-Hotpl8Snapshot $StateDirectory $(if($PreviewPolicy){$policy}) -Now $Now
     } catch {
         $failed=@{kind='error';message=$_.Exception.Message}
-        foreach($mode in 'status-json','explain','explain-json'){$answers[$mode]=$failed}
+        foreach($mode in 'status-json','explain-json'){$answers[$mode]=$failed}
         return $answers
     }
     if (-not $status -or -not $status.generatedAt) {
@@ -34,7 +35,7 @@ function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,
     try {
         if($status){$status|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $StateDirectory $Now) -Force}
     } catch {
-        $answers['explain']=$answers['explain-json']=@{kind='error';message=$_.Exception.Message}
+        $answers['explain-json']=@{kind='error';message=$_.Exception.Message}
         return $answers
     }
     try {
@@ -43,7 +44,6 @@ function Get-Hotpl8ParityAnswers([string]$StateDirectory,[string]$PreviewPolicy,
         $answers['explain-json']=@{kind='value';json=($shown|ConvertTo-Json -Depth 16)}
     } catch { $answers['explain-json']=@{kind='error';message=$_.Exception.Message} }
     if($answers['explain-json'].kind -eq 'value'){$answers['explain-json'].dump=ConvertTo-Hotpl8ParityDump $shown}
-    try { $answers['explain']=@{kind='text';text=((@(Format-Hotpl8Explanation $status $Now|ForEach-Object {ConvertTo-Hotpl8SafeText $_}) -join "`n")+"`n")} } catch { $answers['explain']=@{kind='error';message=$_.Exception.Message} }
     $answers
 }
 

@@ -131,7 +131,7 @@ Use the policy that produced the trace, apart from the ordering being compared. 
 
 ## Optional Windows tray
 
-Run `hotpl8 tray` in a Windows desktop session. It reads the same cache, shows account details, opens the terminal dashboard, and exposes deliberate pause/resume commands. It owns no provider process or collector. Quit removes the icon; scheduled collection continues. A per-state mutex prevents two tray consumers from duplicating notifications. `hotpl8 tray -Once` prints the view model without opening a window.
+Run `hotpl8 tray` in a Windows desktop session. It shows account details from the same cache, opens the terminal dashboard, and exposes deliberate pause/resume commands. What it shows and what it may announce is worked out by the compiled program, asked once every five seconds; the window holds none of those rules, and shows `view unavailable` when the program refuses the state. It owns no provider process or collector. Quit removes the icon; scheduled collection continues. A per-state mutex prevents two tray consumers from duplicating notifications. `hotpl8 tray -Once` prints that view as JSON without opening a window.
 
 Notifications require `notificationsEnabled: true` and follow work hours. They cover sustained collector failure, no eligible account, native sign-in needs and a fresh depletion estimate. Transition state persists across restarts and ignores harmless reset drift. Routine polls and warm successes do not notify. Windows may suppress balloons under system notification settings. This companion is optional, is not installed at startup, and has not yet completed an interactive desktop/idle-resource qualification pass. Native Mac delivery belongs to the [Mac handoff](plans/macos-handoff.md).
 

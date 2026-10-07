@@ -69,7 +69,8 @@ For example, an elapsed reset is read against the observation that reported it. 
 ```text
 hotpl8.cmd / hotpl8.ps1       User commands
 hotpl8-launch.cmd           Windows launcher: asks the compiled reader, then PowerShell
-native/                     Compiled program: version, status, explain and the collector
+native/                     Compiled program: version, status, explain, the tray's
+                            view and the collector
 tick.ps1                    Starts one wake of the compiled collector
 continue.ps1                One waiter for automatic continue, both providers
 setup-codex.ps1             Native account enrollment and optional hooks
@@ -80,7 +81,8 @@ src/
   provider-observation.ps1  Native quota decoders into the shared contract
   provider-decision.ps1     One eligibility, ranking and action-intent decision
   provider-actions.ps1      Short control authorization and generation boundary
-  native.ps1                Hand-over of version, status and explain to the reader
+  native.ps1                Hand-over of version, status, explain and the tray's view
+                            to the reader
   common.ps1                Atomic files, quoting, bounded processes
   config.ps1                State resolution and policy validation
   diagnostics.ps1           Offline doctor and bounded event logs
@@ -91,14 +93,12 @@ src/
   lane.ps1                  What a wake still asks PowerShell for: the continue
                             hook, a finished account addition
   overview.ps1              Pure provider summaries shared by all cached views
-  forecast.ps1 / insights.ps1
-                            Forecast text, health and the snapshot as views read it
+  insights.ps1              Health and the snapshot as views read it
   selection.ps1 / replay.ps1 Optional ranking keys and production-selector replay
   management.ps1            Validated account operations and setup
   parking.ps1               Park/unpark records kept outside policy
   updates.ps1               Release identity and provenance verification
-  notifications.ps1 / tray.ps1
-                            Optional cache consumer and transition alerts
+  tray.ps1                  The tray's window and menu; what it shows is the reader's
   providers/                Claude and Codex adapters
 tests/                      Offline regression suites
   fixtures/                 Fictional documentation data
@@ -111,7 +111,7 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 
 ## Tradeoffs and limits
 
-PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status` and `explain` are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it and reads the Claude and the Codex accounts itself, and PowerShell is started only to keep Claude's continue hook and to close an account addition. The tray, the dashboard and the other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
+PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status`, `explain` and what the tray shows are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it and reads the Claude and the Codex accounts itself, and PowerShell is started only to keep Claude's continue hook and to close an account addition. The dashboard and the other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
 

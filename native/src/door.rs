@@ -28,7 +28,9 @@ fn release() -> Option<PathBuf> {
 /// request, and its entry hands those to the reader itself.
 fn request(said: &[OsString], root: &Path) -> Option<Request> {
     let (command, rest) = said.split_first()?;
-    let mut request = Request::new(Command::named(command.to_str()?)?, root.to_path_buf());
+    // `tray` typed by a user opens the tray's window, which PowerShell draws.
+    let command = Command::named(command.to_str()?).filter(|command| *command != Command::Tray)?;
+    let mut request = Request::new(command, root.to_path_buf());
     // The Mac launcher names its Codex binding on every request; none of these commands reads it.
     let (mut state, mut policy, mut codex) = (None, None, None);
     let mut rest = rest.iter();

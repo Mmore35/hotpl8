@@ -46,18 +46,19 @@ param(
 
 $ErrorActionPreference = 'Stop'
 try {
-    # version, status and explain are answered by the compiled reader, their only
+    # version, status, explain and tray -Once are answered by the compiled reader, their only
     # implementation. A plain request goes there before anything else is loaded. One with other
     # parameters is checked below like any command, and then asks the same reader.
     # No Join-Path here: see the note on modules at the top of src/native.ps1.
     . ([IO.Path]::Combine($PSScriptRoot,'src','native.ps1'))
-    # The Mac launcher adds its Codex binding to every request; none of the three reads it.
+    # The Mac launcher adds its Codex binding to every request; none of these reads it.
     $plain=switch($Command){
         'version'{@('Command','AsJson','CodexExecutable')}
         {$_ -in 'status','explain'}{@('Command','AsJson','StateDirectory','PreviewPolicy','CodexExecutable')}
+        'tray'{if($Once){@('Command','Once','StateDirectory','CodexExecutable')}}
     }
     if($plain -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin $plain}).Count){
-        Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy $AsJson
+        Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy ($AsJson -or $Command -eq 'tray')
     }
     . (Join-Path $PSScriptRoot 'src/common.ps1')
     if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}
@@ -349,8 +350,9 @@ try {
         exit 0
     }
     if($Command -eq 'tray'){
+        if($Once){Exit-Hotpl8Native $PSScriptRoot 'tray' $StateDirectory '' $true}
         . (Join-Path $PSScriptRoot 'src/tray.ps1')
-        if($Once){Show-Hotpl8Tray $StateDirectory $PSScriptRoot -Once|ConvertTo-Json -Depth 8}else{Show-Hotpl8Tray $StateDirectory $PSScriptRoot}
+        Show-Hotpl8Tray $StateDirectory $PSScriptRoot
         exit 0
     }
 

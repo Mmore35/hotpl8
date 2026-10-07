@@ -1,7 +1,8 @@
-# version, status and explain are the compiled reader's: PowerShell holds no implementation
-# of them and hands each request to the reader this copy ships (native/, built by
-# scripts/build-native.ps1). hotpl8.ps1 loads this before src/common.ps1, so it must stay
-# self-contained: a plain request is only fast while it loads nothing it has no use for.
+# version, status, explain and what the tray shows are the compiled reader's: PowerShell
+# holds no implementation of them and hands each request to the reader this copy ships
+# (native/, built by scripts/build-native.ps1). hotpl8.ps1 loads this before src/common.ps1,
+# so it must stay self-contained: a plain request is only fast while it loads nothing it has
+# no use for.
 # That includes PowerShell's own modules: the first Join-Path, New-Object or Select-Object in
 # a fresh Windows PowerShell loads one and costs 50 to 80 ms, so this file and the hand-over
 # in hotpl8.ps1 call .NET directly.
@@ -41,7 +42,7 @@ function Exit-Hotpl8Native([string]$Root,[string]$Command,[string]$StateDirector
     $result=$null
     try{$result=Invoke-Hotpl8NativeProcess (Get-Hotpl8NativePath $Root) $arguments}catch{$result=$null}
     if(-not $result){
-        [Console]::Error.WriteLine('HotPl8: This copy has no compiled reader it can start, and version, status and explain are answered by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.')
+        [Console]::Error.WriteLine('HotPl8: This copy has no compiled reader it can start, and this command is answered by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.')
         exit 1
     }
     if($result.exitCode -ne 0){

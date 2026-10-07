@@ -483,6 +483,16 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='stored decisions';files=@{'policy.json'=$policy;'status.json'=$decided}})
     [void]$cases.Add(@{name='stored decisions for another provider';files=@{'policy.json'=$policy;'status.json'=(Edit-Hotpl8ParityText $status '"providers":{' '"providers":{"example":{"decision":{"reason":"only account","policy":"prefer","accounts":[{"slot":"a","reason":"eligible","rank":1}]},"decisions":[{"meter":"m","selected":null,"policy":"prefer","accounts":[{"slot":"a","reason":"eligible","reserve":false}]}]},')}})
 
+    # What the tray may announce. A policy without a schedule works every hour.
+    $announcing=Edit-Hotpl8ParityText $policy '"mode":"monitor",' '"mode":"monitor","notificationsEnabled":true,'
+    $runsOut=Edit-Hotpl8ParityText (Edit-Hotpl8ParityText $work '"status":"ok",' '"status":"ok","streamKey":"work",') '{"status":"observed",' '{"status":"observed","forecast":{"pace":"ahead","secondsToLimit":3600,"lastsToReset":false},'
+    $troubled=Join-Hotpl8ParityStatus @((Edit-Hotpl8ParityText $one '"reset7d":"@t+52h@"}' '"reset7d":"@t+52h@","streamKey":"everyday","forecast":{"pace":"ahead","secondsToLimit":7200,"lastsToReset":false}}'),'{"slot":2,"label":"Reserve","status":"relogin_required","observedAt":"@t-42s@","active":false,"fresh":false,"lastGoodAt":"@t-10d@"}') @($runsOut,'{"id":"personal","label":"Personal","status":"authentication_required","observedAt":"@t-9d@"}') ',"decision":{"reason":"no eligible account","policy":"prefer","accounts":[{"slot":1,"reason":"below_margin","rank":1},{"slot":2,"reason":"relogin_required","rank":2}]}' ',"decisions":[{"meter":"codex","selected":null,"policy":"prefer","accounts":[{"slot":"work","reason":"below_margin","reserve":false},{"slot":"personal","reason":"authentication_required","reserve":false}]}]'
+    $stalled='{"schemaVersion":1,"startedAt":"@t-10m@","completedAt":"@t-30m@","status":"running","providers":{}}'
+    [void]$cases.Add(@{name='announcements';files=@{'policy.json'=$announcing;'status.json'=$troubled;'collector.json'=$stalled}})
+    [void]$cases.Add(@{name='announcements outside working days';files=@{'policy.json'=(Edit-Hotpl8ParityText $announcing '"notificationsEnabled":true,' '"notificationsEnabled":true,"automation":{"schedule":{"start":"08:30","end":"18:00","days":[1,2,3,4,5]}},');'status.json'=$troubled;'collector.json'=$stalled}})
+    [void]$cases.Add(@{name='announcements with nothing wrong';files=@{'policy.json'=$announcing;'status.json'=$status}})
+    [void]$cases.Add(@{name='announcements with Claude only';files=@{'policy.json'='{"schemaVersion":2,"mode":"monitor","prefer":[1,2],"notificationsEnabled":true}';'status.json'=$status}})
+
     # Errors PowerShell reports. The reader must leave each to PowerShell.
     [void]$cases.Add(@{name='no policy';files=@{'status.json'=$status}})
     [void]$cases.Add(@{name='policy with an unknown field';files=@{'policy.json'=(Edit-Hotpl8ParityText $policy '"mode":"monitor",' '"mode":"monitor","colour":"blue",');'status.json'=$status}})
