@@ -8,7 +8,7 @@ Local file failures and provider failures have separate retry behavior. Safe Win
 
 ```mermaid
 flowchart LR
-    A[Native provider tools] --> B[tick.ps1: collect and apply policy]
+    A[Native provider tools] --> B[Collector: collect and apply policy]
     B --> C[Atomic local status.json]
     C --> D[Dashboard and status commands]
     P[policy.json] --> B
@@ -20,7 +20,7 @@ HotPl8 owns the decision policy. For Claude, it reads `cswap list --json` and us
 
 Codex has separate native homes. Each slot points to an explicitly enrolled, independently signed-in home. HotPl8 launches a child Codex process with that home's `CODEX_HOME`; it does not rewrite the parent environment or move credentials between homes. **NEXT LAUNCH** is a recommendation, not a claim that an existing session switched. An explicit slot launch validates native authentication but does not guarantee quota. Resume requires the slot that owns the conversation.
 
-There is no separate Warden component in this repository: collection and decisions live in `tick.ps1` and the provider adapters.
+There is no separate Warden component in this repository: collection and decisions live in the compiled collector under `native/`, which `tick.ps1` starts, and in the provider adapters.
 
 ## Account selection
 
@@ -50,7 +50,7 @@ flowchart TD
     G --> H[Observed active, or still unconfirmed]
 ```
 
-At most one cold account is attempted per tick. The `maintain` pattern has no phase delay. A switch hold does not disable warming or recovery probes; monitor mode disables all automatic actions. Explicit `refresh` also disables actions regardless of policy. See [Get-Hotpl8Actions](../src/config.ps1), [Invoke-SlotPing and Invoke-ClaudeTick](../src/providers/claude.ps1), and [configuration](configuration.md).
+At most one cold account is attempted per tick. The `maintain` pattern has no phase delay. A switch hold does not disable warming or recovery probes; monitor mode disables all automatic actions. Explicit `refresh` also disables actions regardless of policy. See [Get-Hotpl8Actions](../src/config.ps1), the Claude collection in `native/src/claude_tick.rs`, the request that opens a window in `native/src/cswap.rs`, and [configuration](configuration.md).
 
 The experimental Claude adapter includes legacy credential cleanup around `cswap run`. That boundary is unresolved; see [compatibility](compatibility.md#provider-boundaries) and [privacy](../PRIVACY.md) before enabling automation. The diagram describes implemented control flow, not provider approval.
 
@@ -59,7 +59,7 @@ The experimental Claude adapter includes legacy credential cleanup around `cswap
 | Decision | Why | Evidence |
 |---|---|---|
 | Display only cached snapshots | Opening or resizing the UI must not spend quota or change accounts | [Dashboard](../src/dashboard.ps1); [pipe and unchanged-cache test](../tests/test-dashboard.ps1) |
-| Lock collection and replace status atomically | Readers should not see a partially written snapshot; failed collection must not look fresh | [Collector](../tick.ps1), [atomic writes](../src/common.ps1); [collection/lock regressions](../tests/test-codex.ps1) |
+| Lock collection and replace status atomically | Readers should not see a partially written snapshot; failed collection must not look fresh | The collector (`native/src/wake.rs`, with its atomic writes in `native/src/files.rs`), started by [tick.ps1](../tick.ps1); [collection/lock regressions](../tests/test-codex.ps1) |
 | Keep native account homes separate | A launch or resume must not accidentally use another account's authentication or conversation | [Codex adapter](../src/providers/codex.ps1); [home binding and resume tests](../tests/test-codex.ps1) |
 
 For example, an elapsed reset is read against the observation that reported it. A window we read before its own reset, whose reset has since passed, refilled: the dashboard draws it full and labels it `reset · awaiting read` until the next collector read confirms it. An anchor that was already expired in the payload that delivered it proves nothing, so it stays `reset due`, and stale accounts still lose their NEXT LAUNCH badge. A window whose percentage never arrived is not refilled by its reset either: no reading stays `no reading`. Eligibility, Codex slot ranking and the agent API resolve the same rule, so none of them can call a window empty that the dashboard draws full. [Regression coverage](../tests/test-dashboard.ps1) exercises every case with a controlled clock.
@@ -69,15 +69,14 @@ For example, an elapsed reset is read against the observation that reported it. 
 ```text
 hotpl8.cmd / hotpl8.ps1       User commands
 hotpl8-launch.cmd           Windows launcher: asks the compiled reader, then PowerShell
-native/                     Compiled reader: version, status and explain
-tick.ps1                    Collection and action orchestration
+native/                     Compiled program: version, status, explain and the collector
+tick.ps1                    Starts one wake of the compiled collector
 continue.ps1                One waiter for automatic continue, both providers
 setup-codex.ps1             Native account enrollment and optional hooks
 install/uninstall/rollback.ps1
                             Stable installation entrypoints
 src/
   provider-registry.ps1     Validated data catalog, v1/v2/v3 compatibility views
-  provider-runtime.ps1      Fixed driver dispatch and native ownership checks
   provider-observation.ps1  Native quota decoders into the shared contract
   provider-decision.ps1     One eligibility, ranking and action-intent decision
   provider-actions.ps1      Short control authorization and generation boundary
@@ -87,12 +86,13 @@ src/
   diagnostics.ps1           Offline doctor and bounded event logs
   dashboard.ps1             Read-only terminal renderer and palette
   lifecycle.ps1             Install ownership, manifests, scheduler
-  automation.ps1            Shared pause, schedule and attempt gates
-  warming.ps1               Receipt persistence and observation reconciliation
-  collection.ps1            Persisted collection due times and backoff
+  automation.ps1            Pause and schedule gates of the PowerShell commands
+  collection.ps1            The category a failure is recorded under
+  lane.ps1                  What a wake still asks PowerShell for: Codex accounts,
+                            the continue hook, a finished account addition
   overview.ps1              Pure provider summaries shared by all cached views
   forecast.ps1 / insights.ps1
-                            Shared estimates, bounded history and activity
+                            Forecast text, health and the snapshot as views read it
   selection.ps1 / replay.ps1 Optional ranking keys and production-selector replay
   management.ps1            Validated account operations and setup
   parking.ps1               Park/unpark records kept outside policy
@@ -111,7 +111,7 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 
 ## Tradeoffs and limits
 
-PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status` and `explain` are answered by a small compiled reader that ships beside the scripts, and by nothing else. The collector, tray and dashboard still calculate the same rules in PowerShell, checked against the reader on every test run, until they ask the reader too. See [the plan](plans/rust-read-side.md). Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
+PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status` and `explain` are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it, and PowerShell is started only to read Codex accounts, keep Claude's continue hook and close an account addition. The tray, the dashboard and the other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
 

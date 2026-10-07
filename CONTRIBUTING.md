@@ -54,13 +54,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\screenshots.ps1
 
 Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do not infer weekly or short-window capacity from price ratios, weaken unknown-state checks in the calibrated capacity model, or count a skipped retry as a failed provider attempt. The displayed metric measures readable accounts and records every exclusion in `coverage`; it must never blank because one account is unreadable. Preserve third-party animation notices in source and release packages.
 
-Claude plan discovery is isolated in `src/providers/claude_plan.py` and `claude-plans.ps1`. Run `python tests/test_claude_plan.py` and `tests/test-claude-plans.ps1` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
+Claude plan discovery is isolated in `src/providers/claude_plan.py`, which the collector asks (`native/src/plans.rs`); `claude-plans.ps1` keeps only the check of a stored answer. Run `python tests/test_claude_plan.py` and `tests/test-claude-plans.ps1` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
 
-The compiled reader under `native/` is the only implementation of `version`, `status` and
-`explain`: PowerShell hands those requests to it and has no answer of its own, so do not add
-one. Changes there require `cargo test --locked` in `native/`, `tests/test-native.ps1` and
-`tests/test-native-parity.ps1`. The collector, tray and dashboard still calculate the same
-rules in PowerShell. The parity suite holds those to the reader: it asks both the same question
+The compiled program under `native/` is the only implementation of `version`, `status` and
+`explain`, and of the collector: PowerShell hands those requests and every wake to it and has
+no answer or collector of its own, so do not add one. `tick.ps1` only starts it, and
+`src/lane.ps1` holds the three pieces of a wake it still asks PowerShell for. Changes there
+require `cargo test --locked` in `native/`, `tests/test-native.ps1` and
+`tests/test-native-parity.ps1`; a change to a wake also requires `tests/test-tick.sh`. A unit
+test of the collector passes a scratch home, a stand-in for cswap and its own clock and lanes;
+none may reach the machine's accounts or start PowerShell. The tray, dashboard and other
+commands still calculate some of the same rules in PowerShell, and
+[the plan](docs/plans/rust-read-side.md) lists them. The parity suite holds the read rules to
+the program: it asks both the same question
 about the fictional cases in `tests/parity/cases.ps1` and about seeded variations of them,
 under the PowerShell the suite runs in, and compares the text of `status` with
 `tests/parity/expected-status.txt`. Add a case for every input shape a change touches.
