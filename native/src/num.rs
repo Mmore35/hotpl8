@@ -540,6 +540,63 @@ pub fn double_json(value: f64) -> String {
     text
 }
 
+/// '{0:N0}' -f $double and '{0:N1}' -f $double, with the invariant culture's separators.
+/// Windows PowerShell takes fifteen digits and rounds half away from zero; PowerShell 7
+/// rounds the exact value, a half going to the even digit.
+pub fn double_grouped(value: f64, decimals: usize) -> String {
+    let (negative, plain) = if desktop() {
+        let (mut kept, mut up) = (Vec::new(), false);
+        if value != 0.0 {
+            let (digits, exponent) = fifteen_digits(value);
+            // digits[i] is worth 10^(exponent - i); the last digit kept sits at `last`.
+            let last = exponent + decimals as i32;
+            let digit = |index: i32| if index >= 0 && (index as usize) < digits.len() { digits[index as usize] } else { 0 };
+            kept = (0..=last).map(digit).collect();
+            up = last >= -1 && digit(last + 1) >= 5;
+        }
+        if up {
+            let mut index = kept.len();
+            loop {
+                if index == 0 {
+                    kept.insert(0, 1);
+                    break;
+                }
+                index -= 1;
+                if kept[index] == 9 {
+                    kept[index] = 0;
+                } else {
+                    kept[index] += 1;
+                    break;
+                }
+            }
+        }
+        while kept.len() < decimals + 1 {
+            kept.insert(0, 0);
+        }
+        let first = kept.iter().position(|d| *d != 0).unwrap_or(kept.len()).min(kept.len() - decimals - 1);
+        let mut text: String = kept[first..].iter().map(|d| (b'0' + d) as char).collect();
+        if decimals > 0 {
+            text.insert(text.len() - decimals, '.');
+        }
+        (value < 0.0 && kept.iter().any(|d| *d != 0), text)
+    } else {
+        (value.is_sign_negative(), format!("{:.*}", decimals, value.abs()))
+    };
+    let (whole, fraction) = plain.split_at(plain.find('.').unwrap_or(plain.len()));
+    let mut out = String::new();
+    if negative {
+        out.push('-');
+    }
+    for (index, digit) in whole.chars().enumerate() {
+        if index > 0 && (whole.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out.push_str(fraction);
+    out
+}
+
 /// '{0:0.#}' -f $double: the fifteen digits, then half away from zero at one fraction digit.
 pub fn double_tenths(value: f64) -> String {
     if value == 0.0 {
@@ -618,6 +675,20 @@ mod tests {
     }
     fn t(value: R<Dec>) -> String {
         value.ok().map_or("stop".into(), Dec::text)
+    }
+
+    #[test]
+    fn grouped_numbers_match_each_edition() {
+        let cases: [(f64, usize); 18] = [
+            (0.5, 0), (1.5, 0), (2.5, 0), (1234.5, 0), (0.25, 1), (0.35, 1), (1234.05, 1), (-0.4, 0), (99.5, 0),
+            (2.675, 1), (100.0, 0), (37.0, 0), (6.95, 1), (0.049999, 1), (12345678.5, 0), (-1234.56, 1), (63.0, 0), (0.0, 1),
+        ];
+        let all = |core: bool| {
+            set_core(core);
+            cases.iter().map(|(value, decimals)| double_grouped(*value, *decimals)).collect::<Vec<_>>().join("|")
+        };
+        assert_eq!(all(false), "1|2|3|1,235|0.3|0.4|1,234.1|0|100|2.7|100|37|7.0|0.0|12,345,679|-1,234.6|63|0.0");
+        assert_eq!(all(true), "0|2|2|1,234|0.2|0.3|1,234.0|-0|100|2.7|100|37|7.0|0.0|12,345,678|-1,234.6|63|0.0");
     }
 
     #[test]

@@ -468,6 +468,44 @@ pub fn write(value: &V, limit: usize) -> R<String> {
     Ok(out)
 }
 
+/// `$value | ConvertTo-Json -Compress`, for a flat record of text and whole numbers: one
+/// line of an event log.
+pub fn line(record: &[(&str, V)]) -> R<String> {
+    let mut out = String::from("{");
+    for (index, (name, value)) in record.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        write_text(name, &mut out);
+        out.push(':');
+        match value {
+            V::Str(text) => write_text(text, &mut out),
+            V::I32(x) => out.push_str(&x.to_string()),
+            _ => return unreadable(),
+        }
+    }
+    out.push('}');
+    Ok(out)
+}
+
+/// A file the collector keeps for itself may outgrow what `status` reads: a fortnight of
+/// usage samples, or a native program's whole answer.
+const MAX_COLLECTED_BYTES: usize = 16_000_000;
+
+/// Read-Hotpl8Json: the file's value, or null when there is no such file or it does not
+/// hold a document HotPl8 reads. A collector starts over from nothing rather than stop.
+pub fn read_or_null(path: &std::path::Path) -> V {
+    let Ok(bytes) = std::fs::read(path) else { return V::Null };
+    if bytes.len() > MAX_COLLECTED_BYTES {
+        return V::Null;
+    }
+    let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
+    match std::str::from_utf8(bytes) {
+        Ok(text) => parse(text, "").unwrap_or(V::Null),
+        Err(_) => V::Null,
+    }
+}
+
 /// Whether two parsed values hold the same data with the same types.
 #[cfg(test)]
 pub fn same(left: &V, right: &V) -> bool {

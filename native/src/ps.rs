@@ -22,13 +22,51 @@ struct Detail {
     at: &'static Location<'static>,
     /// What the user is told. Without one, the place in the reader stands in for it.
     message: Option<String>,
+    /// The state file an operating-system refusal was about, and the system's code for it.
+    file: Option<(String, i32)>,
+    /// Whether the system refused for want of permission rather than for any other reason.
+    denied: bool,
 }
 pub type R<T> = Result<T, Stop>;
 
 impl Stop {
     #[track_caller]
     fn new<T>(thrown: bool, message: Option<String>) -> R<T> {
-        Err(Stop(Box::new(Detail { thrown, at: Location::caller(), message })))
+        Err(Stop(Box::new(Detail { thrown, at: Location::caller(), message, file: None, denied: false })))
+    }
+    /// The operating system refused to read, write or lock a file. A ported try/catch
+    /// catches it, as it caught the .NET exception.
+    #[track_caller]
+    pub fn io<T>(error: &std::io::Error, path: &std::path::Path) -> R<T> {
+        let name = path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned();
+        Err(Stop(Box::new(Detail {
+            thrown: true,
+            at: Location::caller(),
+            message: Some(format!("{name}: {error}")),
+            file: Some((name, error.raw_os_error().unwrap_or(0) & 0xffff)),
+            denied: error.kind() == std::io::ErrorKind::PermissionDenied,
+        })))
+    }
+    /// Get-Hotpl8FailureCode: what kind of failure this is, in the words events carry.
+    pub fn failure_code(&self) -> &'static str {
+        match (&self.0.file, self.0.denied) {
+            (_, true) => "access_denied",
+            (Some(_), false) => "state_io_failed",
+            (None, false) => "unexpected_collection_error",
+        }
+    }
+    /// The file and system code of an operating-system refusal.
+    pub fn state_file(&self) -> Option<(&str, i32)> {
+        self.0.file.as_ref().map(|(name, code)| (name.as_str(), *code))
+    }
+    /// Where in the reader the stop was raised: file name and line.
+    pub fn place(&self) -> (&'static str, u32) {
+        let file = self.0.at.file();
+        (file.rsplit(['/', '\\']).next().unwrap_or(file), self.0.at.line())
+    }
+    /// The words a rule refused with, where it gave any: `throw 'claude_missing'`.
+    pub fn said(&self) -> Option<&str> {
+        if self.0.thrown { self.0.message.as_deref() } else { None }
     }
     pub fn thrown(&self) -> bool {
         self.0.thrown
