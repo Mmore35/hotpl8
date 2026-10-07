@@ -302,40 +302,6 @@ function Invoke-CodexCollection($Policy, [string]$StateDirectory, [string]$Execu
     } catch { }
     return $result
 }
-function Format-CodexStatus($Codex, $Policy, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    $chosen = if ($Codex.recommendedSlot) { [string]$Codex.recommendedSlot } else { 'unavailable' }
-    $criticalAccounts=@(Get-Hotpl8CapacityAccounts ([pscustomobject]@{providers=@{codex=$Codex}}) $Policy 'codex' $Now $Codex.defaultMeter)
-    $critical=Get-Hotpl8CriticalDecision $criticalAccounts $Policy $chosen $Codex.critical.($Codex.defaultMeter) $Now
-    $reasons = @{}
-    foreach ($slot in @($Codex.slots)) {
-        $reason = [string]$slot.status
-        if ($reason -eq 'ok') {
-            try {
-                $age = ($Now - [datetimeoffset]::Parse($slot.observedAt)).TotalSeconds
-                if ($age -lt -5 -or $age -gt 900) { $reason = 'stale' }
-            } catch { $reason = 'unknown' }
-            if ($reason -eq 'ok' -and $Policy) { $reason = Get-CodexEligibility $slot $Policy $Codex.defaultMeter $Now $critical.active }
-        }
-        $reasons[[string]$slot.id] = $reason
-    }
-    # A cached selection is a historical decision. Recheck admission at display
-    # time without polling or rewriting the snapshot, including per-slot age.
-    if (-not $reasons.ContainsKey($chosen) -or $reasons[$chosen] -notin @('ok','eligible')) { $chosen = 'unavailable' }
-    'Codex: next launch = ' + $chosen + ' | ' + [string]$Codex.status + ' | observed ' + [string]$Codex.observedAt
-    foreach ($slot in @($Codex.slots)) {
-        '  ' + $slot.label + ' [' + $slot.id + '] ' + $reasons[[string]$slot.id] + ' | quota observed ' + $slot.observedAt
-        foreach ($bucket in $slot.buckets.PSObject.Properties) {
-            $parts = @()
-            foreach ($window in $bucket.Value.windows.PSObject.Properties) {
-                $w = $window.Value
-                $reset = if ($null -ne $w.resetsAt) { [datetimeoffset]::FromUnixTimeSeconds([long]$w.resetsAt).ToLocalTime().ToString('MM-dd HH:mm zzz') } else { 'unknown' }
-                $durationLabel = if ($window.Name -eq '300') { '5h' } else { '7d' }
-                $parts += $durationLabel + ' ' + $w.remainingPercent + '% remaining; reset ' + $reset + ' (' + $w.anchorState + ')'
-            }
-            '    ' + $bucket.Name + ': ' + $bucket.Value.status + ' | ' + ($parts -join ' | ') + ' | warm: ' + $bucket.Value.warm
-        }
-    }
-}
 # Native launch decisions use cached quotas, followed by native login/config validation.
 function Get-CodexLaunchPlan($Policy, $Status, [string]$SlotId, [string]$Model, [string[]]$Arguments, [datetimeoffset]$Now,$Context=$null) {
     Assert-CodexPolicy $Policy

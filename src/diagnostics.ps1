@@ -17,7 +17,7 @@ function Write-Hotpl8Event([string]$Directory, [string]$Code, $Failure=$null) {
             # Only known source names and numeric lines, never exception text,
             # paths, invocation text or native output (which can contain secrets).
             $source=Split-Path ([string]$Failure.InvocationInfo.ScriptName) -Leaf
-            if($source -in @('common.ps1','tick.ps1','claude.ps1','codex.ps1','warming.ps1','insights.ps1','collection.ps1','claude-plans.ps1')){
+            if($source -in @('common.ps1','tick.ps1','claude.ps1','codex.ps1','insights.ps1','collection.ps1','claude-plans.ps1')){
                 $event.source=$source;$event.line=[int]$Failure.InvocationInfo.ScriptLineNumber
             }
         }

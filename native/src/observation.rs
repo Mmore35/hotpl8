@@ -58,12 +58,54 @@ pub fn claude_observation(slot: &V, policy: &V) -> R<V> {
     })
 }
 
-/// ConvertTo-Hotpl8ClaudeEntryObservation without -ForWarm. The status path always
-/// supplies the entry's observation; the legacy headroom shape is not modelled.
-pub fn claude_entry_observation(entry: &V) -> R<V> {
-    let observation = entry.g("observation")?;
+/// ConvertTo-Hotpl8ClaudeEntryObservation
+pub fn claude_entry_observation(id: &V, entry: &V, policy: &V, now: Dto, for_warm: bool) -> R<V> {
+    let mut observation = entry.g("observation")?;
+    let usage = entry.path(&["obj", "usage"])?;
     if !observation.t()? {
-        return unreadable();
+        let mut stamp = entry.g("observedAt")?;
+        let native_age = entry.path(&["obj", "usageAgeSeconds"])?;
+        if !stamp.t()? && native_age.is_number() && native_age.ge_i(0)? && native_age.le_i(604_800)? {
+            stamp = catch(|| Ok(now.plus(-native_age.dbl()?)?.o()))?.map_or(V::Null, V::from);
+        }
+        // Legacy callers pass headroom and freshness they have already worked out, not raw
+        // quota. That interface is kept; a raw observation always carries its time.
+        if !stamp.t()? && native_age.is_null() && entry.g("fresh")?.t()? {
+            stamp = now.o().into();
+        }
+        let native_status = entry.path(&["obj", "usageStatus"])?;
+        let used = |name: &str| -> R<V> {
+            let headroom = entry.g(name)?;
+            Ok(if headroom.is_number() { V::Dbl(100.0 - headroom.dbl()?) } else { V::Null })
+        };
+        let model_reason = entry.g("modelReason")?;
+        let slot = obj! {
+            "slot" => id,
+            "status" => if !entry.t()? { V::s_of("not_observed") } else if native_status.t()? { native_status } else { V::s_of("ok") },
+            "fresh" => entry.g("fresh")?.t()?,
+            "observedAt" => stamp,
+            "used5h" => used("h5")?,
+            "used7d" => used("h7")?,
+            "reset5h" => usage.path(&["fiveHour", "resetsAt"])?,
+            "reset7d" => usage.path(&["sevenDay", "resetsAt"])?,
+            "scoped" => usage.g("scoped")?,
+            "modelReason" => if !entry.g("modelBlocked")?.t()? { V::Null } else if model_reason.t()? { model_reason } else { V::s_of("model_quota_unknown") },
+        };
+        observation = claude_observation(&slot, policy)?;
+    }
+    // Opening a cold window needs fresh quota but cannot need the reset time that opening
+    // it will create. The copy is for this action alone; admission keeps the original.
+    if for_warm && entry.g("cold")?.t()? && usage.g("fiveHour")?.t()? && blank(&usage.path(&["fiveHour", "resetsAt"])?.s()?)? {
+        observation = observation.shallow()?;
+        let mut windows = Vec::new();
+        for window in observation.g("windows")?.each() {
+            let copy = window.shallow()?;
+            if copy.g("role")?.eq_s("short")? && !copy.g("scope")?.t()? && !copy.g("resetAt")?.t()? {
+                copy.set("resetRequired", false.into())?;
+            }
+            windows.push(copy);
+        }
+        observation.set("windows", windows.into())?;
     }
     Ok(observation)
 }

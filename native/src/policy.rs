@@ -436,14 +436,27 @@ fn home_key(path: &str) -> R<String> {
     Ok((head + &rest).to_ascii_lowercase())
 }
 
-/// Get-Hotpl8Actions for a command that may act: whether switching is on. The other
-/// members are worked out as PowerShell does, so a policy it would stop on stops here.
-pub fn switching(policy: &V) -> R<bool> {
-    let enabled = policy.g("mode")?.ne_s("monitor")?;
+/// What a policy lets the collector do.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Actions {
+    pub switching: bool,
+    pub warming: bool,
+    pub probing: bool,
+    pub continuing: bool,
+}
+
+/// Get-Hotpl8Actions
+pub fn actions(policy: &V, observe_only: bool) -> R<Actions> {
+    let enabled = !observe_only && policy.g("mode")?.ne_s("monitor")?;
     let legacy = policy.g("schemaVersion")?.is_null();
-    let switching = enabled && ((legacy && policy.g("switchEnabled")?.is_null()) || policy.g("switchEnabled")?.is_true()?);
-    let _warming = enabled && policy.g("warm")?.is_true()?;
-    let _probing = enabled && ((legacy && policy.g("probeEnabled")?.is_null()) || policy.g("probeEnabled")?.is_true()?);
-    let _continuing = enabled && policy.path(&["automation", "continue"])?.ne(&V::Bool(false))?;
-    Ok(switching)
+    Ok(Actions {
+        switching: enabled && ((legacy && policy.g("switchEnabled")?.is_null()) || policy.g("switchEnabled")?.is_true()?),
+        warming: enabled && policy.g("warm")?.is_true()?,
+        probing: enabled && ((legacy && policy.g("probeEnabled")?.is_null()) || policy.g("probeEnabled")?.is_true()?),
+        continuing: enabled && policy.path(&["automation", "continue"])?.ne(&V::Bool(false))?,
+    })
+}
+/// Whether a command that may act would switch.
+pub fn switching(policy: &V) -> R<bool> {
+    Ok(actions(policy, false)?.switching)
 }

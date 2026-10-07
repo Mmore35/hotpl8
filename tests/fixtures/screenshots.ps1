@@ -40,11 +40,12 @@ function Get-Hotpl8ScreenshotFixture([switch]$Operations) {
     if($Operations){
         $status.collector=@{startedAt=$now.AddSeconds(-45).ToString('o');completedAt=$now.AddSeconds(-42).ToString('o');status='ok'}
         $status.slots[0].observedAt=$now.AddSeconds(-42).ToString('o')
-        $status.slots[0].forecast=Get-Hotpl8Forecast 54 $status.slots[0].reset7d $status.slots[0].observedAt 10080 $now
+        # The estimates the collector gives these two readings at this fixture's time.
+        $status.slots[0].forecast=[pscustomobject]@{observedAt=$status.slots[0].observedAt;expectedUsed=69;used=54;pace='behind';secondsToLimit=355698;lastsToReset=$true;recentSecondsToLimit=$null;basis='cycle-average';confidence='estimate'}
         $status.slots[1].cold=$true;$status.slots[1].used5h=0;$status.slots[1].reset5h=''
         $status.slots[1].warmOutcome=@{outcome='unconfirmed'}
         $status.slots[1].actionBlock='outside_work_hours'
-        $status.providers.codex.slots[0].buckets.codex.forecast=Get-Hotpl8Forecast 41 $now.AddDays(3).ToString('o') $now.AddSeconds(-42).ToString('o') 10080 $now
+        $status.providers.codex.slots[0].buckets.codex.forecast=[pscustomobject]@{observedAt=$now.AddSeconds(-42).ToString('o');expectedUsed=57.1d;used=41;pace='behind';secondsToLimit=497266;lastsToReset=$true;recentSecondsToLimit=$null;basis='cycle-average';confidence='estimate'}
         $status.recentActions=@(@{provider='claude';slot=2;kind='warm_outcome';reason='unconfirmed'})
     }
     return @{

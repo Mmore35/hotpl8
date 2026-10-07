@@ -186,17 +186,6 @@ try {
     Check 'last-good snapshot keeps its age on read failure' { $first=Read-Hotpl8Json (Join-Path $dir 'codex-state.json'); $env:HOTPL8_TEST_SCENARIO='401'; $c=Invoke-CodexCollection $policy $dir $fake $null $null; Assert (($c.slots | Where-Object id -EQ a).observedAt -eq $first.slots.a.lastSuccessAt) ('age changed: ' + ($c.slots | Where-Object id -EQ a).observedAt + ' vs ' + $first.slots.a.lastSuccessAt); Assert ($null -eq $c.recommendedSlot) ('recommended ' + $c.recommendedSlot) }
     $env:HOTPL8_TEST_SCENARIO='ok'
     $status=[pscustomobject]@{observedAt=$now.ToString('o');recommendations=[pscustomobject]@{codex='a'};slots=@((Make-Slot a),(Make-Slot b))}
-    Check 'cached display rejects stale and newly exhausted recommendations without rewriting data' {
-        $s=Copy-Value $status; $s|Add-Member NoteProperty recommendedSlot a; $s|Add-Member NoteProperty defaultMeter codex
-        $s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
-        $text=(Format-CodexStatus $s $policy $now)-join "`n"
-        Assert ($text.Contains('next launch = unavailable')); Assert ($text.Contains('stale'))
-        Assert ($s.recommendedSlot -eq 'a'); Assert ($s.slots[0].status -eq 'ok')
-        $s.slots[0]=Make-Slot a 100
-        Assert (((Format-CodexStatus $s $policy $now)-join "`n").Contains('next launch = unavailable'))
-        $s.slots[0]=Make-Slot a
-        Assert (((Format-CodexStatus $s $policy $now)-join "`n").Contains('next launch = a'))
-    }
     Check 'automatic launch chooses recommended account' { $p=Get-CodexLaunchPlan $policy $status '' '' @() $now; Assert ($p.slot.id -eq 'a'); Assert $p.automatic }
     Check 'new launch recomputes shared policy instead of trusting a cached recommendation' {
         $changed=Copy-Value $policy;$changed.prefer=@('b','a')

@@ -74,7 +74,6 @@
     "src/selection.ps1",
     "src/tray.ps1",
     "src/updates.ps1",
-    "src/warming.ps1",
     "src/replay.ps1",
     "tests/test-operations.ps1",
     "scripts/replay.ps1",
@@ -151,7 +150,6 @@
     "data/providers/codex.json",
     "src/provider-observation.ps1",
     "src/provider-actions.ps1",
-    "src/provider-runtime.ps1",
     "src/t3-migration.ps1",
     "tests/test-t3-migration.ps1",
     "tests/test-provider-actions.ps1",
@@ -207,7 +205,8 @@
     "tests/parity/cases.ps1",
     "tests/parity/fuzz.ps1",
     "tests/parity/expected-status.txt",
-    "docs/plans/rust-read-side.md"
+    "docs/plans/rust-read-side.md",
+    "src/lane.ps1"
   ],
   "platformFiles": {
     "windows": [

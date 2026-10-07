@@ -93,10 +93,11 @@ try{
         Assert ((Test-Path -LiteralPath $definition.execute -PathType Leaf) -and $definition.workingDirectory -ceq $install)
         # The installed path carries a space, so its quoting is part of the assertion.
         Assert ($definition.arguments.Contains(' -File "'+(Join-Path $install 'app/tick.ps1')+'" -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $state)))
-        $policyPath=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllBytes($policyPath)
+        $policyPath=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllBytes($policyPath);$homeBefore=$env:USERPROFILE
         try{
             # A preferred slot makes the tick collect. The backoff marker keeps that
             # collection away from cswap, so no account or credential home is touched.
+            $env:USERPROFILE=Join-Path $dir 'user home';[void][IO.Directory]::CreateDirectory($env:USERPROFILE)
             $p=Read-Hotpl8Json $policyPath;$p.prefer=@(1)
             Write-Hotpl8Text $policyPath ($p|ConvertTo-Json -Depth 12)
             $now=[datetimeoffset]::UtcNow
@@ -108,6 +109,67 @@ try{
             $status=Read-Hotpl8Json (Join-Path $state 'status.json')
             Assert ($status.collector.scheduled -eq $true -and $status.claudeError -eq 'backoff')
         }finally{
+            $env:USERPROFILE=$homeBefore
+            [IO.File]::WriteAllBytes($policyPath,$original)
+            foreach($name in @('status.txt','status.js','status.json','collector.json')){Remove-Item -LiteralPath (Join-Path $state $name) -Force -ErrorAction SilentlyContinue}
+        }
+    }
+    Check 'an installation that updates itself is woken by the compiled program beside its launcher' {
+        # As delivery/setup.py and an activation lay one out: releases, the pointer to the one
+        # in force, and the compiled program beside the launcher. No task is registered here.
+        $sha='b'*40;$managed=Join-Path $dir 'managed installation';$inForce=Join-Path $managed ('releases/'+$sha)
+        [void][IO.Directory]::CreateDirectory((Join-Path $managed 'releases'))
+        Copy-Item -LiteralPath (Join-Path $install 'app') -Destination $inForce -Recurse
+        $installation=Read-Hotpl8Json (Join-Path $install 'installation.json')
+        Write-Hotpl8Text (Join-Path $managed 'delivery.json') (@{stateDirectory=$state}|ConvertTo-Json) -NoBom
+        $point={param($Release) Write-Hotpl8Text (Join-Path $managed 'current.json') ([ordered]@{protocol=1;sha=$sha;release=$Release}|ConvertTo-Json) -NoBom}
+        & $point ('releases/'+$sha)
+        $beside=Join-Path $managed 'hotpl8-native.exe'
+        # Until this release's own copy is beside the launcher, the task keeps the start that
+        # every release understands.
+        $slow=' -File "'+(Join-Path $managed 'app/tick.ps1')+'" -Scheduled -StateDirectory '+(ConvertTo-NativeArgument $state)
+        Assert ((Get-Hotpl8TaskDefinition $installation $managed).arguments.EndsWith($slow))
+        [IO.File]::WriteAllText($beside,'the copy of another release')
+        Assert ((Get-Hotpl8TaskDefinition $installation $managed).arguments.EndsWith($slow))
+        [IO.File]::Copy((Join-Path $root 'bin/windows/hotpl8-native.exe'),$beside,$true)
+        $definition=Get-Hotpl8TaskDefinition $installation $managed
+        Assert ($definition.arguments.EndsWith(' '+(ConvertTo-NativeArgument $managed)+' '+(ConvertTo-NativeArgument $beside)+' wake'))
+        Assert ($definition.name -ceq ('HotPl8-'+$installation.id) -and $definition.workingDirectory -ceq $managed -and (Test-Path -LiteralPath $definition.execute -PathType Leaf))
+        $policyPath=Join-Path $state 'policy.json';$original=[IO.File]::ReadAllBytes($policyPath);$homeBefore=$env:USERPROFILE
+        $text=Join-Path $state 'status.txt'
+        try{
+            # As in the check above: collection is due, and the backoff marker keeps it from cswap.
+            $env:USERPROFILE=Join-Path $dir 'user home';[void][IO.Directory]::CreateDirectory($env:USERPROFILE)
+            $p=Read-Hotpl8Json $policyPath;$p.prefer=@(1)
+            Write-Hotpl8Text $policyPath ($p|ConvertTo-Json -Depth 12)
+            $now=[datetimeoffset]::UtcNow
+            Write-Hotpl8Text (Join-Path $state 'collector.json') (@{schemaVersion=1;providers=@{claude=@{lastAttemptAt=$now.ToString('o');failures=1;nextAttemptAt=$now.AddMinutes(30).ToString('o');status='unavailable'}}}|ConvertTo-Json -Depth 8)
+            Remove-Item -LiteralPath $text -Force -ErrorAction SilentlyContinue
+            $proc=Start-Process -FilePath $definition.execute -ArgumentList $definition.arguments -WorkingDirectory $definition.workingDirectory -WindowStyle Hidden -Wait -PassThru
+            Assert ($proc.ExitCode -eq 0)
+            Assert (Test-Path -LiteralPath $text)
+            $status=Read-Hotpl8Json (Join-Path $state 'status.json')
+            Assert ($status.collector.scheduled -eq $true -and $status.claudeError -eq 'backoff')
+            # A wake during an update is not a failure, and collects nothing.
+            Remove-Item -LiteralPath $text -Force
+            $update=[IO.File]::Open((Join-Path $managed 'runtime.lock'),'OpenOrCreate','ReadWrite','None')
+            try{& $beside wake;$code=$LASTEXITCODE}finally{$update.Dispose()}
+            Assert ($code -eq 0 -and -not (Test-Path -LiteralPath $text))
+            # A rollback can put a release from before the compiled collector back in force.
+            # Its collector is its tick.ps1, started as delivery/launch.ps1 started it.
+            Remove-Item -LiteralPath (Join-Path $inForce 'src/lane.ps1') -Force
+            $seen=Join-Path $dir 'older tick.txt'
+            $older='param([switch]$Scheduled,[string]$StateDirectory)'+"`r`n"+'[IO.File]::WriteAllText('''+$seen+''',(@([string]$Scheduled,$StateDirectory,$env:HOTPL8_STATE_DIRECTORY,$env:HOTPL8_INSTALL_DIRECTORY) -join ''|''))'+"`r`n"+'exit 7'+"`r`n"
+            Write-Hotpl8Text (Join-Path $inForce 'tick.ps1') $older
+            & $beside wake
+            Assert ($LASTEXITCODE -eq 7 -and [IO.File]::ReadAllText($seen) -ieq (@('True',$state,$state,$managed) -join '|'))
+            Assert (-not (Test-Path -LiteralPath $text))
+            # An installation that cannot name its release is one.
+            & $point 'releases/other'
+            & $beside wake
+            Assert ($LASTEXITCODE -eq 1)
+        }finally{
+            $env:USERPROFILE=$homeBefore
             [IO.File]::WriteAllBytes($policyPath,$original)
             foreach($name in @('status.txt','status.js','status.json','collector.json')){Remove-Item -LiteralPath (Join-Path $state $name) -Force -ErrorAction SilentlyContinue}
         }

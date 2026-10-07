@@ -37,15 +37,19 @@ fn with_id(rows: &[V], id: &V) -> R<Vec<V>> {
     filter(rows, |row| row.g("id")?.ceq(id))
 }
 
-/// Get-Hotpl8ProviderDecision, for the one intent the status path uses.
+/// An account whose reason says it is no longer the one an action was meant for.
+fn unbound(row: &V) -> R<bool> {
+    row.g("reason")?.in_s(&["disabled", "binding_changed", "duplicate_observation", "duplicate_subscription"])
+}
+
+/// Get-Hotpl8ProviderDecision
 pub fn provider_decision(accounts: &V, policy: &V, context: &V, now: Dto) -> R<V> {
     let intent = if context.g("intent")?.t()? { context.g("intent")?.s()? } else { "observe".to_string() };
     if !V::s_of(&intent).in_s(&["observe", "admit", "rebind", "refresh", "control", "warm", "probe"])? {
         return throw();
     }
-    if intent != "observe" {
-        return unreadable();
-    }
+    let intent = intent.to_ascii_lowercase();
+    let acting = intent == "warm" || intent == "probe";
     let scopes = filter(&context.g("scopes")?.arr(), |scope| scope.t())?;
     let mut rows = Vec::new();
     for account in accounts.arr() {
@@ -165,24 +169,80 @@ pub fn provider_decision(accounts: &V, policy: &V, context: &V, now: Dto) -> R<V
     }
     let mut target = proposed.clone();
     let mut suppression = V::Null;
-    if context.g("safetyInvalid")?.is_true()? {
+    let mut manual = false;
+    if intent == "control" {
+        target = previous.clone();
+    } else if context.g("safetyInvalid")?.is_true()? {
         suppression = "safety_state_invalid".into();
+    } else if intent == "refresh" {
+        target = previous.clone();
+        let bound = with_id(&rows, &previous)?;
+        if !previous.t()? || !context.g("identityKnown")?.is_true()? {
+            suppression = "binding_unknown".into();
+        } else if bound.len() != 1 || unbound(&bound[0])? {
+            suppression = "binding_changed".into();
+        }
     } else {
-        if context.g("hold")?.is_true()? {
+        if acting {
+            // This is permission for an operation the caller has already prepared, not a
+            // plan to warm or probe: the caller supplies the evidence particular to it (a
+            // cold window, the phase, a cooldown, or that recovery may be tried).
+            target = context.g("actionSlot")?.sv()?;
+            let account = with_id(&rows, &target)?;
+            if !target.t()? || account.len() != 1 {
+                suppression = "action_target_unknown".into();
+            } else if unbound(&account[0])? {
+                suppression = "binding_changed".into();
+            } else if (intent == "warm" && !account[0].g("valid")?.t()?) || !context.g("actionEligible")?.is_true()? {
+                suppression = "action_ineligible".into();
+            }
+        } else if intent == "admit" && context.g("pin")?.t()? {
+            let pin = context.g("pin")?.sv()?;
+            let pinned = with_id(&rows, &pin)?;
+            if pinned.len() != 1 || unbound(&pinned[0])? {
+                suppression = "binding_changed".into();
+            } else {
+                target = pin;
+                manual = true;
+            }
+        } else if context.g("hold")?.is_true()? {
             if !previous.t()? {
                 suppression = "binding_unknown".into();
                 target = V::Null;
             } else if prior.len() == 1 {
                 target = previous.clone();
+                if intent == "rebind" {
+                    suppression = "selection_held".into();
+                }
             } else {
                 target = V::Null;
                 suppression = "held_account_unavailable".into();
             }
         }
+        if intent == "rebind" || acting {
+            // Each of these replaces an earlier reason: what stops every action is said
+            // before what stops this one.
+            if context.g("mode")?.ne_s("automate")? {
+                suppression = "monitor_only".into();
+            } else if context.g("paused")?.is_true()? {
+                suppression = "automation_paused".into();
+            } else if intent == "rebind" && !context.g("switching")?.is_true()? {
+                suppression = "switching_disabled".into();
+            } else if acting && !context.g("actionEnabled")?.is_true()? {
+                suppression = "action_disabled".into();
+            } else if context.g("actionBlock")?.t()? {
+                suppression = context.g("actionBlock")?.sv()?;
+            }
+            if intent == "rebind" && !previous.t()? && !suppression.t()? {
+                suppression = "binding_unknown".into();
+            }
+        }
         if !target.t()? && !suppression.t()? {
             suppression = "unavailable".into();
         }
-        suppression = if suppression.t()? { suppression } else { "observe_only".into() };
+        if intent == "observe" && !suppression.t()? {
+            suppression = "observe_only".into();
+        }
     }
     let permitted = !suppression.t()?;
     Ok(obj! {
@@ -193,8 +253,8 @@ pub fn provider_decision(accounts: &V, policy: &V, context: &V, now: Dto) -> R<V
         "targetSlot" => target,
         "actionPermitted" => permitted,
         "suppressionReason" => suppression,
-        "manual" => false,
-        "requiresNativeValidation" => permitted,
+        "manual" => manual,
+        "requiresNativeValidation" => permitted && intent != "control",
         "critical" => critical,
     })
 }

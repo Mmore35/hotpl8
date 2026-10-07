@@ -1,0 +1,401 @@
+##### switch
+=== monitor
+L cswap 07:00 · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed=2 reason=switching disabled does= status0=ok model0= warm0= active0=False critical=False selected=1 coverage=2/2 hold= accounts=2:eligible_work,1:below_margin_or_unknown
+K  pings=0
+=== observe
+L cswap 07:00 · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed=2 reason=switching disabled does= status0=ok model0= warm0= active0=False critical=False selected=1 coverage=2/2 hold= accounts=2:eligible_work,1:below_margin_or_unknown
+K  pings=0
+=== held
+L cswap 07:00 · HELD by fixture until 07:05 (suppressed -> slot 2) · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A null
+P active=1 proposed=2 reason=switch held does=switching,warming,probing,continuing status0=ok model0= warm0= active0=False critical=False selected=1 coverage=2/2 hold=fixture accounts=2:eligible_work,1:below_margin_or_unknown
+K  pings=0
+=== stale generation
+L cswap 07:00 · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A null
+P active=1 proposed=2 reason=retained current account does=switching,warming,probing,continuing status0=ok model0= warm0= active0=False critical=False selected=1 coverage=2/2 hold= accounts=2:eligible_work,1:below_margin_or_unknown
+K  pings=0
+R activity.json absent
+=== switch
+L cswap 07:00 · switched -> slot 2 · active slot 2 (Work)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A 07:00:00  switched -> slot 2
+P active=2 proposed=2 reason=switched to higher ranked eligible account does=switching,warming,probing,continuing status0=ok model0= warm0= active0=True critical=False selected=2 coverage=2/2 hold= accounts=2:eligible_work,1:below_margin_or_unknown
+K switch 2 pings=0
+R activity.json claude:2:switch:native_switch_succeeded
+=== switch refused
+THROWN claude_switch_failed
+##### refused
+=== no answer
+THROWN claude_read_failed
+=== schema
+THROWN claude_schema_unsupported
+=== no accounts
+THROWN claude_no_accounts
+=== not json
+THROWN (unreadable answer)
+##### untrusted
+=== mutation
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [disabled]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does= status0=disabled model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== mutation
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [unsupported]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does= status0=unsupported model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== mutation
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [unsupported]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does= status0=unsupported model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== mutation
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [unsupported]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does= status0=unsupported model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== mutation
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [unsupported]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does= status0=unsupported model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== policy disabled
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [disabled]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does= status0=disabled model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== model missing
+L cswap 07:00 · usage STALE (>15m), holding · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+A null
+P active=1 proposed= reason=switching disabled does= status0=ok model0=model_quota_unknown warm0= active0=False critical=False selected=1 coverage=0/2 hold= accounts=2:stale_or_unavailable,1:stale_or_unavailable
+K switch 2|switch 2 pings=0
+=== model exhausted
+L cswap 07:00 · usage STALE (>15m), holding · active slot 1 (Reserve)
+L   slot 2  [SCOPED CONSTRAINTS: model_below_margin: seven_day_opus 99%]
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+A null
+P active=1 proposed= reason=switching disabled does= status0=ok model0=model_below_margin warm0= active0=False critical=False selected=1 coverage=0/2 hold= accounts=2:stale_or_unavailable,1:stale_or_unavailable
+K switch 2|switch 2 pings=0
+=== model expired
+L cswap 07:00 · usage STALE (>15m), holding · active slot 1 (Reserve)
+L   slot 2  [SCOPED CONSTRAINTS: model_reset_unconfirmed: seven_day_opus 10%]
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+A null
+P active=1 proposed= reason=switching disabled does= status0=ok model0=model_reset_unconfirmed warm0= active0=False critical=False selected=1 coverage=0/2 hold= accounts=2:stale_or_unavailable,1:stale_or_unavailable
+K switch 2|switch 2 pings=0
+=== model available
+L cswap 07:00 · active slot 1 (Reserve)
+L   slot 2  [SCOPED CONSTRAINTS: : seven_day_opus 10%]
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+A null
+P active=1 proposed=2 reason=switching disabled does= status0=ok model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:eligible_work,1:stale_or_unavailable
+K switch 2|switch 2 pings=0
+##### warm
+=== paused
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=continuing status0=ok model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== monitor
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does= status0=ok model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=0
+=== warm
+L cswap 07:00 · no headroom on any slot · warm request sent to slot 2; window unconfirmed · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A 07:00:00  no headroom on any slot · warm request sent to slot 2; window unconfirmed
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0=sent active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=1
+R activity.json claude:2:warm_attempt:sent
+R warm-state.json lastWarm=2 lastProbe= probeDead=
+R warm-outcomes.json claude:2=claude:2:fiveHour:sent:False:False
+=== warm again
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A null
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0=sent active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=1
+=== confirmed
+L cswap 07:00 · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed=2 reason=switching disabled does= status0=ok model0= warm0=observed-active active0=False critical=False selected=1 coverage=2/2 hold= accounts=2:eligible_work,1:below_margin_or_unknown
+K switch 2|switch 2 pings=1
+R warm-outcomes.json claude:2=claude:2:fiveHour:observed-active:True:True
+R activity.json claude:2:warm_attempt:sent,claude:2:warm_outcome:observed-active
+##### cold
+=== cold 1
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20%  [stale 901s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A null
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=1
+=== cold 2
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20%  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A null
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=1
+=== cold 3
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [unsupported]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A null
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=unsupported model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=1
+=== cold 4
+L cswap 07:00 · usage STALE (>15m), holding · active slot 1 (Reserve)
+L   slot 2  [SCOPED CONSTRAINTS: model_below_margin: seven_day_opus 99%]
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   pattern maintain · order prefer
+A null
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0=model_below_margin warm0= active0=False critical=False selected=1 coverage=0/2 hold= accounts=2:stale_or_unavailable,1:stale_or_unavailable
+K switch 2|switch 2 pings=1
+=== cold 5
+L cswap 07:00 · usage STALE (>15m), holding · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   pattern maintain · order prefer
+A null
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0=model_quota_unknown warm0= active0=False critical=False selected=1 coverage=0/2 hold= accounts=2:stale_or_unavailable,1:stale_or_unavailable
+K switch 2|switch 2 pings=1
+=== warm failed
+L cswap 07:00 · no headroom on any slot · WARM FAILED slot 2 -> check cswap run · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A 07:00:00  no headroom on any slot · WARM FAILED slot 2 -> check cswap run
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0=failed active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=2
+R warm-state.json lastWarm=2 lastProbe= probeDead=
+R warm-outcomes.json claude:2=claude:2:fiveHour:failed:False:False
+=== warm failed, next wake
+L cswap 07:00 · no headroom on any slot · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A null
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0=failed active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=2
+##### spent
+=== monitor
+L cswap 07:00 · slot 2 QUARANTINE STALE (>6h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - UNCHECKED 25h, verdict may be stale]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+A null
+P active=1 proposed= reason=switching disabled does= status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=0/2 hold= accounts=2:stale_or_unavailable,1:stale_or_unavailable
+K switch 2|switch 2 pings=2
+audit=False
+=== probe 1
+L cswap 07:00 · slot 2 QUARANTINE STALE (>6h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account · probed slot 2 (still dead) · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - UNCHECKED 25h, verdict may be stale]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=probing,continuing status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=3
+R warm-state.json lastWarm= lastProbe=2 probeDead=2:1
+=== probe floor
+L cswap 07:00 · slot 2 QUARANTINE STALE (>6h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - UNCHECKED 25h, verdict may be stale]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=probing,continuing status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=3
+=== probe 2
+L cswap 07:00 · slot 2 QUARANTINE STALE (>6h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account · probed slot 2 (still dead) · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - UNCHECKED 25h, verdict may be stale]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=probing,continuing status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=4
+=== spent
+L cswap 07:00 · slot 2 NEEDS RE-LOGIN -> hotpl8 add -Provider claude · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - re-login]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=probing,continuing status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=4
+R warm-state.json lastWarm= lastProbe= probeDead=2:2
+=== signed in again
+L cswap 07:00 · slot 2 QUARANTINE STALE (>6h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account · probed slot 2 (still dead) · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - UNCHECKED 25h, verdict may be stale]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=probing,continuing status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=5
+R warm-state.json lastWarm= lastProbe=2 probeDead=2:1
+=== unreadable
+L cswap 07:00 · slot 2 QUARANTINE STALE (>6h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account · probed slot 2 (still dead) · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - UNCHECKED 25h, verdict may be stale]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=probing,continuing status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=6
+R warm-state.json lastWarm= lastProbe=2 probeDead=
+=== revived
+L cswap 07:00 · slot 2 QUARANTINE STALE (>6h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account · probe REVIVED slot 2 · active slot 1 (Reserve)
+L   slot 2 (Work)  5h unknown  7d not reported  [relogin_required - UNCHECKED 25h, verdict may be stale]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+A null
+P active=1 proposed= reason=switching disabled does=probing,continuing status0=relogin_required model0= warm0= active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=7
+R warm-state.json lastWarm= lastProbe=2 probeDead=
+R activity.json claude:2:recovery_probe:sent
+##### unrenewed
+=== unrenewed True
+L cswap 07:00 · no headroom on any slot · warm request sent to slot 2; window unconfirmed · slot 2 SIGN-IN NOT RENEWED by its ping -> may need re-login when it expires · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A 07:00:00  no headroom on any slot · warm request sent to slot 2; window unconfirmed · slot 2 SIGN-IN NOT RENEWED by its ping -> may need re-login when it expires
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0=sent active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=8
+R activity.json claude:2:credential_unrenewed:warm,claude:2:warm_attempt:sent
+=== unrenewed False
+L cswap 07:00 · no headroom on any slot · warm request sent to slot 2; window unconfirmed · active slot 1 (Reserve)
+L   slot 2 (Work)  5h 10%  7d 20% -> 3%/day, exhausts in ~24.0d  [stale 0s]
+L   slot 1 (Reserve)  5h 90%  7d 20% -> 3%/day, exhausts in ~24.0d
+L   pattern maintain · order prefer
+A 07:00:00  no headroom on any slot · warm request sent to slot 2; window unconfirmed
+P active=1 proposed= reason=switching disabled does=warming,continuing status0=ok model0= warm0=sent active0=False critical=False selected=1 coverage=1/2 hold= accounts=2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2 pings=9
+R activity.json claude:2:warm_attempt:sent
+##### critical
+=== enter
+L cswap 07:00 · switched -> slot 3 · low-balance rotation · active slot 3
+L   slot 3  5h 79%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 83%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A 07:00:00  switched -> slot 3 · low-balance rotation
+P active=3 proposed=3 reason=switched to higher ranked eligible account does=switching,continuing status0=ok model0= warm0= active0=True critical=True selected=3 coverage=2/2 hold= accounts=3:eligible_critical,2:eligible_critical,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3 pings=9
+=== dwell
+L cswap 07:00 · low-balance rotation · active slot 3
+L   slot 3  5h 84%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 83%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A null
+P active=3 proposed= reason=retained current account does=switching,continuing status0=ok model0= warm0= active0=True critical=True selected=3 coverage=2/2 hold= accounts=3:eligible_critical,2:eligible_critical,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3 pings=9
+=== after dwell
+L cswap 07:00 · switched -> slot 2 · low-balance rotation · active slot 2
+L   slot 3  5h 84%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 83%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A 07:00:00  switched -> slot 2 · low-balance rotation
+P active=2 proposed=2 reason=switched to higher ranked eligible account does=switching,continuing status0=ok model0= warm0= active0=False critical=True selected=2 coverage=2/2 hold= accounts=3:eligible_critical,2:eligible_critical,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2 pings=9
+=== exhausted
+L cswap 07:00 · switched -> slot 3 · low-balance rotation · active slot 3
+L   slot 3  5h 84%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A 07:00:00  switched -> slot 3 · low-balance rotation
+P active=3 proposed=3 reason=switched to higher ranked eligible account does=switching,continuing status0=ok model0= warm0= active0=True critical=True selected=3 coverage=2/2 hold= accounts=3:eligible_critical,2:below_margin_or_unknown,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2|switch 3 pings=9
+=== stale high
+L cswap 07:00 · low-balance rotation · active slot 3
+L   slot 3  5h 84%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 76%  7d 30%  [stale 1000s]
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A null
+P active=3 proposed= reason=retained current account does=switching,continuing status0=ok model0= warm0= active0=True critical=True selected=3 coverage=1/2 hold= accounts=3:eligible_critical,2:stale_or_unavailable,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2|switch 3 pings=9
+=== refill
+L cswap 07:00 · switched -> slot 2 · active slot 2
+L   slot 3  5h 84%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 0%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A 07:00:00  switched -> slot 2
+P active=2 proposed=2 reason=switched to higher ranked eligible account does=switching,continuing status0=ok model0= warm0= active0=False critical=False selected=2 coverage=2/2 hold= accounts=3:below_margin_or_unknown,2:eligible_work,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2|switch 3|switch 2 pings=9
+=== preview
+L cswap 07:00 · low-balance rotation · active slot 1
+L   slot 3  5h 79%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 83%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A null
+P active=1 proposed=3 reason=switching disabled does= status0=ok model0= warm0= active0=False critical=True selected=1 coverage=2/2 hold= accounts=3:eligible_critical,2:eligible_critical,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2|switch 3|switch 2 pings=9
+=== held
+L cswap 07:00 · HELD by fixture until 07:05 (suppressed -> slot 3) · low-balance rotation · active slot 1
+L   slot 3  5h 79%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 83%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A null
+P active=1 proposed=3 reason=switch held does=switching,continuing status0=ok model0= warm0= active0=False critical=True selected=1 coverage=2/2 hold=fixture accounts=3:eligible_critical,2:eligible_critical,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2|switch 3|switch 2 pings=9
+=== no reserve
+L cswap 07:00 · switched -> slot 1 · low-balance rotation · active slot 1
+L   slot 3  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 91%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 86%  7d 30% -> 7%/day, exhausts in ~9.3d
+A 07:00:00  switched -> slot 1 · low-balance rotation
+P active=1 proposed=1 reason=switched to higher ranked eligible account does=switching,continuing status0=ok model0= warm0= active0=False critical=True selected=1 coverage=3/3 hold= accounts=3:below_margin_or_unknown,2:eligible_critical,1:eligible_critical
+K switch 2|switch 2|switch 3|switch 2|switch 3|switch 2|switch 1 pings=9
+=== anything left
+L cswap 07:00 · switched -> slot 3 · low-balance rotation · active slot 3
+L   slot 3  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A 07:00:00  switched -> slot 3 · low-balance rotation
+P active=3 proposed=3 reason=switched to higher ranked eligible account does=switching,continuing status0=ok model0= warm0= active0=True critical=True selected=3 coverage=3/3 hold= accounts=3:eligible_critical,2:below_margin_or_unknown,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2|switch 3|switch 2|switch 1|switch 3 pings=9
+=== nothing left
+L cswap 07:00 · no headroom on any slot · active slot 3
+L   slot 3  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 2  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+L   slot 1  5h 100%  7d 30% -> 7%/day, exhausts in ~9.3d
+A null
+P active=3 proposed= reason=retained current account does=switching,continuing status0=ok model0= warm0= active0=True critical=False selected=3 coverage=3/3 hold= accounts=3:below_margin_or_unknown,2:below_margin_or_unknown,1:below_margin_or_unknown
+K switch 2|switch 2|switch 3|switch 2|switch 3|switch 2|switch 1|switch 3 pings=9

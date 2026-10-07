@@ -1,31 +1,50 @@
-//! HotPl8's compiled reader: `version`, `status` and `explain`.
+//! HotPl8's compiled program: the reader (`version`, `status` and `explain`) and the
+//! collector (`collect`, one wake).
 //!
-//! These three commands are implemented here and nowhere else. A launcher hands the reader
-//! the words the user typed (`user`, in door.rs); the PowerShell entry, which has the rest of
-//! HotPl8, hands it a request it has already understood (request.rs). Either way the answer
-//! printed is this program's. The contract is docs/plans/rust-read-side.md.
+//! These are implemented here and nowhere else. A launcher hands the reader the words the
+//! user typed (`user`, in door.rs); the PowerShell entry, which has the rest of HotPl8, hands
+//! it a request it has already understood (request.rs). Either way the answer printed is this
+//! program's. The scheduler starts the collector (`wake`, in door.rs, and wake.rs). The
+//! contract is docs/plans/rust-read-side.md.
 
+mod activity;
+mod automation;
 mod capacity;
 mod claude;
+mod claude_tick;
 mod codex;
+mod collection;
 mod contract;
+mod control;
 mod critical;
+mod cswap;
 mod decision;
 mod display;
 mod door;
+mod files;
+mod forecast;
 mod insights;
 mod json;
+mod lane;
 mod num;
 mod observation;
 mod overview;
 mod pause;
+mod phase;
+mod plans;
 mod policy;
+mod process;
 mod ps;
 mod registry;
+mod replay;
 mod request;
+mod runtime;
 mod selection;
+mod sha256;
 mod time;
 mod version;
+mod wake;
+mod warming;
 
 use std::ffi::OsString;
 use std::io::Write;
@@ -84,6 +103,23 @@ fn main() -> ExitCode {
         if command == "batch" {
             return batch(Path::new(file));
         }
+    }
+    // The scheduler's start: the copy beside the launcher wakes the release in force.
+    if let [command] = arguments.as_slice() {
+        if command == "wake" {
+            return ExitCode::from(door::woken());
+        }
+    }
+    // A wake prints what it did, and never an answer a reader would.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "collect") {
+        return match wake::started(words) {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => ExitCode::from(FAILED),
+            Err(why) => {
+                let _ = writeln!(std::io::stderr().lock(), "HotPl8: {}", ps::safe_text(&why));
+                ExitCode::from(FAILED)
+            }
+        };
     }
     // The PowerShell entry reads UTF-8 from the reader. A launcher's start is the user's own,
     // and its streams are written to as door.rs says.

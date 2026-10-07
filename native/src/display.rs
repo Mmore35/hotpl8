@@ -9,7 +9,7 @@ use crate::time::Dto;
 use crate::{capacity, insights, json, pause, policy, registry};
 
 /// The data files the rules read are this release's own, the ones its PowerShell reads.
-fn packaged_data(root: &Path) {
+pub fn packaged_data(root: &Path) {
     let data = root.join("data");
     registry::set_source(data.join("providers"));
     capacity::set_source(data.join("capacity-profiles.json"));
@@ -17,17 +17,17 @@ fn packaged_data(root: &Path) {
 
 /// Where the state is: where the caller says, where the environment says, where the
 /// installer recorded, and otherwise beside the code, which is how a checkout runs.
-fn state_directory(request: &Request) -> R<PathBuf> {
-    if let Some(explicit) = &request.state {
-        return Ok(explicit.clone());
+pub fn state_directory(root: &Path, explicit: Option<&Path>) -> R<PathBuf> {
+    if let Some(explicit) = explicit {
+        return Ok(explicit.to_path_buf());
     }
     let named = match std::env::var_os("HOTPL8_STATE_DIRECTORY").filter(|value| !value.is_empty()) {
         Some(named) => named,
         None => {
-            let installed = json::read_file(&request.root.join("install-state.json"))?.unwrap_or(V::Null);
+            let installed = json::read_file(&root.join("install-state.json"))?.unwrap_or(V::Null);
             let directory = installed.g("stateDirectory")?;
             if !directory.t()? {
-                return Ok(request.root.clone());
+                return Ok(root.to_path_buf());
             }
             directory.s()?.into()
         }
@@ -55,7 +55,7 @@ pub fn answer(request: &Request) -> R<String> {
     ps::set_core(request.core);
     crate::time::set_zone(request.zone);
     packaged_data(&request.root);
-    let state = state_directory(request)?;
+    let state = state_directory(&request.root, request.state.as_deref())?;
     // One clock reading per request: every line of an answer describes the same instant.
     let now = match request.now {
         Some(now) => now,
@@ -105,13 +105,13 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let mut request = Request::new(Command::Status, root.clone());
         if std::env::var_os("HOTPL8_STATE_DIRECTORY").is_none() {
-            assert_eq!(state_directory(&request).ok().unwrap(), root);
+            assert_eq!(state_directory(&request.root, request.state.as_deref()).ok().unwrap(), root);
             let recorded = root.join("elsewhere");
             std::fs::write(root.join("install-state.json"), format!("{{\"stateDirectory\":{:?}}}", recorded.to_str().unwrap())).unwrap();
-            assert_eq!(state_directory(&request).ok().unwrap(), recorded);
+            assert_eq!(state_directory(&request.root, request.state.as_deref()).ok().unwrap(), recorded);
         }
         request.state = Some(root.join("named"));
-        assert_eq!(state_directory(&request).ok().unwrap(), root.join("named"));
+        assert_eq!(state_directory(&request.root, request.state.as_deref()).ok().unwrap(), root.join("named"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 

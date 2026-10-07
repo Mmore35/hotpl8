@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.99"
 license = "MIT"
-description = "Compiled reader for HotPl8 display commands"
+description = "Compiled reader and collector for HotPl8"
 repository = "https://github.com/Mmore35/hotpl8"
 publish = false
 

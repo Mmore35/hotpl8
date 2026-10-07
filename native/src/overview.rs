@@ -14,7 +14,7 @@ use crate::time::Dto;
 use crate::{cat, hash, obj};
 
 /// Test-Hotpl8FutureReset
-fn future_reset(reset: &V, now: Dto, unix: bool) -> R<bool> {
+pub fn future_reset(reset: &V, now: Dto, unix: bool) -> R<bool> {
     let future = catch(|| {
         if reset.is_null() || text_eq(&reset.s()?, "")? {
             return Ok(false);
@@ -199,7 +199,8 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
                 prefer.push(member.g("slot")?.to_int()?);
             }
             let active = snapshot.g("active")?;
-            let (target, active_ok) = claude_selection(policy, &prefer, &claude_accounts, active.to_int()?, now, &snapshot.g("critical")?)?;
+            let found = claude_selection(policy, &prefer, &claude_accounts, active.to_int()?, now, &snapshot.g("critical")?)?;
+            let (target, active_ok) = (found.target, found.active_ok);
             selected = if held || paused || !switching {
                 if active_ok { active } else { V::Null }
             } else if !target.is_null() {

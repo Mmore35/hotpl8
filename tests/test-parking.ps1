@@ -87,17 +87,14 @@ try{
         $snapshot.generatedAt=$now.AddHours(-2).ToString('o')
         Assert (@(Get-Hotpl8ParkCandidates $snapshot $policy $now).Count -eq 0) 'stale snapshots advise nothing'
     }
-    Check 'parking removes every trace from policy, and the rest share the schedule' {
+    Check 'parking removes every trace from policy' {
         $d=New-StateDirectory;Write-Policy $d (Clone $claudePolicy)
-        $before=Get-WarmOffsets (Read-Policy $d) @(2,1,3)
         $script:inventory=@((New-ClaudeRow 1 'ok'),(New-ClaudeRow 2 'relogin_required' 3110400),(New-ClaudeRow 3 'ok'))
         $result=Invoke-Hotpl8Park $d claude '2' 'dormant' $now.AddDays(-36).ToString('o')
         $p=Read-Policy $d
         Assert ((@($p.prefer) -join ',') -eq '1,3' -and 2 -notin @($p.reserve) -and -not $p.labels.'2' -and -not $p.weights.'2' -and -not $p.capacity.'2')
         Assert ('claude:2' -cnotin @($p.automation.warmExcluded)) 'warm exclusion removed with the account'
         Assert-Hotpl8Policy $p
-        $after=Get-WarmOffsets $p @($p.prefer|ForEach-Object {[int]$_})
-        Assert ($before[2] -eq 0 -and $before[1] -eq 150 -and $after[1] -eq 0 -and $after[3] -eq 150) ('offsets '+($after.GetEnumerator()|ForEach-Object {''+$_.Key+'='+$_.Value}))
         $record=@(Read-Hotpl8Parked $d)
         Assert ($record.Count -eq 1 -and $record[0].label -ceq 'Old plan' -and $record[0].position -eq 0 -and $record[0].reserve -and $record[0].weight -eq 2 -and $record[0].warmExcluded -and $record[0].identity)
         Assert (@($result.remaining|ForEach-Object label) -join ',' -ceq 'Everyday,Spare')

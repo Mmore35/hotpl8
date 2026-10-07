@@ -1,0 +1,232 @@
+one|claude/prefer|2026-10-06T12:00:00.0000000+00:00|1|False
+one|claude/soonest-reset|2026-10-06T12:00:00.0000000+00:00|1|False
+one|claude/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|1|False
+one|claude/balanced|2026-10-06T12:00:00.0000000+00:00|1|False
+one|codex/codex/prefer|2026-10-06T12:00:00.0000000+00:00|work|False
+one|codex/codex_bengalfox/prefer|2026-10-06T12:00:00.0000000+00:00|work|False
+one|codex/codex/soonest-reset|2026-10-06T12:00:00.0000000+00:00|work|False
+one|codex/codex_bengalfox/soonest-reset|2026-10-06T12:00:00.0000000+00:00|work|False
+one|codex/codex/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|work|False
+one|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|work|False
+one|codex/codex/balanced|2026-10-06T12:00:00.0000000+00:00|work|False
+one|codex/codex_bengalfox/balanced|2026-10-06T12:00:00.0000000+00:00|work|False
+one|sum|claude/balanced|1|0|0
+one|sum|claude/prefer|1|0|0
+one|sum|claude/soonest-reset|1|0|0
+one|sum|claude/weekly-expiry|1|0|0
+one|sum|codex/codex/balanced|0|0|0
+one|sum|codex/codex/prefer|0|0|0
+one|sum|codex/codex/soonest-reset|0|0|0
+one|sum|codex/codex/weekly-expiry|0|0|0
+one|sum|codex/codex_bengalfox/balanced|0|0|0
+one|sum|codex/codex_bengalfox/prefer|0|0|0
+one|sum|codex/codex_bengalfox/soonest-reset|0|0|0
+one|sum|codex/codex_bengalfox/weekly-expiry|0|0|0
+one|frames|1|1
+all|claude/prefer|2026-10-06T12:00:00.0000000+00:00|1|False
+all|claude/soonest-reset|2026-10-06T12:00:00.0000000+00:00|1|False
+all|claude/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|1|False
+all|claude/balanced|2026-10-06T12:00:00.0000000+00:00|1|False
+all|claude/prefer|2026-10-06T12:05:00.0000000+00:00|3|True
+all|claude/soonest-reset|2026-10-06T12:05:00.0000000+00:00|3|True
+all|claude/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|3|True
+all|claude/balanced|2026-10-06T12:05:00.0000000+00:00|3|True
+all|claude/prefer|2026-10-06T12:10:00.0000000+00:00|3|True
+all|claude/soonest-reset|2026-10-06T12:10:00.0000000+00:00|3|True
+all|claude/weekly-expiry|2026-10-06T12:10:00.0000000+00:00|3|True
+all|claude/balanced|2026-10-06T12:10:00.0000000+00:00|3|True
+all|claude/prefer|2026-10-06T12:15:00.0000000+00:00|1|False
+all|claude/soonest-reset|2026-10-06T12:15:00.0000000+00:00|1|False
+all|claude/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|1|False
+all|claude/balanced|2026-10-06T12:15:00.0000000+00:00|1|False
+all|claude/prefer|2026-10-06T12:20:00.0000000+00:00|null|False
+all|claude/soonest-reset|2026-10-06T12:20:00.0000000+00:00|null|False
+all|claude/weekly-expiry|2026-10-06T12:20:00.0000000+00:00|null|False
+all|claude/balanced|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex/prefer|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex_bengalfox/prefer|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex/soonest-reset|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex_bengalfox/soonest-reset|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex/balanced|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex_bengalfox/balanced|2026-10-06T12:00:00.0000000+00:00|work|False
+all|codex/codex/prefer|2026-10-06T12:05:00.0000000+00:00|personal|True
+all|codex/codex_bengalfox/prefer|2026-10-06T12:05:00.0000000+00:00|work|False
+all|codex/codex/soonest-reset|2026-10-06T12:05:00.0000000+00:00|personal|True
+all|codex/codex_bengalfox/soonest-reset|2026-10-06T12:05:00.0000000+00:00|work|False
+all|codex/codex/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|personal|True
+all|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|work|False
+all|codex/codex/balanced|2026-10-06T12:05:00.0000000+00:00|personal|True
+all|codex/codex_bengalfox/balanced|2026-10-06T12:05:00.0000000+00:00|work|False
+all|codex/codex/prefer|2026-10-06T12:10:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/prefer|2026-10-06T12:10:00.0000000+00:00|work|False
+all|codex/codex/soonest-reset|2026-10-06T12:10:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/soonest-reset|2026-10-06T12:10:00.0000000+00:00|work|False
+all|codex/codex/weekly-expiry|2026-10-06T12:10:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:10:00.0000000+00:00|work|False
+all|codex/codex/balanced|2026-10-06T12:10:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/balanced|2026-10-06T12:10:00.0000000+00:00|work|False
+all|codex/codex/prefer|2026-10-06T12:15:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/prefer|2026-10-06T12:15:00.0000000+00:00|personal|True
+all|codex/codex/soonest-reset|2026-10-06T12:15:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/soonest-reset|2026-10-06T12:15:00.0000000+00:00|personal|True
+all|codex/codex/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|personal|True
+all|codex/codex/balanced|2026-10-06T12:15:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/balanced|2026-10-06T12:15:00.0000000+00:00|personal|True
+all|codex/codex/prefer|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/prefer|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex/soonest-reset|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/soonest-reset|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex/weekly-expiry|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex/balanced|2026-10-06T12:20:00.0000000+00:00|null|False
+all|codex/codex_bengalfox/balanced|2026-10-06T12:20:00.0000000+00:00|null|False
+all|sum|claude/balanced|3|2|1
+all|sum|claude/prefer|3|2|1
+all|sum|claude/soonest-reset|3|2|1
+all|sum|claude/weekly-expiry|3|2|1
+all|sum|codex/codex/balanced|1|1|3
+all|sum|codex/codex/prefer|1|1|3
+all|sum|codex/codex/soonest-reset|1|1|3
+all|sum|codex/codex/weekly-expiry|1|1|3
+all|sum|codex/codex_bengalfox/balanced|1|1|1
+all|sum|codex/codex_bengalfox/prefer|1|1|1
+all|sum|codex/codex_bengalfox/soonest-reset|1|1|1
+all|sum|codex/codex_bengalfox/weekly-expiry|1|1|1
+all|frames|5|1
+claude only|claude/prefer|2026-10-06T12:00:00.0000000+00:00|1|False
+claude only|claude/soonest-reset|2026-10-06T12:00:00.0000000+00:00|1|False
+claude only|claude/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|1|False
+claude only|claude/balanced|2026-10-06T12:00:00.0000000+00:00|1|False
+claude only|claude/prefer|2026-10-06T12:05:00.0000000+00:00|3|True
+claude only|claude/soonest-reset|2026-10-06T12:05:00.0000000+00:00|3|True
+claude only|claude/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|3|True
+claude only|claude/balanced|2026-10-06T12:05:00.0000000+00:00|3|True
+claude only|claude/prefer|2026-10-06T12:10:00.0000000+00:00|3|True
+claude only|claude/soonest-reset|2026-10-06T12:10:00.0000000+00:00|3|True
+claude only|claude/weekly-expiry|2026-10-06T12:10:00.0000000+00:00|3|True
+claude only|claude/balanced|2026-10-06T12:10:00.0000000+00:00|3|True
+claude only|sum|claude/balanced|2|2|0
+claude only|sum|claude/prefer|2|2|0
+claude only|sum|claude/soonest-reset|2|2|0
+claude only|sum|claude/weekly-expiry|2|2|0
+claude only|frames|3|1
+codex only|codex/codex/prefer|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex_bengalfox/prefer|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex/soonest-reset|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex_bengalfox/soonest-reset|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex/balanced|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex_bengalfox/balanced|2026-10-06T12:00:00.0000000+00:00|work|False
+codex only|codex/codex/prefer|2026-10-06T12:05:00.0000000+00:00|personal|True
+codex only|codex/codex_bengalfox/prefer|2026-10-06T12:05:00.0000000+00:00|work|False
+codex only|codex/codex/soonest-reset|2026-10-06T12:05:00.0000000+00:00|personal|True
+codex only|codex/codex_bengalfox/soonest-reset|2026-10-06T12:05:00.0000000+00:00|work|False
+codex only|codex/codex/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|personal|True
+codex only|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|work|False
+codex only|codex/codex/balanced|2026-10-06T12:05:00.0000000+00:00|personal|True
+codex only|codex/codex_bengalfox/balanced|2026-10-06T12:05:00.0000000+00:00|work|False
+codex only|codex/codex/prefer|2026-10-06T12:10:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/prefer|2026-10-06T12:10:00.0000000+00:00|work|False
+codex only|codex/codex/soonest-reset|2026-10-06T12:10:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/soonest-reset|2026-10-06T12:10:00.0000000+00:00|work|False
+codex only|codex/codex/weekly-expiry|2026-10-06T12:10:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:10:00.0000000+00:00|work|False
+codex only|codex/codex/balanced|2026-10-06T12:10:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/balanced|2026-10-06T12:10:00.0000000+00:00|work|False
+codex only|codex/codex/prefer|2026-10-06T12:15:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/prefer|2026-10-06T12:15:00.0000000+00:00|personal|True
+codex only|codex/codex/soonest-reset|2026-10-06T12:15:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/soonest-reset|2026-10-06T12:15:00.0000000+00:00|personal|True
+codex only|codex/codex/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|personal|True
+codex only|codex/codex/balanced|2026-10-06T12:15:00.0000000+00:00|null|False
+codex only|codex/codex_bengalfox/balanced|2026-10-06T12:15:00.0000000+00:00|personal|True
+codex only|sum|codex/codex/balanced|1|1|2
+codex only|sum|codex/codex/prefer|1|1|2
+codex only|sum|codex/codex/soonest-reset|1|1|2
+codex only|sum|codex/codex/weekly-expiry|1|1|2
+codex only|sum|codex/codex_bengalfox/balanced|1|1|0
+codex only|sum|codex/codex_bengalfox/prefer|1|1|0
+codex only|sum|codex/codex_bengalfox/soonest-reset|1|1|0
+codex only|sum|codex/codex_bengalfox/weekly-expiry|1|1|0
+codex only|frames|4|1
+critical|claude/prefer|2026-10-06T12:15:00.0000000+00:00|1|False
+critical|claude/soonest-reset|2026-10-06T12:15:00.0000000+00:00|1|False
+critical|claude/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|1|False
+critical|claude/balanced|2026-10-06T12:15:00.0000000+00:00|1|False
+critical|claude/prefer|2026-10-06T12:20:00.0000000+00:00|1|False
+critical|claude/soonest-reset|2026-10-06T12:20:00.0000000+00:00|1|False
+critical|claude/weekly-expiry|2026-10-06T12:20:00.0000000+00:00|1|False
+critical|claude/balanced|2026-10-06T12:20:00.0000000+00:00|1|False
+critical|codex/codex/prefer|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/prefer|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex/soonest-reset|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/soonest-reset|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex/balanced|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/balanced|2026-10-06T12:15:00.0000000+00:00|personal|False
+critical|codex/codex/prefer|2026-10-06T12:20:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/prefer|2026-10-06T12:20:00.0000000+00:00|null|False
+critical|codex/codex/soonest-reset|2026-10-06T12:20:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/soonest-reset|2026-10-06T12:20:00.0000000+00:00|null|False
+critical|codex/codex/weekly-expiry|2026-10-06T12:20:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:20:00.0000000+00:00|null|False
+critical|codex/codex/balanced|2026-10-06T12:20:00.0000000+00:00|personal|False
+critical|codex/codex_bengalfox/balanced|2026-10-06T12:20:00.0000000+00:00|null|False
+critical|sum|claude/balanced|0|0|0
+critical|sum|claude/prefer|0|0|0
+critical|sum|claude/soonest-reset|0|0|0
+critical|sum|claude/weekly-expiry|0|0|0
+critical|sum|codex/codex/balanced|0|0|0
+critical|sum|codex/codex/prefer|0|0|0
+critical|sum|codex/codex/soonest-reset|0|0|0
+critical|sum|codex/codex/weekly-expiry|0|0|0
+critical|sum|codex/codex_bengalfox/balanced|0|0|1
+critical|sum|codex/codex_bengalfox/prefer|0|0|1
+critical|sum|codex/codex_bengalfox/soonest-reset|0|0|1
+critical|sum|codex/codex_bengalfox/weekly-expiry|0|0|1
+critical|frames|2|1
+registered|claude/prefer|2026-10-06T12:00:00.0000000+00:00|2|False
+registered|claude/soonest-reset|2026-10-06T12:00:00.0000000+00:00|1|False
+registered|claude/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|1|False
+registered|claude/balanced|2026-10-06T12:00:00.0000000+00:00|1|False
+registered|claude/prefer|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|claude/soonest-reset|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|claude/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|claude/balanced|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|codex/codex/prefer|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex_bengalfox/prefer|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex/soonest-reset|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex_bengalfox/soonest-reset|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex/balanced|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex_bengalfox/balanced|2026-10-06T12:00:00.0000000+00:00|null|False
+registered|codex/codex/prefer|2026-10-06T12:05:00.0000000+00:00|personal|False
+registered|codex/codex_bengalfox/prefer|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|codex/codex/soonest-reset|2026-10-06T12:05:00.0000000+00:00|personal|False
+registered|codex/codex_bengalfox/soonest-reset|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|codex/codex/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|personal|False
+registered|codex/codex_bengalfox/weekly-expiry|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|codex/codex/balanced|2026-10-06T12:05:00.0000000+00:00|personal|False
+registered|codex/codex_bengalfox/balanced|2026-10-06T12:05:00.0000000+00:00|null|False
+registered|sum|claude/balanced|1|0|1
+registered|sum|claude/prefer|0|0|1
+registered|sum|claude/soonest-reset|1|0|1
+registered|sum|claude/weekly-expiry|1|0|1
+registered|sum|codex/codex/balanced|0|0|1
+registered|sum|codex/codex/prefer|0|0|1
+registered|sum|codex/codex/soonest-reset|0|0|1
+registered|sum|codex/codex/weekly-expiry|0|0|1
+registered|sum|codex/codex_bengalfox/balanced|0|0|2
+registered|sum|codex/codex_bengalfox/prefer|0|0|2
+registered|sum|codex/codex_bengalfox/soonest-reset|0|0|2
+registered|sum|codex/codex_bengalfox/weekly-expiry|0|0|2
+registered|frames|2|1
+empty|frames|1|1
+no frames|frames|0|1

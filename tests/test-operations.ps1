@@ -1,7 +1,7 @@
 # Offline contracts for persistent automation, estimates, replay and desktop delivery.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-foreach($file in @('common','config','diagnostics','insights','management','warming','collection','updates','tray')){. (Join-Path $root ('src/'+$file+'.ps1'))}
+foreach($file in @('common','config','diagnostics','insights','management','collection','updates','tray')){. (Join-Path $root ('src/'+$file+'.ps1'))}
 . (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 . (Join-Path $PSScriptRoot 'fixtures/screenshots.ps1')
@@ -14,23 +14,12 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-operations-'+[guid]::NewGuid(
 [void][IO.Directory]::CreateDirectory($dir)
 $now=[datetimeoffset]::Parse('2026-09-13T12:00:00Z')
 try{
-    Check 'local storage failures retry next wake without inflating provider backoff' {
-        $state=[pscustomobject]@{providers=[pscustomobject]@{}}
-        foreach($provider in @('claude','codex')){
-            foreach($n in 1..4){Set-Hotpl8CollectionResult $state $provider $false $now -FailureCode state_io_failed}
-            Assert ([datetimeoffset]::Parse($state.providers.$provider.nextAttemptAt) -eq $now.AddSeconds(60))
-            Assert (-not (Test-Hotpl8CollectionDue $state $provider $true $now.AddSeconds(59)))
-            Assert (Test-Hotpl8CollectionDue $state $provider $true $now.AddSeconds(60))
-            Set-Hotpl8CollectionResult $state $provider $false $now -FailureCode unexpected_collection_error
-            Assert ($state.providers.$provider.failures -eq 1 -and [datetimeoffset]::Parse($state.providers.$provider.nextAttemptAt) -eq $now.AddMinutes(5))
-            Set-Hotpl8CollectionResult $state $provider $true $now
-            Assert (-not $state.providers.$provider.failureCode -and $state.providers.$provider.failures -eq 0)
-        }
-    }
     Check 'one provider storage failure does not mark the other provider unhealthy' {
-        $c=[pscustomobject]@{startedAt=$now.ToString('o');completedAt=$now.ToString('o');status='incomplete';providers=[pscustomobject]@{}}
-        Set-Hotpl8CollectionResult $c claude $true $now
-        Set-Hotpl8CollectionResult $c codex $false $now -FailureCode state_io_failed
+        # As the collector records a read that worked beside one it could not write down.
+        $at=$now.ToString('o')
+        $c=[pscustomobject]@{startedAt=$at;completedAt=$at;status='incomplete';providers=[pscustomobject]@{
+            claude=[pscustomobject]@{lastAttemptAt=$at;lastSuccessAt=$at;failures=0;nextAttemptAt=$now.AddMinutes(5).ToString('o');status='ok'}
+            codex=[pscustomobject]@{lastAttemptAt=$at;lastSuccessAt=$null;failures=1;nextAttemptAt=$now.AddMinutes(1).ToString('o');status='unavailable';failureCode='state_io_failed'}}}
         Assert ((Get-Hotpl8Health $c $now claude) -eq 'recent collection completed')
         Assert ((Get-Hotpl8Health $c $now codex) -eq 'local state write failed; retrying')
         Assert ((Get-Hotpl8Health $c $now) -eq 'local state write failed; retrying')
@@ -45,133 +34,6 @@ try{
         Write-Hotpl8Text (Join-Path $dir 'collector.json') (@{startedAt=$now.AddSeconds(1).ToString('o');completedAt=$done;status='ok'}|ConvertTo-Json)
         $s=Read-Hotpl8Snapshot $dir $p
         Assert ($s.collector.startedAt -eq $now.AddSeconds(1).ToString('o')) 'a genuinely newer in-progress collection stays visible'
-        $state=Get-Hotpl8CollectionState $dir
-        Set-Hotpl8CollectionResult $state codex $true $now
-        Assert ($state.providers.codex.status -eq 'ok') 'a timing-only legacy marker can accept fresh provider results'
-    }
-    Check 'Claude collector rotates low balances, persists dwell, and reports actual eligibility' {
-        $p=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
-        $p.mode='automate';$p.switchEnabled=$true;$p.prefer=@(3,2,1);$p.reserve=@(1)
-        $p.critical.enabled=$true;$p.critical.enterPercent=25;$p.critical.exitPercent=30
-        $p.critical.drainToZero=$true;$p.critical.advantagePercent=0
-        Assert-Hotpl8Policy $p
-        $script:nativeActive=1;$script:switchCalls=@();$script:balances=@{1=0;2=17;3=21}
-        $script:staleSlot=0
-        function Resolve-CswapExecutable {return 'fixture-only'}
-        function Read-Hotpl8ClaudePlans {return [pscustomobject]@{}}
-        function Invoke-Hotpl8Process($Executable,$Arguments,$TimeoutMs) {
-            Assert ($Executable -eq 'fixture-only')
-            if($Arguments[0] -eq 'switch'){
-                $script:nativeActive=[int]$Arguments[1];$script:switchCalls+= $script:nativeActive
-                return @{exitCode=0;output=''}
-            }
-            Assert ($Arguments[0] -eq 'list') 'No prompt, login, or other native command is allowed in this test'
-            $at=[datetimeoffset]::UtcNow
-            $accounts=@(foreach($id in @(1,2,3)){
-                @{number=$id;email=('fixture'+$id+'@example.invalid');usageStatus='ok';usageAgeSeconds=$(if($id -eq $script:staleSlot){1000}else{1});usage=@{fiveHour=@{pct=(100-$script:balances[$id]);resetsAt=$at.AddHours(1).ToString('o')};sevenDay=@{pct=30;resetsAt=$at.AddDays(3).ToString('o')}}}
-            })
-            return @{exitCode=0;output=(@{schemaVersion=1;activeAccountNumber=$script:nativeActive;accounts=$accounts}|ConvertTo-Json -Depth 10)}
-        }
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 3 -and $result.payload.active -eq 3 -and $result.payload.critical.active)
-        Assert ($result.payload.verdict -notmatch 'no headroom' -and $result.payload.verdict -match 'low-balance rotation')
-        Assert (@($result.payload.decision.accounts|Where-Object reason -EQ 'eligible_critical').Count -eq 2)
-        $script:balances[3]=16
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 3) 'one-minute dwell prevents immediate bounce'
-        $statePath=Join-Path $dir 'critical-claude.json';$state=Read-Hotpl8Json $statePath
-        $state.selectedAt=[datetimeoffset]::UtcNow.AddMinutes(-2).ToString('o')
-        Write-Hotpl8Text $statePath ($state|ConvertTo-Json -Depth 6)
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 2) 'higher remaining work account wins after dwell'
-        $script:balances[2]=0
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 3) 'exhaustion must bypass dwell'
-        $script:balances[2]=24;$script:staleSlot=2
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 3) 'stale high balance cannot authorize switching'
-        $script:staleSlot=0;$script:balances[2]=100
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 2 -and -not $result.payload.critical.active) 'confirmed refill returns to normal selection'
-        $script:nativeActive=1;$script:balances[2]=17;$script:balances[3]=21
-        $result=Invoke-ClaudeTick $p $dir -ObserveOnly
-        Assert ($script:nativeActive -eq 1 -and $result.payload.proposedSlot -eq 3) 'read-only preview must not switch'
-        Write-Hotpl8Text (Join-Path $dir 'hold.json') (@{until=[datetimeoffset]::UtcNow.AddMinutes(5).ToString('o');reason='fixture'}|ConvertTo-Json)
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 1 -and $result.payload.hold) 'hold must suppress critical switching'
-        Remove-Item -LiteralPath (Join-Path $dir 'hold.json')
-        # Clearing reserve enrolls the former main/backup in the same low-balance pool.
-        $p.reserve=@();$script:nativeActive=3
-        $script:balances=@{1=14;2=9;3=0}
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 1 -and $result.payload.critical.coverage -eq '3/3') 'former reserve must compete on remaining allowance'
-        Assert (($result.payload.decision.accounts|Where-Object slot -EQ 1).reason -eq 'eligible_critical')
-        $script:balances=@{1=0;2=0;3=0.5}
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($script:nativeActive -eq 3) 'any known positive included remainder wins over exhausted accounts'
-        $script:balances[3]=0
-        $result=Invoke-ClaudeTick $p $dir
-        Assert ($null -eq $result.payload.proposedSlot -and $result.payload.verdict -match 'no headroom') 'all exhausted cannot produce an included-allowance target'
-    }
-    Check 'successful warm process starts sent, never observed-active' {
-        $o=New-Hotpl8WarmOutcome claude 1 account fiveHour $true $now
-        Assert ($o.outcome -eq 'sent' -and -not $o.resetAt)
-    }
-    Check 'later fresh window confirms the same account without another prompt' {
-        $o=New-Hotpl8WarmOutcome claude 1 account fiveHour $true $now
-        $r=Update-Hotpl8WarmOutcome $o account $now.AddMinutes(4).ToString('o') $now.AddHours(5).ToString('o') $true $now.AddMinutes(5)
-        Assert ($r.outcome -eq 'observed-active' -and $o.outcome -eq 'sent')
-    }
-    Check 'old stale future and implausible reset observations never confirm' {
-        $o=New-Hotpl8WarmOutcome claude 1 account fiveHour $true $now
-        foreach($at in @($now.AddMinutes(-1),$now.AddHours(1))){Assert ((Update-Hotpl8WarmOutcome $o account $at.ToString('o') $now.AddHours(5).ToString('o') $true $now.AddMinutes(2)).outcome -eq 'sent')}
-        Assert ((Update-Hotpl8WarmOutcome $o account $now.AddMinutes(1).ToString('o') $now.AddHours(6).ToString('o') $true $now.AddMinutes(2)).outcome -eq 'sent')
-        Assert ((Update-Hotpl8WarmOutcome $o account $now.AddMinutes(1).ToString('o') $now.AddHours(5).ToString('o') $false $now.AddMinutes(2)).outcome -eq 'sent')
-    }
-    Check 'unconfirmed warm suppresses repeat attempts until its bounded expiry' {
-        $o=New-Hotpl8WarmOutcome claude 1 account fiveHour $true $now
-        $r=Update-Hotpl8WarmOutcome $o account $null $null $false $now.AddMinutes(16)
-        Assert ($r.outcome -eq 'unconfirmed' -and (Test-Hotpl8WarmPending $r account $now.AddHours(4)))
-        Assert (-not (Test-Hotpl8WarmPending $r account $now.AddHours(5)))
-        Assert ((Update-Hotpl8WarmOutcome $r account $null $null $false $now.AddHours(5)).outcome -eq 'expired')
-    }
-    Check 'account replacement and failure never become warm success' {
-        $o=New-Hotpl8WarmOutcome claude 1 old fiveHour $false $now
-        Assert ((Update-Hotpl8WarmOutcome $o old $now.AddMinutes(1).ToString('o') $now.AddHours(5).ToString('o') $true $now.AddMinutes(2)).outcome -eq 'failed')
-        Assert ((Update-Hotpl8WarmOutcome $o new $null $null $true $now).outcome -eq 'account_changed')
-        Assert (-not (Test-Hotpl8WarmPending $o new $now))
-    }
-    Check 'warm outcomes survive file persistence' {
-        $o=New-Hotpl8WarmOutcome claude 1 account fiveHour $true $now
-        Save-Hotpl8WarmOutcomes $dir ([pscustomobject]@{'claude:1'=$o})
-        Assert ((Read-Hotpl8WarmOutcomes $dir).'claude:1'.id -eq $o.id)
-    }
-    Check 'weekly forecast rejects zero stale early expired and invalid observations' {
-        foreach($used in @(0,-1,101,'20',$true)){Assert ($null -eq (Get-Hotpl8Forecast $used $now.AddDays(3).ToString('o') $now.ToString('o') 10080 $now))}
-        Assert ($null -eq (Get-Hotpl8Forecast 30 $now.AddDays(3).ToString('o') $now.AddHours(-1).ToString('o') 10080 $now))
-        Assert ($null -eq (Get-Hotpl8Forecast 30 $now.AddDays(6.9).ToString('o') $now.ToString('o') 10080 $now))
-        Assert ($null -eq (Get-Hotpl8Forecast 30 $now.AddSeconds(-1).ToString('o') $now.ToString('o') 10080 $now))
-    }
-    Check 'forecast explains pace and depletion as an estimate' {
-        $f=Get-Hotpl8Forecast 80 $now.AddDays(4).ToString('o') $now.ToString('o') 10080 $now
-        Assert ($f.pace -eq 'ahead' -and -not $f.lastsToReset -and $f.confidence -eq 'estimate')
-        Assert ($f.secondsToLimit -eq 64800)
-    }
-    Check 'recent forecast requires separated same-cycle history' {
-        $reset=$now.AddDays(4).ToString('o');$samples=@()
-        foreach($n in @(3,2,1)){$samples+=@(@{used=(80-$n);observedAt=$now.AddHours(-$n).ToString('o');resetAt=$reset})}
-        $f=Get-Hotpl8Forecast 80 $reset $now.ToString('o') 10080 $now $samples
-        Assert ($f.recentSecondsToLimit -eq 72000)
-        $samples[0].resetAt=$now.AddDays(5).ToString('o')
-        Assert ($null -eq (Get-Hotpl8Forecast 80 $reset $now.ToString('o') 10080 $now $samples).recentSecondsToLimit)
-    }
-    Check 'history samples are bounded spaced and reset-aware' {
-        Write-Hotpl8Text (Join-Path $dir 'usage-history.json') ((@{samples=@(@{key='old';used=5;observedAt=$now.AddDays(-15).ToString('o')})})|ConvertTo-Json -Depth 8)
-        $r=@{key='sample';used=5;observedAt=$now.ToString('o');resetAt=$now.AddDays(3).ToString('o')}
-        $null=Update-Hotpl8History $dir @($r) $now;$null=Update-Hotpl8History $dir @($r) $now
-        Assert (@((Read-Hotpl8Json (Join-Path $dir 'usage-history.json')).samples).Count -eq 1)
-        $r.resetAt=$now.AddDays(7).ToString('o');$null=Update-Hotpl8History $dir @($r) $now
-        Assert (@((Read-Hotpl8Json (Join-Path $dir 'usage-history.json')).samples).Count -eq 2)
     }
     Check 'work hours handle Sunday and overnight day ownership' {
         $s=[pscustomobject]@{days=@(0);start='10:00';end='14:00';timeZone='UTC'}
@@ -187,37 +49,15 @@ try{
             Reject {Assert-Hotpl8AutomationPolicy (Clone @{automation=$a})}
         }
     }
-    Check 'attempt budget survives restart and resets on the next UTC day' {
-        $p=Clone @{automation=@{dailyAttemptLimit=1}}
-        Assert ($null -eq (Get-Hotpl8ActionBlock $p $dir claude 1 warm $now))
-        Add-Hotpl8Attempt $dir claude 1 $now
-        Assert ((Get-Hotpl8ActionBlock $p $dir claude 1 probe $now) -eq 'daily_attempt_limit')
-        Assert ($null -eq (Get-Hotpl8ActionBlock $p $dir claude 1 warm $now.AddDays(1)))
-        Assert ($null -eq (Get-Hotpl8ActionBlock $p $dir claude 2 warm $now))
-    }
-    Check 'schedule and exclusions block prompts while switching remains separately controlled' {
-        $p=Clone @{automation=@{warmExcluded=@('codex:main');schedule=@{days=@(1);start='10:00';end='12:00';timeZone='UTC'}}}
-        Assert ((Get-Hotpl8ActionBlock $p $dir claude 1 warm $now) -eq 'outside_work_hours')
-        Assert ($null -eq (Get-Hotpl8ActionBlock $p $dir claude 1 switch $now))
-        $p.automation.PSObject.Properties.Remove('schedule')
-        Assert ((Get-Hotpl8ActionBlock $p $dir codex main warm $now) -eq 'account_excluded')
-    }
-    Check 'persistent pause blocks every automatic action and resume preserves policy' {
+    Check 'persistent pause is read back until it is resumed' {
         Set-Hotpl8Pause $dir 60 'test pause'
-        foreach($kind in @('switch','warm','probe')){Assert ((Get-Hotpl8ActionBlock $null $dir claude 1 $kind) -eq 'automation_paused')}
+        Assert ((Get-Hotpl8Pause $dir).reason -ceq 'test pause')
         Set-Hotpl8Pause $dir 0 'resumed';Assert ($null -eq (Get-Hotpl8Pause $dir))
     }
     Check 'malformed pause fails closed' {
         Write-Hotpl8Text (Join-Path $dir 'automation-pause.json') '{'
         Assert ((Get-Hotpl8Pause $dir).invalid)
         Set-Hotpl8Pause $dir 0 'resumed'
-    }
-    Check 'corrupt attempt state cannot reset a daily prompt budget' {
-        $path=Join-Path $dir 'attempt-budget.json';$before=[IO.File]::ReadAllText($path)
-        try{
-            Write-Hotpl8Text $path '{'
-            Assert ((Get-Hotpl8ActionBlock $null $dir claude 1 warm) -eq 'attempt_state_invalid')
-        }finally{Write-Hotpl8Text $path $before}
     }
     Check 'policy migration preserves explicit monitor preferences and legacy defaults' {
         $p=ConvertTo-Hotpl8PolicyV2 (Clone @{schemaVersion=1;mode='monitor';switchEnabled=$true;probeEnabled=$true})
@@ -247,23 +87,6 @@ try{
         Assert ((Read-Hotpl8Json (Join-Path $dir 'policy.previous.json')).schemaVersion -eq 1)
         Reject {Save-Hotpl8Policy $dir $p $hash}
         Assert ((Read-Hotpl8Json (Join-Path $dir 'policy.json')).schemaVersion -eq 2)
-    }
-    Check 'collector backoff is shared by manual refresh and scheduler and is bounded' {
-        $s=Get-Hotpl8CollectionState $dir
-        Set-Hotpl8CollectionResult $s codex $false $now
-        Assert (-not (Test-Hotpl8CollectionDue $s codex $false $now.AddMinutes(1)))
-        Assert (-not (Test-Hotpl8CollectionDue $s codex $true $now.AddMinutes(1)))
-        Assert (Test-Hotpl8CollectionDue $s codex $true $now.AddMinutes(5))
-        foreach($n in 1..10){Set-Hotpl8CollectionResult $s codex $false $now}
-        Assert ([datetimeoffset]::Parse($s.providers.codex.nextAttemptAt) -eq $now.AddMinutes(30))
-        Set-Hotpl8CollectionResult $s codex $true $now
-        Assert (Test-Hotpl8CollectionDue $s codex $false $now.AddSeconds(1))
-        Assert (-not (Test-Hotpl8CollectionDue $s codex $true $now.AddSeconds(1)))
-        Set-Hotpl8CollectionResult $s claude $true $now 60
-        Assert (Test-Hotpl8CollectionDue $s claude $true $now.AddSeconds(59))
-        Set-Hotpl8CollectionResult $s claude $false $now
-        Assert (-not (Test-Hotpl8CollectionDue $s claude $true $now.AddSeconds(59)))
-        Assert (-not (Test-Hotpl8CollectionDue $s claude $false $now.AddSeconds(59)))
     }
     Check 'health distinguishes collecting stalled overdue and partial collection' {
         $s=Clone @{startedAt=$now.ToString('o')}

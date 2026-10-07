@@ -17,13 +17,6 @@ function Get-Hotpl8HistoryStores($Policy,[string]$Directory) {
         $stores[$key]
     }
 }
-function Add-Hotpl8ActionEvent([string]$Directory, [string]$Provider, [string]$Slot, [string]$Kind, [string]$Reason, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    $path=Join-Path $Directory 'activity.json'
-    $old=Read-Hotpl8Json $path
-    $event=[pscustomobject]@{id=[guid]::NewGuid().ToString('N');at=$Now.ToString('o');provider=$Provider;slot=$Slot;kind=$Kind;reason=$Reason}
-    $events=@(@($old.events | Where-Object {$_}) + @($event) | Select-Object -Last 100)
-    Write-Hotpl8Text $path (@{schemaVersion=1;events=$events}|ConvertTo-Json -Depth 6)
-}
 function Get-Hotpl8Health($Collector, [datetimeoffset]$Now = [datetimeoffset]::UtcNow, [string]$Provider) {
     if (-not $Collector) { return 'manual / no collector evidence' }
     try {
@@ -51,78 +44,6 @@ function Get-Hotpl8Health($Collector, [datetimeoffset]$Now = [datetimeoffset]::U
     } catch { return 'collector state invalid' }
 }
 
-function Add-Hotpl8NativeInsights($Snapshot, $Policy, [string]$Directory, $Previous, [datetimeoffset]$Now = [datetimeoffset]::UtcNow) {
-    $history=if($Policy.historyEnabled -eq $true){Read-Hotpl8Json (Join-Path $Directory 'usage-history.json')}else{$null}; $newSamples=@()
-    foreach ($slot in @($Snapshot.slots)) {
-        if(-not $slot){continue}
-        $slot|Add-Member NoteProperty forecast $null -Force
-        if (-not $slot.fresh -or -not $slot.observedAt) { continue }
-        $key='claude/'+$slot.streamKey+'/10080'
-        $f=Get-Hotpl8Forecast $slot.used7d $slot.reset7d $slot.observedAt 10080 $Now @($history.samples|Where-Object key -EQ $key)
-        $slot|Add-Member NoteProperty forecast $f -Force
-        if($f){$newSamples+=@(@{key=$key;observedAt=$slot.observedAt;resetAt=$slot.reset7d;used=$slot.used7d})}
-    }
-    foreach ($slot in @($Snapshot.providers.codex.slots)) {
-        if (-not $slot) { continue }
-        foreach ($entry in $slot.buckets.PSObject.Properties) {
-            $entry.Value|Add-Member NoteProperty forecast $null -Force
-            if($slot.status -ne 'ok'){continue}
-            $window=$entry.Value.windows.'10080'
-            if (-not $window -or $entry.Value.status -ne 'observed' -or $window.anchorState -ne 'observed-active') { continue }
-            $key='codex/'+$slot.streamKey+'/'+$entry.Name+'/10080'
-            $reset=[datetimeoffset]::FromUnixTimeSeconds($window.resetsAt).ToString('o')
-            $f=Get-Hotpl8Forecast $window.usedPercent $reset $slot.observedAt 10080 $Now @($history.samples|Where-Object key -EQ $key)
-            $entry.Value|Add-Member NoteProperty forecast $f -Force
-            if($f){$newSamples+=@(@{key=$key;observedAt=$slot.observedAt;resetAt=$reset;used=$window.usedPercent})}
-        }
-    }
-    # Historical diagnostics are optional; a blocked history/activity file must
-    # not discard freshly collected quota or its required safety state.
-    if($Policy.historyEnabled -eq $true){
-        try{$null=Update-Hotpl8History $Directory $newSamples $Now}
-        catch{Write-Hotpl8Event $Directory 'history_output_failed' $_}
-    }
-    $pause=Get-Hotpl8Pause $Directory $Now
-    $Snapshot|Add-Member NoteProperty automationPause $pause -Force
-    if($Snapshot.active -and $Previous.active -and $Snapshot.active -ne $Previous.active){
-        try{Add-Hotpl8ActionEvent $Directory 'claude' ([string]$Snapshot.active) 'active_changed' 'observed_account_change' $Now}
-        catch{Write-Hotpl8Event $Directory 'activity_output_failed' $_}
-    }
-    $next=$Snapshot.providers.codex.recommendedSlot
-    if($next -and $next -ne $Previous.providers.codex.recommendedSlot){
-        try{Add-Hotpl8ActionEvent $Directory 'codex' $next 'recommendation' 'next_launch_only' $Now}
-        catch{Write-Hotpl8Event $Directory 'activity_output_failed' $_}
-    }
-    $activity=Read-Hotpl8Json (Join-Path $Directory 'activity.json')
-    $Snapshot|Add-Member NoteProperty recentActions @($activity.events|Select-Object -Last 5) -Force
-    $shadow=Invoke-Hotpl8Replay @($Snapshot) $Policy
-    $Snapshot|Add-Member NoteProperty shadow @($shadow.decisions) -Force
-}
-function Add-Hotpl8Insights($Snapshot,$Policy,[string]$Directory,$Previous,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    $events=@();$shadow=@()
-    foreach($r in @(Get-Hotpl8ConfiguredProviders $Policy)){
-        $view=Get-Hotpl8ProviderView $Snapshot $Policy $r.id
-        $old=Get-Hotpl8ProviderView $Previous $Policy $r.id
-        $state=Get-Hotpl8ProviderStateDirectory $Directory $r.id
-        if(-not (Test-Path -LiteralPath $state)){continue}
-        Add-Hotpl8NativeInsights $view.snapshot $view.policy $state $old.snapshot $Now
-        $payload=if($view.provider -eq 'claude'){$view.snapshot}else{$view.snapshot.providers.codex}
-        if($r.id -ceq 'claude'){
-            foreach($key in @('slots','decision','critical')){if($payload.PSObject.Properties[$key]){$Snapshot|Add-Member NoteProperty $key $payload.$key -Force}}
-        }elseif($Snapshot.providers -and $Snapshot.providers.PSObject.Properties[$r.id]){$Snapshot.providers.($r.id)=$payload}
-        foreach($event in @($view.snapshot.recentActions|Where-Object {$_ -and ($_.provider -ceq $view.provider -or $_.provider -ceq $r.id)})){
-            $copy=Copy-Hotpl8ProviderValue $event;$copy.provider=$r.id;$events+=@($copy)
-        }
-        foreach($decision in @($view.snapshot.shadow|Where-Object {$_.stream -like ($view.provider+'/*')})){
-            if($view.driver.slotKind -eq 'native-home' -and $decision.stream.Split('/')[1] -cnotin $r.definition.meters){continue}
-            $copy=Copy-Hotpl8ProviderValue $decision;$copy.stream=$r.id+$copy.stream.Substring($view.provider.Length);$shadow+=@($copy)
-        }
-    }
-    $Snapshot|Add-Member NoteProperty automationPause (Get-Hotpl8Pause $Directory $Now) -Force
-    $Snapshot|Add-Member NoteProperty recentActions @($events|Sort-Object at|Select-Object -Last 5) -Force
-    $Snapshot|Add-Member NoteProperty shadow $shadow -Force
-    $Snapshot|Add-Member NoteProperty providerOverview (Get-Hotpl8ProviderOverview $Snapshot $Policy $Now) -Force
-}
 function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[switch]$SkipDisplay,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     $s=Read-Hotpl8Json (Join-Path $Directory 'status.json')
     $c=Read-Hotpl8Json (Join-Path $Directory 'collector.json')

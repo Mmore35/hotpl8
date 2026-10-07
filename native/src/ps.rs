@@ -1,4 +1,4 @@
-//! PowerShell's dynamic values and operators, as far as `status` and `explain` use them.
+//! PowerShell's dynamic values and operators, as far as the reader and the collector use them.
 //!
 //! The ported modules follow the PowerShell source line by line on top of these helpers.
 //! Each helper models exactly the type combinations real state files produce and stops as
@@ -22,13 +22,70 @@ struct Detail {
     at: &'static Location<'static>,
     /// What the user is told. Without one, the place in the reader stands in for it.
     message: Option<String>,
+    /// The state file an operating-system refusal was about, and the system's code for it.
+    file: Option<(String, i32)>,
+    /// Whether the system refused for want of permission rather than for any other reason.
+    denied: bool,
+    /// A failure PowerShell reported from a part of the collection it still runs: the kind
+    /// it gave it, and the file and line it was raised at where it named them.
+    reported: Option<(&'static str, Option<(String, u32)>)>,
 }
 pub type R<T> = Result<T, Stop>;
 
 impl Stop {
     #[track_caller]
     fn new<T>(thrown: bool, message: Option<String>) -> R<T> {
-        Err(Stop(Box::new(Detail { thrown, at: Location::caller(), message })))
+        Err(Stop(Box::new(Detail { thrown, at: Location::caller(), message, file: None, denied: false, reported: None })))
+    }
+    /// The operating system refused to read, write or lock a file. A ported try/catch
+    /// catches it, as it caught the .NET exception.
+    #[track_caller]
+    pub fn io<T>(error: &std::io::Error, path: &std::path::Path) -> R<T> {
+        let name = path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned();
+        Err(Stop(Box::new(Detail {
+            thrown: true,
+            at: Location::caller(),
+            message: Some(format!("{name}: {error}")),
+            file: Some((name, error.raw_os_error().unwrap_or(0) & 0xffff)),
+            denied: error.kind() == std::io::ErrorKind::PermissionDenied,
+            reported: None,
+        })))
+    }
+    /// A failure PowerShell caught and reported. Its kind is one of Get-Hotpl8FailureCode's
+    /// and its words are kept only for the caller to compare with the few it knows.
+    #[track_caller]
+    pub fn reported<T>(code: &str, said: Option<String>, file: Option<(String, i32)>, source: Option<(String, u32)>) -> R<T> {
+        const KINDS: [&str; 5] = ["access_denied", "state_io_failed", "invalid_cached_shape", "invalid_parameter", "unexpected_collection_error"];
+        let kind = KINDS.iter().find(|kind| **kind == code).copied().unwrap_or("unexpected_collection_error");
+        Err(Stop(Box::new(Detail { thrown: true, at: Location::caller(), message: said, file, denied: false, reported: Some((kind, source)) })))
+    }
+    /// Get-Hotpl8FailureCode: what kind of failure this is, in the words events carry.
+    pub fn failure_code(&self) -> &'static str {
+        if let Some((kind, _)) = &self.0.reported {
+            return kind;
+        }
+        match (&self.0.file, self.0.denied) {
+            (_, true) => "access_denied",
+            (Some(_), false) => "state_io_failed",
+            (None, false) => "unexpected_collection_error",
+        }
+    }
+    /// The file and system code of an operating-system refusal.
+    pub fn state_file(&self) -> Option<(&str, i32)> {
+        self.0.file.as_ref().map(|(name, code)| (name.as_str(), *code))
+    }
+    /// Where the stop was raised, file name and line: in this program, or where PowerShell
+    /// said, when it said so of a file an event may name.
+    pub fn place(&self) -> Option<(&str, u32)> {
+        if let Some((_, source)) = &self.0.reported {
+            return source.as_ref().map(|(source, line)| (source.as_str(), *line));
+        }
+        let file = self.0.at.file();
+        Some((file.rsplit(['/', '\\']).next().unwrap_or(file), self.0.at.line()))
+    }
+    /// The words a rule refused with, where it gave any: `throw 'claude_missing'`.
+    pub fn said(&self) -> Option<&str> {
+        if self.0.thrown { self.0.message.as_deref() } else { None }
     }
     pub fn thrown(&self) -> bool {
         self.0.thrown
@@ -280,12 +337,18 @@ fn same_text(left: &str, right: &str, case_sensitive: bool) -> R<bool> {
     }
     unreadable()
 }
-/// Culture ordering, modelled for strings of ASCII letters and digits, and for hyphens
-/// between them where every culture table agrees.
+/// Culture ordering, modelled for strings of ASCII letters and digits, for hyphens between
+/// them where every culture table agrees, and for strings of one shape such as timestamps.
 #[track_caller]
 pub fn order_text(left: &str, right: &str) -> R<Ordering> {
     let (left, right) = (left.to_ascii_lowercase(), right.to_ascii_lowercase());
     if alphanumeric(&left) && alphanumeric(&right) {
+        return Ok(left.cmp(&right));
+    }
+    // Two strings that differ only in which digit stands at a place are decided by the
+    // first such place: whatever stands between the digits weighs the same in both.
+    let shaped = |a: u8, b: u8| a == b || (a.is_ascii_digit() && b.is_ascii_digit());
+    if left.len() == right.len() && printable(&left) && printable(&right) && left.bytes().zip(right.bytes()).all(|(a, b)| shaped(a, b)) {
         return Ok(left.cmp(&right));
     }
     let hyphenated = |text: &str| text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
@@ -505,8 +568,12 @@ impl V {
     /// `$value.$name` with a name taken from data: a name PowerShell answers itself is not read.
     #[track_caller]
     pub fn gd(&self, name: &str) -> R<V> {
+        // No object read from JSON has a member without a name, and PowerShell answers null.
+        if name.is_empty() && !matches!(self, V::Hash(_)) {
+            return Ok(V::Null);
+        }
         let lower = name.to_ascii_lowercase();
-        if RESERVED.contains(&lower.as_str()) || !printable(name) || name.is_empty() {
+        if RESERVED.contains(&lower.as_str()) || !printable(name) {
             return unreadable();
         }
         if matches!(self, V::Hash(_)) && HASH_RESERVED.contains(&lower.as_str()) {
@@ -1248,6 +1315,20 @@ impl V {
             _ => unreadable(),
         }
     }
+    /// `'{0:N0}' -f $value` and `'{0:N1}' -f $value`. What is not a number is printed as
+    /// it is; nothing prints as nothing.
+    #[track_caller]
+    pub fn grouped(&self, decimals: usize) -> R<String> {
+        match self {
+            V::Dbl(x) => Ok(num::double_grouped(*x, decimals)),
+            V::Dec(x) => Ok(x.text_grouped(decimals)),
+            V::I32(x) => Ok(num::whole_grouped(i64::from(*x), decimals)),
+            V::I64(x) => Ok(num::whole_grouped(*x, decimals)),
+            V::Null => Ok(String::new()),
+            V::Str(_) => self.s(),
+            _ => unreadable(),
+        }
+    }
     /// `'{0:0.#}' -f $value`
     #[track_caller]
     pub fn tenths(&self) -> R<String> {
@@ -1368,6 +1449,10 @@ mod tests {
         assert_eq!(order("a-b", "aa"), None);
         assert_eq!(order("codex", "codex-"), None);
         assert_eq!(order("a b", "a"), None);
+        // Timestamps of one spelling differ only in their digits.
+        assert_eq!(order("2026-10-06T11:00:00.0000000+00:00", "2026-10-06T10:59:59.9999999+00:00"), Some(Ordering::Greater));
+        assert_eq!(order("2026-10-06T11:00:00.0000000+00:00", "2026-10-06T11:00:00.0000000-07:00"), None);
+        assert_eq!(order("2026-10-06T11:00:00Z", "2026-10-06T11:00:00.0000000+00:00"), None);
     }
 
     #[test]

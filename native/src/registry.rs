@@ -494,6 +494,27 @@ pub fn provider_view(snapshot: &V, policy: &V, provider: &str, carried: &[&str])
     })
 }
 
+/// Get-Hotpl8ProviderStateDirectory: a provider named as its family keeps its state in the
+/// state directory itself, any other in a directory of its own.
+pub fn provider_state_directory(directory: &Path, provider: &str) -> R<PathBuf> {
+    let definition = provider_definition(provider)?;
+    let driver = provider_driver(&definition.g("driver")?)?;
+    if driver.g("provider")?.ceq_s(provider)? {
+        return Ok(directory.to_path_buf());
+    }
+    Ok(directory.join("providers").join(provider))
+}
+
+/// How many accounts Get-Hotpl8ProviderAccounts lists for one configured provider.
+pub fn provider_account_count(registration: &V) -> R<usize> {
+    let driver = provider_driver(&registration.g("driver")?)?;
+    let part = registration.g("policy")?;
+    if driver.g("slotKind")?.eq_s("numeric")? {
+        return Ok(part.g("prefer")?.arr().len());
+    }
+    Ok(filter(&part.g("slots")?.each(), |slot| slot.t())?.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
