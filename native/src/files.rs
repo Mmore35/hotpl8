@@ -188,6 +188,21 @@ pub mod tests {
         path
     }
 
+    /// What a test asks of a lock it has just let go, asked until it is answered. Off
+    /// Windows a lock belongs to the open file, and a program being started holds a copy of
+    /// every file its starter has open until it becomes that program. These tests start
+    /// programs on many threads at once, so a lock nobody holds can look held for a moment.
+    pub fn let_go<T>(asked: impl Fn() -> Option<T>) -> T {
+        let since = std::time::Instant::now();
+        loop {
+            if let Some(answer) = asked() {
+                return answer;
+            }
+            assert!(since.elapsed() < std::time::Duration::from_secs(5), "a lock that was let go is still held");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
     /// One part of tests/parity/shared-rules.json. It holds what PowerShell's side of a
     /// rule answers for each case, tests/test-shared-rules.ps1 holds PowerShell to it, and
     /// the test beside the rule here holds this side to it.

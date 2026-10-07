@@ -411,7 +411,7 @@ pub fn read_home(home: &str, program: &Result<PathBuf, &'static str>, timeout_ms
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::files::tests::scratch;
+    use crate::files::tests::{let_go, scratch};
 
     /// The stand-in for Codex that `cargo test` builds from native/examples. It does what
     /// the file `stand-in.txt` in its home says, and writes down what it was started with
@@ -745,12 +745,13 @@ pub mod tests {
         // A busy home is said before a missing program, and a missing program once it is free.
         assert_eq!(failure(&read_home(&home, &Err("codex_missing"), 20_000)), "home_busy");
         drop(held);
-        assert_eq!(failure(&read_home(&home, &Err("codex_missing"), 20_000)), "codex_missing");
-        assert_eq!(failure(&read_home(&home, &Ok(Path::new(&home).join("no-such-program")), 20_000)), "transport_failed");
+        let free = |program: Result<PathBuf, &'static str>| let_go(|| Some(read_home(&home, &program, 20_000)).filter(|read| failure(read) != "home_busy"));
+        assert_eq!(failure(&free(Err("codex_missing"))), "codex_missing");
+        assert_eq!(failure(&free(Ok(Path::new(&home).join("no-such-program")))), "transport_failed");
         assert!(!Path::new(&home).join("started.txt").exists());
         // The lock is let go with the read.
-        assert_eq!(failure(&read(&home, 20_000)), "ok");
-        assert!(files::lock(&lock_path(&home_path(&home).ok().unwrap())).is_ok());
+        assert_eq!(failure(&free(Ok(stand_in()))), "ok");
+        drop(let_go(|| files::lock(&lock_path(&home_path(&home).ok().unwrap())).ok()));
         remove(&home);
     }
 

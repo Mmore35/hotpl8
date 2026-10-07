@@ -362,9 +362,10 @@ mod tests {
         assert!(matches!(crate::files::lock(&root.join("runtime.lock")), Err(crate::files::Unlocked::Busy)));
         let second = release(in_force(&root)).unwrap();
         drop((first, second));
-        let update = crate::files::lock(&root.join("runtime.lock")).ok().unwrap();
+        let update = crate::files::tests::let_go(|| crate::files::lock(&root.join("runtime.lock")).ok());
         assert!(matches!(in_force(&root), Some(InForce::Updating)));
         drop(update);
+        drop(crate::files::tests::let_go(|| leased(&root.join("runtime.lock"))));
         for (sha, named) in [("main", "releases/main".to_owned()), (SHA, "releases/other".to_owned()), (&*SHA.to_uppercase(), format!("releases/{}", SHA.to_uppercase()))] {
             pointer(sha, &named);
             assert!(in_force(&root).is_none(), "{sha} {named}");
