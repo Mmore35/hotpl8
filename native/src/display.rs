@@ -88,7 +88,7 @@ pub fn answer(request: &Request) -> R<String> {
             };
             return value(&answer, 16, request.dump);
         }
-        return Ok(lines(insights::format_explanation(&status, now)?.iter().map(|line| ps::safe_text(line)).collect()));
+        return Ok(lines(insights::format_explanation(&status, now, true)?.iter().map(|line| ps::safe_text(line)).collect()));
     }
     if !status.t()? || !status.g("generatedAt")?.t()? {
         return Ok(lines(vec!["No cached status. Run hotpl8 refresh.".to_owned()]));

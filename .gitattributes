@@ -9,6 +9,6 @@
 *.rs text eol=lf
 *.toml text eol=lf
 Cargo.lock text eol=lf
-tests/parity/expected-status.txt text eol=lf
+tests/parity/expected-*.txt text eol=lf
 *.cs text eol=lf
 native/src/*.txt text eol=lf

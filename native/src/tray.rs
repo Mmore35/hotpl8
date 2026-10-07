@@ -11,9 +11,6 @@ use crate::registry::{configured_providers, provider_view};
 use crate::time::Dto;
 use crate::{cat, obj};
 
-/// The lines of an explanation the tray leaves out: the overview above them says the same.
-const LEFT_OUT: [&str; 8] = ["CLAUDE:", "CODEX:", "  Includes reserve", "Weekly headroom", "  Capacity:", "  Profiles:", "  Membership:", "  Next reset:"];
-
 /// `$line -match '(?i)^' + $start`, for a start of printable ASCII. The four characters
 /// outside ASCII that some runtime reads as a letter's other case are not read.
 fn starts(line: &str, start: &str) -> R<bool> {
@@ -120,7 +117,7 @@ fn account_lines(snapshot: &V, policy: &V, now: Dto) -> R<Vec<String>> {
         }
     }
     let codex = snapshot.path(&["providers", "codex"])?;
-    for s in codex.g("slots")?.arr() {
+    for s in codex.g("slots")?.each() {
         let fresh = s.g("status")?.eq_s("ok")? && fresh_timestamp(&s.g("observedAt")?, now)?;
         lines.push(cat!("Codex ", s.g("label")?, " [", s.g("id")?, "]: ", codex_account_state(&s, &policy.g("codex")?, &codex, now)?));
         for (name, bucket) in s.g("buckets")?.props()? {
@@ -179,7 +176,7 @@ fn view_alerts(snapshot: &V, policy: &V, now: Dto) -> R<Vec<Alert>> {
         }
     }
     let codex = snapshot.path(&["providers", "codex"])?;
-    for s in codex.g("slots")?.arr() {
+    for s in codex.g("slots")?.each() {
         if s.g("status")?.in_s(&["authentication_required", "subscription_login_required"])? {
             alerts.push(Alert::new(cat!("codex/", s.g("id")?, "/auth"), "Codex sign-in needed", cat!("Slot ", s.g("id")?, " needs native sign-in.")));
         }
@@ -199,8 +196,8 @@ fn view_alerts(snapshot: &V, policy: &V, now: Dto) -> R<Vec<Alert>> {
         if !accounts.is_empty() && eligible.is_empty() {
             alerts.push(Alert::new("claude/no-eligible".to_string(), "No eligible Claude account", "Run hotpl8 explain for the recorded reasons.".to_string()));
         }
-        for d in codex.g("decisions")?.arr() {
-            let accounts = d.g("accounts")?.arr();
+        for d in codex.g("decisions")?.each() {
+            let accounts = d.g("accounts")?.each();
             if d.g("meter")?.eq(&codex.g("defaultMeter")?)? && !accounts.is_empty() && filter(&accounts, |account| account.g("reason")?.eq_s("eligible"))?.is_empty() {
                 alerts.push(Alert::new(cat!("codex/", d.g("meter")?, "/no-eligible"), "No eligible Codex account", "Run hotpl8 explain before the next launch.".to_string()));
             }
@@ -218,15 +215,7 @@ fn view_alerts(snapshot: &V, policy: &V, now: Dto) -> R<Vec<Alert>> {
 pub fn model(snapshot: &V, policy: &V, now: Dto) -> R<V> {
     let overview = if snapshot.t()? { snapshot.g("providerOverview")? } else { provider_overview(snapshot, policy, now)? };
     let mut details = format_overview(&overview)?;
-    for line in format_explanation(snapshot, now)? {
-        let mut left_out = false;
-        for start in LEFT_OUT {
-            left_out = left_out || starts(&line, start)?;
-        }
-        if !left_out {
-            details.push(line);
-        }
-    }
+    details.extend(format_explanation(snapshot, now, false)?);
     let (mut alerts, mut seen) = (Vec::new(), Keys::new());
     for registration in configured_providers(policy, false)? {
         let view = provider_view(snapshot, policy, &registration.g("id")?.s()?, &["providerOverview", "parkCandidates"])?;
@@ -352,16 +341,33 @@ mod tests {
         assert_eq!(shown.g("title").ok().unwrap().s().ok().unwrap(), "HotPl8 - recent collection completed");
         assert_eq!(write(&shown.g("providerOverview").ok().unwrap(), 24).ok().unwrap(), write(&snapshot.g("providerOverview").ok().unwrap(), 24).ok().unwrap());
         let lines = lines(&shown);
-        // The explanation repeats the overview above it; the window shows one copy.
+        // The overview is shown once, above the reasons recorded for it.
         for (start, times) in [("CLAUDE:", 1), ("CODEX:", 1), ("  Capacity:", 2), ("  Membership:", 2), ("  Next reset:", 1), ("Weekly headroom", 1)] {
             assert_eq!(lines.iter().filter(|line| line.starts_with(start)).count(), times, "{start}");
         }
         let pace = format!("  {PACE}");
         let has = |wanted: &[&str]| lines.windows(wanted.len()).any(|found| found == wanted);
-        assert!(has(&["Observed: 2026-09-13T12:00:00.0000000+00:00", "  slot 1: model_below_margin; rank 1"]));
+        assert!(has(&["Observed: 2026-09-13T12:00:00.0000000+00:00", "Claude: switch held; policy balanced", "  slot 1: model_below_margin; rank 1", "Codex codex: next launch none; policy ", "  a: below_margin; reserve="]));
+        // One line for each account there is, and none for an account there is not.
+        assert_eq!(lines.iter().filter(|line| line.starts_with("Claude ") || line.starts_with("Codex ")).count(), 5, "{lines:?}");
         assert!(has(&["Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence."]));
         assert!(has(&["Claude one: ok", "  5h used: 10%; weekly used: 54%", &pace, "Claude two: relogin_required / stale", "  5h used: unknown; weekly used: unknown"]));
         assert!(has(&["Codex a [a]: NEXT LAUNCH", "  codex 10080m: 10% used; reset observed-active", &pace, "Codex b [b]: AUTHENTICATION REQUIRED", "  codex 10080m: 100% used; reset observed-active"]));
+    }
+
+    #[test]
+    fn a_provider_that_is_not_set_up_is_given_no_account_and_no_announcement() {
+        let now = noon();
+        let asked = parse(r#"{"schemaVersion":2,"mode":"monitor","prefer":[1,2],"notificationsEnabled":true}"#, "").ok().unwrap();
+        let text = format!(r#"{{"generatedAt":"{NOON}","collector":{{"startedAt":"{NOON}","completedAt":"{NOON}","status":"ok"}},"slots":[{{"slot":1,"label":"one","status":"ok","fresh":true,"observedAt":"{NOON}","used5h":10,"used7d":54}}],"decision":{{"policy":"prefer","reason":"stay","accounts":[{{"slot":1,"reason":"eligible_active","rank":1}}]}},"providers":{{}}}}"#);
+        let snapshot = parse(&text, "").ok().unwrap();
+        snapshot.add_member("providerOverview", provider_overview(&snapshot, &asked, now).ok().unwrap(), true).ok().unwrap();
+        let shown = model(&snapshot, &asked, now).ok().unwrap();
+        assert!(shown.g("notify").ok().unwrap().t().ok().unwrap());
+        assert!(keys(&shown).is_empty(), "{:?}", keys(&shown));
+        let lines = lines(&shown);
+        assert!(!lines.iter().any(|line| line.starts_with("Codex ")), "{lines:?}");
+        assert!(lines.windows(2).any(|found| found == ["Claude: stay; policy prefer", "  slot 1: eligible_active; rank 1"]), "{lines:?}");
     }
 
     #[test]
@@ -382,9 +388,7 @@ mod tests {
         let shown = model(&snapshot(&accounts, &asked, now), &asked, now).ok().unwrap();
         assert!(shown.g("notify").ok().unwrap().t().ok().unwrap());
         let keys_shown = keys(&shown);
-        for key in ["claude/stream-one/weekly", "claude/2/auth", "claude/no-eligible", "codex/stream-a/codex/weekly", "codex/b/auth", "codex/codex/no-eligible"] {
-            assert_eq!(keys_shown.iter().filter(|found| *found == key).count(), 1, "{key}");
-        }
+        assert_eq!(keys_shown, ["claude/stream-one/weekly", "claude/2/auth", "claude/no-eligible", "codex/stream-a/codex/weekly", "codex/b/auth", "codex/codex/no-eligible"]);
         let weekly = shown.g("alerts").ok().unwrap().arr().into_iter().find(|alert| alert.g("key").ok().unwrap().eq_s("claude/stream-one/weekly").ok().unwrap()).unwrap();
         assert_eq!(weekly.g("title").ok().unwrap().s().ok().unwrap(), "Claude weekly quota may run out");
         assert_eq!(weekly.g("text").ok().unwrap().s().ok().unwrap(), PACE);
