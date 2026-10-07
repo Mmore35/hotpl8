@@ -30,8 +30,10 @@ function readOperation() {
   try {
     return JSON.parse(fs.readFileSync(fixture.operationPath, 'utf8'));
   } catch (error) {
-    // Windows briefly locks the operation file while it is atomically replaced.
-    if (['EBUSY', 'EPERM', 'EACCES'].includes(error.code) || error instanceof SyntaxError) return null;
+    // Windows briefly locks the operation file while it is atomically replaced,
+    // and between the two renames of that replacement the name is absent. A file
+    // that never comes back still ends in the caller's bounded wait.
+    if (['EBUSY', 'EPERM', 'EACCES', 'ENOENT'].includes(error.code) || error instanceof SyntaxError) return null;
     fail({ reason: 'fixture_read', code: error.code, message: error.message });
   }
 }
