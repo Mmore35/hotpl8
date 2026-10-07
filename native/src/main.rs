@@ -28,6 +28,7 @@ mod policy;
 mod process;
 mod ps;
 mod registry;
+mod replay;
 mod request;
 mod selection;
 mod sha256;
