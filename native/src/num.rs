@@ -400,6 +400,27 @@ impl Dec {
         };
         tenths_text(self.neg && tenths != 0, &tenths.to_string())
     }
+
+    /// '{0:N0}' -f $decimal and '{0:N1}' -f $decimal: half away from zero.
+    pub fn text_grouped(self, decimals: usize) -> String {
+        let (scale, wanted) = (self.scale as u32, decimals as u32);
+        let kept = if scale <= wanted {
+            self.mant * pow10(wanted - scale)
+        } else {
+            let power = pow10(scale - wanted);
+            let (kept, rest) = (self.mant / power, self.mant % power);
+            if rest * 2 >= power {
+                kept + 1
+            } else {
+                kept
+            }
+        };
+        let mut plain = format!("{kept:0width$}", width = decimals + 1);
+        if decimals > 0 {
+            plain.insert(plain.len() - decimals, '.');
+        }
+        grouped(self.neg && kept != 0, &plain)
+    }
 }
 
 /// Digits of a whole number of tenths as "12.3", "12" or "0".
@@ -582,6 +603,11 @@ pub fn double_grouped(value: f64, decimals: usize) -> String {
     } else {
         (value.is_sign_negative(), format!("{:.*}", decimals, value.abs()))
     };
+    grouped(negative, &plain)
+}
+
+/// Plain digits with a comma between every three of the whole part.
+fn grouped(negative: bool, plain: &str) -> String {
     let (whole, fraction) = plain.split_at(plain.find('.').unwrap_or(plain.len()));
     let mut out = String::new();
     if negative {
@@ -595,6 +621,16 @@ pub fn double_grouped(value: f64, decimals: usize) -> String {
     }
     out.push_str(fraction);
     out
+}
+
+/// '{0:N0}' -f $whole and '{0:N1}' -f $whole
+pub fn whole_grouped(value: i64, decimals: usize) -> String {
+    let mut plain = value.unsigned_abs().to_string();
+    if decimals > 0 {
+        plain.push('.');
+        plain.push_str(&"0".repeat(decimals));
+    }
+    grouped(value < 0, &plain)
 }
 
 /// '{0:0.#}' -f $double: the fifteen digits, then half away from zero at one fraction digit.
@@ -689,6 +725,18 @@ mod tests {
         };
         assert_eq!(all(false), "1|2|3|1,235|0.3|0.4|1,234.1|0|100|2.7|100|37|7.0|0.0|12,345,679|-1,234.6|63|0.0");
         assert_eq!(all(true), "0|2|2|1,234|0.2|0.3|1,234.0|-0|100|2.7|100|37|7.0|0.0|12,345,678|-1,234.6|63|0.0");
+    }
+
+    /// What Windows PowerShell prints for '{0:N0}' and '{0:N1}' of a decimal and a whole number.
+    #[test]
+    fn grouped_decimals_round_half_away_from_zero() {
+        let all: Vec<String> = [("62.5", 0), ("2.5", 0), ("-0.5", 0), ("1234.25", 1), ("1234567.5", 0), ("0.04", 1), ("-0.4", 0), ("7", 1)]
+            .iter()
+            .map(|(value, decimals)| d(value).text_grouped(*decimals))
+            .collect();
+        assert_eq!(all.join("|"), "63|3|-1|1,234.3|1,234,568|0.0|0|7.0");
+        assert_eq!(whole_grouped(2_147_483_648, 0), "2,147,483,648");
+        assert_eq!(whole_grouped(-5, 1), "-5.0");
     }
 
     #[test]

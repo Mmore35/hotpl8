@@ -1292,6 +1292,20 @@ impl V {
             _ => unreadable(),
         }
     }
+    /// `'{0:N0}' -f $value` and `'{0:N1}' -f $value`. What is not a number is printed as
+    /// it is; nothing prints as nothing.
+    #[track_caller]
+    pub fn grouped(&self, decimals: usize) -> R<String> {
+        match self {
+            V::Dbl(x) => Ok(num::double_grouped(*x, decimals)),
+            V::Dec(x) => Ok(x.text_grouped(decimals)),
+            V::I32(x) => Ok(num::whole_grouped(i64::from(*x), decimals)),
+            V::I64(x) => Ok(num::whole_grouped(*x, decimals)),
+            V::Null => Ok(String::new()),
+            V::Str(_) => self.s(),
+            _ => unreadable(),
+        }
+    }
     /// `'{0:0.#}' -f $value`
     #[track_caller]
     pub fn tenths(&self) -> R<String> {
