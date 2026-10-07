@@ -385,14 +385,15 @@ fn home_key(path: &str) -> R<String> {
     Ok(home_path(path)?.to_ascii_lowercase())
 }
 
-/// `[IO.Path]::GetFullPath` of a native account home. Only paths that call leaves as
-/// written are modelled: a home it would rewrite is not one HotPl8 enrolls, and is not read.
+/// `[IO.Path]::GetFullPath` of a native account home. Apart from the short names Windows
+/// keeps, only paths that call leaves as written are modelled: any other home it would
+/// rewrite is not one HotPl8 enrolls, and is not read.
 pub fn home_path(path: &str) -> R<String> {
     if path.is_empty() {
         // A missing home is not rooted.
         return fail("invalid_home");
     }
-    if !printable(path) || path.len() > 200 || path.contains('~') {
+    if !printable(path) || path.len() > 200 {
         return unreadable();
     }
     // [IO.Path]::IsPathRooted: a leading separator, or on Windows a drive.
@@ -437,7 +438,51 @@ pub fn home_path(path: &str) -> R<String> {
         }
     }
     let head = if cfg!(windows) { path[..2].to_string() + "\\" } else { "/".to_string() };
-    Ok(head + &rest)
+    let full = long_names(head + &rest);
+    // The names Windows gives back are compared and hashed as the rest are.
+    if !printable(&full) {
+        return unreadable();
+    }
+    Ok(full)
+}
+
+/// What `GetFullPath` makes of a path on Windows that may hold a short name (`PROGRA~1`):
+/// the names of the directories as they are kept, for as much of the path as exists. The
+/// temporary directory of an account whose name is long is spelled with one.
+#[cfg(windows)]
+fn long_names(full: String) -> String {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetLongPathNameW(short: *const u16, long: *mut u16, size: u32) -> u32;
+    }
+    if !full.contains('~') {
+        return full;
+    }
+    let mut end = full.len();
+    loop {
+        let short: Vec<u16> = full[..end].encode_utf16().chain([0]).collect();
+        let mut long = vec![0u16; 512];
+        // SAFETY: the name is live, NUL-terminated UTF-16, and the size is the buffer's own.
+        let mut size = unsafe { GetLongPathNameW(short.as_ptr(), long.as_mut_ptr(), long.len() as u32) } as usize;
+        if size > long.len() {
+            long = vec![0u16; size];
+            // SAFETY: as above.
+            size = unsafe { GetLongPathNameW(short.as_ptr(), long.as_mut_ptr(), long.len() as u32) } as usize;
+        }
+        if size > 0 && size <= long.len() {
+            return String::from_utf16_lossy(&long[..size]) + &full[end..];
+        }
+        // Nothing is there under that name: the part of the path above it may be.
+        let absent = matches!(std::io::Error::last_os_error().raw_os_error(), Some(2 | 3));
+        match full[..end].rfind('\\') {
+            Some(at) if absent && at > 2 => end = at,
+            _ => return full,
+        }
+    }
+}
+#[cfg(not(windows))]
+fn long_names(full: String) -> String {
+    full
 }
 
 /// What a policy lets the collector do.
@@ -463,4 +508,58 @@ pub fn actions(policy: &V, observe_only: bool) -> R<Actions> {
 /// Whether a command that may act would switch.
 pub fn switching(policy: &V) -> R<bool> {
     Ok(actions(policy, false)?.switching)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_home_is_named_by_its_full_path() {
+        let (home, other) = if cfg!(windows) { ("C:/fixture/Home A", r"C:\fixture\Home A") } else { ("/fixture/Home A", "/fixture/Home A") };
+        assert_eq!(home_path(home).ok().unwrap(), other);
+        assert_eq!(home_key(home).ok().unwrap(), other.to_ascii_lowercase());
+        assert_eq!(home_path("").err().unwrap().message(), "invalid_home");
+        assert_eq!(home_path("fixture/relative").err().unwrap().message(), "invalid_home");
+        // A name GetFullPath would rewrite is not one HotPl8 enrolls.
+        for rewritten in ["fixture/..", "fixture/.", "fixture/trailing.", "fixture//twice"] {
+            let root = if cfg!(windows) { "C:\\" } else { "/" };
+            assert!(!home_path(&format!("{root}{rewritten}")).err().unwrap().thrown(), "{rewritten}");
+        }
+        // Nothing is there to give a longer name: the path is as written.
+        let absent = if cfg!(windows) { r"C:\fixture~1\no~such\home" } else { "/fixture~1/no~such/home" };
+        assert_eq!(home_path(absent).ok().unwrap(), absent);
+    }
+
+    /// Windows spells a temporary directory with a short name when the account's is long,
+    /// and PowerShell reads such a home as its long one. Only Windows keeps short names,
+    /// and only on a volume that is set to.
+    #[cfg(windows)]
+    #[test]
+    fn a_home_written_with_short_names_is_its_long_one() {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetShortPathNameW(long: *const u16, short: *mut u16, size: u32) -> u32;
+        }
+        let lab = home_path(crate::files::tests::scratch("short-names").to_str().unwrap()).ok().unwrap();
+        let long = format!(r"{lab}\a long directory name\another long name");
+        std::fs::create_dir_all(&long).unwrap();
+        let wide: Vec<u16> = long.encode_utf16().chain([0]).collect();
+        let mut short = vec![0u16; 512];
+        // SAFETY: the name is live, NUL-terminated UTF-16, and the size is the buffer's own.
+        let size = unsafe { GetShortPathNameW(wide.as_ptr(), short.as_mut_ptr(), short.len() as u32) } as usize;
+        assert!(size > 0 && size < short.len());
+        let short = String::from_utf16_lossy(&short[..size]);
+        if short != long {
+            assert!(short.contains('~'), "{short}");
+            assert_eq!(home_path(&short).ok().unwrap(), long);
+            assert_eq!(home_path(&short.replace('\\', "/")).ok().unwrap(), long);
+            assert_eq!(home_key(&short.to_ascii_lowercase()).ok().unwrap(), long.to_ascii_lowercase());
+            // As much of the path as exists is given its long names.
+            assert_eq!(home_path(&format!(r"{short}\absent\deeper")).ok().unwrap(), format!(r"{long}\absent\deeper"));
+            let above = &short[..short.rfind('\\').unwrap()];
+            assert_eq!(home_path(&format!(r"{above}\NOSUCH~1\home")).ok().unwrap(), format!(r"{lab}\a long directory name\NOSUCH~1\home"));
+        }
+        std::fs::remove_dir_all(&lab).unwrap();
+    }
 }
