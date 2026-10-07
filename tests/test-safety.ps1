@@ -95,7 +95,9 @@ try{
     Check 'oversized process output is rejected without echoing it' {
         $hostExe=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
         $errorCode=''
-        try{$null=Invoke-Hotpl8Process $hostExe @('-NoProfile','-Command',"[Console]::Write(('x' * 1100000))") 10000}catch{$errorCode=$_.Exception.Message}
+        # Reading up to the limit takes about 9.5 s on an idle machine, so the time allowed
+        # is well clear of it: this check is of the limit, and the one above of the time.
+        try{$null=Invoke-Hotpl8Process $hostExe @('-NoProfile','-Command',"[Console]::Write(('x' * 1100000))") 60000}catch{$errorCode=$_.Exception.Message}
         Assert ($errorCode -eq 'process_output_limit')
     }
     Check 'doctor never exports labels homes or environment secrets' {
