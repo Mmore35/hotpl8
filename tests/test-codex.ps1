@@ -94,6 +94,19 @@ try {
     Check 'used stationary reset needs separated evidence' { $q=Fixture; $b=ConvertTo-CodexBuckets $q $null $now; $next=ConvertTo-CodexBuckets $q $b ($now.AddSeconds(60)); Assert ($next.codex.windows.'10080'.anchorState -eq 'observed-active') }
     Check 'sliding reset is not active' { $q=Fixture 0; $b=ConvertTo-CodexBuckets $q $null $now; $q.rateLimits.primary.resetsAt+=60; $next=ConvertTo-CodexBuckets $q $b ($now.AddSeconds(60)); Assert ($next.codex.windows.'10080'.anchorState -eq 'unconfirmed') }
     Check 'quota reads never claim warming success' { $b=ConvertTo-CodexBuckets (Fixture 0 300) $null $now; Assert ($b.codex.warm -eq 'unmeasured') }
+    Check 'limits read as the shared cases say' {
+        # The compiled collector reads the same cases (native/src/codex_collect.rs), one to a
+        # line, so its reading of an account's limits and this one cannot drift apart.
+        $lines=@([IO.File]::ReadAllLines((Join-Path $root 'tests/parity/codex-buckets.json'))|Where-Object{$_.StartsWith('{"name"')})
+        Assert ($lines.Count -gt 100) ('cases '+$lines.Count)
+        $wrong=@(foreach($line in $lines){
+            $text=$line.TrimEnd(',');$mark=$text.IndexOf(',"expected":')
+            $case=$text|ConvertFrom-Json
+            $answer=ConvertTo-Json -InputObject (ConvertTo-CodexBuckets $case.quota $case.previous ([datetimeoffset]::Parse($case.now))) -Depth 12 -Compress
+            if($answer -cne $text.Substring($mark+12,$text.Length-$mark-13)){$case.name}
+        })
+        Assert ($wrong.Count -eq 0) ('differ: '+($wrong -join '; '))
+    }
     Check 'soonest verified weekly reset wins' { $a=Make-Slot a 10 ($now.ToUnixTimeSeconds()+4000); $b=Make-Slot b 10 ($now.ToUnixTimeSeconds()+2000); Assert ((Select-CodexSlot @($a,$b) $policy codex '' $null $now) -eq 'b') }
     Check 'exhausted earliest-reset slot cannot win' { $a=Make-Slot a 100 ($now.ToUnixTimeSeconds()+500); $b=Make-Slot b; Assert ((Select-CodexSlot @($a,$b) $policy codex '' $null $now) -eq 'b') }
     Check 'reserve kept after work slots' { $p=Copy-Value $policy; $p.reserve=@('b'); $a=Make-Slot a; $b=Make-Slot b 10 ($now.ToUnixTimeSeconds()+1000); Assert ((Select-CodexSlot @($a,$b) $p codex '' $null $now) -eq 'a') }
@@ -172,19 +185,34 @@ try {
         }
     }
     $env:HOTPL8_TEST_SCENARIO='ok'
-    Check 'collection includes two independent configured homes' { $c=Invoke-CodexCollection $policy $dir $fake $null $null; Assert ($c.slots.Count -eq 2); Assert ($c.recommendedSlot -eq 'a'); Assert (-not ($c | ConvertTo-Json -Depth 20).Contains('identityKey')) }
-    Check 'custom transport and provider cannot earn a subscription recommendation' {
-        foreach($scenario in @('custom-endpoint','custom-provider')) {
-            $env:HOTPL8_TEST_SCENARIO=$scenario
-            try {
-                $c=Invoke-CodexCollection $policy $dir $fake $null $null
-                Assert ($null -eq $c.recommendedSlot)
-                Assert (@($c.slots|Where-Object status -EQ unsupported_configuration).Count -eq 2)
-            } finally { $env:HOTPL8_TEST_SCENARIO='ok' }
+    # One wake of the collector over the policy's two homes, the stand-in answering as the
+    # scenario says: what the wake published for Codex.
+    function Wake([string]$Directory,[string]$Scenario='ok') {
+        Write-Hotpl8Text (Join-Path $Directory 'policy.json') (@{codex=$policy}|ConvertTo-Json -Depth 12)
+        $env:HOTPL8_TEST_SCENARIO=$Scenario
+        try { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $Directory -CswapExecutable (Join-Path $dir 'absent.exe') -CodexExecutable $fake | Out-Null }
+        finally { $env:HOTPL8_TEST_SCENARIO='ok' }
+        return (Read-Hotpl8Json (Join-Path $Directory 'status.json')).providers.codex
+    }
+    Check 'a wake reads two independent configured homes' {
+        $c=Wake $dir
+        Assert ($c.slots.Count -eq 2); Assert ($c.recommendedSlot -eq 'a')
+        Assert (-not ([IO.File]::ReadAllText((Join-Path $dir 'status.json'))).Contains('identityKey'))
+    }
+    Check 'last-good snapshot keeps its age on read failure, and the refusal is not written down' {
+        # A directory of its own: a wake that could read no account is not due again for minutes.
+        $refused=Join-Path $dir 'refused';New-Item -ItemType Directory $refused|Out-Null
+        $null=Wake $refused
+        $first=Read-Hotpl8Json (Join-Path $refused 'codex-state.json')
+        $c=Wake $refused '401'
+        $a=$c.slots | Where-Object id -EQ a
+        Assert ($a.status -eq 'authentication_required') ('a '+$a.status)
+        Assert ($a.observedAt -eq $first.slots.a.lastSuccessAt) ('age changed: ' + $a.observedAt + ' vs ' + $first.slots.a.lastSuccessAt)
+        Assert ($null -eq $c.recommendedSlot) ('recommended ' + $c.recommendedSlot)
+        foreach($file in @(Get-ChildItem -LiteralPath $refused -File | Where-Object Extension -In '.json','.jsonl','.js','.txt','.log')) {
+            Assert (-not ([IO.File]::ReadAllText($file.FullName)).Contains('SECRET_DO_NOT_LOG')) $file.Name
         }
     }
-    Check 'last-good snapshot keeps its age on read failure' { $first=Read-Hotpl8Json (Join-Path $dir 'codex-state.json'); $env:HOTPL8_TEST_SCENARIO='401'; $c=Invoke-CodexCollection $policy $dir $fake $null $null; Assert (($c.slots | Where-Object id -EQ a).observedAt -eq $first.slots.a.lastSuccessAt) ('age changed: ' + ($c.slots | Where-Object id -EQ a).observedAt + ' vs ' + $first.slots.a.lastSuccessAt); Assert ($null -eq $c.recommendedSlot) ('recommended ' + $c.recommendedSlot) }
-    $env:HOTPL8_TEST_SCENARIO='ok'
     $status=[pscustomobject]@{observedAt=$now.ToString('o');recommendations=[pscustomobject]@{codex='a'};slots=@((Make-Slot a),(Make-Slot b))}
     Check 'automatic launch chooses recommended account' { $p=Get-CodexLaunchPlan $policy $status '' '' @() $now; Assert ($p.slot.id -eq 'a'); Assert $p.automatic }
     Check 'new launch recomputes shared policy instead of trusting a cached recommendation' {
@@ -253,6 +281,7 @@ try {
         & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $dir -CswapExecutable (Join-Path $dir 'absent.exe') -CodexExecutable $fake
         $actual=Read-Hotpl8Json (Join-Path $dir 'status.json')
         Assert ($actual.providers.codex.slots.Count -eq 2); Assert ($actual.schemaVersion -eq 2); Assert ($actual.slots.Count -eq 0)
+        Assert ($actual.providers.codex.recommendedSlot -eq 'a') 'the accounts were not read'
         Assert (([IO.File]::ReadAllText((Join-Path $dir 'status.js'))).StartsWith('window.CSWAP = '))
     }
     Check 'per-home lock prevents overlapping native readers' {
@@ -260,37 +289,21 @@ try {
         $lock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')
         try { $r=Read-CodexQuota $homeA $fake 1000;Assert ($r.status -eq 'home_busy') } finally { $lock.Dispose() }
     }
-    Check 'collector waits out a briefly busy home instead of reporting it' {
+    Check 'a wake waits for a home another reader holds' {
+        # The compiled collector and the readers still in PowerShell keep to one lock for a home.
         $waitDir=Join-Path $dir 'lock-wait';New-Item -ItemType Directory $waitDir|Out-Null
+        Write-Hotpl8Text (Join-Path $waitDir 'policy.json') (@{codex=$policy}|ConvertTo-Json -Depth 12)
         $lockPath=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-codex-'+(Get-Hotpl8Hash ([IO.Path]::GetFullPath($homeA).ToLowerInvariant()))+'.lock')
-        $script:heldLock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None');$script:busyReads=0
-        # Another reader finishes after the collector's third attempt.
-        $reader={param($h,$exe,$budget) $r=Read-CodexQuota $h $exe $budget;if($r.status -eq 'home_busy' -and ++$script:busyReads -ge 3){$script:heldLock.Dispose()};$r}
+        $lock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None');$wake=$null
         try {
-            $c=Invoke-CodexCollection $policy $waitDir $fake $null $reader
-            Assert (($c.slots|Where-Object id -EQ a).status -eq 'ok') ('a '+($c.slots|Where-Object id -EQ a).status)
-            Assert ($script:busyReads -eq 3) ('busy reads '+$script:busyReads)
-        } finally { $script:heldLock.Dispose() }
-    }
-    Check 'collector reports a home busy past its read budget, within that budget' {
-        $waitDir=Join-Path $dir 'lock-held';New-Item -ItemType Directory $waitDir|Out-Null
-        function Get-CodexReadBudgetMs { 1500 }
-        $script:busyReads=0;$script:busyClock=$null;$script:busySpan=0
-        $reader={param($h,$exe,$budget)
-            if($h -ne $homeA){return Read-CodexQuota $h $exe $budget}
-            if(-not $script:busyClock){$script:busyClock=[Diagnostics.Stopwatch]::StartNew()}
-            $script:busyReads++;$script:busySpan=$script:busyClock.ElapsedMilliseconds
-            [pscustomobject]@{status='home_busy';elapsedMs=5}
-        }
-        $c=Invoke-CodexCollection $policy $waitDir $fake $null $reader
-        Assert (($c.slots|Where-Object id -EQ a).status -eq 'home_busy') ('a '+($c.slots|Where-Object id -EQ a).status)
-        Assert (($c.slots|Where-Object id -EQ b).status -eq 'ok') 'the other home is still read'
-        Assert ($script:busyReads -gt 1) 'the busy home was retried'
-        Assert ($script:busySpan -lt 1500) ('waited '+$script:busySpan+' ms on a 1500 ms budget')
-    }
-    Check 'same subscription in two homes is not double capacity' {
-        $env:HOTPL8_TEST_SCENARIO='same-account'
-        try { $c=Invoke-CodexCollection $policy $dir $fake $null $null;Assert ($null -eq $c.recommendedSlot);Assert (@($c.slots|Where-Object status -EQ duplicate_subscription).Count -eq 2) } finally {$env:HOTPL8_TEST_SCENARIO='ok'}
+            $words='-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $root 'tick.ps1')+'" -StateDirectory "'+$waitDir+'" -CswapExecutable "'+(Join-Path $dir 'absent.exe')+'" -CodexExecutable "'+$fake+'"'
+            $wake=Start-Process -FilePath powershell -ArgumentList $words -WindowStyle Hidden -PassThru
+            # Longer than a wake that did not wait would have taken.
+            Assert (-not $wake.WaitForExit(3000)) 'the wake did not wait for the home'
+        } finally { $lock.Dispose() }
+        Assert ($wake.WaitForExit(30000)) 'the wake did not finish'
+        $c=(Read-Hotpl8Json (Join-Path $waitDir 'status.json')).providers.codex
+        foreach($s in $c.slots){Assert ($s.status -eq 'ok') ($s.id+' '+$s.status)}
     }
     Check 'setup preserves Claude policy and unrelated hooks; repeat is idempotent' {
         $configDir=Join-Path $dir 'setup';New-Item -ItemType Directory $configDir|Out-Null
@@ -319,8 +332,10 @@ try {
         Assert (-not (Test-Path (Join-Path $enrollment 'auth.json')))
     }
     Check 'automatic native launch rechecks the real binding' {
-        $c=Invoke-CodexCollection $policy $dir $fake $null $null
+        # The launcher reads the record the collector kept of the account it read.
+        $c=Wake $dir
         $p=Get-CodexLaunchPlan $policy $c '' '' @('test') ([datetimeoffset]::UtcNow)
+        Assert ($p.automatic -and $p.slot.id -eq 'a')
         $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'auto-launch.json'
         Assert ((Invoke-Hotpl8Codex $p $dir $fake $homeA) -eq 7)
         $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH; Assert ($record.home -eq $p.slot.home)
@@ -344,7 +359,7 @@ try {
         } finally {[IO.File]::WriteAllText($path,$before)}
     }
     Check 'binding changed since collection prevents automatic dispatch' {
-        $c=Invoke-CodexCollection $policy $dir $fake $null $null
+        $c=Wake $dir
         $p=Get-CodexLaunchPlan $policy $c '' '' @('test') ([datetimeoffset]::UtcNow)
         $state=Read-Hotpl8Json (Join-Path $dir 'codex-state.json');$state.slots.($p.slot.id).identityKey='different'
         Write-Hotpl8Text (Join-Path $dir 'codex-state.json') ($state|ConvertTo-Json -Depth 24)
@@ -378,30 +393,6 @@ try {
         Assert ($LASTEXITCODE -eq 0);Assert ($output -like '*No cached status*')
         & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $entry 'setup-codex.ps1') -Slot a -AccountHome $homeA -CodexExecutable $fake | Out-Null
         Assert ($LASTEXITCODE -eq 0);Assert ((Read-Hotpl8Json (Join-Path $entry 'policy.json')).codex.slots.Count -eq 1)
-    }
-    Check 'a slow but healthy native read is still collected' {
-        $slowDir=Join-Path $dir 'slow';New-Item -ItemType Directory $slowDir|Out-Null
-        $env:HOTPL8_TEST_SCENARIO='slow'
-        try {
-            $r=Invoke-CodexCollection $policy $slowDir $fake $null $null
-            foreach($s in $r.slots){Assert ($s.status -eq 'ok') ($s.id+' '+$s.status+' after '+$s.elapsedMs+' ms')}
-        } finally {$env:HOTPL8_TEST_SCENARIO='ok'}
-    }
-    Check 'collection budget is bounded and unpolled homes get the next turn' {
-        $budgetDir=Join-Path $dir 'budget';New-Item -ItemType Directory $budgetDir|Out-Null
-        $large=Copy-Value $policy;$large.slots=@();$large.prefer=@()
-        foreach($n in 0..5){$h=Join-Path $dir ('budget-home-'+$n);New-Item -ItemType Directory $h|Out-Null;$id='s'+$n;$large.slots+=@([pscustomobject]@{id=$id;home=$h});$large.prefer+=@($id)}
-        $env:HOTPL8_TEST_SCENARIO='hang'
-        try {
-            $clock=[Diagnostics.Stopwatch]::StartNew();$first=Invoke-CodexCollection $large $budgetDir $fake $null $null
-            Assert ($clock.ElapsedMilliseconds -lt 25000) ('collection elapsed '+$clock.ElapsedMilliseconds)
-            $unpolled=@($first.slots|Where-Object status -EQ collection_budget|ForEach-Object{$_.id});Assert ($unpolled.Count -gt 0)
-            $second=Invoke-CodexCollection $large $budgetDir $fake $first $null
-            # Oldest attempt first: no home read last turn may go again while one left unread still waits.
-            $polled=@($second.slots|Where-Object status -NE collection_budget|ForEach-Object{$_.id});Assert ($polled.Count -gt 0)
-            $again=@($polled|Where-Object{$_ -notin $unpolled});$waiting=@($unpolled|Where-Object{$_ -notin $polled})
-            Assert (-not ($again.Count -and $waiting.Count)) ('starved '+($waiting -join ',')+' behind '+($again -join ','))
-        } finally {$env:HOTPL8_TEST_SCENARIO='ok'}
     }
     Check 'out-of-range Unix reset is unsupported' {
         foreach($reset in @(1e100,253402300800)){ $q=Fixture;$q.rateLimits.primary.resetsAt=$reset;Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }

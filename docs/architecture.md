@@ -88,8 +88,8 @@ src/
   lifecycle.ps1             Install ownership, manifests, scheduler
   automation.ps1            Pause and schedule gates of the PowerShell commands
   collection.ps1            The category a failure is recorded under
-  lane.ps1                  What a wake still asks PowerShell for: Codex accounts,
-                            the continue hook, a finished account addition
+  lane.ps1                  What a wake still asks PowerShell for: the continue
+                            hook, a finished account addition
   overview.ps1              Pure provider summaries shared by all cached views
   forecast.ps1 / insights.ps1
                             Forecast text, health and the snapshot as views read it
@@ -111,7 +111,7 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 
 ## Tradeoffs and limits
 
-PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status` and `explain` are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it, and PowerShell is started only to read Codex accounts, keep Claude's continue hook and close an account addition. The tray, the dashboard and the other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
+PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status` and `explain` are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it and reads the Claude and the Codex accounts itself, and PowerShell is started only to keep Claude's continue hook and to close an account addition. The tray, the dashboard and the other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
 

@@ -59,13 +59,17 @@ Claude plan discovery is isolated in `src/providers/claude_plan.py`, which the c
 The compiled program under `native/` is the only implementation of `version`, `status` and
 `explain`, and of the collector: PowerShell hands those requests and every wake to it and has
 no answer or collector of its own, so do not add one. `tick.ps1` only starts it, and
-`src/lane.ps1` holds the three pieces of a wake it still asks PowerShell for. Changes there
+`src/lane.ps1` holds the two pieces of a wake it still asks PowerShell for. Changes there
 require `cargo test --locked` in `native/`, `tests/test-native.ps1` and
-`tests/test-native-parity.ps1`; a change to a wake also requires `tests/test-tick.sh`. A unit
-test of the collector passes a scratch home, a stand-in for cswap and its own clock and lanes;
-none may reach the machine's accounts or start PowerShell. The tray, dashboard and other
-commands still calculate some of the same rules in PowerShell, and
-[the plan](docs/plans/rust-read-side.md) lists them. The parity suite holds the read rules to
+`tests/test-native-parity.ps1`; a change to a wake also requires `tests/test-tick.sh`, and a
+change to how Codex accounts are read `tests/test-codex.ps1`. A unit test of the collector
+passes a scratch home, a stand-in for cswap and for Codex, and its own clock and lanes; none
+may reach the machine's accounts, look for a program on the machine's path or start
+PowerShell. The tray, dashboard and other commands still calculate some of the same rules in
+PowerShell, and [the plan](docs/plans/rust-read-side.md) lists them. Launching Codex and
+adding an account still read an account's limits in PowerShell: both sides read the cases in
+`tests/parity/codex-buckets.json`, one to a line, and a change to that rule changes both and
+the cases in one commit. The parity suite holds the read rules to
 the program: it asks both the same question
 about the fictional cases in `tests/parity/cases.ps1` and about seeded variations of them,
 under the PowerShell the suite runs in, and compares the text of `status` with

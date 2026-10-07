@@ -147,12 +147,9 @@ try{
         $stores=@(Get-Hotpl8HistoryStores $p $dir)
         Assert ($stores.Count -eq 1 -and $stores[0].samples -eq 2 -and $stores[0].providers.Count -eq 2)
     }
-    Check 'disabled Codex homes are not polled and explicit launch cannot bypass disabling' {
+    Check 'explicit launch cannot bypass a disabled Codex home' {
         $p=Clone @{slots=@(@{id='off';home=(Join-Path $dir 'off')},@{id='on';home=(Join-Path $dir 'on')});disabled=@('off');prefer=@('off','on')}
-        $script:quotaReads=0
-        $reader={param($homePath,$executable,$budget) $script:quotaReads++;return @{status='home_missing';elapsedMs=0}}
-        $s=Invoke-CodexCollection $p $dir '' $null $reader
-        Assert ($script:quotaReads -eq 1 -and ($s.slots|Where-Object id -EQ off).status -eq 'disabled')
+        $s=Clone @{observedAt=$now.ToString('o');slots=@(@{id='off';label='off';status='disabled'},@{id='on';label='on';status='home_missing'})}
         Reject {Get-CodexLaunchPlan $p $s off '' @() $now}
     }
     Check 'explanations show recorded reasons and warn on stale snapshots' {
