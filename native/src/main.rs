@@ -5,10 +5,13 @@
 //! HotPl8, hands it a request it has already understood (request.rs). Either way the answer
 //! printed is this program's. The contract is docs/plans/rust-read-side.md.
 
+mod automation;
 mod capacity;
 mod claude;
 mod codex;
+mod collection;
 mod contract;
+mod control;
 mod critical;
 mod decision;
 mod display;

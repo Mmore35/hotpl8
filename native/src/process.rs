@@ -124,7 +124,7 @@ pub fn run(executable: &str, arguments: &[&str], timeout_ms: u64) -> R<Finished>
     let Ok(child) = command.spawn() else { return fail("process_start_failed") };
     let mut running = Running(child);
     let (sender, receiver) = mpsc::channel::<(bool, Vec<u8>)>();
-    let mut pump = |stream: Option<Box<dyn Read + Send>>, kept: bool| {
+    let pump = |stream: Option<Box<dyn Read + Send>>, kept: bool| {
         let (Some(mut stream), sender) = (stream, sender.clone()) else { return };
         std::thread::spawn(move || {
             let mut buffer = [0u8; 4096];
