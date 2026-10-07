@@ -62,7 +62,10 @@ step so interruption can be retried without a duplicate collector. If interrupte
 after retirement, repeat enrollment; the receipt is sufficient to continue.
 
 When requested, one installation-specific collector LaunchAgent wakes at login
-and every minute. HotPl8 creates no updater LaunchAgent. Sleeping or logged-out
+and every minute. Each wake runs the job runner of the release in force, which
+starts that release's compiled collector (`bin/macos/hotpl8-native wake`) with
+the installation and its runtime bindings; PowerShell starts only for
+[a lane with work](plans/rust-read-side.md#how-it-runs). HotPl8 creates no updater LaunchAgent. Sleeping or logged-out
 hosts do not provide
 continuous service; the next eligible wake reconciles current state without
 replaying missed ticks. Intentional launchd disablement is reported separately
