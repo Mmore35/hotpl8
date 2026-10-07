@@ -165,9 +165,10 @@ pub fn event(directory: &Path, code: &str, failure: Option<&Stop>) {
                     record.push(("ioCode", V::I32(system)));
                 }
             }
-            let (source, line) = stop.place();
-            record.push(("source", V::from(source)));
-            record.push(("line", V::I32(line as i32)));
+            if let Some((source, line)) = stop.place() {
+                record.push(("source", V::from(source)));
+                record.push(("line", V::I32(line as i32)));
+            }
         }
         let mut row = json::line(&record)?;
         row.push('\n');

@@ -23,6 +23,7 @@ mod files;
 mod forecast;
 mod insights;
 mod json;
+mod lane;
 mod num;
 mod observation;
 mod overview;
@@ -35,10 +36,12 @@ mod ps;
 mod registry;
 mod replay;
 mod request;
+mod runtime;
 mod selection;
 mod sha256;
 mod time;
 mod version;
+mod wake;
 mod warming;
 
 use std::ffi::OsString;
@@ -98,6 +101,17 @@ fn main() -> ExitCode {
         if command == "batch" {
             return batch(Path::new(file));
         }
+    }
+    // A wake prints what it did, and never an answer a reader would.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "collect") {
+        return match wake::started(words) {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => ExitCode::from(FAILED),
+            Err(why) => {
+                let _ = writeln!(std::io::stderr().lock(), "HotPl8: {}", ps::safe_text(&why));
+                ExitCode::from(FAILED)
+            }
+        };
     }
     // The PowerShell entry reads UTF-8 from the reader. A launcher's start is the user's own,
     // and its streams are written to as door.rs says.

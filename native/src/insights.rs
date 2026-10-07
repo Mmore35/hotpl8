@@ -1,17 +1,21 @@
-//! The reading half of src/insights.ps1: the stored snapshot as a reader sees it, and the
-//! text of `hotpl8 status` and `hotpl8 explain`.
+//! src/insights.ps1: the stored snapshot as a reader sees it, the text of `hotpl8 status`
+//! and `hotpl8 explain`, and what the collector adds to a reading before it is stored.
 
 use std::path::Path;
 
+use crate::activity::add_action_event;
 use crate::capacity::fresh_timestamp;
 use crate::codex::format_codex_status;
+use crate::files;
+use crate::forecast::{forecast, update_history};
 use crate::json;
 use crate::overview::{format_overview, park_candidates, provider_overview};
 use crate::pause::pause;
 use crate::ps::*;
-use crate::registry::{configured_providers, provider_view};
+use crate::registry::{configured_providers, copy, provider_state_directory, provider_view};
+use crate::replay::replay;
 use crate::time::Dto;
-use crate::{cat, obj};
+use crate::{cat, hash, obj};
 
 /// Get-Hotpl8Health
 pub fn health(collector: &V, now: Dto, provider: &str) -> R<String> {
@@ -103,7 +107,7 @@ pub fn read_snapshot(directory: &Path, reader_policy: &V, explicit: bool, now: D
 }
 
 /// `$name + …`: the text only when the name is a string.
-fn name_text(name: &V) -> R<String> {
+pub fn name_text(name: &V) -> R<String> {
     match name.as_str() {
         Some(text) => Ok(text.to_string()),
         None => unreadable(),
@@ -111,7 +115,7 @@ fn name_text(name: &V) -> R<String> {
 }
 
 /// `$line -replace '^Codex', $name`
-fn rename_codex(line: &str, name: &str) -> R<String> {
+pub fn rename_codex(line: &str, name: &str) -> R<String> {
     if name.contains('$') {
         return unreadable();
     }
@@ -255,4 +259,137 @@ pub fn format_explanation(snapshot: &V, now: Dto) -> R<Vec<String>> {
         }
     }
     Ok(lines)
+}
+
+/// History and the activity record are kept for whoever reads them later. A file of
+/// theirs that is blocked must not discard the readings just taken, or the state that
+/// keeps the next action safe: it is noted, and the collection goes on.
+fn kept_aside(directory: &Path, code: &str, body: impl FnOnce() -> R<()>) {
+    if let Err(stop) = body() {
+        files::event(directory, code, Some(&stop));
+    }
+}
+
+/// Add-Hotpl8NativeInsights: what one provider's reading says besides its numbers. Each
+/// fresh weekly reading gets a pace, a change of account or recommendation is recorded,
+/// and the decision the rules would have made is set beside the one that was made.
+fn add_native_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, now: Dto) -> R<()> {
+    let keeps_history = policy.g("historyEnabled")?.eq(&V::Bool(true))?;
+    let history = if keeps_history { json::read_or_null(&directory.join("usage-history.json")) } else { V::Null };
+    let samples_of = |key: &str| filter(&history.g("samples")?.each(), |sample| sample.g("key")?.eq_s(key));
+    let mut new_samples = Vec::new();
+    for slot in snapshot.g("slots")?.arr() {
+        if !slot.t()? {
+            continue;
+        }
+        slot.add_member("forecast", V::Null, true)?;
+        if !slot.g("fresh")?.t()? || !slot.g("observedAt")?.t()? {
+            continue;
+        }
+        let key = cat!("claude/", slot.g("streamKey")?, "/10080");
+        let f = forecast(&slot.g("used7d")?, &slot.g("reset7d")?, &slot.g("observedAt")?, 10080, now, &samples_of(&key)?)?;
+        slot.add_member("forecast", f.clone(), true)?;
+        if f.t()? {
+            new_samples.push(hash! {"key" => key.as_str(), "observedAt" => slot.g("observedAt")?, "resetAt" => slot.g("reset7d")?, "used" => slot.g("used7d")?});
+        }
+    }
+    for slot in snapshot.path(&["providers", "codex", "slots"])?.arr() {
+        if !slot.t()? {
+            continue;
+        }
+        for (name, bucket) in slot.g("buckets")?.props()? {
+            bucket.add_member("forecast", V::Null, true)?;
+            if slot.g("status")?.ne_s("ok")? {
+                continue;
+            }
+            let window = bucket.g("windows")?.g("10080")?;
+            if !window.t()? || bucket.g("status")?.ne_s("observed")? || window.g("anchorState")?.ne_s("observed-active")? {
+                continue;
+            }
+            let key = cat!("codex/", slot.g("streamKey")?, "/", &*name, "/10080");
+            let reset = V::from(Dto::from_unix_seconds(window.g("resetsAt")?.to_long()?)?.o());
+            let f = forecast(&window.g("usedPercent")?, &reset, &slot.g("observedAt")?, 10080, now, &samples_of(&key)?)?;
+            bucket.add_member("forecast", f.clone(), true)?;
+            if f.t()? {
+                new_samples.push(hash! {"key" => key.as_str(), "observedAt" => slot.g("observedAt")?, "resetAt" => reset, "used" => window.g("usedPercent")?});
+            }
+        }
+    }
+    if keeps_history {
+        kept_aside(directory, "history_output_failed", || update_history(directory, &new_samples, now).map(|_| ()));
+    }
+    snapshot.add_member("automationPause", pause(directory, now)?, true)?;
+    let (active, was_active) = (snapshot.g("active")?, previous.g("active")?);
+    if active.t()? && was_active.t()? && active.ne(&was_active)? {
+        let slot = active.s()?;
+        kept_aside(directory, "activity_output_failed", || add_action_event(directory, "claude", &slot, "active_changed", "observed_account_change", now));
+    }
+    let next = snapshot.path(&["providers", "codex", "recommendedSlot"])?;
+    if next.t()? && next.ne(&previous.path(&["providers", "codex", "recommendedSlot"])?)? {
+        let slot = next.s()?;
+        kept_aside(directory, "activity_output_failed", || add_action_event(directory, "codex", &slot, "recommendation", "next_launch_only", now));
+    }
+    let events = json::read_or_null(&directory.join("activity.json")).g("events")?.each();
+    snapshot.add_member("recentActions", events[events.len().saturating_sub(5)..].to_vec().into(), true)?;
+    let shadow = replay(&[snapshot.clone()], policy)?;
+    snapshot.add_member("shadow", shadow.g("decisions")?.arr().into(), true)
+}
+
+/// Add-Hotpl8Insights: the insights of every registered provider, each worked out in the
+/// provider's own shape and then named for the provider it belongs to.
+pub fn add_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, now: Dto) -> R<()> {
+    let (mut events, mut shadow) = (Vec::new(), Vec::new());
+    for r in configured_providers(policy, false)? {
+        let id = r.g("id")?.s()?;
+        let view = provider_view(snapshot, policy, &id, &[])?;
+        let old = provider_view(previous, policy, &id, &[])?;
+        let state = provider_state_directory(directory, &id)?;
+        if !state.exists() {
+            continue;
+        }
+        let native = view.g("snapshot")?;
+        add_native_insights(&native, &view.g("policy")?, &state, &old.g("snapshot")?, now)?;
+        let family = view.g("provider")?.s()?;
+        let payload = if family == "claude" { native.clone() } else { native.path(&["providers", "codex"])? };
+        if id == "claude" {
+            for key in ["slots", "decision", "critical"] {
+                if payload.has(key)? {
+                    snapshot.add_member(key, payload.g(key)?, true)?;
+                }
+            }
+        } else if snapshot.g("providers")?.t()? && snapshot.g("providers")?.has(&id)? {
+            snapshot.g("providers")?.set(&id, payload)?;
+        }
+        for event in native.g("recentActions")?.each() {
+            if !event.t()? || !(event.g("provider")?.ceq_s(&family)? || event.g("provider")?.ceq_s(&id)?) {
+                continue;
+            }
+            let copy = copy(&event)?;
+            copy.set("provider", id.as_str().into())?;
+            events.push(copy);
+        }
+        let prefix = format!("{family}/");
+        for decision in native.g("shadow")?.each() {
+            let stream = decision.g("stream")?;
+            let Some(stream) = stream.as_str() else { continue };
+            if !stream.get(..prefix.len()).is_some_and(|head| head.eq_ignore_ascii_case(&prefix)) {
+                continue;
+            }
+            if view.path(&["driver", "slotKind"])?.eq_s("native-home")? {
+                let meter = stream.split('/').nth(1).unwrap_or("");
+                if !r.path(&["definition", "meters"])?.arr().iter().any(|known| known.as_str() == Some(meter)) {
+                    continue;
+                }
+            }
+            let copy = copy(&decision)?;
+            copy.set("stream", format!("{id}{}", &stream[family.len()..]).into())?;
+            shadow.push(copy);
+        }
+    }
+    snapshot.add_member("automationPause", pause(directory, now)?, true)?;
+    // Events of the same instant keep the order they were recorded in.
+    events.sort_by_key(|event| event.g("at").ok().and_then(|at| at.as_str().map(str::to_string)).unwrap_or_default());
+    snapshot.add_member("recentActions", events.split_off(events.len().saturating_sub(5)).into(), true)?;
+    snapshot.add_member("shadow", shadow.into(), true)?;
+    snapshot.add_member("providerOverview", provider_overview(snapshot, policy, now)?, true)
 }

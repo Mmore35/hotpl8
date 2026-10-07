@@ -26,13 +26,16 @@ struct Detail {
     file: Option<(String, i32)>,
     /// Whether the system refused for want of permission rather than for any other reason.
     denied: bool,
+    /// A failure PowerShell reported from a part of the collection it still runs: the kind
+    /// it gave it, and the file and line it was raised at where it named them.
+    reported: Option<(&'static str, Option<(String, u32)>)>,
 }
 pub type R<T> = Result<T, Stop>;
 
 impl Stop {
     #[track_caller]
     fn new<T>(thrown: bool, message: Option<String>) -> R<T> {
-        Err(Stop(Box::new(Detail { thrown, at: Location::caller(), message, file: None, denied: false })))
+        Err(Stop(Box::new(Detail { thrown, at: Location::caller(), message, file: None, denied: false, reported: None })))
     }
     /// The operating system refused to read, write or lock a file. A ported try/catch
     /// catches it, as it caught the .NET exception.
@@ -45,10 +48,22 @@ impl Stop {
             message: Some(format!("{name}: {error}")),
             file: Some((name, error.raw_os_error().unwrap_or(0) & 0xffff)),
             denied: error.kind() == std::io::ErrorKind::PermissionDenied,
+            reported: None,
         })))
+    }
+    /// A failure PowerShell caught and reported. Its kind is one of Get-Hotpl8FailureCode's
+    /// and its words are kept only for the caller to compare with the few it knows.
+    #[track_caller]
+    pub fn reported<T>(code: &str, said: Option<String>, file: Option<(String, i32)>, source: Option<(String, u32)>) -> R<T> {
+        const KINDS: [&str; 5] = ["access_denied", "state_io_failed", "invalid_cached_shape", "invalid_parameter", "unexpected_collection_error"];
+        let kind = KINDS.iter().find(|kind| **kind == code).copied().unwrap_or("unexpected_collection_error");
+        Err(Stop(Box::new(Detail { thrown: true, at: Location::caller(), message: said, file, denied: false, reported: Some((kind, source)) })))
     }
     /// Get-Hotpl8FailureCode: what kind of failure this is, in the words events carry.
     pub fn failure_code(&self) -> &'static str {
+        if let Some((kind, _)) = &self.0.reported {
+            return kind;
+        }
         match (&self.0.file, self.0.denied) {
             (_, true) => "access_denied",
             (Some(_), false) => "state_io_failed",
@@ -59,10 +74,14 @@ impl Stop {
     pub fn state_file(&self) -> Option<(&str, i32)> {
         self.0.file.as_ref().map(|(name, code)| (name.as_str(), *code))
     }
-    /// Where in the reader the stop was raised: file name and line.
-    pub fn place(&self) -> (&'static str, u32) {
+    /// Where the stop was raised, file name and line: in this program, or where PowerShell
+    /// said, when it said so of a file an event may name.
+    pub fn place(&self) -> Option<(&str, u32)> {
+        if let Some((_, source)) = &self.0.reported {
+            return source.as_ref().map(|(source, line)| (source.as_str(), *line));
+        }
         let file = self.0.at.file();
-        (file.rsplit(['/', '\\']).next().unwrap_or(file), self.0.at.line())
+        Some((file.rsplit(['/', '\\']).next().unwrap_or(file), self.0.at.line()))
     }
     /// The words a rule refused with, where it gave any: `throw 'claude_missing'`.
     pub fn said(&self) -> Option<&str> {
@@ -549,8 +568,12 @@ impl V {
     /// `$value.$name` with a name taken from data: a name PowerShell answers itself is not read.
     #[track_caller]
     pub fn gd(&self, name: &str) -> R<V> {
+        // No object read from JSON has a member without a name, and PowerShell answers null.
+        if name.is_empty() && !matches!(self, V::Hash(_)) {
+            return Ok(V::Null);
+        }
         let lower = name.to_ascii_lowercase();
-        if RESERVED.contains(&lower.as_str()) || !printable(name) || name.is_empty() {
+        if RESERVED.contains(&lower.as_str()) || !printable(name) {
             return unreadable();
         }
         if matches!(self, V::Hash(_)) && HASH_RESERVED.contains(&lower.as_str()) {

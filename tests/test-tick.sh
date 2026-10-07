@@ -34,12 +34,29 @@ PS_BIN="$(command -v pwsh 2>/dev/null || command -v powershell 2>/dev/null || tr
 # Windows PowerShell and Windows python cannot read MSYS paths (/tmp/..., /c/...).
 # Convert explicitly rather than relying on Git Bash's argument-mangling heuristic;
 # a plain pass-through on macOS, where cygpath does not exist.
-winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+# Every path the suite hands over is under $S, so $S is converted once: a cygpath start per
+# path was most of what a case cost on Windows.
+SW=""; if command -v cygpath >/dev/null 2>&1; then SW="$(cygpath -w "$S")"; fi
+winpath() {
+    local rest
+    [ -n "$SW" ] || { printf '%s' "$1"; return; }
+    case "$1" in
+        "$S") printf '%s' "$SW" ;;
+        "$S"/*) rest="${1#"$S"/}"; printf '%s\\%s' "$SW" "${rest//\//\\}" ;;
+        *) cygpath -w "$1" ;;
+    esac
+}
 
 # Execute unmodified production files with an explicit binary dependency.
 cp "$HERE/tick.ps1" "$S/tick.ps1"
 cp -R "$HERE/src" "$S/src"
 cp -R "$HERE/data" "$S/data"
+# tick.ps1 starts the compiled collector this copy ships (scripts/build-native.ps1).
+cp -R "$HERE/bin" "$S/bin" || { echo "FATAL: no compiled collector; run scripts/build-native.ps1"; exit 2; }
+# The collector reads Claude's settings and stored sign-ins under the user's home. A home of
+# the suite's own keeps every case away from the real one.
+mkdir -p "$S/home/.claude" || exit 2
+export USERPROFILE="$(winpath "$S/home")" HOME="$S/home" CLAUDE_CONFIG_DIR="$(winpath "$S/home/.claude")"
 # Seed only from the tracked fictional fixture. A local policy contains private
 # account labels and deployment choices and would make the suite non-reproducible.
 cp "$HERE/tests/legacy-policy.json" "$S/policy.json" || exit 2
