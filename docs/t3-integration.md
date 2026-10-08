@@ -122,16 +122,21 @@ move its thread selections back before removal.
    holds, the configured account quota basis, freshness checks and canonical identity bindings.
    It validates the selected home through native account/quota reads. A newly
    exhausted candidate is excluded and another fresh eligible candidate can win.
-   Concurrent title helpers and chat sessions may briefly contend for the same
-   native account lock. Ordinary admission waits up to 6.5 seconds per candidate, within
-   a shared validation deadline, before reporting prolonged contention.
+   Title helpers, chat sessions, background validations and the collector all
+   read under the same native account lock. An admission waits for a busy account
+   up to 6.5 seconds at a time, tries an eligible peer in between, and returns to
+   the busy one until its 30-second deadline before reporting prolonged contention.
 4. Only the access token and account ID travel through private pipes to Codex's
    external-token login. Refresh tokens stay in their native homes. Neither
    tokens nor raw provider errors appear in HotPl8 status, logs or diagnostics.
 5. New turns validate and select again. Active follow-ups with unchanged model
    and working directory pass directly to native Codex, retaining its turn ID.
    Collector publications and native quota notifications also trigger validation
-   during ongoing work. Account changes are deferred while any parent, child or
+   during ongoing work. Native Codex sends a quota notification after every model
+   response; a session validates for them at most once a minute. A background
+   validation never waits for a busy account lock, and one still running or queued
+   when a new admission arrives in the same session is abandoned for it.
+   Account changes are deferred while any parent, child or
    pending admission is active. Native external-token login can revoke network
    permission for existing work, so a validated alternative is adopted only
    between turns. The bridge never replays the previous turn. When a turn ends on
@@ -197,14 +202,20 @@ Check their running revision; this implementation removes that blanket rejection
 `routing_observation_failed` means the collector subscription failed. Native quota
 notifications remain an additional wakeup. See the
 [rollover design and evidence](plans/t3-active-turn-admission.md).
-`routing_account_busy` means another validator held the account lock beyond the
-bounded wait; `routing_validation_timeout` means the admission deadline expired.
+`routing_account_busy` means other readers held the account lock until the
+admission deadline; `routing_validation_timeout` means that deadline expired
+for another reason.
 `routing_account_change_deferred` means a new admission requires a different
 account while other work still uses this process. Complete that work before
 retrying the new admission. Active follow-ups still pass through normally.
 See the [native network-permission repair](plans/codex-network-revocation.md).
-New chat and helper admissions wait up to 6.5 seconds per busy account, within
-the existing 20-second total validation budget. A collector's cached `home_busy`
+New chat and helper admissions have 30 seconds for validation in all. A native
+read may take the 12 seconds the collector allows it, so a machine slow enough
+to stretch every read does not make every account look unavailable. A busy
+account is waited on for 6.5 seconds at a time and tried again until the
+deadline. The bridge allows the broker 40 seconds including its own startup.
+See [admission under load](plans/t3-admission-under-load.md).
+A collector's cached `home_busy`
 reading can be reconsidered only while its retained quota is fresh, and always
 requires successful native validation before admission. Same-account token
 refresh retains its shorter wait and pinned identity.
@@ -215,7 +226,9 @@ See the [concurrent admission repair](plans/t3-concurrent-admission.md).
 An account can still run out after admission: reserve headroom cannot cover every
 in-flight request, observation delay, explicit hold or exhausted-all condition.
 Unsuccessful background selection reports a fixed diagnostic and preserves native
-work. The original native failure, if one occurs, is shown once;
+work. One skipped because the account lock was held, or abandoned for a new
+admission, is neither reported nor recorded: the next wakeup repeats it.
+The original native failure, if one occurs, is shown once;
 the bridge never replays a partially executed prompt or duplicates tool effects.
 The next user turn performs a fresh selection, and so does an automatic continue,
 which is a new turn and not a replay. `routing_continue_failed` means that turn

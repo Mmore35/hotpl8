@@ -23,7 +23,12 @@ public class T3FakeCodex {
             var id=message["id"]; string method=(string)message["method"];
             var p=message.ContainsKey("params") ? message["params"] as Dictionary<string,object> : null;
             object result=new {};
-            if(method=="initialize") result=new {userAgent="codex/fixture"};
+            if(method=="initialize") {
+                // A saturated machine: the native program takes this long to answer at all.
+                string slow=Path.Combine(home,"start-delay-ms");
+                if(File.Exists(slow)) System.Threading.Thread.Sleep(Int32.Parse(File.ReadAllText(slow)));
+                result=new {userAgent="codex/fixture"};
+            }
             if(method=="account/login/start") {
                 if(active && account!=(string)p["chatgptAccountId"]) {
                     File.WriteAllText(Path.Combine(home,"network-revoked"),"fixture");

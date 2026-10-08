@@ -25,8 +25,11 @@ function Get-Hotpl8CodexRoutingDecision($Rows,$Part,$Policy,$Meters,$Request,[st
 }
 function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executable,[scriptblock]$Reader) {
     $validationClock=[Diagnostics.Stopwatch]::StartNew()
-    $refresh=$Request.operation -eq 'refresh'
-    $validationBudget=if($refresh){6500}else{20000};$sawBusy=$false
+    $refresh=$Request.operation -eq 'refresh';$background=$Request.intent -eq 'rebind'
+    # An admission may wait out one slow reader and then make its own slow read,
+    # 12 s each on a saturated machine. Refresh answers native Codex, which does
+    # not wait that long.
+    $validationBudget=if($refresh){6500}else{30000}
     if($Request.operation -notin @('select','refresh','exec') -or ($Request.intent -and $Request.intent -notin @('admit','rebind')) -or ($Request.operation -ne 'select' -and $Request.intent -eq 'rebind')){throw 'routing_invalid_request'}
     foreach($key in @('OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CODEX_SQLITE_HOME','OPENAI_BASE_URL')){if([Environment]::GetEnvironmentVariable($key)){throw 'routing_environment_conflict'}}
     try{$admission=Get-Hotpl8ControlSnapshot $StateDirectory}catch{if($_.Exception.Message -eq 'action_state_changed'){throw 'routing_state_changed'};throw}
@@ -65,13 +68,19 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
     # Keep successful reads private to this admission. A candidate that loses
     # rank after fresh quota arrives can still serve if a better peer fails.
     # Each home is validated once, plus one final pass to select a cached fallback.
-    $validated=@{}
-    for($attempt=0;$attempt -le @($part.slots).Count;$attempt++){
-        if($validationClock.ElapsedMilliseconds -ge $validationBudget){throw 'routing_validation_timeout'}
+    # A home whose lock stayed busy has not been validated: it is set aside while
+    # its peers are tried, and tried again until the deadline.
+    $validated=@{};$busy=@();$locked=@{};$settled=0
+    while($settled -le @($part.slots).Count){
+        if($validationClock.ElapsedMilliseconds -ge $validationBudget){if($locked.Count){throw 'routing_account_busy'};throw 'routing_validation_timeout'}
         $decision=Get-Hotpl8CodexRoutingDecision $rows $part $policy $meters $Request $StateDirectory ([datetimeoffset]::UtcNow)
         if(-not $decision.actionPermitted){
+            # Only a lock stands between this admission and the homes set aside.
+            # Decide again with them: a control that suppresses the action still
+            # does, and is reported then.
+            if($busy.Count){$rows=@($rows)+@($busy);$busy=@();continue}
             if($decision.suppressionReason -in @('monitor_only','automation_paused','switching_disabled','selection_held','binding_unknown')){throw ('routing_'+$decision.suppressionReason)}
-            if($sawBusy){throw 'routing_account_busy'};throw 'routing_unavailable'
+            throw 'routing_unavailable'
         }
         $selected=[string]$decision.targetSlot;$slot=@($part.slots|Where-Object id -EQ $selected)
         if($slot.Count -ne 1 -or $selected -in @($part.disabled)){throw 'routing_binding_changed'}
@@ -80,24 +89,31 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
         $cached=$validated.ContainsKey($selected)
         if($cached){$read=$validated[$selected]}
         else{
-          $accountClock=[Diagnostics.Stopwatch]::StartNew()
-          # Another admission may hold this lock for 6.5 s; a collector usually
-          # 2-4 s, but up to 12 s on a saturated machine. Let one healthy reader
-          # finish before excluding its account, without waiting out a slow
-          # collector: the admission budget must still reach a peer. Refresh
-          # keeps its shorter wait so native I/O still fits the 6.5 s deadline.
-          $lockWaitBudget=if($refresh){2500}else{6500}
+          $accountClock=[Diagnostics.Stopwatch]::StartNew();$read=$null
+          # Another reader holds this lock for 2-4 s, and up to 12 s on a saturated
+          # machine. Wait 6.5 s for it here before a peer is tried. Refresh keeps
+          # its shorter wait so native I/O still fits the 6.5 s deadline. A
+          # background validation does not wait at all: it would hold the lock
+          # next, in front of an admission, and the next wakeup repeats it.
+          $lockWaitBudget=if($refresh){2500}elseif($background){0}else{6500}
           do{
             $remaining=$validationBudget-[int]$validationClock.ElapsedMilliseconds
-            if($remaining -le 0){throw 'routing_validation_timeout'}
-            $readBudget=[Math]::Min(6500,$remaining)
+            if($remaining -le 0){if($locked.Count -or $read.status -eq 'home_busy'){throw 'routing_account_busy'};throw 'routing_validation_timeout'}
+            # The collector's bound: a tighter one fails every account at once when
+            # starting the native program alone takes longer.
+            $readBudget=[Math]::Min((Get-CodexReadBudgetMs),$remaining)
             $read=if($Reader){& $Reader $slot $refresh $readBudget}else{Read-CodexQuota $slot.home $Executable $readBudget $Request.cwd -IncludeAccessToken -RefreshToken:$refresh}
             if($read.status -ne 'home_busy'){break}
-            if($accountClock.ElapsedMilliseconds -ge $lockWaitBudget){$sawBusy=$true;break}
+            if($accountClock.ElapsedMilliseconds -ge $lockWaitBudget){break}
             Start-Sleep -Milliseconds 75
           }while($true)
         }
-        if($read.status -eq 'home_busy' -and $refresh){throw 'routing_account_busy'}
+        if($read.status -eq 'home_busy'){
+            if($refresh -or $background){throw 'routing_account_busy'}
+            $locked[$selected]=$true
+            $busy+=@($rows|Where-Object id -EQ $selected);$rows=@($rows|Where-Object id -NE $selected);continue
+        }
+        $locked.Remove($selected);$settled++
         $valid=$read.status -eq 'ok' -and $read.identityKey -eq $prior.identityKey -and $read.standardTransport -and (-not $read.modelProvider -or $read.modelProvider -eq 'openai')
         if($refresh){if(-not $valid -or $read.auth.chatgptAccountId -cne $Request.accountId){throw 'routing_refresh_failed'}}
         elseif($valid){
@@ -131,6 +147,6 @@ function Get-Hotpl8CodexRoute($Request,[string]$StateDirectory,[string]$Executab
         $rows=@($rows|Where-Object id -NE $selected)
         if($refresh){throw 'routing_refresh_failed'}
     }
-    if($sawBusy){throw 'routing_account_busy'}
+    if($locked.Count){throw 'routing_account_busy'}
     throw 'routing_unavailable'
 }

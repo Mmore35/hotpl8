@@ -36,6 +36,19 @@ try{
     $route=Get-Hotpl8CodexRoute $request $dir $exe
     Assert ($route.slot -eq 'a' -and $route.auth.accessToken -eq 'FAKE-a') 'preferred native account selected'
     Assert (($route|ConvertTo-Json -Depth 10) -notmatch 'NEVER_EXPORT') 'refresh token never exported'
+    # A saturated machine makes every native read slow, the collector's included.
+    # An admission that allowed its own read less time than the collector's lost
+    # the preferred account, and with every account slow had none left.
+    [IO.File]::WriteAllText((Join-Path $dir 'a/start-delay-ms'),'7000')
+    $script:readBudgets=@()
+    $timedRead={param($slot,$refresh,$budget)
+        $script:readBudgets+=$budget
+        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
+    }
+    $slowClock=[Diagnostics.Stopwatch]::StartNew()
+    Assert ((Get-Hotpl8CodexRoute $request $dir $exe $timedRead).slot -eq 'a') 'a slow native read still admits the preferred account'
+    Assert ($slowClock.ElapsedMilliseconds -ge 7000 -and $script:readBudgets.Count -eq 1 -and $script:readBudgets[0] -eq (Get-CodexReadBudgetMs)) 'admission allows a native read the time the collector allows'
+    [IO.File]::Delete((Join-Path $dir 'a/start-delay-ms'))
     # A collector that collided with a broker retains its previous quota. A new
     # admission must be able to validate that fresh candidate after the lock clears.
     foreach($row in $rows){$row.status='home_busy'}
@@ -163,6 +176,26 @@ try{
         Read-CodexQuota $slot.home $exe 5000 $dir -IncludeAccessToken
     }
     Assert ((Get-Hotpl8CodexRoute $request $dir $exe $busyPreferred).slot -eq 'b') 'persistently busy candidate can fall back to another validated account'
+    # The only eligible account, its lock held by slow readers for longer than
+    # one wait. Nothing is wrong with the account: the admission keeps waiting
+    # for it inside its deadline instead of reporting contention.
+    $script:onlyReads=@{a=0;b=0};$onlyClock=[Diagnostics.Stopwatch]::StartNew()
+    $onlyBusy={param($slot,$isRefresh,$budget)
+        $script:onlyReads[$slot.id]++
+        if($slot.id -eq 'b' -and $onlyClock.ElapsedMilliseconds -lt 8000){return [pscustomobject]@{status='home_busy'}}
+        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
+    }
+    $route=Get-Hotpl8CodexRoute $request $dir $exe $onlyBusy
+    Assert ($route.slot -eq 'b' -and $route.auth.accessToken -eq 'FAKE-b' -and $onlyClock.ElapsedMilliseconds -ge 8000) 'the only eligible account is admitted once a long-held lock clears'
+    Assert ($script:onlyReads.a -eq 1) 'waiting for a busy account does not validate its peer again'
+    # Background validation has nobody waiting on it. Queueing for the lock would
+    # put it in front of an admission, so it gives up at once and is repeated by
+    # the next wakeup.
+    $script:backgroundReads=0;$backgroundClock=[Diagnostics.Stopwatch]::StartNew()
+    $backgroundBusy={param($slot,$isRefresh,$budget);$script:backgroundReads++;[pscustomobject]@{status='home_busy'}}
+    $backgroundRequest=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='b';cwd=$dir}
+    Reject {Get-Hotpl8CodexRoute $backgroundRequest $dir $exe $backgroundBusy} 'routing_account_busy'
+    Assert ($script:backgroundReads -eq 1 -and $backgroundClock.ElapsedMilliseconds -lt 3000) 'background validation does not queue for a held account lock'
     $refresh=[pscustomobject]@{operation='refresh';previousSlot='a';accountId='a';model='fixture-model';cwd=$dir}
     Assert ((Get-Hotpl8CodexRoute $refresh $dir $exe).slot -eq 'a') 'refresh remains pinned even when quota exhausted'
     $script:refreshReads=0
@@ -325,10 +358,20 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     $accountLock=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')
     $brokerPsi=New-CodexProcessInfo $ps $shared @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'src/codex-route.ps1'),'-StateDirectory',$dir,'-Executable',$exe) $dir
     $brokerPsi.RedirectStandardInput=$true;$brokerPsi.RedirectStandardOutput=$true;$brokerPsi.RedirectStandardError=$true;$brokerPsi.CreateNoWindow=$true
+    # A background validation that meets the lock was skipped, not failed: it
+    # answers at once and leaves no event behind.
+    $proc=Start-CodexQuotaProcess $brokerPsi
+    $brokerOutput=$proc.StandardOutput.ReadToEndAsync();$null=$proc.StandardError.ReadToEndAsync()
+    $proc.StandardInput.WriteLine(($backgroundRequest|ConvertTo-Json -Compress));$proc.StandardInput.Close()
+    Assert ($proc.WaitForExit(20000)) 'a skipped background validation answers without waiting for the lock'
+    Assert (($brokerOutput.Result|ConvertFrom-Json).error -eq 'routing_account_busy' -and -not (Test-Path -LiteralPath (Join-Path $dir 'events.jsonl'))) 'a skipped background validation is not recorded as a failure'
+    Stop-Hotpl8Process $proc;$proc=$null
+    # An admission waits for the lock until its 30 s deadline.
     $proc=Start-CodexQuotaProcess $brokerPsi
     $brokerOutput=$proc.StandardOutput.ReadToEndAsync();$null=$proc.StandardError.ReadToEndAsync()
     $proc.StandardInput.WriteLine(($request|ConvertTo-Json -Compress));$proc.StandardInput.Close()
-    Assert ($proc.WaitForExit(15000)) 'persistent contention returns a bounded broker failure'
+    $deadlineClock=[Diagnostics.Stopwatch]::StartNew()
+    Assert ($proc.WaitForExit(50000) -and $deadlineClock.ElapsedMilliseconds -ge 20000) 'persistent contention returns a bounded broker failure at the admission deadline'
     Assert (($brokerOutput.Result|ConvertFrom-Json).error -eq 'routing_account_busy') 'pipe response distinguishes contention from no capacity'
     $accountLock.Dispose();$accountLock=$null;Stop-Hotpl8Process $proc;$proc=$null
     $events=[IO.File]::ReadAllText((Join-Path $dir 'events.jsonl'))
