@@ -342,7 +342,11 @@ impl Parser<'_> {
         }
         let token = std::str::from_utf8(&self.bytes[start..self.at]).unwrap();
         let all_zero = whole.iter().chain(fraction).all(|b| *b == b'0');
-        let unwritten = whole.len() + fraction.len() > 28 || (negative && all_zero);
+        // A decimal holds 96 bits of digits and at most 28 of them after the point. Windows
+        // PowerShell writes one that full when a division did not come out even.
+        let digits: String = whole.iter().chain(fraction).map(|b| *b as char).collect();
+        let mantissa = digits.parse::<u128>().ok().filter(|mant| *mant >> 96 == 0);
+        let unwritten = fraction.len() > 28 || mantissa.is_none() || (negative && all_zero);
         if self.foreign && !exponent && (unwritten || (fraction.is_empty() && token.parse::<i64>().is_err())) {
             let Ok(value) = token.parse::<f64>() else { return unreadable() };
             return crate::ps::dbl(if all_zero { 0.0 } else { value });
@@ -368,8 +372,7 @@ impl Parser<'_> {
             });
         }
         if desktop() {
-            let digits: String = whole.iter().chain(fraction).map(|b| *b as char).collect();
-            let Ok(mant) = digits.parse::<u128>() else { return unreadable() };
+            let Some(mant) = mantissa else { return unreadable() };
             return Ok(V::Dec(Dec { neg: negative, mant, scale: fraction.len() as u8 }));
         }
         let Ok(value) = token.parse::<f64>() else { return unreadable() };
@@ -641,6 +644,26 @@ mod tests {
     }
 
     #[test]
+    fn a_decimal_as_full_as_one_can_be_is_read_back() {
+        // What Windows PowerShell writes of a division the program answered with.
+        set_core(false);
+        for (text, shown) in [
+            (r#"{"a":1.0000000000000000000000000000}"#, "m:1.0000000000000000000000000000"),
+            (r#"{"a":0.0000000000000000000000000001}"#, "m:0.0000000000000000000000000001"),
+            (r#"{"a":7.9228162514264337593543950335}"#, "m:7.9228162514264337593543950335"),
+            (r#"{"a":-5.0000000000000000000000000000}"#, "m:-5.0000000000000000000000000000"),
+        ] {
+            let value = parse(text, "test").ok().unwrap();
+            assert_eq!(dump(&value).ok().unwrap(), format!("{{
+ a: {shown}
+}}
+"), "{text}");
+            assert_eq!(compact(&value, MAX_DEPTH).ok().unwrap(), text);
+            assert!(parse_asked(text.as_bytes()).is_ok(), "{text}");
+        }
+    }
+
+    #[test]
     fn anything_but_strict_json_is_refused_by_name_and_place() {
         for text in [
             "",
@@ -667,6 +690,7 @@ mod tests {
             r#"{"a":-0.0}"#,
             r#"{"a":9223372036854775808}"#,
             r#"{"a":0.12345678901234567890123456789}"#,
+            r#"{"a":7.9228162514264337593543950336}"#,
             r#"{"a":01}"#,
             r#"{"a":'x'}"#,
             r#"{"a":1 /* c */}"#,
