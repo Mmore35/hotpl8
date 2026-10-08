@@ -48,7 +48,8 @@ $ErrorActionPreference = 'Stop'
 try {
     # version, status, explain and tray -Once are answered by the compiled reader, their only
     # implementation. A plain request goes there before anything else is loaded. One with other
-    # parameters is checked below like any command, and then asks the same reader.
+    # parameters is checked below like any command, and then asks the same reader. So are
+    # watch and nyan, once it is known that there is an account to show.
     # No Join-Path here: see the note on modules at the top of src/native.ps1.
     . ([IO.Path]::Combine($PSScriptRoot,'src','native.ps1'))
     # The Mac launcher adds its Codex binding to every request; none of these reads it.
@@ -376,11 +377,9 @@ try {
             . (Join-Path $PSScriptRoot 'src/onboarding-ui.ps1')
             Show-Hotpl8Onboarding $StateDirectory '';exit 0
         }
-        # Nyan is a presentation flag on the installed dashboard. Keep both
-        # modes here so every application update reaches both views together.
-        . (Join-Path $PSScriptRoot 'src/dashboard.ps1')
-        Show-Hotpl8Dashboard $StateDirectory -Nyan:($Command -eq 'nyan') -ReducedMotion:$ReducedMotion -NoColor:$NoColor -PolicyOverride $(if($PreviewPolicy){$policy})
-        exit 0
+        # Both views are the compiled reader's, which a launcher asks before it starts this
+        # script. What reaches here was started some other way, or had no account then.
+        Exit-Hotpl8NativeDashboard $PSScriptRoot $Command $StateDirectory $PreviewPolicy $ReducedMotion $NoColor
     }
     if ($Command -in @('refresh', 'tick')) {
         if (-not @(Get-Hotpl8ProviderAccounts $policy).Count) {

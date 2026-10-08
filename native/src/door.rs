@@ -11,9 +11,20 @@ use crate::Refusal;
 
 pub fn answer(said: &[OsString]) -> Result<String, Refusal> {
     let request = release().and_then(|root| request(said, &root)).ok_or(Refusal::NotMine)?;
+    // A user with no policy or no account yet is guided to one, and PowerShell does that.
+    if request.command.draws() && !crate::watch::ready(&request)? {
+        return Err(Refusal::NotMine);
+    }
     let text = crate::answer(&request)?;
     // A terminal on Windows, and whatever reads a command's output there, expects its line ends.
     Ok(if cfg!(windows) { text.replace('\n', "\r\n") } else { text })
+}
+
+/// The dashboard the words ask for, when there is one to open. Why there is none is
+/// `answer`'s to say.
+pub fn dashboard(said: &[OsString]) -> Option<Request> {
+    let request = release().and_then(|root| request(said, &root)).filter(|request| request.command.draws())?;
+    crate::watch::ready(&request).ok()?.then_some(request)
 }
 
 /// The release this program is part of: `<release>/bin/<platform>/hotpl8-native`.
@@ -27,19 +38,33 @@ fn release() -> Option<PathBuf> {
 /// parameters by their whole names. PowerShell accepts many more spellings of the same
 /// request, and its entry hands those to the reader itself.
 fn request(said: &[OsString], root: &Path) -> Option<Request> {
-    let (command, rest) = said.split_first()?;
+    // With no command the dashboard is meant, as PowerShell reads it.
+    let (command, rest) = match said.split_first() {
+        Some((word, rest)) if !word.to_str()?.starts_with('-') => (Command::named(word.to_str()?)?, rest),
+        _ => (Command::Watch, said),
+    };
     // `tray` typed by a user opens the tray's window, which PowerShell draws.
-    let command = Command::named(command.to_str()?).filter(|command| *command != Command::Tray)?;
+    if command == Command::Tray {
+        return None;
+    }
     let mut request = Request::new(command, root.to_path_buf());
     // The Mac launcher names its Codex binding on every request; none of these commands reads it.
     let (mut state, mut policy, mut codex) = (None, None, None);
     let mut rest = rest.iter();
     while let Some(word) = rest.next() {
-        let slot = match word.to_str()?.to_ascii_lowercase().as_str() {
-            "-asjson" if !request.as_json => {
-                request.as_json = true;
-                continue;
+        let flag = match word.to_str()?.to_ascii_lowercase().as_str() {
+            "-asjson" if !command.draws() => Some(&mut request.as_json),
+            "-reducedmotion" if command.draws() => Some(&mut request.reduced_motion),
+            "-nocolor" if command.draws() => Some(&mut request.no_color),
+            _ => None,
+        };
+        if let Some(flag) = flag {
+            if std::mem::replace(flag, true) {
+                return None;
             }
+            continue;
+        }
+        let slot = match word.to_str()?.to_ascii_lowercase().as_str() {
             "-statedirectory" => &mut state,
             "-previewpolicy" => &mut policy,
             "-codexexecutable" => &mut codex,
@@ -79,25 +104,46 @@ fn value(word: &OsString) -> Option<&std::ffi::OsStr> {
 pub fn relayed(said: &[OsString]) -> Option<u8> {
     let program = std::env::current_exe().ok()?;
     let installation = program.parent()?;
-    if !installation.join("current.json").is_file() {
-        return None;
-    }
-    let status = held(installation, said).and_then(|(lease, reader, state)| {
-        let child = std::process::Command::new(reader).arg("user").args(said).env("HOTPL8_STATE_DIRECTORY", state).env("HOTPL8_INSTALL_DIRECTORY", installation).status();
-        // The release stays in place until its reader has ended.
-        drop(lease);
-        child.ok()?.code()
-    });
-    // Whatever is out of the ordinary is launch.ps1's to report, in the words it has for it.
-    Some(match status {
-        Some(0) => 0,
-        Some(1) => crate::FAILED,
-        _ => crate::NOT_MINE,
-    })
+    installation.join("current.json").is_file().then(|| through(installation, said))
 }
 #[cfg(not(windows))]
 pub fn relayed(_said: &[OsString]) -> Option<u8> {
     None
+}
+
+/// The same of an installation named first, the words after it. A Mac keeps no copy beside
+/// its launcher: that launcher (delivery/macos.py) asks the program of the release it chose.
+pub fn asked(said: &[OsString]) -> u8 {
+    match said.split_first() {
+        Some((installation, said)) => through(Path::new(installation), said),
+        None => crate::NOT_MINE,
+    }
+}
+
+/// The exit status of the release in force of an installation that updates itself, asked
+/// `said`: 0 and 1 are its reader's own, and NOT_MINE leaves the words to launch.ps1.
+fn through(installation: &Path, said: &[OsString]) -> u8 {
+    let asked = |reader: PathBuf, state: String| {
+        let ended = std::process::Command::new(reader).arg("user").args(said).env("HOTPL8_STATE_DIRECTORY", state).env("HOTPL8_INSTALL_DIRECTORY", installation).status().ok()?;
+        // A reader a signal ended did not leave its words to PowerShell.
+        Some(ended.code().unwrap_or(i32::from(crate::FAILED)))
+    };
+    let status = if request(said, installation).is_some_and(|request| request.command.draws()) {
+        shown(installation, asked)
+    } else {
+        held(installation, said).and_then(|(lease, reader, state)| {
+            let ended = asked(reader, state);
+            // The release stays in place until its reader has ended.
+            drop(lease);
+            ended
+        })
+    };
+    // Whatever is out of the ordinary is launch.ps1's to report, in the words it has for it.
+    match status {
+        Some(0) => 0,
+        Some(1) => crate::FAILED,
+        _ => crate::NOT_MINE,
+    }
 }
 
 /// The exit status of one scheduled wake of the release in force of an installation that
@@ -176,22 +222,52 @@ fn leased(path: &Path) -> Option<std::fs::File> {
     Some(file)
 }
 
+/// A text an installation's file records under a name.
+fn recorded(installation: &Path, file: &str, name: &str) -> Option<String> {
+    Some(crate::json::read_file(&installation.join(file)).ok()??.g(name).ok()?.as_str()?.to_owned())
+}
+
+/// The release an installation's pointer names.
+fn pointed(installation: &Path) -> Option<PathBuf> {
+    let sha = recorded(installation, "current.json", "sha")?;
+    if !crate::is_commit(&sha) || recorded(installation, "current.json", "release")? != format!("releases/{sha}") {
+        return None;
+    }
+    Some(installation.join("releases").join(sha))
+}
+
 /// What delivery/launch.ps1 does before it starts a release. `None` is an installation that
 /// cannot say which release is in force.
 fn in_force(installation: &Path) -> Option<InForce> {
-    let text = |file: &str, name: &str| Some(crate::json::read_file(&installation.join(file)).ok()??.g(name).ok()?.as_str()?.to_owned());
-    let state = text("delivery.json", "stateDirectory")?;
+    let state = recorded(installation, "delivery.json", "stateDirectory")?;
     let Some(lease) = leased(&installation.join("runtime.lock")) else { return Some(InForce::Updating) };
-    let sha = text("current.json", "sha")?;
-    if !crate::is_commit(&sha) || text("current.json", "release")? != format!("releases/{sha}") {
-        return None;
+    Some(InForce::Release { lease, root: pointed(installation)?, state })
+}
+
+/// The exit status of a dashboard of an installation that updates itself, as `open` starts
+/// the reader of a release with the state directory that release is told to use. A
+/// dashboard stays open for days, so it holds no lease and an update never waits for it: it
+/// ends with HANDED_OFF when another release has come into force, and that one's is opened
+/// in its place. `None` is an installation with no dashboard to hand to, launch.ps1's to
+/// report: one that cannot say what is in force, or whose release hands off to itself.
+fn shown(installation: &Path, open: impl Fn(PathBuf, String) -> Option<i32>) -> Option<i32> {
+    let mut last = None;
+    loop {
+        let state = recorded(installation, "delivery.json", "stateDirectory")?;
+        let release = pointed(installation)?;
+        if last.as_ref() == Some(&release) {
+            return None;
+        }
+        let status = open(reader_of(&release), state)?;
+        if status != i32::from(crate::HANDED_OFF) {
+            return Some(status);
+        }
+        last = Some(release);
     }
-    Some(InForce::Release { lease, root: installation.join("releases").join(sha), state })
 }
 
 /// For the requests the reader owns: the lease, the reader of the release in force, and the
 /// state directory that release is told to use.
-#[cfg(windows)]
 fn held(installation: &Path, said: &[OsString]) -> Option<(std::fs::File, PathBuf, String)> {
     // Only words the reader owns go past PowerShell. The release's own reader reads them
     // again, so this copy may be older or newer than the release.
@@ -276,12 +352,34 @@ mod tests {
     }
 
     #[test]
+    fn the_dashboard_is_what_no_command_asks_for() {
+        assert_eq!(spelled(&[]), Some(Request::new(Command::Watch, PathBuf::from(ROOT))));
+        assert_eq!(spelled(&["Watch"]), Some(Request::new(Command::Watch, PathBuf::from(ROOT))));
+        let quiet = spelled(&["-NoColor", "-statedirectory", STATE]).unwrap();
+        assert_eq!((quiet.command, quiet.no_color, quiet.reduced_motion, quiet.state), (Command::Watch, true, false, Some(PathBuf::from(STATE))));
+        let cat = spelled(&["nyan", "-ReducedMotion", "-PreviewPolicy", "policy.json", "-CodexExecutable", "codex", "-nocolor"]).unwrap();
+        assert_eq!((cat.command, cat.no_color, cat.reduced_motion, cat.as_json, cat.shot), (Command::Nyan, true, true, false, None));
+        assert_eq!(cat.policy, Some(std::env::current_dir().unwrap().join("policy.json")));
+    }
+
+    #[test]
     fn every_other_spelling_is_left_to_powershell() {
         for items in [
-            &[][..],
-            &["watch"],
-            &["refresh"],
+            &["refresh"][..],
+            &["tray"],
             &["stat"],
+            &["watch", "-AsJson"],
+            &["watch", "-NoColor", "-nocolor"],
+            &["watch", "-ReducedMotion:$true"],
+            &["watch", "-Provider", "codex"],
+            &["watch", "--size", "100x40"],
+            &["watch", "--no-color"],
+            &["nyan", "nyan"],
+            &["-NoColor", "status"],
+            &["-AsJson"],
+            &["status", "-NoColor"],
+            &["status", "-ReducedMotion"],
+            &["\u{2014}NoColor"],
             &["-AsJson", "status"],
             &["-Command", "status"],
             &["status", "-As"],
@@ -305,29 +403,27 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
     #[test]
     fn an_installation_that_updates_itself_names_the_release_in_force() {
-        use std::os::windows::fs::OpenOptionsExt;
         const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
-        let root = std::env::temp_dir().join(format!("hotpl8-native-relay-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
+        let root = crate::files::tests::scratch("relay");
         let pointer = |sha: &str, release: &str| std::fs::write(root.join("current.json"), format!("{{\"protocol\":1,\"sha\":\"{sha}\",\"release\":\"{release}\"}}")).unwrap();
         let found = |items: &[&str]| held(&root, &words(items)).map(|(_, reader, state)| (reader, state));
-        std::fs::write(root.join("delivery.json"), "{\"stateDirectory\":\"D:\\\\my state\"}").unwrap();
+        std::fs::write(root.join("delivery.json"), crate::json::compact(&crate::obj! { "stateDirectory" => STATE }, 4).unwrap()).unwrap();
         pointer(SHA, &format!("releases/{SHA}"));
         // Words for the rest of HotPl8 go to launch.ps1 before anything is opened.
-        for items in [&["refresh"][..], &["status", "-Live"], &["-Command", "status"], &[]] {
+        for items in [&["refresh"][..], &["status", "-Live"], &["-Command", "status"]] {
             assert_eq!(found(items), None, "{items:?}");
         }
         assert!(!root.join("runtime.lock").exists());
-        let reader = root.join("releases").join(SHA).join("bin").join("windows").join("hotpl8-native.exe");
-        assert_eq!(found(&["status", "-AsJson"]), Some((reader, STATE.to_owned())));
+        assert_eq!(found(&["status", "-AsJson"]), Some((reader_of(&root.join("releases").join(SHA)), STATE.to_owned())));
+        // The Mac launcher names its Codex binding on every request.
+        assert!(found(&["version", "-CodexExecutable", "codex"]).is_some());
         // Two commands hold the lease together; an update holds it alone.
         let first = held(&root, &words(&["explain"])).unwrap();
         assert!(found(&["version"]).is_some());
         drop(first);
-        let update = std::fs::OpenOptions::new().read(true).write(true).share_mode(0).open(root.join("runtime.lock")).unwrap();
+        let update = crate::files::tests::let_go(|| crate::files::lock(&root.join("runtime.lock")).ok());
         assert_eq!(found(&["status"]), None);
         drop(update);
         for (sha, release) in [("main", "releases/main".to_owned()), (SHA, "releases/other".to_owned()), (&*SHA.to_uppercase(), format!("releases/{}", SHA.to_uppercase()))] {
@@ -339,6 +435,51 @@ mod tests {
         std::fs::remove_file(root.join("delivery.json")).unwrap();
         pointer(SHA, &format!("releases/{SHA}"));
         assert_eq!(found(&["status"]), None);
+        // An installation with nothing in force, and none at all, leave every word to PowerShell.
+        assert_eq!(asked(&[root.clone().into_os_string(), OsString::from("status")]), crate::NOT_MINE);
+        assert_eq!(asked(&[root.clone().into_os_string(), OsString::from("watch")]), crate::NOT_MINE);
+        assert_eq!(asked(&[]), crate::NOT_MINE);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_dashboard_is_handed_from_one_release_to_the_next_and_holds_no_lease() {
+        const FIRST: &str = "0123456789abcdef0123456789abcdef01234567";
+        const NEXT: &str = "89abcdef0123456789abcdef0123456789abcdef";
+        let root = crate::files::tests::scratch("dashboard-relay");
+        let pointer = |sha: &str| std::fs::write(root.join("current.json"), format!("{{\"protocol\":1,\"sha\":\"{sha}\",\"release\":\"releases/{sha}\"}}")).unwrap();
+        let reader = |sha: &str| reader_of(&root.join("releases").join(sha));
+        let opened = std::cell::RefCell::new(Vec::new());
+        // Each dashboard ends as the next entry says; an update comes in while the first is open.
+        let run = |ends: &[i32]| {
+            opened.borrow_mut().clear();
+            shown(&root, |reader, state| {
+                let status = *ends.get(opened.borrow().len())?;
+                opened.borrow_mut().push((reader, state));
+                if status == 75 && opened.borrow().len() == 1 {
+                    pointer(NEXT);
+                }
+                Some(status)
+            })
+        };
+        // An installation that does not say where its state is has no dashboard to open.
+        pointer(FIRST);
+        assert_eq!(run(&[0]), None);
+        std::fs::write(root.join("delivery.json"), crate::json::compact(&crate::obj! { "stateDirectory" => STATE }, 4).unwrap()).unwrap();
+        assert_eq!(run(&[0]), Some(0));
+        assert_eq!(*opened.borrow(), [(reader(FIRST), STATE.to_owned())]);
+        // An update holds the installation alone, and a dashboard opens all the same.
+        let update = crate::files::tests::let_go(|| crate::files::lock(&root.join("runtime.lock")).ok());
+        assert_eq!(run(&[1]), Some(1));
+        drop(update);
+        assert_eq!(run(&[75, 0]), Some(0));
+        assert_eq!(*opened.borrow(), [(reader(FIRST), STATE.to_owned()), (reader(NEXT), STATE.to_owned())]);
+        // A release that hands off to itself is not started a second time.
+        assert_eq!(run(&[75, 75, 0]), None);
+        assert_eq!(opened.borrow().len(), 1);
+        assert_eq!(run(&[64]), Some(64));
+        pointer("main");
+        assert_eq!(run(&[0]), None);
         std::fs::remove_dir_all(&root).unwrap();
     }
 

@@ -58,11 +58,11 @@ The experimental Claude adapter includes legacy credential cleanup around `cswap
 
 | Decision | Why | Evidence |
 |---|---|---|
-| Display only cached snapshots | Opening or resizing the UI must not spend quota or change accounts | [Dashboard](../src/dashboard.ps1); [pipe and unchanged-cache test](../tests/test-dashboard.ps1) |
+| Display only cached snapshots | Opening or resizing the UI must not spend quota or change accounts | The dashboard (`native/src/watch.rs`, which reads files and starts no program); [the open dashboard and its frames](../tests/test-dashboard.ps1) |
 | Lock collection and replace status atomically | Readers should not see a partially written snapshot; failed collection must not look fresh | The collector (`native/src/wake.rs`, with its atomic writes in `native/src/files.rs`), started by [tick.ps1](../tick.ps1); [collection/lock regressions](../tests/test-codex.ps1) |
 | Keep native account homes separate | A launch or resume must not accidentally use another account's authentication or conversation | [Codex adapter](../src/providers/codex.ps1); [home binding and resume tests](../tests/test-codex.ps1) |
 
-For example, an elapsed reset is read against the observation that reported it. A window we read before its own reset, whose reset has since passed, refilled: the dashboard draws it full and labels it `reset · awaiting read` until the next collector read confirms it. An anchor that was already expired in the payload that delivered it proves nothing, so it stays `reset due`, and stale accounts still lose their NEXT LAUNCH badge. A window whose percentage never arrived is not refilled by its reset either: no reading stays `no reading`. Eligibility, Codex slot ranking and the agent API resolve the same rule, so none of them can call a window empty that the dashboard draws full. [Regression coverage](../tests/test-dashboard.ps1) exercises every case with a controlled clock.
+For example, an elapsed reset is read against the observation that reported it. A window we read before its own reset, whose reset has since passed, refilled: the dashboard draws it full and labels it `reset · awaiting read` until the next collector read confirms it. An anchor that was already expired in the payload that delivered it proves nothing, so it stays `reset due`, and stale accounts still lose their NEXT LAUNCH badge. A window whose percentage never arrived is not refilled by its reset either: no reading stays `no reading`. Eligibility, Codex slot ranking and the agent API resolve the same rule, so none of them can call a window empty that the dashboard draws full. The unit tests of `native/src/dashboard.rs` exercise every case with a controlled clock.
 
 ## Source map
 
@@ -70,7 +70,7 @@ For example, an elapsed reset is read against the observation that reported it. 
 hotpl8.cmd / hotpl8.ps1       User commands
 hotpl8-launch.cmd           Windows launcher: asks the compiled reader, then PowerShell
 native/                     Compiled program: version, status, explain, the tray's
-                            view and the collector
+                            view, the dashboard and the collector
 tick.ps1                    Starts one wake of the compiled collector
 continue.ps1                One waiter for automatic continue, both providers
 setup-codex.ps1             Native account enrollment and optional hooks
@@ -81,12 +81,12 @@ src/
   provider-observation.ps1  Native quota decoders into the shared contract
   provider-decision.ps1     One eligibility, ranking and action-intent decision
   provider-actions.ps1      Short control authorization and generation boundary
-  native.ps1                Hand-over of version, status, explain and the tray's view
-                            to the reader
+  native.ps1                Hand-over of version, status, explain, the tray's view
+                            and the dashboard to the reader
   common.ps1                Atomic files, quoting, bounded processes
   config.ps1                State resolution and policy validation
   diagnostics.ps1           Offline doctor and bounded event logs
-  dashboard.ps1             Read-only terminal renderer and palette
+  dashboard.ps1             A comment: the dashboard is the compiled program's
   lifecycle.ps1             Install ownership, manifests, scheduler
   automation.ps1            Pause and schedule gates of the PowerShell commands
   collection.ps1            The category a failure is recorded under
@@ -111,7 +111,7 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 
 ## Tradeoffs and limits
 
-PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status`, `explain` and what the tray shows are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it and reads the Claude and the Codex accounts itself, and PowerShell is started only to keep Claude's continue hook and to close an account addition. The dashboard and the other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
+PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status`, `explain`, what the tray shows and the dashboard are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it and reads the Claude and the Codex accounts itself, and PowerShell is started only to keep Claude's continue hook and to close an account addition. The other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
 
@@ -119,7 +119,7 @@ Provider summaries are additive `providerOverview` fields on snapshots and statu
 
 ## Capacity and emergency selection
 
-`src/capacity.ps1` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `src/critical.ps1` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. `src/presentation.ps1` provides sanitized styled spans and clock-driven mascots shared by terminal and screenshot rendering. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).
+`src/capacity.ps1` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `src/critical.ps1` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. The compiled dashboard (`native/src/dashboard.rs`, `display.rs`, `paint.rs` and `nyan.rs`) lays out sanitized styled cells and the clock-driven animation, and the screenshot harness draws its images from the same frames. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).
 
 ## Local agent boundary
 

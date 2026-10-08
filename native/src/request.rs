@@ -3,6 +3,7 @@
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
+use crate::paint::Colours;
 use crate::time::Dto;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -12,15 +13,40 @@ pub enum Command {
     Explain,
     /// What the tray's window shows. The window asks; a user who types `tray` opens it.
     Tray,
+    /// The dashboard, which stays open on a terminal.
+    Watch,
+    /// The dashboard with the cat flying across it.
+    Nyan,
 }
 
 impl Command {
     /// The command a word names. PowerShell, which users have always typed these to, ignores case.
     pub fn named(word: &str) -> Option<Command> {
-        [("version", Command::Version), ("status", Command::Status), ("explain", Command::Explain), ("tray", Command::Tray)]
+        [("version", Command::Version), ("status", Command::Status), ("explain", Command::Explain), ("tray", Command::Tray), ("watch", Command::Watch), ("nyan", Command::Nyan)]
             .into_iter()
             .find_map(|(name, command)| name.eq_ignore_ascii_case(word).then_some(command))
     }
+
+    /// Whether the command opens the dashboard.
+    pub fn draws(self) -> bool {
+        matches!(self, Command::Watch | Command::Nyan)
+    }
+}
+
+/// Test-only: one frame of the dashboard, as a terminal of that size would be given it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shot {
+    pub width: usize,
+    pub height: usize,
+    pub offset: usize,
+    /// How long the dashboard has been open.
+    pub seconds: f64,
+    pub frozen: bool,
+    /// As for output that is not a terminal.
+    pub plain: bool,
+    /// The lines with their colours, as a terminal is written them.
+    pub ansi: bool,
+    pub colours: Colours,
 }
 
 #[derive(Debug, PartialEq)]
@@ -43,15 +69,22 @@ pub struct Request {
     pub zone: Option<i32>,
     /// Test-only: with `as_json`, the typed dump of the value instead of its JSON text.
     pub dump: bool,
+    /// The dashboard without movement.
+    pub reduced_motion: bool,
+    /// The dashboard without colours.
+    pub no_color: bool,
+    pub shot: Option<Shot>,
 }
 
 impl Request {
     pub fn new(command: Command, root: PathBuf) -> Request {
-        Request { command, root, state: None, policy: None, as_json: false, core: !cfg!(windows), now: None, zone: None, dump: false }
+        Request { command, root, state: None, policy: None, as_json: false, core: !cfg!(windows), now: None, zone: None, dump: false, reduced_motion: false, no_color: false, shot: None }
     }
 
     /// `<command> --root <dir> [--state <dir>] [--policy <file>] [-AsJson]`, as the PowerShell
     /// entry spells a request, and for tests `[--shell desktop|core] [--now <instant>] [--zone <minutes>] [--dump]`.
+    /// The dashboard takes `[--reduced-motion] [--no-color]` instead of `-AsJson`, and for
+    /// tests `--size <columns>x<rows> [--offset <rows>] [--at <seconds>] [--frozen] [--plain] [--ansi] [--colours true|indexed]`.
     pub fn explicit(arguments: &[OsString]) -> Result<Request, String> {
         Request::spelled(arguments).ok_or_else(|| {
             let words: Vec<String> = arguments.iter().map(|word| word.to_string_lossy().into_owned()).collect();
@@ -63,11 +96,12 @@ impl Request {
     }
 
     fn spelled(arguments: &[OsString]) -> Option<Request> {
-        const NAMES: [&str; 6] = ["--root", "--state", "--policy", "--shell", "--now", "--zone"];
+        const NAMES: [&str; 10] = ["--root", "--state", "--policy", "--shell", "--now", "--zone", "--size", "--offset", "--at", "--colours"];
+        const FLAGS: [&str; 7] = ["-AsJson", "--dump", "--reduced-motion", "--no-color", "--frozen", "--plain", "--ansi"];
         let (command, rest) = arguments.split_first()?;
         let command = Command::named(command.to_str()?)?;
-        let mut values: [Option<&OsString>; 6] = [None; 6];
-        let (mut as_json, mut dump) = (false, false);
+        let mut values: [Option<&OsString>; 10] = [None; 10];
+        let mut flags = [false; 7];
         let mut rest = rest.iter();
         while let Some(word) = rest.next() {
             let name = word.to_str()?;
@@ -76,14 +110,12 @@ impl Request {
                     return None;
                 }
                 values[slot] = Some(rest.next()?);
-            } else if name == "-AsJson" && !as_json {
-                as_json = true;
-            } else if name == "--dump" && !dump {
-                dump = true;
             } else {
-                return None;
+                let flag = FLAGS.iter().position(|known| *known == name).filter(|flag| !flags[*flag])?;
+                flags[flag] = true;
             }
         }
+        let [as_json, dump, reduced_motion, no_color, frozen, plain, ansi] = flags;
         let mut request = Request::new(command, full_path(values[0]?)?);
         request.state = match values[1] {
             Some(directory) => Some(full_path(directory)?),
@@ -113,6 +145,28 @@ impl Request {
         if (dump && !as_json) || (!reads_state && for_state) {
             return None;
         }
+        (request.reduced_motion, request.no_color) = (reduced_motion, no_color);
+        let number = |value: Option<&OsString>| value.map_or(Some(0), |text| text.to_str()?.parse::<usize>().ok());
+        let mut shot = None;
+        if let Some(size) = values[6] {
+            let (width, height) = size.to_str()?.split_once('x')?;
+            let seconds = match values[8] {
+                Some(seconds) => seconds.to_str()?.parse::<f64>().ok().filter(|seconds| seconds.is_finite() && *seconds >= 0.0)?,
+                None => 0.0,
+            };
+            let colours = match values[9].map(|name| name.to_str()) {
+                None | Some(Some("true")) => Colours::True,
+                Some(Some("indexed")) => Colours::Indexed,
+                _ => return None,
+            };
+            shot = Some(Shot { width: width.parse().ok()?, height: height.parse().ok()?, offset: number(values[7])?, seconds, frozen, plain, ansi, colours });
+        }
+        let for_shot = values[7].is_some() || values[8].is_some() || values[9].is_some() || frozen || plain || ansi;
+        let for_dashboard = reduced_motion || no_color || shot.is_some();
+        if (for_shot && shot.is_none()) || (plain && ansi) || (for_dashboard && !command.draws()) || (command.draws() && as_json) {
+            return None;
+        }
+        request.shot = shot;
         Some(request)
     }
 }
@@ -147,6 +201,18 @@ mod tests {
     }
 
     #[test]
+    fn the_dashboard_is_asked_for_as_a_terminal_or_as_one_frame() {
+        let open = Request::explicit(&words(&["nyan", "--root", ROOT, "--no-color", "--reduced-motion"])).unwrap();
+        assert_eq!((open.command, open.reduced_motion, open.no_color, open.shot), (Command::Nyan, true, true, None));
+        assert!(Command::Watch.draws() && Command::Nyan.draws() && !Command::Tray.draws());
+        let frame = Request::explicit(&words(&["Watch", "--root", ROOT, "--size", "100x40"])).unwrap();
+        assert_eq!(frame.shot, Some(Shot { width: 100, height: 40, offset: 0, seconds: 0.0, frozen: false, plain: false, ansi: false, colours: Colours::True }));
+        let full = Request::explicit(&words(&["watch", "--root", ROOT, "--size", "66x20", "--offset", "3", "--at", "1.25", "--frozen", "--ansi", "--colours", "indexed"])).unwrap();
+        assert_eq!(full.shot, Some(Shot { width: 66, height: 20, offset: 3, seconds: 1.25, frozen: true, plain: false, ansi: true, colours: Colours::Indexed }));
+        assert!(Request::explicit(&words(&["watch", "--root", ROOT, "--size", "66x20", "--plain"])).unwrap().shot.unwrap().plain);
+    }
+
+    #[test]
     fn paths_are_read_from_where_the_reader_was_started() {
         let here = std::env::current_dir().unwrap();
         let request = Request::explicit(&words(&["status", "--root", "release", "--state", "."])).unwrap();
@@ -174,6 +240,18 @@ mod tests {
             &["version", "--root", ROOT, "--zone", "0"],
             &["status", "--root", ROOT, "--zone", "noon"],
             &["status", "--root", ROOT, "--zone", "900"],
+            &["status", "--root", ROOT, "--no-color"],
+            &["status", "--root", ROOT, "--size", "100x40"],
+            &["watch", "--root", ROOT, "-AsJson"],
+            &["watch", "--root", ROOT, "--frozen"],
+            &["watch", "--root", ROOT, "--offset", "3"],
+            &["watch", "--root", ROOT, "--size", "100"],
+            &["watch", "--root", ROOT, "--size", "100x-4"],
+            &["watch", "--root", ROOT, "--size", "100x40", "--at", "soon"],
+            &["watch", "--root", ROOT, "--size", "100x40", "--at", "-1"],
+            &["watch", "--root", ROOT, "--size", "100x40", "--colours", "many"],
+            &["watch", "--root", ROOT, "--size", "100x40", "--plain", "--ansi"],
+            &["watch", "--root", ROOT, "--no-color", "--no-color"],
         ] {
             let refused = Request::explicit(&words(items)).unwrap_err();
             assert_eq!(refused, format!("The reader was started with words it does not take: {}", items.join(" ")), "{items:?}");

@@ -1,5 +1,5 @@
-# The referee for the compiled reader. `hotpl8 status`, `hotpl8 explain` and the tray's view
-# are the reader's, but the rules they show are still computed twice: the dashboard, the
+# The referee for the compiled reader. `hotpl8 status`, `hotpl8 explain`, the dashboard and
+# the tray's view are the reader's, but the rules they show are still computed twice: the
 # agent interface and account management read the state through PowerShell
 # (Read-Hotpl8Snapshot). Until those ask the reader too, this holds the two to each other.
 # It computes, in this process and at a pinned instant, what PowerShell's rules give for the

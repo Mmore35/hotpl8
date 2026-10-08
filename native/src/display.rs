@@ -14,6 +14,7 @@ pub fn packaged_data(root: &Path) {
     let data = root.join("data");
     registry::set_source(data.join("providers"));
     capacity::set_source(data.join("capacity-profiles.json"));
+    crate::nyan::set_source(data.join("nyan-frames.json"));
 }
 
 /// Where the state is: where the caller says, where the environment says, where the
@@ -52,10 +53,23 @@ fn value(value: &V, limit: usize, dump: bool) -> R<String> {
     Ok(text + "\n")
 }
 
-pub fn answer(request: &Request) -> R<String> {
+/// The state as one instant found it, and the policy it is shown under.
+pub struct Shown {
+    pub state: PathBuf,
+    pub policy: V,
+    pub status: V,
+    pub now: Dto,
+}
+
+/// How this request's values are computed, and whose packaged data its rules read.
+pub fn prepare(request: &Request) {
     ps::set_core(request.core);
     crate::time::set_zone(request.zone);
     packaged_data(&request.root);
+}
+
+/// What is on disk now. The dashboard reads it again every second.
+pub fn read(request: &Request) -> R<Shown> {
     let state = state_directory(&request.root, request.state.as_deref())?;
     // One clock reading per request: every line of an answer describes the same instant.
     let now = match request.now {
@@ -71,6 +85,15 @@ pub fn answer(request: &Request) -> R<String> {
     };
     policy::assert_policy(&policy)?;
     let status = insights::read_snapshot(&state, &policy, request.policy.is_some(), now)?;
+    Ok(Shown { state, policy, status, now })
+}
+
+pub fn answer(request: &Request) -> R<String> {
+    prepare(request);
+    let Shown { state, policy, status, now } = read(request)?;
+    if request.command.draws() {
+        return crate::watch::still(request, &status, &policy, now);
+    }
     if request.command == Command::Tray {
         return value(&tray::model(&status, &policy, now)?, 8, request.dump);
     }

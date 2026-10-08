@@ -1,5 +1,6 @@
-# Independent decoder for the renderer's fixed RGB/indexed ANSI subset.
-# Used by visual previews and cell-by-cell regression comparisons, never live state.
+# Independent decoder for the fixed RGB/indexed ANSI subset the compiled reader writes.
+# Used by the documentation images, never live state. Gives each run of cells its text
+# and the colours it is shown in.
 function ConvertFrom-Hotpl8TestAnsiRow([string]$Ansi) {
     $foreground='220;225;238';$background='18;23;35'
     $esc=[string][char]27
@@ -20,6 +21,6 @@ function ConvertFrom-Hotpl8TestAnsiRow([string]$Ansi) {
                 }
             }else{throw 'Unsupported preview color.'}
             if($target -eq '38'){$foreground=$rgb}else{$background=$rgb}
-        }else{New-Hotpl8Span $part $foreground $background}
+        }else{[pscustomobject]@{text=$part;foreground=$foreground;background=$background}}
     }
 }

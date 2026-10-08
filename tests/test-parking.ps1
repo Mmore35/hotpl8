@@ -2,10 +2,10 @@
 # Fictional accounts only; native readers are replaced, so no account is contacted.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-foreach($file in @('common','config','diagnostics','insights','management')){. (Join-Path $root ('src/'+$file+'.ps1'))}
+foreach($file in @('common','config','diagnostics','insights','management','native')){. (Join-Path $root ('src/'+$file+'.ps1'))}
 . (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
-. (Join-Path $root 'src/dashboard.ps1')
+. (Join-Path $PSScriptRoot 'fixtures/frame.ps1')
 $script:passed=0;$script:failed=0
 function Assert($Value,[string]$Message='assertion failed'){if(-not $Value){throw $Message}}
 function Check([string]$Name,[scriptblock]$Body){
@@ -150,12 +150,14 @@ try{
     }
     Check 'dashboard names a week-long absence and a parked account that reads again' {
         $policy=Clone @{schemaVersion=2;mode='monitor';prefer=@(1,2);labels=@{'2'='Old plan'}}
-        $status=Clone @{generatedAt=$now.ToString('o');slots=@(@{slot=1;status='ok';fresh=$true;observedAt=$now.ToString('o');used5h=1;used7d=1},@{slot=2;status='relogin_required'});parkCandidates=@(@{reason='dormant';label='Old plan';days=36;family='claude'});parkedReadable=@(@{slot='4';label='Parked one'})}
-        $text=(@(Get-Hotpl8DashboardRows $status $policy $now)|ForEach-Object {if($_.text){$_.text}else{($_.spans|ForEach-Object text) -join ''}}) -join "`n"
+        # The dashboard reads the absence from the account's last good reading, as it is stored.
+        $status=Clone @{generatedAt=$now.ToString('o');slots=@(@{slot=1;status='ok';fresh=$true;observedAt=$now.ToString('o');used5h=1;used7d=1},@{slot=2;status='relogin_required';lastGoodAt=$now.AddDays(-36.5).ToString('o')});parkedReadable=@(@{slot='4';label='Parked one'})}
+        $text=@(Get-Hotpl8TestFrame $status $policy $now) -join "`n"
         Assert ($text.Contains('Old plan: no reading for 36 days  ·  sign in, or hotpl8 park') -and -not $text.Contains('hotpl8 doctor')) $text
         Assert ($text.Contains('Parked one is readable again  ·  hotpl8 unpark'))
-        $status.parkCandidates=@()
-        $text=(@(Get-Hotpl8DashboardRows $status $policy $now)|ForEach-Object {if($_.text){$_.text}else{($_.spans|ForEach-Object text) -join ''}}) -join "`n"
+        $status.slots[1].lastGoodAt=$now.AddHours(-1).ToString('o')
+        $text=@(Get-Hotpl8TestFrame $status $policy $now) -join "`n"
+        Assert (-not $text.Contains('no reading for')) $text
         Assert (-not $text.Contains('account unavailable') -and $text.Contains('SIGN-IN NEEDED')) 'a recent failure stays on its account row'
     }
     Check 'doctor names candidates for people and only counts them in the redacted report' {

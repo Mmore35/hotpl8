@@ -44,9 +44,10 @@ it in the existing adapter inventory/readiness and test an upgrade from a prior
 installation. A working source checkout or passing clean-install test does not
 prove an enrolled installation will receive the change.
 
-For UI changes, regenerate and inspect the [documentation screenshots](docs/screenshots.md). The harness uses the real renderer with fixed fictional fixtures; never capture live accounts. Relevant focused checks:
+For UI changes, regenerate and inspect the [documentation screenshots](docs/screenshots.md). The harness draws the frames of the compiled reader with fixed fictional fixtures, so build the reader first; never capture live accounts. The dashboard's layout, colours and keys are unit tests in `native/` (`dashboard.rs`, `display.rs`, `paint.rs`, `nyan.rs`, `watch.rs`, `terminal.rs`), and `tests/test-dashboard.ps1` opens the program itself. Relevant focused checks:
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-native.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\test-dashboard.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\test-onboarding.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\screenshots.ps1
@@ -57,7 +58,7 @@ Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do
 Claude plan discovery is isolated in `src/providers/claude_plan.py`, which the collector asks (`native/src/plans.rs`); `claude-plans.ps1` keeps only the check of a stored answer. Run `python tests/test_claude_plan.py` and `tests/test-claude-plans.ps1` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
 
 The compiled program under `native/` is the only implementation of `version`, `status`,
-`explain` and what the tray shows, and of the collector: PowerShell hands those requests and
+`explain`, what the tray shows and the dashboard, and of the collector: PowerShell hands those requests and
 every wake to it and has no answer or collector of its own, so do not add one. `tick.ps1` only
 starts it, `src/tray.ps1` draws the window around its answer, and `src/lane.ps1` holds the two
 pieces of a wake it still asks PowerShell for. Changes there
@@ -66,7 +67,7 @@ require `cargo test --locked` in `native/`, `tests/test-native.ps1` and
 change to how Codex accounts are read `tests/test-codex.ps1`. A unit test of the collector
 passes a scratch home, a stand-in for cswap and for Codex, and its own clock and lanes; none
 may reach the machine's accounts, look for a program on the machine's path or start
-PowerShell. The dashboard and other commands still calculate some of the same rules in
+PowerShell. The other commands still calculate some of the same rules in
 PowerShell, and [the plan](docs/plans/rust-read-side.md#what-is-still-calculated-twice) lists
 them with the stage that removes each. Launching Codex and
 adding an account still read an account's limits in PowerShell: both sides read the cases in

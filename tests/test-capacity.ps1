@@ -1,7 +1,8 @@
 ﻿$ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-foreach($file in @('common','config','dashboard','collection','management')){. (Join-Path $root ('src/'+$file+'.ps1'))}
+foreach($file in @('common','config','insights','collection','management','native')){. (Join-Path $root ('src/'+$file+'.ps1'))}
 . (Join-Path $PSScriptRoot 'fixtures/screenshots.ps1')
+. (Join-Path $PSScriptRoot 'fixtures/frame.ps1')
 $fixture=Get-Hotpl8ScreenshotFixture;$now=$fixture.now
 $script:passed=0;$script:failed=0
 function Assert($Value,[string]$Message='assertion failed'){if(-not $Value){throw $Message}}
@@ -15,6 +16,14 @@ function Snapshot {Clone $fixture.status}
 # checked there (capacity_display in native/src/overview.rs).
 function Usable($ProviderOverview){if($ProviderOverview.immediate){$ProviderOverview.immediate}else{$ProviderOverview.capacity}}
 function WeeklyLeft($Account){@($Account.windows|Where-Object name -EQ '10080')[0].remaining}
+# What the dashboard says of each provider, as the compiled reader draws it at that width:
+# a row naming the provider and a row with its bar, between the title and the accounts.
+function Summary($Status,$Policy,[int]$Width=110) {
+    $frame=@(Get-Hotpl8TestFrame $Status $Policy $now $Width)
+    $rules=@(0..($frame.Count-1)|Where-Object {$frame[$_].StartsWith('├')})
+    Assert ($rules.Count -ge 2 -and $rules[1]-$rules[0] -gt 1) ('no summary: '+($frame -join "`n"))
+    foreach($row in $frame[($rules[0]+1)..($rules[1]-1)]){Assert ($row.Length -eq $Width) $row;$row}
+}
 Check 'mixed tiers use units and both window constraints, not average percentages' {
     $p=Policy;$s=Snapshot;$c=Get-Hotpl8ProviderCapacity $s $p claude $now
     Assert $c.complete;Near $c.totalUnits 6;Near $c.usableNowPercent 26.1
@@ -137,24 +146,6 @@ Check 'capacity profile edits are validated and preserve existing action default
     $p=Set-Hotpl8CapacityProfile $fixture.policy claude 1 claude-pro 1 0.3
     Assert-Hotpl8Policy $p
     Assert ($p.schemaVersion -eq 2 -and -not $p.switchEnabled -and $p.capacity.'1'.weekly -eq 1)
-}
-Check 'styled rows fit cell boundaries and strip untrusted terminal escapes' {
-    $row=New-Hotpl8StyledRow @(New-Hotpl8Span ('x'+[char]27+'[2J') peach)
-    $frame=Add-Hotpl8FrameBorder $row 12
-    Assert ((Get-DashboardCells $frame.text) -eq 14 -and $frame.text -notmatch [char]27)
-}
-Check 'cat and nyan animate deterministically and respect reduced motion' {
-    Assert ((Get-Hotpl8Cat 10.8) -ne (Get-Hotpl8Cat 0))
-    Assert ((Get-Hotpl8Cat 10.8 -ReducedMotion) -eq (Get-Hotpl8Cat 0 -ReducedMotion))
-    $a=@(Get-Hotpl8NyanRows 0);$b=@(Get-Hotpl8NyanRows 0.4)
-    Assert (($a|ConvertTo-Json -Depth 8) -ne ($b|ConvertTo-Json -Depth 8))
-    Assert (($a|ConvertTo-Json -Depth 8) -eq (@(Get-Hotpl8NyanRows 0.4 -ReducedMotion)|ConvertTo-Json -Depth 8))
-}
-Check 'combined dashboard is bounded at all supported viewports including nyan' {
-    foreach($size in @(@(48,15),@(79,24),@(100,40))){
-        $frame=@(Get-Hotpl8DashboardFrame (Snapshot) (Policy) $now $size[0] $size[1] 999 -Nyan)
-        Assert ($frame.Count -le $size[1]);foreach($r in $frame){Assert ((Get-DashboardCells $r.text) -eq $size[0])}
-    }
 }
 
 # A program that answers as Codex does, with one fictional account.
@@ -302,7 +293,7 @@ Check 'detected plan weights estimate current session allowance without inventin
     Near $d.knownUsablePercent (250/6);Near $o.claude.remainingPercent 90
     Assert ($o.claude.immediate.metric -eq 'plan-weighted-quota-headroom')
     Assert ($null -ne $d.projectedGainPercent -and $null -eq $o.claude.capacity.usableNowPercent)
-    $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
+    $text=(Summary $s $p)-join "`n"
     Assert ($text.Contains('~42% now') -and $text.Contains('7d 90%') -and -not $text.Contains('Weekly remaining'))
     # An expired reading drops out of the displayed total and is recorded; the
     # calibrated model keeps it unknown.
@@ -322,7 +313,7 @@ Check 'equal Codex plans at zero and 95 percent show 47.5 percent and expose exc
     $s.providers.codex.slots[1].buckets.codex.windows.'10080'.usedPercent=100
     Near (Get-Hotpl8ProviderOverview $s $p $now).codex.capacity.usableNowPercent 47.5
     $p.codex|Add-Member NoteProperty disabled @('personal') -Force
-    $text=((Get-Hotpl8OverviewRows $s $p $now 108).text)-join "`n"
+    $text=(Summary $s $p)-join "`n"
     Assert ($text.Contains('95% now') -and $text.Contains('next: Work') -and -not $text.Contains('1 off'))
 }
 Check 'weekly allowance cannot fill the main bar while short windows are exhausted' {
@@ -346,19 +337,18 @@ Check 'weekly allowance cannot fill the main bar while short windows are exhaust
 Check 'hatching means refill only and is contiguous with the measured fill at every viewport' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
     foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';observedAt=$now.ToString('o')} -Force;$slot.used5h=60;$slot.used7d=20}
-    foreach($width in @(46,77,108)){
-        $rows=@(Get-Hotpl8OverviewRows $s $p $now $width)
-        Assert ((Get-DashboardCells $rows[1].text) -le $width)
-        Assert ($rows[1].text -match '\[█+[▏▎▍▌▋▊▉]?▒+·*\]' -and $rows[1].text.Contains('% in '))
+    foreach($width in @(48,79,110)){
+        $rows=@(Summary $s $p $width)
+        Assert ($rows[1] -match '\[█+[▏▎▍▌▋▊▉]?▒+·*\]' -and $rows[1].Contains('% in '))
     }
     # One unreadable account leaves a measured bar, with or without plan weights;
     # the problem belongs on its account row, not in the header.
     $p=Policy;$s.slots[0].observedAt=$now.AddHours(-1).ToString('o')
-    $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
-    Assert ($rows[1].text -match '\d+% now' -and -not $rows[1].text.Contains('? now') -and -not $rows[0].text.Contains('read'))
+    $rows=@(Summary $s $p)
+    Assert ($rows[1] -match '\d+% now' -and -not $rows[1].Contains('? now') -and -not $rows[0].Contains('read'))
     $p.PSObject.Properties.Remove('capacity')
-    $rows=@(Get-Hotpl8OverviewRows $s $p $now 108)
-    Assert ($rows[1].text -match '\d+% now' -and -not $rows[1].text.Contains('? now') -and -not $rows[0].text.Contains('read'))
+    $rows=@(Summary $s $p)
+    Assert ($rows[1] -match '\d+% now' -and -not $rows[1].Contains('? now') -and -not $rows[0].Contains('read'))
 }
 Check 'refill horizon includes 24h exactly and excludes a second later' {
     $p=Policy;$s=Snapshot
@@ -368,7 +358,7 @@ Check 'refill horizon includes 24h exactly and excludes a second later' {
     foreach($slot in $s.slots){$slot.reset5h=$now.AddHours(24).AddSeconds(1).ToString('o')}
     $c=Get-Hotpl8ProviderCapacity $s $p claude $now
     Assert ($null -eq $c.projectedGainPercent -and $null -eq $c.nextResetAt)
-    Assert (@(Get-Hotpl8OverviewRows $s $p $now 108)[1].text -notmatch '▒')
+    Assert (@(Summary $s $p)[1] -notmatch '▒')
 }
 Check 'unknown plans stay unknown in the calibrated model while the display counts readable accounts equally' {
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
@@ -395,7 +385,7 @@ Check 'the displayed metric survives unreadable accounts, timeouts and switching
     foreach($slot in $s.slots){$slot.observedAt=$now.AddHours(-2).ToString('o')}
     $c=(Get-Hotpl8ProviderOverview $s $p $now).claude.immediate
     Assert (-not $c.complete -and $null -eq $c.usableNowPercent -and $c.coverage.measured -eq 0)
-    Assert ((@(Get-Hotpl8OverviewRows $s $p $now 108)[1].text) -notmatch '% now')
+    Assert (@(Summary $s $p)[1] -notmatch '% now')
 }
 Check 'blocked zero account cannot hide a known refill from another Codex subscription' {
     $p=Policy;$s=Snapshot
@@ -486,14 +476,13 @@ Check 'a weekly-only Codex pair shows one estimate, a later refill and no duplic
     $empty.buckets.codex.windows.'10080'.usedPercent=100;$empty.buckets.codex.windows.'10080'.remainingPercent=0
     $empty.buckets.codex.windows.'10080'.resetsAt=$now.AddDays(3.6).ToUnixTimeSeconds()
     foreach($width in @(48,79,110)){
-        $rows=@(Get-Hotpl8OverviewRows $s $p $now $width)
-        $codex=$rows[3].text
+        $rows=@(Summary $s $p $width)
+        $codex=$rows[3]
         Assert ($codex.Contains('~24% now')) $codex
         Assert ($codex.Contains('+50% in ')) $codex
         Assert (-not $codex.Contains('7d') -and $codex -notmatch '[░▒]') $codex
-        Assert ((Get-DashboardCells $codex) -le $width) $codex
         # Claude still carries its distinct weekly figure wherever there is room for it.
-        if($width -ge 79){Assert ($rows[1].text -match '7d\s+\d') $rows[1].text}
+        if($width -ge 79){Assert ($rows[1] -match '7d\s+\d') $rows[1]}
     }
 }
 Check 'three equal plans show 91.7 now and refill to 100 despite unequal weekly percentages' {
@@ -551,7 +540,7 @@ Check 'Codex details give two distinct account headers with one availability ver
     $s.providers.codex.recommendedSlot='personal'
     $s.providers.codex.slots[1].buckets.codex.windows.'10080'.remainingPercent=95
     $s.providers.codex.slots[1].buckets.codex.windows.'10080'.usedPercent=5
-    $text=((Get-Hotpl8DashboardRows $s $p $now 108).text)-join "`n"
+    $text=@(Get-Hotpl8TestFrame $s $p $now)-join "`n"
     Assert ($text.Contains('Work  [work]') -and $text.Contains('EXHAUSTED') -and $text.Contains('Personal  [personal]') -and $text.Contains('NEXT LAUNCH')) $text
     Assert ($text.Substring($text.IndexOf('CODEX  /')) -notmatch 'MONITORED|Main  /|    Main')
 }

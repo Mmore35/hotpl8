@@ -124,8 +124,9 @@ expired package asks for the workflow to be rerun; a package that fails a check
 stops the preview before candidate code runs. The run is what vouches for that
 file: GitHub builds a pull request from its head merged into the target branch,
 so the reader is built from that merge, by the workflow as the PR defines it.
-The preview then asks the candidate's reader for the dashboard and shows the
-candidate's PowerShell dashboard when the reader has none. See
+The preview then asks the candidate's reader for the dashboard. The reader's
+dashboard is the only one there is: a candidate without a reader for this system,
+or whose reader draws none, ends the preview with a message and status 1. See
 [the plan](plans/rust-read-side.md#previewing-a-candidates-reader).
 
 Each run owns a temporary source export and fixture directory, removed on exit.
@@ -262,8 +263,8 @@ updater. Packaged files alone are insufficient when setup copies them elsewhere.
 | Component | Selection and adoption | Evidence and recovery |
 |---|---|---|
 | CLI and scheduled collector | Stable launchers select current release; existing short writers drain. On Windows the scheduled task starts the `hotpl8-native.exe` beside the launcher with the word `wake`, and that copy starts the compiled collector of the release in force; the task names it only when the copy is the release's own, and `tick.ps1` through PowerShell otherwise. On a Mac the job runner of the release in force starts that release's `hotpl8-native` with `wake` and the installation. See [the plan](plans/rust-read-side.md#contract-scheduled-starts) | Installed SHA and completed collector SHA; pointer rollback. A release from before the compiled collector that comes back into force has its `tick.ps1` started by the same copy |
-| Interactive dashboard | Existing handoff after pointer change | Loaded SHA in window title; retained release |
-| Compiled reader (`bin/`) | An inventoried file of the release; each new `hotpl8` process uses the one in the release in force. Preflight and health start the candidate's reader and refuse a release whose reader does not answer `version`. See [the plan](plans/rust-read-side.md) | `hotpl8-native self-check` reports the commit it was built from; pointer rollback. `version`, `status` and `explain` have no PowerShell answer: a copy whose reader cannot start says so and ends with status 1 |
+| Interactive dashboard | Drawn by the compiled reader of the release that was in force when it opened. It holds no runtime lease, looks at the pointer once a second, and ends with status 75 when another release is in force; the copy beside the launcher, or `launch.ps1`, then opens that release's dashboard in the same console. See [the plan](plans/rust-read-side.md#component-lifecycle) | Loaded SHA in window title; retained release. A release from before the compiled dashboard draws its own in PowerShell |
+| Compiled reader (`bin/`) | An inventoried file of the release; each new `hotpl8` process uses the one in the release in force. Preflight and health start the candidate's reader and refuse a release whose reader does not answer `version`. See [the plan](plans/rust-read-side.md) | `hotpl8-native self-check` reports the commit it was built from; pointer rollback. `version`, `status`, `explain` and the dashboard have no PowerShell answer: a copy whose reader cannot start says so and ends with status 1 |
 | Windows launcher (`hotpl8.cmd`, `launch.cmd` and `hotpl8-native.exe` in the installation directory) | Enrollment installs them, and the first activation of a release that ships them migrates an installation enrolled earlier. `launch.cmd` is never rewritten. Each activation replaces the reader copy when the release's differs, moving one that is answering aside. That copy answers nothing itself: it reads the pointer under the runtime lease and starts the reader of the release in force. See [the launcher](install.md#the-launcher) | `tests/test-native.ps1` holds the launcher bytes and replaces each earlier launcher under a running session; `tests/test_delivery.py` covers enrollment, activation and rollback. A release from before the arrangement leaves every word to PowerShell, as before |
 | Managed T3 bridge | Bootstrap selects verified current release once per new provider process | Per-process SHA/start/heartbeat, read-only import probe; same pointer rollback, active sessions retained |
 | Standalone T3 bridge | Deliberately pinned setup copy | Doctor reports unmanaged; explicit reinstall |
