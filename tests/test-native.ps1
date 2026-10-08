@@ -290,29 +290,34 @@ try{
         }
         Set-Reader $real
     }
-    Check 'the live preview asks a candidate''s reader for the dashboard, and shows PowerShell''s when it has none' {
+    Check 'the live preview shows the dashboard a candidate''s reader draws, and nothing in its place' {
         # delivery/live-preview.ps1 runs from the installed release against a candidate's source.
         $demo=Join-Path $lab 'preview state';[void][IO.Directory]::CreateDirectory($demo)
         $url='https://github.com/example/hotpl8/pull/1'
         $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'delivery/live-preview.ps1'),'-SourceDirectory',$release,'-StateDirectory',$demo,'-PrUrl',$url,'-Revision',$fixtureSha)
         $asked='user|nyan|-StateDirectory|'+$demo
         Use-Fake
-        $result=Invoke-Hotpl8Process $shell $arguments 60000
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
         Assert ($result.exitCode -eq 0 -and $result.output.Contains('native-sentinel') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
         Assert (((Get-Calls) -join ';') -ceq $asked) ((Get-Calls) -join ';')
         Assert ((@([IO.Directory]::GetFiles($demo)|ForEach-Object{[IO.Path]::GetFileName($_)}|Sort-Object) -join ',') -ceq 'policy.json,status.json')
-        # A compiled dashboard that fails is shown failing; the other one does not cover for it.
+        # A dashboard that fails is shown failing.
         Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='3'}
-        $result=Invoke-Hotpl8Process $shell $arguments 60000
-        Assert ($result.exitCode -eq 3 -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
-        # This build's reader has no dashboard, and a candidate may ship no reader at all.
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 3 -and $result.errors.Contains('Candidate reader exited with 3.') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
+        # A reader from before it drew the dashboard leaves it to PowerShell, and a candidate
+        # may ship no reader at all: either has nothing to preview, and the preview says so.
+        Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='64'}
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 1 -and $result.errors.Contains('left the dashboard to PowerShell') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
         foreach($name in $names){[Environment]::SetEnvironmentVariable($name,'')}
-        foreach($candidate in $real,''){
-            Set-Reader $candidate
-            $result=Invoke-Hotpl8Process $shell $arguments 60000
-            Assert ($result.exitCode -eq 0 -and $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
-        }
+        Set-Reader ''
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 1 -and $result.errors.Contains('ships no compiled reader for this system') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
+        # This build's reader draws the fictional accounts: one plain frame where no terminal is.
         Set-Reader $real
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output.Contains('Demo Everyday') -and $result.output.Contains('Demo Work') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
     }
     Check 'a launcher that sessions are started from keeps the text it shipped with' {
         # cmd comes back to a command file by position after every line, so text that is

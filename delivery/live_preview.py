@@ -55,7 +55,7 @@ def extract_source(archive, destination):
             seen.add(key)
             if not item.is_dir():
                 files[relative] = z.read(item)  # CRC checked before any extraction.
-        for required in ("hotpl8.ps1", "src/dashboard.ps1", "tests/fixtures/screenshots.ps1"):
+        for required in ("hotpl8.ps1", "src/common.ps1", "tests/fixtures/screenshots.ps1"):
             if PurePosixPath(required) not in files:
                 raise DeliveryError("PR does not contain the dashboard preview surface")
         for relative in files:
@@ -194,9 +194,9 @@ def launch(root, number, trusted_sha, gh=None):
         for key in ("HOTPL8_INSTALL_DIRECTORY", "HOTPL8_STATE_DIRECTORY", "GH_TOKEN", "GITHUB_TOKEN",
                     "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
             env.pop(key, None)
-        # Run the stable harness with candidate dashboard modules and, when the
-        # candidate ships one, its compiled reader. Neither the candidate's
-        # installer nor its collector is part of the preview path.
+        # Run the stable harness with the candidate's fixture and its compiled
+        # reader, which draws the dashboard. Neither the candidate's installer
+        # nor its collector is part of the preview path.
         harness = Path(__file__).with_name("live-preview.ps1")
         write(target / "live.json", info)
         result = subprocess.run([powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
