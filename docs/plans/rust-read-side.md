@@ -352,6 +352,99 @@ Further arguments exist for the tests, and no launcher or script sends them: `--
 | A wake named with its installation that finds a release without a compiled collector in force collects nothing and ends with 0 | It can meet one only when an update came between the job's choice and the lease. That release's own job runner starts the next wake |
 | A newly written job of an ordinary Mac starts `<app>/bin/macos/hotpl8-native collect --root <app> --state <state> --scheduled --powershell <pwsh>` | An existing job is kept. The installer and uninstaller of this release recognize either form; those of an earlier release refuse the new one with `Collector ownership mismatch.` |
 
+## Contract: what PowerShell asks the program
+
+The commands that stay in PowerShell are the ones that change something a person owns: guided setup and sign-in, adding, renaming, parking and removing accounts, pauses, installation, update and rollback, the continue hook, and the agent interface's envelope and pause leases. They decide nothing about accounts themselves. Each rule they need is a question to the program, one start per question:
+
+```text
+hotpl8-native rule <question> --root <release>
+    the question's arguments: one JSON value on standard input
+    0   one line  {"value": <answer>}
+    1   one line  {"error": "<the words PowerShell throws>"}
+```
+
+`src/rules.ps1` is the one place PowerShell asks from. It starts the program of the release it was loaded from and nothing else.
+
+| Behavior | Label | Notes |
+|---|---|---|
+| A function another script calls keeps its name, its parameters and what it returns: `Assert-Hotpl8Policy`, `Assert-CodexPolicy`, `Get-Hotpl8Actions`, `Get-Hotpl8Pause`, `Get-Hotpl8ProviderDriver`, `Get-Hotpl8ProviderCatalog`, `Get-Hotpl8ProviderDefinition`, `Get-Hotpl8ConfiguredProviders`, `Get-Hotpl8ConfiguredProvider`, `Get-Hotpl8ProviderStateDirectory`, `Get-Hotpl8ProviderView`, `Get-Hotpl8ProviderAccounts`, `Get-Hotpl8CapacityCatalog`, `Read-Hotpl8Snapshot`, `Get-Hotpl8Health`, `Get-Hotpl8HistoryStores`, `Get-Hotpl8ParkCandidates`, `Format-Hotpl8ParkReason`, `Resolve-CswapExecutable`, `Get-CswapReadTimeoutMs`, `Resolve-CodexExecutable`, `Get-CodexReadBudgetMs`, `Read-CodexQuota`, `Get-Hotpl8Doctor`, `Write-Hotpl8Event`, `Invoke-Hotpl8Replay` | Preserve | Each is a few lines that ask. See the differences for the type of what comes back |
+| A refusal is thrown in the words it had | Preserve | The program's words for a policy it refuses were already PowerShell's: the parity suite compared them |
+| `src/config.ps1` and `src/providers/codex.ps1` keep their paths, and loading them still defines `Assert-Hotpl8Policy` and `Assert-CodexPolicy` | Preserve | Rollback, the delivery adapter, the Mac preflight and the delivery policy load those two files from another release, to check a policy by that release's rules. Each asks the program of the release it was loaded from |
+| What `hotpl8 accounts`, `add`, `park`, `unpark`, `pause`, `resume`, `continue`, `history`, `capabilities`, `doctor`, `setup`, `init` and `enroll` print and change | Preserve | |
+| The agent interface: its operations, the envelope, every error code and message, what a permission allows, pause leases, onboarding | Preserve | `src/agent-api.ps1` keeps the request checks, the envelope, the leases and onboarding. What `status`, `explain`, `accounts`, `readiness` and `doctor` report is the program's answer, or one of the codes `policy_invalid`, `snapshot_missing`, `snapshot_invalid`, `model_unknown` |
+| `hotpl8 doctor` and the agent interface's `doctor`: the same members with the same meaning | Preserve | The program reports everything but `runtime`, which is the PowerShell that printed it, and whether Claude's continue hook is present, which the script that installs the hook reads |
+| A Codex account read for a person (setup, add, park, capacity): the same four questions to the Codex program, the same result members, the same failure names, no token | Preserve | It is the read of [the wake](#contract-reading-codex-accounts), with the working directory and the identity-only form those commands use |
+| Signing an account in, and everything written: the policy, pauses, leases, parked accounts, Claude's settings | Preserve | PowerShell's, as before. The program has never written these |
+| `scripts/replay.ps1`: its parameters and what it prints | Preserve | |
+
+### Differences from the PowerShell rules
+
+| Difference | Notes |
+|---|---|
+| An answer is rebuilt from JSON | A list is an array and a record is an object with its members in the program's order, where a PowerShell function could return a hash table or an ordered dictionary. A script that tested the type of a result, and not its content, sees the difference. None of the shipped ones does |
+| One question costs one start of the program, about 0.1 s on the measuring machine | A question whose answer cannot change while a command runs (a policy check, the actions a policy allows, a provider's definition) is asked once per command and remembered. One that reads a file or the clock is asked every time |
+| A copy without a compiled program answers no question | The asker throws `This copy has no compiled reader it can start, and this command is answered by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.` |
+| The rule functions no shipped script calls are gone | Among them `Get-Hotpl8ProviderOverview`, `Get-Hotpl8ProviderDecision`, `Get-Hotpl8CapacityAccounts`, `Get-Hotpl8CriticalDecision`, `Get-ClaudeSelection`, `Select-CodexSlot`, `Get-CodexEligibility`, `ConvertTo-CodexBuckets`, `Get-Hold`, `Get-Hotpl8ControlSnapshot`, `Invoke-Hotpl8ActionAuthorization`, `Get-CodexLaunchPlan`, `Invoke-Hotpl8Codex` and `Get-Hotpl8CodexRoute`. For a script that loaded the modules and called them |
+| `Read-CodexQuota` has no `-IncludeAccessToken` and no `-RefreshToken` | Only the route below reads a token, and it does so inside the program |
+
+## Contract: choosing an account for T3
+
+The T3 bridge asks which account a Codex session is to use. That was one start of PowerShell per question. It is one start of the program:
+
+```text
+hotpl8-native route --root <release> --state <directory> [--codex <program>]
+    one request: one line of JSON on standard input, 16,384 characters at most
+    0   one line  {"slot", "home", "meter", "criticalState", "authorizationGeneration", "auth"}
+    1   one line  {"error": "routing_<reason>"}
+```
+
+| Behavior | Label | Notes |
+|---|---|---|
+| The request: `operation` is `select`, `refresh` or `exec`; `intent` is absent, `admit` or `rebind`, and `rebind` only with `select`; `previousSlot`, `accountId`, `exclude`, `criticalState`, `cwd` | Preserve | Anything else is `routing_invalid_request` |
+| Refused before anything is read when the caller's environment sets `OPENAI_API_KEY`, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN`, `CODEX_SQLITE_HOME` or `OPENAI_BASE_URL` | Preserve | `routing_environment_conflict` |
+| The accounts considered: enrolled, bound to the home they were collected from, not excluded, each with exactly one stored reading, none of them older than the policy allows | Preserve | `routing_stale`, `routing_duplicate_identity` |
+| The choice is the shared decision the collector and `status` use, for the meter the policy names, with the caller's previous account, its critical state, the pause, the hold and the mode | Preserve | `routing_monitor_only`, `routing_automation_paused`, `routing_switching_disabled`, `routing_selection_held`, `routing_binding_unknown`, `routing_unavailable` |
+| The chosen account is read from its Codex home before it is answered, and the choice is made again with that reading; an account that fails the read is set aside and the next is tried | Preserve | |
+| Time: 30 s for a request and 6.5 s for a refresh; one read has at most 12 s and what is left; a home another process holds is asked again every 75 ms for 6.5 s, for 2.5 s on a refresh and not at all for a rebind, and is then tried after the others | Preserve | `routing_account_busy`, `routing_validation_timeout` |
+| A refresh answers only for the account it names, signed in as the account the caller holds | Preserve | `routing_refresh_failed` |
+| The answer is given only if the pause, the hold, the policy and the leases are what they were when the request arrived, checked under the lock of the control files, and the account is still bound to the same sign-in | Preserve | `routing_state_changed`, `routing_binding_changed`, `routing_control_unavailable` |
+| The answer carries the account's access token and account id, except for `exec`. The token is read from the home's `auth.json` while the home's lock is held, written to standard output and nowhere else | Preserve | `routing_auth_unavailable` when either is missing |
+| A refusal is recorded in `events.jsonl` as the time and the code and nothing more. A busy account met by a rebind is not recorded | Preserve | |
+| A failure that is none of the named codes is `routing_failed` | Preserve | |
+| `src/codex-route.ps1` keeps its path and its parameters | Preserve | It starts the program and passes the request and the answer through |
+
+### Differences from the PowerShell route
+
+| Difference | Notes |
+|---|---|
+| The bridge starts the program, not PowerShell | `src/t3-codex.mjs` names `bin/<platform>/hotpl8-native` of its own release. A release without one answers `routing_broker_failed` |
+| The request and the home are read by the program's JSON reader and its Codex read | The [differences of that read](#differences-from-the-powershell-codex-collection) apply: one fixed spelling of the requests, the program's reading of `auth.json`, its bounds on the search for Codex |
+| A request that is JSON but not an object is `routing_invalid_request` | PowerShell read members of whatever it was given and usually answered the same |
+
+## Contract: `hotpl8 codex`
+
+`hotpl8.ps1` still reads the words typed, since they are PowerShell parameters followed by words for Codex. It then starts the program on the same terminal and ends with its status:
+
+```text
+hotpl8-native codex --root <release> --state <directory> [--codex <program>] [--provider <id>]
+                    [--slot <id>] [--model <name>] [--words <JSON list of the words for Codex>]
+```
+
+| Behavior | Label | Notes |
+|---|---|---|
+| Refused before anything is started: a registered driver that cannot launch, no enrolled home, a conflicting environment setting, a word that changes the model, the sign-in, the working directory or the configuration, `resume` or `fork` without `-Slot`, no current reading, a stale one, no eligible account, an unknown or disabled slot | Preserve | In the same sentences |
+| The account: the one named with `-Slot`, or the shared decision's choice for the model's meter | Preserve | |
+| The home is read before Codex is started, and the launch is refused when the read fails, when the home names another endpoint or model provider, when an automatic choice is no longer bound to the sign-in it was collected from or is no longer eligible, or when the policy, the pause or the hold changed meanwhile | Preserve | In the same sentences |
+| Codex is started on the caller's terminal in the caller's directory, with `CODEX_HOME`, `HOTPL8_SLOT`, `HOTPL8_STATE_DIRECTORY` and `HOTPL8_METER`, `--model` first when one was named, and the caller's words after | Preserve | |
+| The command ends with Codex's status | Preserve | |
+
+### Differences from the PowerShell launch
+
+| Difference | Notes |
+|---|---|
+| A launch loads no PowerShell module but the one that starts the program | It loaded all of them |
+| The read before the launch is the program's | The differences of that read apply |
+
 ## Packaging
 
 `release-files.json` carries a `platformFiles` map beside `files`. `files` and `schemaVersion` are unchanged, so existing readers of the manifest keep working.
