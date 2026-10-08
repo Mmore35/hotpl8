@@ -365,11 +365,14 @@ class Lifecycle(unittest.TestCase):
         # credentials or invokes a real provider during qualification. The job starts the
         # release's compiled program, so the fixture's program hands the wake to the real
         # one, which holds the installation and starts the release's collector: the fixture.
+        # An update's preflight asks the release's program to check the policy, with the
+        # question on standard input, so a rule goes to the real one before Python is given
+        # standard input for its script.
         with zipfile.ZipFile(self.source) as source:
             files = {name: source.read(name) for name in source.namelist()}
         self.config['macos']['runtimes'] = dict(codex=sys.executable, cswap=sys.executable)
         d.write(self.root / 'delivery.json', self.config)
-        files['bin/macos/hotpl8-native'] = ("#!/bin/sh\nexec " + shlex.quote(sys.executable) + ''' - "$@" <<'PY'
+        files['bin/macos/hotpl8-native'] = ("#!/bin/sh\n[ \"$1\" = rule ] && exec " + shlex.quote(str(self.native)) + " \"$@\"\nexec " + shlex.quote(sys.executable) + ''' - "$@" <<'PY'
 import datetime, json, os, sys
 said = sys.argv[1:]
 if said[:1] == ['version']:
