@@ -3,8 +3,11 @@
 After a turn dies on a usage limit, does the installed Codex app-server accept a
 new "Automated message: continue." turn on the same thread? Three cases: a
 different account is signed in first, the same account's limit has reset, and
-the limit lands in the middle of the work. Never uses a real credential home or
-model service; the dynamic tool call is answered here and performs no work.
+the limit lands in the middle of the work. A fourth case asks the same of a
+sub-agent that died on the limit while its conversation was between turns: what
+native says about the sub-agent's thread, and whether it takes the continue
+there or only on the conversation. Never uses a real credential home or model
+service; the dynamic tool call is answered here and performs no work.
 """
 import argparse
 import base64
@@ -28,10 +31,11 @@ def token(account):
     }), 'fixture'])
 
 
-def run(executable, scratch, same_account, tool_first):
+def run(executable, scratch, same_account, tool_first, agent=False):
     requests = []
     tokens = {name: token('fixture-' + name) for name in ['a', 'b']}
     limited = {'a'}
+    idle = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
@@ -49,14 +53,25 @@ def run(executable, scratch, same_account, tool_first):
             payload = json.loads(body)
             text = json.dumps(payload.get('input', []))
             n = len(requests) + 1
+            # With `agent` the limit is the sub-agent's alone: the conversation spawns it and
+            # ends its turn, and the sub-agent's first request waits for that before it is refused.
+            # The sub-agent is spawned with none of the conversation's history.
+            child = agent and 'fixture start' not in text
+            spawn = agent and not requests
             # With --tool-first the limited account serves one tool-call step before
             # the limit lands, so the turn dies mid-work rather than at its start.
             serve_tool = tool_first and account in limited and not any(r['account'] == account for r in requests)
-            refused = account in limited and not serve_tool
-            requests.append({'n': n, 'account': account, 'path': self.path, 'refused': refused,
+            # The conversation's continue takes a step first too: native hands a conversation
+            # its sub-agent's failure between two requests of a turn, not at the turn's start.
+            serve_tool = serve_tool or (agent and not child and account == 'b' and not any(r['account'] == 'b' and not r['agent'] for r in requests))
+            refused = account in limited and not serve_tool and (child or not agent)
+            requests.append({'n': n, 'account': account, 'path': self.path, 'refused': refused, 'agent': child,
                              'inputTypes': [i.get('type') for i in payload.get('input', [])],
                              'hasOriginal': 'fixture start' in text, 'hasContinue': 'Automated message: continue.' in text,
-                             'hasToolOutput': 'fixture result' in text})
+                             'hasToolOutput': 'fixture result' in text,
+                             'fromAgent': any(i.get('type') == 'agent_message' for i in payload.get('input', []))})
+            if child:
+                idle.wait(20)
             if refused:
                 data = json.dumps({'error': {'type': 'usage_limit_reached', 'message': 'The usage limit has been reached',
                                              'plan_type': 'plus', 'resets_at': int(time.time()) + 3600,
@@ -78,6 +93,9 @@ def run(executable, scratch, same_account, tool_first):
                 self.wfile.flush()
             if serve_tool:
                 item = {'type': 'function_call', 'id': 'fc-fixture', 'call_id': 'call-fixture', 'name': 'fixture_step', 'arguments': '{}'}
+            elif spawn:
+                item = {'type': 'function_call', 'id': 'fc-fixture', 'call_id': 'call-fixture', 'namespace': 'collaboration', 'name': 'spawn_agent',
+                        'arguments': json.dumps({'message': 'fixture task', 'task_name': 'fixture_agent', 'fork_turns': 'none'})}
             else:
                 item = {'type': 'message', 'id': f'msg-{n}', 'role': 'assistant', 'status': 'completed',
                         'content': [{'type': 'output_text', 'text': 'fixture done', 'annotations': []}]}
@@ -96,7 +114,7 @@ def run(executable, scratch, same_account, tool_first):
     responses = queue.Queue()
     lock = threading.Lock()
     proc = None
-    summary = {'version': subprocess.check_output([executable, '--version'], text=True).strip(), 'sameAccount': same_account, 'toolFirst': tool_first}
+    summary = {'version': subprocess.check_output([executable, '--version'], text=True).strip(), 'sameAccount': same_account, 'toolFirst': tool_first, 'agent': agent}
     try:
         with tempfile.TemporaryDirectory(prefix='continue-', dir=scratch, ignore_cleanup_errors=True) as td:
             home = Path(td)
@@ -107,6 +125,7 @@ cli_auth_credentials_store = "ephemeral"
 openai_base_url = "http://127.0.0.1:{server.server_port}/v1"
 [features]
 enable_request_compression = false
+multi_agent_v2 = {str(agent).lower()}
 ''', encoding='utf-8')
             env = dict(os.environ)
             for key in ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME', 'OPENAI_BASE_URL', 'CODEX_HOME']:
@@ -151,14 +170,14 @@ enable_request_compression = false
                 return rpc('account/login/start', {'type': 'chatgptAuthTokens', 'accessToken': tokens[account],
                                                    'chatgptAccountId': 'fixture-' + account, 'chatgptPlanType': 'plus'})
 
-            def completions():
-                return [e for e in events if e.get('method') == 'turn/completed']
+            def completions(other=False):
+                return [e for e in events if e.get('method') == 'turn/completed' and (e['params']['threadId'] != tid) == other]
 
-            def wait_completions(count, seconds=25):
+            def wait_completions(count, seconds=25, other=False):
                 deadline = time.monotonic() + seconds
-                while time.monotonic() < deadline and len(completions()) < count:
+                while time.monotonic() < deadline and len(completions(other)) < count:
                     time.sleep(.05)
-                return len(completions()) >= count
+                return len(completions(other)) >= count
 
             rpc('initialize', {'clientInfo': {'name': 'hotpl8-continue-probe', 'version': '1'}, 'capabilities': {'experimentalApi': True}})
             write({'method': 'initialized'})
@@ -168,14 +187,33 @@ enable_request_compression = false
                                   'inputSchema': {'type': 'object', 'properties': {}, 'additionalProperties': False}}]})['thread']['id']
             first = rpc('turn/start', {'threadId': tid, 'input': [{'type': 'text', 'text': 'fixture start', 'text_elements': []}]})
             summary['firstCompleted'] = wait_completions(1)
-            failed = completions()[0]['params'] if completions() else None
+            idle.set()
+            if agent:
+                summary['agentCompleted'] = wait_completions(1, other=True)
+            failed = completions(agent)[0]['params'] if completions(agent) else None
             summary['firstTurn'] = failed['turn'] if failed else None
             summary['eventsAfterFirst'] = [e.get('method') for e in events]
             marker = len(events)
+            if agent and failed:
+                # Native has not announced this thread; the failure is the first that names it.
+                sub = failed['threadId']
+                summary['announced'] = any(e.get('method') == 'thread/started' and e['params']['thread']['id'] == sub for e in events)
+                read = rpc('thread/read', {'threadId': sub})['thread']
+                summary['read'] = {k: read.get(k) for k in ['parentThreadId', 'canAcceptDirectInput']}
+                summary['ownedByConversation'] = read.get('parentThreadId') == tid
+                time.sleep(2)
+                summary['conversationWoken'] = any(e.get('method') == 'turn/started' for e in events[marker:])
             if not same_account:
                 summary['loginB'] = login('b')
             else:
                 limited.clear()  # the same account's limit reset
+            if agent and failed:
+                try:
+                    rpc('turn/start', {'threadId': sub, 'input': [{'type': 'text', 'text': 'Automated message: continue.', 'text_elements': []}]})
+                    summary['direct'] = 'accepted'
+                    wait_completions(2, other=True)
+                except RuntimeError as exc:
+                    summary['direct'] = str(exc)
             second = rpc('turn/start', {'threadId': tid, 'input': [{'type': 'text', 'text': 'Automated message: continue.', 'text_elements': []}]})
             summary['secondAccepted'] = second
             summary['secondCompleted'] = wait_completions(2)
@@ -191,6 +229,13 @@ enable_request_compression = false
                 and done and done.get('status') == 'completed' and summary['newTurnId']
                 and last.get('account') == ('a' if same_account else 'b')
                 and not last.get('refused') and last.get('hasContinue'))
+            if agent:
+                # What the bridge relies on: native names the conversation, what it says about a
+                # turn started on the sub-agent is what happens to one, and the conversation's
+                # continue is where it hears that its sub-agent failed.
+                summary['passed'] = bool(summary['passed'] and summary.get('ownedByConversation')
+                                         and (summary['read']['canAcceptDirectInput'] is False) == (summary.get('direct') != 'accepted')
+                                         and last.get('fromAgent'))
             proc.stdin.close()
             try:
                 proc.wait(timeout=5)
@@ -214,8 +259,9 @@ if __name__ == '__main__':
     parser.add_argument('--scratch', required=True, type=Path, help='Existing disposable fixture parent')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
-    cases = {'different-account': (False, False), 'same-account-reset': (True, False), 'limit-mid-work': (False, True)}
-    result = {name: run(args.codex, args.scratch.resolve(), same, tool) for name, (same, tool) in cases.items()}
+    cases = {'different-account': (False, False), 'same-account-reset': (True, False), 'limit-mid-work': (False, True),
+             'sub-agent': (False, False, True)}
+    result = {name: run(args.codex, args.scratch.resolve(), *case) for name, case in cases.items()}
     result['passed'] = all(case.get('passed') for case in result.values())
     text = json.dumps(result, indent=2) + '\n'
     print(text, end='')

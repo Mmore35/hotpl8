@@ -9,6 +9,9 @@ const LIMIT = 16 * 1024 * 1024; // Images and tool responses can exceed the MCP 
 const error = code => Object.assign(new Error(code), { code });
 const idKey = id => JSON.stringify(id);
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+// Native names the thread that runs a sub-agent, and says when it refuses a turn started on
+// the sub-agent itself. A native that does not say is taken to accept the turn.
+const lineage = thread => ({ parent: thread.parentThreadId || null, direct: thread.canAcceptDirectInput !== false });
 const blockedEnv = ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME', 'OPENAI_BASE_URL'];
 
 function killTree(proc) {
@@ -130,12 +133,13 @@ export function createBroker(config) {
 
 // The waiter is continue.ps1, the same script Claude runs as its hook, so both providers
 // share one readiness rule. It sleeps until HotPl8 has an account ready (exit 2) or stands
-// down (anything else), and ends by itself if this bridge goes away.
+// down (anything else), and ends by itself if this bridge goes away. `after` is the time
+// of the failure; `held` asks again for a continue that could not be sent when it was due.
 export function createWaiter(config) {
-  return (threadId, slot) => {
+  return (threadId, slot, after, held) => {
     const proc = spawn(config.powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, '..', 'continue.ps1'),
       '-Provider', 'codex', '-StateDirectory', config.stateDirectory, '-Conversation', threadId, '-Slot', slot,
-      '-After', new Date().toISOString(), '-WatchPid', String(process.pid)], { windowsHide: true, stdio: 'ignore' });
+      '-After', after, '-WatchPid', String(process.pid), ...(held ? ['-Held'] : [])], { windowsHide: true, stdio: 'ignore' });
     return { done: new Promise(done => { proc.on('error', () => done(0)); proc.on('exit', code => done(code)); }), kill: () => killTree(proc) };
   };
 }
@@ -330,12 +334,12 @@ export class CodexBridge {
       this.reservations.delete(idKey(message.id));
       if (pending?.method === 'turn/start' && !message.error && this.threads.has(pending.threadId)) this.threads.get(pending.threadId).model = pending.model;
       if (pending && pending.method.startsWith('thread/') && !message.error && message.result?.thread?.id) {
-        this.threads.set(message.result.thread.id, { model: message.result.model || message.result.thread.model || pending.model, cwd: pending.cwd });
+        this.threads.set(message.result.thread.id, { model: message.result.model || message.result.thread.model || pending.model, cwd: pending.cwd, ...lineage(message.result.thread) });
       }
     }
     if (message.method === 'thread/started' && message.params?.thread?.id) {
       const thread = message.params.thread;
-      this.threads.set(thread.id, { model: thread.model, cwd: thread.cwd || this.cwd });
+      this.threads.set(thread.id, { model: thread.model, cwd: thread.cwd || this.cwd, ...lineage(thread) });
     }
     if (message.method === 'turn/started' && message.params?.threadId) this.active.set(message.params.threadId, message.params.turn?.id || null);
     if (message.method === 'turn/completed' && message.params?.threadId &&
@@ -348,6 +352,7 @@ export class CodexBridge {
       if (message.params.status?.type === 'active' && !this.active.has(message.params.threadId)) this.active.set(message.params.threadId, null);
       if (message.params.status?.type === 'idle' && !this.active.get(message.params.threadId)) this.active.delete(message.params.threadId);
     }
+    this.drained();
     // Treat notifications only as wakeups: their quota may belong to an old
     // in-flight request. The broker verifies native account identity and quota.
     if (message.method === 'account/rateLimits/updated') this.quotaChanged();
@@ -368,31 +373,83 @@ export class CodexBridge {
   }
   // A turn that died on a usage limit is continued once, when the waiter says an account
   // is ready. The continue is a new turn: the failed turn's input is never sent again.
-  wait(threadId) {
-    if (!this.waiter || this.closed || !this.threads.has(threadId) || !this.route?.slot) return;
+  // The waiter stays registered until the continue is sent or given up, so the owner
+  // writing first cancels it at any point.
+  wait(threadId, slot = this.route?.slot, after = new Date().toISOString()) {
+    if (!this.waiter || this.closed || !slot) return;
+    // A sub-agent that takes no turn of its own is continued through the thread that runs
+    // it, which gives it its next task as it would after any other stop.
+    let target = threadId;
+    for (const seen = new Set(); ;) {
+      const thread = this.threads.get(target);
+      if (!thread) {
+        this.learn(target).then(() => this.wait(threadId, slot, after), () => { if (!this.closed) this.onRoutingError('routing_continue_failed'); });
+        return;
+      }
+      if (thread.direct) break;
+      if (!thread.parent || seen.has(thread.parent)) return;
+      seen.add(target); target = thread.parent;
+    }
+    // In a turn, that thread is told by native and meets the limit itself. A waiter now
+    // would use up its ten minutes for a continue that is never sent into running work.
+    if (target !== threadId && (this.waiters.has(target) || this.active.has(target))) return;
+    // A continue the waiter has said yes to stands while it is admitted, held or asked
+    // for again. A new waiter would stand down on the ten-minute rule and take it along.
+    if (this.waiters.get(target)?.due) return;
+    this.watch(target, slot, after, false);
+  }
+  // Native does not announce a sub-agent's thread to the client that opened its
+  // conversation, so the first the bridge hears of one may be its failure.
+  async learn(threadId) {
+    const thread = (await this.rpc('thread/read', { threadId }))?.thread;
+    if (thread?.id !== threadId) throw error('routing_thread_unknown');
+    if (!this.threads.has(threadId)) this.threads.set(threadId, { model: thread.model, cwd: thread.cwd || this.cwd, ...lineage(thread) });
+  }
+  // `slot` and `after` are the account and the time of the failure. `again` starts the
+  // waiter for a continue that was held. `due` is set once the waiter has said yes.
+  watch(threadId, slot, after, again) {
     this.stopWaiting(threadId);
-    const waiter = this.waiter(threadId, this.route.slot);
+    const waiter = { ...this.waiter(threadId, slot, after, again), slot, after, due: again, held: false };
     this.waiters.set(threadId, waiter);
     waiter.done.then(code => {
       if (this.waiters.get(threadId) !== waiter) return;
       if (code !== 2) { this.waiters.delete(threadId); return; }
+      waiter.due = true;
       // Any failure drops this continue; the owner's next message works as it always has.
-      this.serial = this.serial.then(() => this.resume(threadId, waiter))
-        .catch(() => { if (!this.closed) this.onRoutingError('routing_continue_failed'); });
+      this.serial = this.serial.then(() => this.resume(threadId, waiter)).catch(() => {
+        if (this.waiters.get(threadId) === waiter) this.waiters.delete(threadId);
+        if (!this.closed) this.onRoutingError('routing_continue_failed');
+      });
     });
   }
   stopWaiting(threadId) {
     this.waiters.get(threadId)?.kill();
     this.waiters.delete(threadId);
   }
+  // The work that kept a held continue from changing the account has ended. How long
+  // that took is unbounded, so the bridge does not send on the old decision: the waiter
+  // decides again, and the setting, a pause and the six hours apply as to any continue.
+  drained() {
+    if (this.active.size || this.reservations.size) return;
+    for (const [threadId, waiter] of [...this.waiters]) if (waiter.held) this.watch(threadId, waiter.slot, waiter.after, true);
+  }
   async resume(threadId, waiter) {
     const thread = this.threads.get(threadId);
     // Still registered means the owner has not written since the waiter finished.
     if (this.waiters.get(threadId) !== waiter) return;
-    this.waiters.delete(threadId);
-    if (this.closed || !thread || this.active.has(threadId)) return;
+    if (this.closed || !thread || this.active.has(threadId)) { this.waiters.delete(threadId); return; }
     await this.checkConfig(thread.cwd);
-    await this.select(thread.cwd);
+    try { await this.select(thread.cwd); }
+    catch (err) {
+      if (err.code !== 'routing_account_change_deferred') throw err;
+      // Sub-agents of this conversation still run on the account that must be left.
+      // Changing it now could end them, so the continue is held until they finish.
+      waiter.held = true;
+      return;
+    }
+    // The owner wrote while the account was validated: their message is the continuation.
+    if (this.waiters.get(threadId) !== waiter) return;
+    this.waiters.delete(threadId);
     const reservation = `continue:${threadId}`;
     this.reservations.set(reservation, threadId);
     try { await this.rpc('turn/start', { threadId, input: [{ type: 'text', text: 'Automated message: continue.', text_elements: [] }] }); }

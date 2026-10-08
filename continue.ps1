@@ -4,8 +4,10 @@
 # Exit 2 = continue now ("Automated message: continue." on stderr). Exit 0 = stand down.
 # Claude runs this as its StopFailure hook (hook JSON on stdin); the Codex bridge runs it
 # with -Conversation. Both wait on the one readiness rule below, read from status.json.
+# -Held: the continue for this failure was decided before and could not be delivered then,
+# so the host asks again. -After is the time of the failure in both cases.
 # Every error path stands down: a missed continue is harmless, a wrong one is not.
-param([string]$Provider = 'claude', [string]$StateDirectory, [string]$Conversation, [string]$Slot, [string]$After, [string[]]$WatchPid, [int]$PollSeconds = 5)
+param([string]$Provider = 'claude', [string]$StateDirectory, [string]$Conversation, [string]$Slot, [string]$After, [string[]]$WatchPid, [int]$PollSeconds = 5, [switch]$Held)
 $ErrorActionPreference = 'Stop'
 # A terminal session has its owner in front of it; only hosted conversations are continued.
 if (-not $Conversation -and $env:CLAUDE_CODE_ENTRYPOINT -eq 'cli') { exit 0 }
@@ -57,15 +59,16 @@ try {
     $watched = @($WatchPid | Where-Object { $_ } | ForEach-Object { [int]$_ })
     if (-not (Test-Hotpl8Continuing)) { Complete-Hotpl8Continue $false }
     # One automatic continue per conversation every ten minutes: a continue that
-    # fails again must not become a loop.
+    # fails again must not become a loop. A held continue was never delivered, so
+    # the record of its own earlier decision does not count against it.
     $markers = Join-Path $StateDirectory 'continue'
     $marker = Join-Path $markers $Conversation
     [void][IO.Directory]::CreateDirectory($markers)
     foreach ($old in @(Get-ChildItem -LiteralPath $markers -File | Where-Object { $_.Name -cmatch '^[A-Za-z0-9-]+$' })) {
-        if ($old.Name -ceq $Conversation -and $old.LastWriteTimeUtc -gt [datetime]::UtcNow.AddMinutes(-10)) { Complete-Hotpl8Continue $false }
+        if (-not $Held -and $old.Name -ceq $Conversation -and $old.LastWriteTimeUtc -gt [datetime]::UtcNow.AddMinutes(-10)) { Complete-Hotpl8Continue $false }
         if ($old.LastWriteTimeUtc -lt [datetime]::UtcNow.AddDays(-1)) { Remove-Item -LiteralPath $old.FullName -Force }
     }
-    $deadline = [datetime]::UtcNow.AddHours(6); $written = $null; $state = $null
+    $deadline = $limited.UtcDateTime.AddHours(6); $written = $null; $state = $null
     while ($true) {
         # Nobody left to continue for: the host is gone, the conversation moved on, or it has been too long.
         foreach ($id in $watched) { if (-not (Get-Process -Id $id -ErrorAction SilentlyContinue)) { Complete-Hotpl8Continue $false } }
