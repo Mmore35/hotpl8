@@ -19,9 +19,10 @@ usable account is in place. Nothing is said about accounts.
 | The selected account is the one in use, and it is either a different account from the one that failed or has been read since the failure | Send `Automated message: continue.` once |
 | Automatic continue off, monitor mode, or the conversation's host process is gone | Stand down silently |
 | The user sends something first | Stand down; never a second message |
+| A Codex conversation's continue needs a different account while its sub-agents are still running | Hold the continue; send it once when they have finished |
 | HotPl8 automation is paused | Keep waiting; continue when the pause ends and the rule holds |
 | Same conversation hits a limit again within 10 minutes of an automatic continue | Stand down for that conversation (no loop) |
-| Waiter has waited 6 hours | Stand down |
+| 6 hours have passed since the failure | Stand down, whether still waiting or held |
 | Interactive terminal Claude (`CLAUDE_CODE_ENTRYPOINT` is `cli`) | Stand down; Claude's own resume owns that case |
 | Anything unreadable or unexpected | Stand down; the user's next message works exactly as before |
 
@@ -47,6 +48,16 @@ Only delivery differs, because the two clients offer different ways in:
   bridge starts the same waiter for that thread. On exit 2 it selects an account
   through the ordinary admission path and starts one new turn with the message.
   A user turn in the meantime stops the waiter.
+
+  A conversation and its sub-agents run in one Codex process with one login, and
+  signing that process in to another account can end work that is still running.
+  So when the continue needs a different account while sub-agents run, the bridge
+  holds it instead of changing the account. It tries again when the process has
+  no running turn and no admission in progress, and sends the continue then. The
+  retry is an ordinary admission, so the account is chosen afresh at that moment.
+  Nothing polls: the retry is started by the message that reports the last turn
+  ending. A user turn, the bridge closing or six hours since the failure ends a
+  held continue without a message.
 
 For example, a conversation on account 1 fails at its five-hour limit. The next
 collector pass selects account 2 and switches the Claude login to it. The waiter
@@ -90,8 +101,12 @@ A source checkout that is not an installation gets its entry only from
   account stays exhausted for hours is not covered there.
 - The wait is one collector pass in the worst case: about a minute for Claude,
   up to five for Codex.
-- If a Codex conversation's sub-agents are still running when the waiter
-  finishes, that continue is dropped rather than retried.
+- A Codex conversation whose continue needs a different account stays stopped
+  for as long as its sub-agents run, however long that is.
+- `continue_sent` records the waiter's decision, not delivery. A Codex continue
+  that the bridge then holds or cannot start leaves no further event; one it
+  cannot start is reported as `routing_continue_failed` on the bridge's error
+  output only.
 - Interactive terminal Claude and plain `hotpl8 codex` sessions are not covered.
 - A Claude conversation that was already open when the hook was first added
   picks it up the next time it starts.
@@ -123,7 +138,8 @@ On 2026-10-04, on Windows:
   call and its output; the tool is not run again.
 
 `tests/test-continue.ps1` covers the waiter's rule offline with fictional
-accounts, and `tests/test-t3-codex.mjs` covers the bridge's side.
+accounts, and `tests/test-t3-codex.mjs` covers the bridge's side, including a
+continue held while two sub-agents finish one after the other.
 
 ## Not yet observed
 
@@ -134,6 +150,11 @@ the failure mode is that no continue is sent.
 - How a real model reacts to the message. Claude Code presents hook text to the
   model as hook feedback, not as user input.
 - A live T3 Code installation showing a Codex turn it did not start.
+- A real Codex conversation whose sub-agents outlive its limit failure. The held
+  continue is covered offline only. Whether a sub-agent that itself died on the
+  limit is continued is also open: the bridge starts a waiter for every
+  conversation Codex has announced to it, and whether that includes sub-agents
+  has not been established.
 - macOS: a running Claude picking up a switched keychain login, and the managed
   hook under PowerShell 7. The probe above used a file-based login.
 - Hosts other than T3 built on the Claude Agent SDK. The rule excludes only the

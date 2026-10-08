@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const LIMIT = 16 * 1024 * 1024; // Images and tool responses can exceed the MCP limit.
+const CONTINUE_WINDOW = 6 * 60 * 60 * 1000; // continue.ps1 stands down six hours after a limit; a held continue ends with it.
 const error = code => Object.assign(new Error(code), { code });
 const idKey = id => JSON.stringify(id);
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -343,6 +344,7 @@ export class CodexBridge {
       if (message.params.status?.type === 'active' && !this.active.has(message.params.threadId)) this.active.set(message.params.threadId, null);
       if (message.params.status?.type === 'idle' && !this.active.get(message.params.threadId)) this.active.delete(message.params.threadId);
     }
+    this.drained();
     // Treat notifications only as wakeups: their quota may belong to an old
     // in-flight request. The broker verifies native account identity and quota.
     if (message.method === 'account/rateLimits/updated') this.quotaChanged();
@@ -363,31 +365,56 @@ export class CodexBridge {
   }
   // A turn that died on a usage limit is continued once, when the waiter says an account
   // is ready. The continue is a new turn: the failed turn's input is never sent again.
+  // The waiter stays registered until the continue is sent or given up, so the owner
+  // writing first cancels it at any point.
   wait(threadId) {
     if (!this.waiter || this.closed || !this.threads.has(threadId) || !this.route?.slot) return;
+    // A held continue stands. A second waiter would stand down on the ten-minute
+    // rule and take the held one with it.
+    if (this.waiters.get(threadId)?.held) return;
     this.stopWaiting(threadId);
-    const waiter = this.waiter(threadId, this.route.slot);
+    const waiter = { ...this.waiter(threadId, this.route.slot), expires: Date.now() + CONTINUE_WINDOW, held: false };
     this.waiters.set(threadId, waiter);
     waiter.done.then(code => {
       if (this.waiters.get(threadId) !== waiter) return;
       if (code !== 2) { this.waiters.delete(threadId); return; }
-      // Any failure drops this continue; the owner's next message works as it always has.
-      this.serial = this.serial.then(() => this.resume(threadId, waiter))
-        .catch(() => { if (!this.closed) this.onRoutingError('routing_continue_failed'); });
+      this.attempt(threadId, waiter);
+    });
+  }
+  attempt(threadId, waiter) {
+    waiter.held = false;
+    // Any other failure drops this continue; the owner's next message works as it always has.
+    this.serial = this.serial.then(() => this.resume(threadId, waiter)).catch(() => {
+      if (this.waiters.get(threadId) === waiter) this.waiters.delete(threadId);
+      if (!this.closed) this.onRoutingError('routing_continue_failed');
     });
   }
   stopWaiting(threadId) {
     this.waiters.get(threadId)?.kill();
     this.waiters.delete(threadId);
   }
+  // The work that kept a held continue from changing the account has ended.
+  drained() {
+    if (this.active.size || this.reservations.size) return;
+    for (const [threadId, waiter] of this.waiters) if (waiter.held) this.attempt(threadId, waiter);
+  }
   async resume(threadId, waiter) {
     const thread = this.threads.get(threadId);
     // Still registered means the owner has not written since the waiter finished.
     if (this.waiters.get(threadId) !== waiter) return;
-    this.waiters.delete(threadId);
-    if (this.closed || !thread || this.active.has(threadId)) return;
+    if (this.closed || !thread || this.active.has(threadId) || Date.now() > waiter.expires) { this.waiters.delete(threadId); return; }
     await this.checkConfig(thread.cwd);
-    await this.select(thread.cwd);
+    try { await this.select(thread.cwd); }
+    catch (err) {
+      if (err.code !== 'routing_account_change_deferred') throw err;
+      // Sub-agents of this conversation still run on the account that must be left.
+      // Changing it now could end them, so the continue is held until they finish.
+      waiter.held = true;
+      return;
+    }
+    // The owner wrote while the account was validated: their message is the continuation.
+    if (this.waiters.get(threadId) !== waiter) return;
+    this.waiters.delete(threadId);
     const reservation = `continue:${threadId}`;
     this.reservations.set(reservation, threadId);
     try { await this.rpc('turn/start', { threadId, input: [{ type: 'text', text: 'Automated message: continue.', text_elements: [] }] }); }

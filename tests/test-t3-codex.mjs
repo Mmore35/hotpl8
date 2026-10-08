@@ -561,7 +561,7 @@ test('a continue that cannot be admitted is dropped with one fixed diagnostic', 
   const before = h.client.length;
   h.reject(); await finished(h, calls[0], 2);
   assert.deepEqual(errors, ['routing_continue_failed']);
-  assert.equal(turns(h).length, 1); assert.equal(h.bridge.reservations.size, 0);
+  assert.equal(turns(h).length, 1); assert.equal(h.bridge.reservations.size, 0); assert.equal(h.bridge.waiters.size, 0);
   assert.equal(h.client.length, before); assert.equal(calls.length, 1); h.bridge.close();
 });
 
@@ -572,4 +572,117 @@ test('closing the bridge ends every waiter', async () => {
   assert.equal(calls[0].killed, true);
   await finished(h, calls[0], 2);
   assert.equal(turns(h).length, 1);
+});
+
+// Sub-agents share the conversation's process and account, so they can outlive its limit failure.
+function child(h, threadId = 'child', id = 'c1') {
+  h.bridge.native({ method: 'thread/started', params: { thread: { id: threadId, model: 'fixture-model', cwd: 'fixture' } } });
+  started(h, threadId, id);
+}
+const ended = (threadId = 'child', id = 'c1') => ({ method: 'turn/completed', params: { threadId, turn: { id, status: 'completed' } } });
+const continues = h => turns(h).filter(m => String(m.id).startsWith('hotpl8-internal-'));
+const logins = h => h.native.filter(m => m.method === 'account/login/start').length;
+// The waiter says continue while one sub-agent still runs on the account that must be left.
+async function held(h) {
+  const calls = await limitedTurn(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  child(h); h.select('b');
+  await finished(h, calls[0], 2);
+  assert.equal(h.bridge.waiters.get('t').held, true);
+  assert.equal(continues(h).length, 0); assert.deepEqual(errors, []);
+  return { calls, errors };
+}
+
+test('a continue that needs another account waits for running sub-agents, then is sent once', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  // Both sub-agents die on the same limit after the conversation did.
+  child(h); child(h, 'child2', 'c2');
+  const before = logins(h);
+  h.select('b'); await finished(h, calls[0], 2);
+  assert.equal(continues(h).length, 0); assert.equal(h.bridge.route.slot, 'a');
+  assert.deepEqual(errors, []); assert.equal(calls[0].killed, false);
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 'child', turn: { id: 'c1', status: 'failed', error: { codexErrorInfo: 'usageLimitExceeded' } } } });
+  await h.bridge.serial;
+  assert.equal(continues(h).length, 0); assert.equal(h.bridge.route.slot, 'a'); assert.equal(logins(h), before);
+  h.bridge.native({ method: 'turn/completed', params: { threadId: 'child2', turn: { id: 'c2', status: 'failed', error: { codexErrorInfo: 'usageLimitExceeded' } } } });
+  await h.bridge.serial;
+  assert.deepEqual(continues(h).map(m => m.params), [{ threadId: 't', input: [{ type: 'text', text: 'Automated message: continue.', text_elements: [] }] }]);
+  assert.equal(h.bridge.route.slot, 'b'); assert.equal(logins(h), before + 1);
+  assert.equal(h.bridge.waiters.has('t'), false); assert.equal(h.bridge.reservations.size, 0);
+  assert.deepEqual(errors, []);
+  // Later traffic finds nothing held: the continue is not sent a second time.
+  h.bridge.native({ method: 'thread/status/changed', params: { threadId: 'child', status: { type: 'idle' } } });
+  await h.bridge.serial;
+  assert.equal(continues(h).length, 1); h.bridge.close();
+});
+
+test('a continue on the account already in use is sent while sub-agents run', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  child(h); await finished(h, calls[0], 2);
+  assert.equal(continues(h).length, 1); assert.equal(h.bridge.route.slot, 'a');
+  assert.equal(h.bridge.waiters.size, 0); h.bridge.close();
+});
+
+test('the owner writing while a continue is held cancels it', async () => {
+  const h = harness(); await opened(h);
+  const { calls, errors } = await held(h);
+  await h.bridge.client({ id: 4, method: 'turn/start', params: { threadId: 't', input: [{ type: 'text', text: 'mine' }] } });
+  assert.equal(calls[0].killed, true); assert.equal(h.bridge.waiters.size, 0);
+  h.bridge.native(ended()); await h.bridge.serial;
+  assert.equal(continues(h).length, 0); assert.deepEqual(errors, []); h.bridge.close();
+});
+
+test('closing the bridge ends a held continue', async () => {
+  const h = harness(); await opened(h);
+  const { errors } = await held(h);
+  h.bridge.close();
+  h.bridge.native(ended()); await h.bridge.serial;
+  assert.equal(continues(h).length, 0); assert.equal(h.bridge.waiters.size, 0); assert.deepEqual(errors, []);
+});
+
+test('a held continue ends silently six hours after the limit', async () => {
+  const h = harness(); await opened(h);
+  const { errors } = await held(h);
+  const waiter = h.bridge.waiters.get('t'), left = waiter.expires - Date.now();
+  assert.ok(left > 5.9 * 3600000 && left <= 6 * 3600000);
+  waiter.expires = Date.now() - 1;
+  h.bridge.native(ended()); await h.bridge.serial;
+  assert.equal(continues(h).length, 0); assert.equal(h.bridge.waiters.size, 0);
+  assert.equal(h.bridge.route.slot, 'a'); assert.deepEqual(errors, []); h.bridge.close();
+});
+
+test('a repeated limit failure does not replace a held continue', async () => {
+  const h = harness(); await opened(h);
+  const { calls } = await held(h);
+  h.bridge.native(limited(h));
+  assert.equal(calls.length, 1); assert.equal(calls[0].killed, false);
+  assert.equal(h.bridge.waiters.get('t').held, true);
+  h.bridge.native(ended()); await h.bridge.serial;
+  assert.equal(continues(h).length, 1); assert.equal(h.bridge.waiters.size, 0); h.bridge.close();
+});
+
+test('a held continue that still cannot be admitted is dropped with one fixed diagnostic', async () => {
+  const h = harness(); await opened(h);
+  const { errors } = await held(h);
+  h.reject(); h.bridge.native(ended()); await h.bridge.serial;
+  assert.deepEqual(errors, ['routing_continue_failed']);
+  assert.equal(continues(h).length, 0); assert.equal(h.bridge.waiters.size, 0);
+  assert.equal(h.bridge.reservations.size, 0); h.bridge.close();
+});
+
+test('the owner writing while a continue is admitted sends only their message', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  const broker = h.bridge.broker; let owner;
+  h.bridge.broker = async request => {
+    owner ??= h.bridge.client({ id: 4, method: 'turn/start', params: { threadId: 't', input: [{ type: 'text', text: 'mine' }] } });
+    return broker(request);
+  };
+  await finished(h, calls[0], 2); await owner;
+  assert.deepEqual(turns(h).map(m => m.id), [3, 4]);
+  assert.equal(h.bridge.waiters.size, 0); assert.deepEqual(errors, []); h.bridge.close();
 });
