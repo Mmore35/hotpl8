@@ -1,4 +1,5 @@
-//! src/provider-decision.ps1: no native calls, state writes or provider-name policy branches.
+//! The decision every provider shares: no native calls, state writes or provider-name
+//! policy branches.
 
 use crate::contract::{provider_account, provider_margin, setting};
 use crate::critical::critical_decision;

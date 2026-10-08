@@ -4,7 +4,6 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/native.ps1')
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
-. (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-t3-'+[guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($dir)
@@ -27,7 +26,10 @@ try{
         $read=Read-CodexQuota $accountHome $exe 5000 $dir
         Assert ($read.status -eq 'ok' -and -not $read.PSObject.Properties['auth']) 'ordinary collection must not export access tokens'
         $bindings[$id]=@{binding=(Get-Hotpl8Hash $accountHome);identityKey=$read.identityKey}
-        $rows+=@{id=$id;status='ok';observedAt=$now.ToString('o');defaultModel='fixture-model';buckets=(ConvertTo-CodexBuckets $read.quota $null $now)}
+        # The buckets a collection would store of that reading: one weekly window, a tenth used.
+        $limit=$read.quota.rateLimits.primary
+        $week=@{usedPercent=[double]$limit.usedPercent;remainingPercent=100.0-[double]$limit.usedPercent;resetsAt=$limit.resetsAt;anchorState='unconfirmed';observedAt=$now.ToString('o')}
+        $rows+=@{id=$id;status='ok';observedAt=$now.ToString('o');defaultModel='fixture-model';buckets=@{codex=@{meter='codex';status='observed';blockReason=$null;windows=@{'10080'=$week};warm='not applicable: no five-hour window'}}}
     }
     $policy=@{schemaVersion=2;mode='monitor';prefer=@();codex=@{slots=$slots;prefer=@('a','b');reserve=@();order='prefer';defaultMeter='codex';modelMeters=@{'fixture-model'='codex'};margin7d=20;margin7dWork=5}}
     $status=@{observedAt=$now.ToString('o');recommendations=@{codex='a'};slots=$rows}

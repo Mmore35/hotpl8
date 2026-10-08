@@ -1,4 +1,4 @@
-//! src/replay.ps1: replay runs the production selectors over recorded readings without
+//! Replay runs the production selectors over recorded readings without
 //! calling a provider or writing state. The collector publishes one reading's decisions as
 //! `shadow`: what each ordering would have picked.
 
@@ -204,10 +204,10 @@ mod tests {
     use crate::json::parse;
     use std::path::Path;
 
-    /// The readings and cases are the ones tests/test-shared-rules.ps1 gives to
-    /// Invoke-Hotpl8Replay, and the lines are what it answers under Windows PowerShell:
-    /// each decision's stream, time, pick and reserve mark, each stream's totals, and the
-    /// number of readings. PowerShell 7 answers the same with the totals in its own order.
+    /// The readings and cases are the ones PowerShell's replay was given, and the lines
+    /// are what it answered under Windows PowerShell: each decision's stream, time, pick
+    /// and reserve mark, each stream's totals, and the number of readings. PowerShell 7
+    /// answered the same with the totals in its own order.
     const FRAMES: &str = include_str!("../../tests/parity/replay-frames.txt");
     const REPLAYED: &str = include_str!("../../tests/parity/replay-expected.txt");
 

@@ -440,7 +440,7 @@ mod tests {
     use std::path::PathBuf;
 
     /// tests/parity/codex-buckets.json holds what PowerShell's rule answered for each
-    /// case; tests/test-codex.ps1 holds PowerShell's rule to the same file.
+    /// case while PowerShell had the rule.
     #[test]
     fn limits_read_as_the_shared_cases_say() {
         set_core(false);

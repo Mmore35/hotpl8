@@ -1,4 +1,4 @@
-//! src/providers/claude-plans.ps1: which subscription each Claude account has, asked at
+//! Which subscription each Claude account has, asked at
 //! most every fifteen minutes. Knowing the plan is optional: it cannot change sign-in,
 //! quota or which account is eligible.
 
@@ -159,7 +159,7 @@ mod tests {
         plans.g("1").ok().unwrap().g(name).ok().unwrap().s().ok().unwrap()
     }
 
-    /// tests/test-claude-plans.ps1, with the helper's answer given.
+    /// What PowerShell's suite of this rule held, with the helper's answer given.
     #[test]
     fn a_plan_is_asked_for_seldom_and_kept_without_an_identity() {
         let directory = scratch("plans");

@@ -49,14 +49,6 @@ function Read-Hotpl8LeaseLedger([string]$Directory) {
         return $ledger
     } catch { Stop-Hotpl8LeaseError 'lease_state_invalid' 'Agent pause state is invalid or unreadable; automation remains paused.' }
 }
-function Get-Hotpl8LeasePause([string]$Directory, [datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    try { $ledger=Read-Hotpl8LeaseLedger $Directory }
-    catch { return [pscustomobject]@{until=$null;reason='invalid_leases';invalid=$true;leaseCount=$null} }
-    $active=@($ledger.entries | Where-Object { $null -ne $_.until -and $null -eq $_.releasedAt -and (ConvertFrom-Hotpl8LeaseTime $_.until) -gt $Now })
-    if (-not $active.Count) { return $null }
-    $until=($active | ForEach-Object { ConvertFrom-Hotpl8LeaseTime $_.until } | Sort-Object -Descending | Select-Object -First 1).ToUniversalTime().ToString('o')
-    return [pscustomobject]@{until=$until;reason='agent_leases';invalid=$false;leaseCount=$active.Count}
-}
 function Open-Hotpl8LeaseLock([string]$Directory) {
     try { return [IO.File]::Open((Join-Path $Directory 'tick.lock'),'OpenOrCreate','ReadWrite','None') }
     catch {

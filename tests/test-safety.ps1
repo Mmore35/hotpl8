@@ -4,7 +4,6 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/config.ps1')
 . (Join-Path $root 'src/diagnostics.ps1')
 . (Join-Path $root 'src/collection.ps1')
-. (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 $script:passed=0;$script:failed=0
 function Assert($Value){if(-not $Value){throw 'assertion failed'}}
@@ -162,16 +161,28 @@ public static class Hotpl8ReaderFixture {
         try{Write-Hotpl8Text $path '{"generation":2}'}catch{$caught=$_}finally{$handle.Dispose()}
         Assert ($null -ne $caught -and (Get-Hotpl8FailureCode $caught) -eq 'state_io_failed')
         Assert ((Read-Hotpl8Json $path).generation -eq 1)
-        Write-Hotpl8Event $dir 'collector_failed' $caught
-        $event=Get-Content (Join-Path $dir 'events.jsonl') -Tail 1|ConvertFrom-Json
-        Assert ($event.source -eq 'common.ps1' -and $event.line -gt 0 -and $event.failureCode -eq 'state_io_failed')
-        Assert ($event.stateFile -eq 'status.json' -and $event.ioCode -eq 32)
-        Assert (($event|ConvertTo-Json) -notmatch [regex]::Escape($dir))
+        Assert ($caught.Exception.Data['Hotpl8StateFile'] -eq 'status.json' -and $caught.Exception.Data['Hotpl8IoCode'] -eq 32)
     }
-    Check 'unexpected diagnostic errors never export their message or invocation' {
-        try{throw 'PRIVATE_CANARY native credential data'}catch{$_.Exception.Data['Hotpl8StateFile']='PRIVATE_CANARY';Write-Hotpl8Event $dir 'collector_failed' $_}
-        $line=Get-Content (Join-Path $dir 'events.jsonl') -Tail 1
-        Assert ($line -notmatch 'PRIVATE_CANARY|credential|Invocation|test-safety')
+    Check 'a failure is recorded under the kind the shared cases say' {
+        # tests/parity/shared-rules.json is read here and by the program's own tests, which
+        # name the same kinds (native/src/ps.rs).
+        $rules=[IO.File]::ReadAllText((Join-Path $root 'tests/parity/shared-rules.json'),(New-Object Text.UTF8Encoding($false)))|ConvertFrom-Json
+        $absent=$null
+        $failures=@{
+            'access denied'={throw (New-Object UnauthorizedAccessException 'fictional')}
+            'a file'={throw (New-Object IO.IOException 'fictional')}
+            'a missing member'={$absent.member=1}
+            # No parameter PowerShell itself refuses carries this name in Windows PowerShell,
+            # so the record is made here.
+            'a wrong parameter'={throw (New-Object Management.Automation.ErrorRecord (New-Object ArgumentException 'fictional'),'ParameterBindingFailed','InvalidArgument',$null)}
+            'anything else'={throw 'fictional'}
+        }
+        Assert (@($rules.failures).Count -eq $failures.Count)
+        foreach($case in @($rules.failures)){
+            $caught=$null
+            try{& $failures[$case.failure]}catch{$caught=$_}
+            Assert ($null -ne $caught -and (Get-Hotpl8FailureCode $caught) -ceq $case.kind)
+        }
     }
     Check 'fixed-code event log rotates to a bounded backup' {
         [IO.File]::WriteAllText((Join-Path $dir 'events.jsonl'),('x'*262145))

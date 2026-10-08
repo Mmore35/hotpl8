@@ -1,4 +1,4 @@
-//! src/provider-observation.ps1: native and public shapes enter the observation contract
+//! Native and public shapes enter the observation contract
 //! here. These decoders do not read state, fetch quota, select accounts or own credentials.
 
 use crate::ps::*;

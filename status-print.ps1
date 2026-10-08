@@ -14,7 +14,7 @@ param([string]$Provider = 'claude', [string]$StateDirectory)
 . (Join-Path $PSScriptRoot 'src/common.ps1')
 . (Join-Path $PSScriptRoot 'src/config.ps1')
 $StateDirectory=Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
-try{$driver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver}catch{exit 0}
+try{$driver=Get-Hotpl8ProviderDriver -Provider $Provider}catch{exit 0}
 if ($driver.provider -eq 'codex') {
     $ErrorActionPreference = 'SilentlyContinue'
     try {

@@ -442,7 +442,7 @@ fn dump_node(value: &V, indent: usize, label: &str, out: &mut String) -> R<()> {
     Ok(())
 }
 
-/// The typed dump tests/parity/referee.ps1 writes for the same value.
+/// The typed dump: each value beside the type PowerShell gives it.
 pub fn dump(value: &V) -> R<String> {
     let mut out = String::new();
     dump_node(value, 0, "", &mut out)?;

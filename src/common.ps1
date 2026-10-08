@@ -110,43 +110,18 @@ function Get-Hotpl8Hash([string]$Value) {
     try { return -join ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Value)) | ForEach-Object { $_.ToString('x2') }) }
     finally { $sha.Dispose() }
 }
+function Copy-Hotpl8ProviderValue($Value) {
+    # A wrapper plus the unary comma preserves empty and singleton arrays in
+    # Windows PowerShell 5.1 without adding extended array properties.
+    $json=ConvertTo-Json -InputObject ([pscustomobject]@{item=$Value}) -Depth 32
+    $options=@{};if($PSVersionTable.PSVersion -ge [version]'7.5'){$options.DateKind='String'}
+    $wrapper=ConvertFrom-Json -InputObject $json @options
+    return ,$wrapper.item
+}
 function ConvertTo-NativeArgument([string]$Value) {
     # Windows CRT quoting, also understood by .NET's Unix Arguments parser.
     if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
     return '"' + [regex]::Replace([regex]::Replace($Value, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1') + '"'
-}
-function Resolve-CodexExecutable([string]$Explicit) {
-    if ($Explicit) {
-        if (-not (Test-Path -LiteralPath $Explicit -PathType Leaf)) { throw 'codex_missing' }
-        if ([IO.Path]::GetExtension($Explicit) -in @('.cmd','.bat','.ps1')) { throw 'native_codex_required' }
-        return [IO.Path]::GetFullPath($Explicit)
-    }
-    if($env:HOTPL8_NATIVE_BIN){
-        $managed=Join-Path $env:HOTPL8_NATIVE_BIN $(if($env:OS -eq 'Windows_NT'){'codex.exe'}else{'codex'})
-        if(Test-Path -LiteralPath $managed -PathType Leaf){return $managed}
-    }
-    $commands = @(Get-Command codex.exe,codex -All -ErrorAction SilentlyContinue)
-    foreach ($c in $commands) {
-        if ($c.Source -and [IO.Path]::GetExtension($c.Source) -eq '.exe') { return $c.Source }
-    }
-    # Resolve the native binary beside the npm shim, without a versioned Node path
-    # or cmd.exe re-parsing user arguments. Only the installed package is searched.
-    $bases = @($commands | Where-Object Source | ForEach-Object { Split-Path $_.Source -Parent })
-    $bases += @('/usr/local/lib', '/opt/homebrew/lib')
-    foreach ($b in @($bases | Select-Object -Unique)) {
-        $package = Join-Path $b 'node_modules/@openai/codex'
-        if (-not (Test-Path -LiteralPath $package)) { continue }
-        $name = if ($env:OS -eq 'Windows_NT') { 'codex.exe' } else { 'codex' }
-        $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or [Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'aarch64' } else { 'x86_64' }
-        $found = @(Get-ChildItem -LiteralPath $package -Recurse -File -Filter $name -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match $arch })
-        if ($found.Count -eq 1) { return $found[0].FullName }
-    }
-    if ($env:OS -ne 'Windows_NT') {
-        foreach ($c in $commands) {
-            if ($c.Source -and [IO.Path]::GetExtension($c.Source) -eq '') { return $c.Source }
-        }
-    }
-    throw 'codex_missing'
 }
 function New-CodexProcessInfo([string]$Executable, [string]$AccountHome, [string[]]$Arguments, [string]$WorkingDirectory) {
     $psi = New-Object Diagnostics.ProcessStartInfo
@@ -194,45 +169,6 @@ function Stop-Hotpl8Process($Process) {
     finally { $Process.Dispose() }
 }
 
-function Test-Hotpl8FreshTimestamp($Timestamp,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
-    try{$age=($Now-[datetimeoffset]::Parse([string]$Timestamp)).TotalSeconds;return ($age -ge -5 -and $age -le 900)}catch{return $false}
-}
-function Resolve-Hotpl8Window($Used,$ResetAt,$ObservedAt,[datetimeoffset]$Now=[datetimeoffset]::UtcNow,[switch]$Unix) {
-    # One rule for every elapsed reset, shared by both providers.
-    #
-    # observedAt < resetAt <= now: the provider itself told us this window ends
-    # at a time that has since passed, so the window rolled over. cswap reports
-    # exactly that state once it can be read again (pct=0 with an empty
-    # resetsAt; verified 2026-08-09, see providers/claude.ps1) -- the refill is
-    # the reported outcome arriving ahead of the next collector read, not a guess.
-    #
-    # resetAt <= observedAt: the payload handed us an anchor that was already
-    # expired when we read it. That is genuinely suspect and keeps the
-    # conservative unconfirmed handling.
-    #
-    # A missing or unreadable observation time leaves the reading alone too:
-    # over-promising quota is worse than waiting one collector cycle. The
-    # ordering test subsumes the dashboard's -5s clock-skew allowance -- an
-    # observation stamped ahead of our clock can never satisfy
-    # observedAt < resetAt <= now, so it never rolls over. A clock running
-    # fast is bounded instead by the freshness ceiling, which expires the
-    # reading and hands the account to the existing stale path.
-    #
-    # The same caution covers the reading itself. Rolling over replaces $Used
-    # with a full window, so a missing or out-of-range percentage must never
-    # be promoted to '100% free': callers gate on the returned used value, and
-    # a literal would pass that gate on data the rest of hotpl8 calls unusable.
-    $result=@{used=$Used;resetAt=$ResetAt;rolledOver=$false}
-    if($null -eq $ResetAt -or [string]$ResetAt -eq ''){return $result}
-    $at=$null
-    try{$at=if($Unix){[datetimeoffset]::FromUnixTimeSeconds([long]$ResetAt)}else{[datetimeoffset]::Parse([string]$ResetAt)}}catch{return $result}
-    if($at -gt $Now){return $result}
-    if(-not (Test-Hotpl8Number $Used) -or [double]$Used -lt 0 -or [double]$Used -gt 100){return $result}
-    $observed=$null
-    try{if($ObservedAt){$observed=[datetimeoffset]::Parse([string]$ObservedAt)}}catch{}
-    if($null -eq $observed -or $observed -ge $at){return $result}
-    return @{used=0.0;resetAt=$null;rolledOver=$true}
-}
 # Child PowerShell for tests and launchers: Windows PowerShell 5.1 where it exists, else pwsh.
 # pwsh puts its own $PSHOME first on PATH. Under Homebrew that copy is a bare apphost that
 # needs the DOTNET_ROOT its bin/ wrapper supplies and fails under launchd, so prefer any pwsh

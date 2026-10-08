@@ -1,5 +1,5 @@
 # Local, dependency-free MCP transport. All product operations use the shared API.
-. (Join-Path $PSScriptRoot 'provider-registry.ps1')
+. (Join-Path $PSScriptRoot 'rules.ps1')
 function Test-Hotpl8McpObject($Value) {
     return ($null -ne $Value -and ($Value -is [System.Management.Automation.PSCustomObject] -or $Value -is [System.Collections.IDictionary]))
 }

@@ -3,7 +3,6 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
-. (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 . (Join-Path $root 'src/native.ps1')
 $script:passed = 0; $script:failed = 0
@@ -14,12 +13,10 @@ function Check([string]$Name, [scriptblock]$Body) {
 function Assert($Value, [string]$Message = 'assertion failed') { if (-not $Value) { throw $Message } }
 function Copy-Value($Value) { return $Value | ConvertTo-Json -Depth 24 | ConvertFrom-Json }
 $now = [datetimeoffset]::UtcNow
-function Fixture($Used = 10, $Duration = 10080, $Reset = ($now.ToUnixTimeSeconds() + 3600)) {
-    return Copy-Value @{ rateLimits = @{ limitId = 'codex'; primary = @{ usedPercent = $Used; windowDurationMins = $Duration; resetsAt = $Reset }; secondary = $null; spendControlReached = $false; rateLimitReachedType = $null } }
-}
-function Make-Slot([string]$Id, [double]$Used = 10, [long]$Reset = ($now.ToUnixTimeSeconds() + 3600)) {
-    $b = ConvertTo-CodexBuckets (Fixture $Used 10080 $Reset) $null $now
-    $b.codex.windows.'10080'.anchorState = 'observed-active'
+# An account as a collection leaves it: one weekly window, a tenth used, an hour to its reset.
+function Make-Slot([string]$Id) {
+    $week = [pscustomobject]@{ usedPercent = 10; remainingPercent = 90; resetsAt = $now.ToUnixTimeSeconds() + 3600; anchorState = 'observed-active'; observedAt = $now.ToString('o') }
+    $b = [pscustomobject]@{ codex = [pscustomobject]@{ meter = 'codex'; status = 'observed'; blockReason = $null; windows = [pscustomobject]@{ '10080' = $week }; warm = 'not applicable: no five-hour window' } }
     return [pscustomobject]@{ id = $Id; label = $Id; status = 'ok'; observedAt = $now.ToString('o'); buckets = $b; defaultModel = 'fixture-model'; modelProvider = 'openai' }
 }
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-test-' + [guid]::NewGuid().ToString('N'))
@@ -31,111 +28,6 @@ try {
     $homeA = Join-Path $dir 'home A'; $homeB = Join-Path $dir 'home B'
     New-Item -ItemType Directory -Path $homeA,$homeB | Out-Null
     $policy = Copy-Value @{ slots = @(@{ id='a'; home=$homeA },@{ id='b'; home=$homeB }); prefer=@('a','b'); reserve=@(); order='soonest-reset'; margin5h=25; margin7d=20; margin7dWork=5; defaultMeter='codex'; modelMeters=@{ 'fixture-model'='codex' } }
-    Check 'confirmed anchor survives immediate refresh but not a moved reset' {
-        $q=Fixture; $old=ConvertTo-CodexBuckets $q $null $now.AddMinutes(-1)
-        $confirmed=ConvertTo-CodexBuckets $q $old $now
-        Assert ($confirmed.codex.windows.'10080'.anchorState -eq 'observed-active')
-        $again=ConvertTo-CodexBuckets $q $confirmed $now.AddSeconds(1)
-        Assert ($again.codex.windows.'10080'.anchorState -eq 'observed-active')
-        $q.rateLimits.primary.resetsAt+=300
-        Assert ((ConvertTo-CodexBuckets $q $confirmed $now.AddSeconds(1)).codex.windows.'10080'.anchorState -eq 'unconfirmed')
-    }
-    Check 'degraded weekly headroom outranks previous reset lead' {
-        $a=Make-Slot a 94 ($now.ToUnixTimeSeconds()+3600)
-        $b=Make-Slot b 84 ($now.ToUnixTimeSeconds()+7200)
-        Assert ((Select-CodexSlot @($a,$b) $policy codex a $null $now) -eq 'b')
-    }
-    Check 'preference ordering is not overridden by reset lead' {
-        $p=Copy-Value $policy; $p.order='prefer'; $p.prefer=@('b','a')
-        $a=Make-Slot a 10 ($now.ToUnixTimeSeconds()+3600)
-        $b=Make-Slot b 10 ($now.ToUnixTimeSeconds()+7200)
-        Assert ((Select-CodexSlot @($a,$b) $p codex a $null $now) -eq 'b')
-    }
-    Check 'weekly-only shape has no fabricated 5h' { $b=ConvertTo-CodexBuckets (Fixture) $null $now; Assert ($b.codex.status -eq 'observed'); Assert ($null -eq $b.codex.windows.'300') }
-    Check 'native additional meter retains unknown spend constraint without blocking the account basis' {
-        # Native 0.155.1 and 0.160.0 report null spend control for additional pools.
-        $q=Fixture; $spark=Copy-Value $q.rateLimits; $spark.limitId='codex_bengalfox'; $spark.primary.windowDurationMins=300; $spark.spendControlReached=$null
-        $q | Add-Member NoteProperty rateLimitsByLimitId ([pscustomobject]@{ codex=$q.rateLimits; codex_bengalfox=$spark })
-        $b=ConvertTo-CodexBuckets $q $null $now
-        Assert ($b.codex.status -eq 'observed' -and $b.codex_bengalfox.status -eq 'constraint_unknown')
-        Assert ($b.codex_bengalfox.windows.'300'.remainingPercent -eq 90)
-    }
-    Check 'explicit secondary null is valid' { Assert ((ConvertTo-CodexBuckets (Fixture) $null $now).codex.status -eq 'observed') }
-    Check 'missing secondary is unsupported' { $q=Fixture; $q.rateLimits.PSObject.Properties.Remove('secondary'); Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
-    Check 'swapped primary/secondary have equal meaning' { $q=Fixture; $q.rateLimits.secondary=$q.rateLimits.primary; $q.rateLimits.primary=$null; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.windows.'10080'.usedPercent -eq 10) }
-    foreach ($value in @(-1,101,'10',$true,[double]::NaN,[double]::PositiveInfinity)) {
-        $bad=$value
-        Check ('invalid percentage rejected: '+[string]$bad) { $q=Fixture; $q.rateLimits.primary.usedPercent=$bad; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
-    }
-    Check 'unknown duration rejected' { Assert ((ConvertTo-CodexBuckets (Fixture 10 60) $null $now).codex.status -eq 'unsupported') }
-    Check 'duplicate duration rejected' { $q=Fixture; $q.rateLimits.secondary=Copy-Value $q.rateLimits.primary; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
-    Check 'both null windows rejected' { $q=Fixture; $q.rateLimits.primary=$null; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
-    Check 'blocked despite quota headroom' { $q=Fixture; $q.rateLimits.spendControlReached=$true; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'blocked') }
-    Check 'unknown spend constraint not ignored' { $q=Fixture; $q.rateLimits.spendControlReached=$null; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'constraint_unknown') }
-    Check 'server reached type blocks' { $q=Fixture; $q.rateLimits.rateLimitReachedType='workspace_owner_usage_limit_reached'; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'blocked') }
-    Check 'observed bucket carries no block reason' { Assert ($null -eq (ConvertTo-CodexBuckets (Fixture) $null $now).codex.blockReason) }
-    Check 'exhausted quota with future reset is quota_exhausted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'quota_exhausted') }
-    Check 'spend control block is restricted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $q.rateLimits.spendControlReached=$true; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
-    Check 'workspace owner limit is restricted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='workspace_owner_usage_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
-    Check 'allowed=false is restricted even when exhausted' { $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $q.rateLimits | Add-Member NoteProperty allowed $false; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
-    Check 'reached type without a full window is restricted' { $q=Fixture 90; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
-    Check 'reached type with a past reset is restricted' { $q=Fixture 100 10080 ($now.ToUnixTimeSeconds()-1); $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
-    Check 'reached type with a null reset is restricted' { $q=Fixture 100 10080 $null; $q.rateLimits.rateLimitReachedType='rate_limit_reached'; $b=ConvertTo-CodexBuckets $q $null $now; Assert ($b.codex.status -eq 'blocked'); Assert ($b.codex.blockReason -eq 'restricted') }
-    Check 'quota_exhausted slot is never eligible or selected' {
-        $q=Fixture 100; $q.rateLimits.rateLimitReachedType='rate_limit_reached'
-        $b=ConvertTo-CodexBuckets $q $null $now; $b.codex.windows.'10080'.anchorState='observed-active'
-        $s=[pscustomobject]@{ id='a'; label='a'; status='ok'; observedAt=$now.ToString('o'); buckets=$b; defaultModel='fixture-model'; modelProvider='openai' }
-        Assert ((Get-CodexEligibility $s $policy codex $now) -ne 'eligible')
-        Assert ((Select-CodexSlot @($s,(Make-Slot b)) $policy codex a $null $now) -eq 'b')
-        Assert ($null -eq (Select-CodexSlot @($s) $policy codex a @{until=$now.AddHours(1)} $now))
-    }
-    Check 'missing reset differs from explicit null' { $q=Fixture; $q.rateLimits.primary.PSObject.Properties.Remove('resetsAt'); Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported'); $q=Fixture; $q.rateLimits.primary.resetsAt=$null; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'observed') }
-    Check 'fractional reset rejected' { $q=Fixture; $q.rateLimits.primary.resetsAt=12.5; Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
-    Check 'unrelated bucket never borrowed' { $q=Fixture; $q | Add-Member NoteProperty rateLimitsByLimitId ([pscustomobject]@{}); Assert ($null -eq (ConvertTo-CodexBuckets $q $null $now).codex) }
-    Check 'used stationary reset needs separated evidence' { $q=Fixture; $b=ConvertTo-CodexBuckets $q $null $now; $next=ConvertTo-CodexBuckets $q $b ($now.AddSeconds(60)); Assert ($next.codex.windows.'10080'.anchorState -eq 'observed-active') }
-    Check 'sliding reset is not active' { $q=Fixture 0; $b=ConvertTo-CodexBuckets $q $null $now; $q.rateLimits.primary.resetsAt+=60; $next=ConvertTo-CodexBuckets $q $b ($now.AddSeconds(60)); Assert ($next.codex.windows.'10080'.anchorState -eq 'unconfirmed') }
-    Check 'quota reads never claim warming success' { $b=ConvertTo-CodexBuckets (Fixture 0 300) $null $now; Assert ($b.codex.warm -eq 'unmeasured') }
-    Check 'limits read as the shared cases say' {
-        # The compiled collector reads the same cases (native/src/codex_collect.rs), one to a
-        # line, so its reading of an account's limits and this one cannot drift apart.
-        $lines=@([IO.File]::ReadAllLines((Join-Path $root 'tests/parity/codex-buckets.json'))|Where-Object{$_.StartsWith('{"name"')})
-        Assert ($lines.Count -gt 100) ('cases '+$lines.Count)
-        $wrong=@(foreach($line in $lines){
-            $text=$line.TrimEnd(',');$mark=$text.IndexOf(',"expected":')
-            $case=$text|ConvertFrom-Json
-            $answer=ConvertTo-Json -InputObject (ConvertTo-CodexBuckets $case.quota $case.previous ([datetimeoffset]::Parse($case.now))) -Depth 12 -Compress
-            if($answer -cne $text.Substring($mark+12,$text.Length-$mark-13)){$case.name}
-        })
-        Assert ($wrong.Count -eq 0) ('differ: '+($wrong -join '; '))
-    }
-    Check 'soonest verified weekly reset wins' { $a=Make-Slot a 10 ($now.ToUnixTimeSeconds()+4000); $b=Make-Slot b 10 ($now.ToUnixTimeSeconds()+2000); Assert ((Select-CodexSlot @($a,$b) $policy codex '' $null $now) -eq 'b') }
-    Check 'exhausted earliest-reset slot cannot win' { $a=Make-Slot a 100 ($now.ToUnixTimeSeconds()+500); $b=Make-Slot b; Assert ((Select-CodexSlot @($a,$b) $policy codex '' $null $now) -eq 'b') }
-    Check 'reserve kept after work slots' { $p=Copy-Value $policy; $p.reserve=@('b'); $a=Make-Slot a; $b=Make-Slot b 10 ($now.ToUnixTimeSeconds()+1000); Assert ((Select-CodexSlot @($a,$b) $p codex '' $null $now) -eq 'a') }
-    Check 'reserve weekly margin and work margin differ' { $p=Copy-Value $policy; $p.reserve=@('b'); Assert ((Get-CodexEligibility (Make-Slot a 90) $p codex $now) -eq 'eligible'); Assert ((Get-CodexEligibility (Make-Slot b 90) $p codex $now) -eq 'below_margin') }
-    Check 'expired observation cannot grant refill' { Assert ((Get-CodexEligibility (Make-Slot a 0 ($now.ToUnixTimeSeconds()-1)) $policy codex $now) -eq 'reset_unconfirmed') }
-    Check 'a reset that elapsed after the read refills the window' { $s=Make-Slot a 100 ($now.ToUnixTimeSeconds()-1); $s.buckets.codex.windows.'10080'.observedAt=$now.AddMinutes(-5).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'eligible') }
-    Check 'a refilled slot is ranked on the quota it regained, not its pre-reset snapshot' {
-        # 'a' is preferred but nearly out of weekly headroom; 'b' read a full
-        # window five minutes ago whose own reset has since elapsed, so it
-        # refilled. Ranking 'b' from the stale 0% flagged the fullest account
-        # degraded and sorted it behind the one the dashboard calls emptier.
-        $p=Copy-Value $policy; $p.order='prefer'
-        $a=Make-Slot a 85
-        $b=Make-Slot b 100 ($now.ToUnixTimeSeconds()-1)
-        $b.buckets.codex.windows.'10080'.observedAt=$now.AddMinutes(-5).ToString('o')
-        Assert ((Get-CodexEligibility $a $p codex $now) -eq 'eligible')
-        Assert ((Get-CodexEligibility $b $p codex $now) -eq 'eligible')
-        Assert ((Select-CodexSlot @($a,$b) $p codex '' $null $now) -eq 'b')
-    }
-    Check 'stale data ineligible' { $s=Make-Slot a;
- $s.observedAt=$now.AddSeconds(-901).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'stale') }
-    Check 'freshness exact boundary valid' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(-900).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'eligible') }
-    Check 'future timestamp rejected' { $s=Make-Slot a; $s.observedAt=$now.AddSeconds(60).ToString('o'); Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'stale') }
-    Check 'read failure does not use old success' { $s=Make-Slot a; $s.status='timeout'; Assert ((Get-CodexEligibility $s $policy codex $now) -eq 'timeout') }
-    Check 'hold preserves eligible previous choice' { Assert ((Select-CodexSlot @((Make-Slot a),(Make-Slot b)) $policy codex b @{until=$now.AddHours(1)} $now) -eq 'b') }
-    Check 'hold cannot make exhausted slot eligible' { Assert ($null -eq (Select-CodexSlot @((Make-Slot a),(Make-Slot b 100)) $policy codex b @{until=$now.AddHours(1)} $now)) }
-    Check 'lead rule avoids near-reset oscillation' { $a=Make-Slot a 10 ($now.ToUnixTimeSeconds()+2000); $b=Make-Slot b 10 ($now.ToUnixTimeSeconds()+1800); Assert ((Select-CodexSlot @($a,$b) $policy codex a $null $now) -eq 'a') }
-    Check 'ties follow explicit preference' { Assert ((Select-CodexSlot @((Make-Slot b),(Make-Slot a)) $policy codex '' $null $now) -eq 'a') }
     Check 'invalid duplicate homes rejected' { $p=Copy-Value $policy; $p.slots[1].home=$homeA; $threw=$false; try { Assert-CodexPolicy $p } catch { $threw=$true }; Assert $threw }
     Check 'invalid policy margins rejected' { $p=Copy-Value $policy; $p.margin5h='25'; $threw=$false; try { Assert-CodexPolicy $p } catch { $threw=$true }; Assert $threw }
     Check 'atomic replacement works repeatedly' { $path=Join-Path $dir 'atomic.txt'; Write-Hotpl8Text $path 'one'; Write-Hotpl8Text $path 'two'; Assert ([IO.File]::ReadAllText($path) -eq 'two') }
@@ -157,15 +49,19 @@ try {
         if($smoke.ExitCode -ne 0){throw ('Offline fixture startup failed ('+$smoke.ExitCode+'): '+$smokeError.Result)}
         Assert (($smokeOut.Result|ConvertFrom-Json).id -eq 1) 'Offline fixture produced no initialization response.'
     }finally{Stop-Hotpl8Process $smoke}
-    Check 'UTF-8 console cannot add a pipe BOM or corrupt a Unicode home' {
+    Check 'UTF-8 console cannot add a pipe BOM to a question, and a home outside ASCII is not read' {
         $original=[Console]::InputEncoding
         $unicodeHome=Join-Path $dir ('home-'+[char]0x00e9)
         [void][IO.Directory]::CreateDirectory($unicodeHome)
         try{
             [Console]::InputEncoding=[Text.Encoding]::UTF8
             $env:HOTPL8_TEST_SCENARIO='ok'
-            $r=Read-CodexQuota $unicodeHome $fake 5000
+            $r=Read-CodexQuota $homeA $fake 5000
             Assert ($r.status -eq 'ok') $r.status
+            # The program reads only a home written in printable ASCII
+            # (docs/plans/rust-read-side.md); the question itself arrives whole.
+            $r=Read-CodexQuota $unicodeHome $fake 5000
+            Assert ($r.status -eq 'home_missing') $r.status
             Assert ([Console]::InputEncoding.GetPreamble().Length -eq 3) 'Console encoding was not restored.'
         }finally{[Console]::InputEncoding=$original}
     }
@@ -364,11 +260,6 @@ try {
         $l=Launch @('-Slot','a','test')
         Assert ($l.exitCode -eq 7 -and $l.record.home -eq $homeA) $l.errors
     }
-    Check 'five-hour and weekly guards both apply' {
-        $q=Fixture 10 300;$q.rateLimits.secondary=(Fixture 99).rateLimits.primary
-        $slot=Make-Slot a;$slot.buckets=ConvertTo-CodexBuckets $q $null $now
-        Assert ((Get-CodexEligibility $slot $policy codex $now) -eq 'below_margin')
-    }
     Check 'quota observation history contains no private identity' {
         $history=Get-Content -LiteralPath (Join-Path $dir 'codex-observations.jsonl') -Raw -Encoding UTF8
         Assert ($history.Contains('observedAt'));Assert (-not $history.Contains('identityKey'));Assert (-not $history.Contains('@example.invalid'))
@@ -391,9 +282,6 @@ try {
         Assert ($LASTEXITCODE -eq 0);Assert ($output -like '*No cached status*')
         & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $entry 'setup-codex.ps1') -Slot a -AccountHome $homeA -CodexExecutable $fake | Out-Null
         Assert ($LASTEXITCODE -eq 0);Assert ((Read-Hotpl8Json (Join-Path $entry 'policy.json')).codex.slots.Count -eq 1)
-    }
-    Check 'out-of-range Unix reset is unsupported' {
-        foreach($reset in @(1e100,253402300800)){ $q=Fixture;$q.rateLimits.primary.resetsAt=$reset;Assert ((ConvertTo-CodexBuckets $q $null $now).codex.status -eq 'unsupported') }
     }
     Check 'removing Codex configuration restores Claude-only operation' {
         $rollback=Join-Path $dir 'rollback';New-Item -ItemType Directory $rollback|Out-Null

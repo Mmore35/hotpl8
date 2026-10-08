@@ -1,4 +1,4 @@
-//! src/critical.ps1: pure emergency selection.
+//! Pure emergency selection.
 
 use crate::obj;
 use crate::ps::*;

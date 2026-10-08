@@ -4,6 +4,7 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'src/common.ps1')
 . (Join-Path $PSScriptRoot 'src/lifecycle.ps1')
 . (Join-Path $PSScriptRoot 'src/leases.ps1')
+. (Join-Path $PSScriptRoot 'src/rules.ps1')
 $root=Assert-Hotpl8Path $InstallDirectory
 $installation=Read-Hotpl8Json (Join-Path $root 'installation.json')
 if($installation.managedBy -eq 'local-delivery'){throw 'This installation uses Local Delivery. See docs/delivery.md for coordinated recovery.'}

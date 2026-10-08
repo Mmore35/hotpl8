@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
-. (Join-Path $root 'src/automation.ps1')
+. (Join-Path $root 'src/leases.ps1')
 . (Join-Path $root 'src/management.ps1')
 $script:passed=0;$script:failed=0
 function Assert($Value){if(-not $Value){throw 'assertion failed'}}

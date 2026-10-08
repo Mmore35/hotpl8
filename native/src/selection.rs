@@ -1,4 +1,4 @@
-//! src/selection.ps1
+//! The key candidates for selection are ordered by.
 
 use crate::ps::*;
 use crate::time::Dto;
