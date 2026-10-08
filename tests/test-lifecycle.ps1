@@ -338,9 +338,12 @@ try{
         $original=[IO.File]::ReadAllBytes($program);$originalHashes=[IO.File]::ReadAllBytes($checksums)
         try{
             # A later update of the program that draws both, in a fixture release: a stand-in
-            # that says how it was asked.
+            # that says how it was asked to draw. The installer asks a release's program to
+            # check the policy that is there, so what is not a request from the launcher goes
+            # on to the program this checkout built, word for word.
             Remove-Item -LiteralPath $program -Force
-            Add-Type -TypeDefinition 'public static class Probe { public static int Main(string[] asked) { System.Console.WriteLine("SHARED UPDATE PROBE " + string.Join(" ", asked)); return 0; } }' -OutputAssembly $program -OutputType ConsoleApplication
+            $built='@"'+(Join-Path $root $reader).Replace('"','""')+'"'
+            Add-Type -TypeDefinition ('public static class Probe { public static int Main(string[] asked) { if (asked.Length > 0 && asked[0] == "user") { System.Console.WriteLine("SHARED UPDATE PROBE " + string.Join(" ", asked)); return 0; } var words = new System.Text.StringBuilder(); foreach (var word in asked) { words.Append(" \"").Append(word.Replace("\"", "\\\"")).Append("\""); } var start = new System.Diagnostics.ProcessStartInfo('+$built+', words.ToString()); start.UseShellExecute = false; using (var program = System.Diagnostics.Process.Start(start)) { program.WaitForExit(); return program.ExitCode; } } }') -OutputAssembly $program -OutputType ConsoleApplication
             $hashes=Read-Hotpl8Json $checksums
             $hashes.$reader=(Get-FileHash $program -Algorithm SHA256).Hash
             Write-Hotpl8Text $checksums ($hashes|ConvertTo-Json -Depth 4) -NoBom

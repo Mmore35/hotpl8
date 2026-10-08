@@ -34,6 +34,8 @@ try{
     Write-Hotpl8Text (Join-Path $old 'src/providers/codex.ps1') 'function Assert-CodexPolicy($Policy){}'
     Copy-Item -LiteralPath (Join-Path $source 'src') -Destination $new -Recurse
     Copy-Item -LiteralPath (Join-Path $source 'data') -Destination $new -Recurse
+    # A release reads a policy with the compiled program it ships.
+    Copy-Item -LiteralPath (Join-Path $source 'bin') -Destination $new -Recurse
     Check 'drain publishes verified custom ownership before pointer changes' {
         Reset;Set-Hotpl8DeliveryOwner $install $state
         $owner=Read-Hotpl8DeliveryOwner $state
