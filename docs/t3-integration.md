@@ -146,7 +146,9 @@ move its thread selections back before removal.
    that failed or has been read again since the failure. If that turn needs a
    different account while the conversation's sub-agents are still running, it
    is held; when they have finished, the same rule is applied again and the
-   turn is started if it still holds.
+   turn is started if it still holds. Native takes no turn started on a
+   sub-agent of its current multi-agent kind, so when such a sub-agent's turn
+   ends on a usage limit, the turn is started on the conversation that runs it.
    Account changes serialize independently of follow-ups, steering, interrupts,
    approvals and tool replies. Parent and child model names do not affect selection.
 6. An external-token refresh request is answered only for the matching account.

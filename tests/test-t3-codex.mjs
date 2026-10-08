@@ -4,7 +4,8 @@ import { PassThrough } from 'node:stream';
 import { CodexBridge, validateArgs, assertConfig, assertEnvironment, assertSharedHome, readLines } from '../src/t3-codex.mjs';
 
 function harness(options = {}) {
-  const native = [], client = [], requests = [];
+  // `agents` holds sub-agent threads as native describes them when asked.
+  const native = [], client = [], requests = [], agents = {};
   let selected = 'a', reject = false, config = { model: 'fixture-model', cli_auth_credentials_store: 'ephemeral' };
   const broker = async request => {
     requests.push(request);
@@ -14,9 +15,14 @@ function harness(options = {}) {
   };
   const bridge = new CodexBridge({ ...options, broker, cwd: 'fixture', toClient: msg => client.push(msg), toNative: msg => {
     native.push(msg);
-    if (String(msg.id).startsWith('hotpl8-internal-')) queueMicrotask(() => bridge.native({ id: msg.id, result: msg.method === 'config/read' ? { config } : {} }));
+    if (!String(msg.id).startsWith('hotpl8-internal-')) return;
+    queueMicrotask(() => {
+      // Native refuses a turn started on a sub-agent that another thread runs.
+      if (msg.method === 'turn/start' && agents[msg.params.threadId]?.canAcceptDirectInput === false) { bridge.native({ id: msg.id, error: { code: -32600, message: 'fixture refusal' } }); return; }
+      bridge.native({ id: msg.id, result: msg.method === 'config/read' ? { config } : msg.method === 'thread/read' ? { thread: agents[msg.params.threadId] } : {} });
+    });
   }});
-  return { bridge, native, client, requests, select: slot => { selected = slot; }, reject: () => { reject = true; }, config: c => { config = c; } };
+  return { bridge, native, client, requests, agents, select: slot => { selected = slot; }, reject: () => { reject = true; }, config: c => { config = c; } };
 }
 async function opened(h) {
   await h.bridge.client({ id: 1, method: 'initialize', params: { clientInfo: { name: 'fixture' } } });
@@ -774,4 +780,83 @@ test('the owner writing while a continue is admitted sends only their message', 
   await finished(h, calls[0], 2); await owner;
   assert.deepEqual(turns(h).map(m => m.id), [3, 4]);
   assert.equal(h.bridge.waiters.size, 0); assert.deepEqual(errors, []); h.bridge.close();
+});
+
+// Native takes no turn started on these sub-agents: the thread that runs them gives them
+// their work. A sub-agent's thread is never announced. The client asks native about the
+// ones it notices, and that answer is all the bridge is told; `ask` is that request's id.
+async function agent(h, threadId, id, ask, parent = 't') {
+  const thread = h.agents[threadId] = { id: threadId, cwd: 'fixture', parentThreadId: parent, canAcceptDirectInput: false };
+  if (ask) {
+    await h.bridge.client({ id: ask, method: 'thread/resume', params: { threadId, excludeTurns: true } });
+    h.bridge.native({ id: ask, result: { thread } });
+  }
+  started(h, threadId, id);
+}
+const stopped = (threadId, id) => ({ method: 'turn/completed', params: { threadId, turn: { id, status: 'failed', error: { codexErrorInfo: 'usageLimitExceeded' } } } });
+const asks = h => h.native.filter(m => m.method === 'thread/read').map(m => m.params.threadId);
+async function settled(h) {
+  await new Promise(done => setImmediate(done)); await h.bridge.serial;
+}
+
+test('sub-agents that take no turn of their own are continued through their conversation', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  // Three sub-agents outlive the conversation's failure; the client never asked about the third.
+  await agent(h, 'one', 'o1', 10); await agent(h, 'two', 'w1', 11); await agent(h, 'three', 'h1');
+  h.select('b'); await finished(h, calls[0], 2);
+  assert.equal(h.bridge.waiters.get('t').held, true);
+  for (const [threadId, id] of [['one', 'o1'], ['three', 'h1'], ['two', 'w1']]) { h.bridge.native(stopped(threadId, id)); await settled(h); }
+  // No sub-agent gets a waiter or a continue: the conversation's own continue is asked for again.
+  assert.deepEqual(calls.map(c => [c.threadId, c.held]), [['t', false], ['t', true]]);
+  assert.deepEqual(asks(h), ['three']); assert.equal(continues(h).length, 0);
+  await finished(h, calls[1], 2);
+  assert.deepEqual(continues(h).map(m => m.params.threadId), ['t']);
+  assert.equal(h.bridge.route.slot, 'b'); assert.equal(h.bridge.waiters.size, 0); assert.deepEqual(errors, []);
+  h.bridge.close();
+});
+
+test('a sub-agent stopping on the limit continues a conversation that is between turns', async () => {
+  const h = harness(); await opened(h);
+  const calls = waiting(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  // A sub-agent of a sub-agent, neither of which the client asked about.
+  await agent(h, 'one', 'o1'); await agent(h, 'deep', 'd1', null, 'one');
+  h.bridge.native(stopped('deep', 'd1')); await settled(h);
+  assert.deepEqual(asks(h), ['deep', 'one']);
+  assert.deepEqual(calls.map(c => [c.threadId, c.slot, c.held]), [['t', 'a', false]]);
+  assert.ok(Math.abs(Date.now() - Date.parse(calls[0].after)) < 60000);
+  // The other one stops too: the conversation is already waiting, and native is not asked twice.
+  h.bridge.native(stopped('one', 'o1')); await settled(h);
+  assert.equal(calls.length, 1); assert.equal(calls[0].killed, false); assert.deepEqual(asks(h), ['deep', 'one']);
+  h.select('b'); await finished(h, calls[0], 2);
+  assert.deepEqual(continues(h).map(m => m.params), [{ threadId: 't', input: [{ type: 'text', text: 'Automated message: continue.', text_elements: [] }] }]);
+  assert.equal(h.bridge.route.slot, 'b'); assert.deepEqual(errors, []); h.bridge.close();
+});
+
+test('a sub-agent stopping on the limit leaves a conversation that is in a turn to its own failure', async () => {
+  const h = harness(); await opened(h);
+  const calls = waiting(h);
+  started(h); await agent(h, 'one', 'o1', 10);
+  h.bridge.native(stopped('one', 'o1')); await settled(h);
+  // Native tells the conversation within its turn. A waiter now would use up its ten minutes.
+  assert.equal(calls.length, 0);
+  h.bridge.native(stopped('t', 'one'));
+  assert.deepEqual(calls.map(c => [c.threadId, c.held]), [['t', false]]); h.bridge.close();
+});
+
+test('an unannounced sub-agent that takes turns gets its own continue; one native cannot describe gets none', async () => {
+  const h = harness(); await opened(h);
+  const calls = waiting(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  h.agents.free = { id: 'free', cwd: 'fixture/free', parentThreadId: 't' };
+  started(h, 'free', 'f1'); h.bridge.native(stopped('free', 'f1')); await settled(h);
+  assert.deepEqual(calls.map(c => [c.threadId, c.slot]), [['free', 'a']]);
+  await finished(h, calls[0], 2);
+  assert.deepEqual(continues(h).map(m => m.params.threadId), ['free']);
+  assert.equal(h.native.filter(m => m.method === 'config/read').at(-1).params.cwd, 'fixture/free');
+  assert.deepEqual(errors, []);
+  started(h, 'ghost', 'g1'); h.bridge.native(stopped('ghost', 'g1')); await settled(h);
+  assert.equal(calls.length, 1); assert.deepEqual(errors, ['routing_continue_failed']); h.bridge.close();
 });

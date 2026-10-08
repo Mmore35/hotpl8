@@ -9,6 +9,9 @@ const LIMIT = 16 * 1024 * 1024; // Images and tool responses can exceed the MCP 
 const error = code => Object.assign(new Error(code), { code });
 const idKey = id => JSON.stringify(id);
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+// Native names the thread that runs a sub-agent, and says when it refuses a turn started on
+// the sub-agent itself. A native that does not say is taken to accept the turn.
+const lineage = thread => ({ parent: thread.parentThreadId || null, direct: thread.canAcceptDirectInput !== false });
 const blockedEnv = ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME', 'OPENAI_BASE_URL'];
 
 function killTree(proc) {
@@ -326,12 +329,12 @@ export class CodexBridge {
       this.reservations.delete(idKey(message.id));
       if (pending?.method === 'turn/start' && !message.error && this.threads.has(pending.threadId)) this.threads.get(pending.threadId).model = pending.model;
       if (pending && pending.method.startsWith('thread/') && !message.error && message.result?.thread?.id) {
-        this.threads.set(message.result.thread.id, { model: message.result.model || message.result.thread.model || pending.model, cwd: pending.cwd });
+        this.threads.set(message.result.thread.id, { model: message.result.model || message.result.thread.model || pending.model, cwd: pending.cwd, ...lineage(message.result.thread) });
       }
     }
     if (message.method === 'thread/started' && message.params?.thread?.id) {
       const thread = message.params.thread;
-      this.threads.set(thread.id, { model: thread.model, cwd: thread.cwd || this.cwd });
+      this.threads.set(thread.id, { model: thread.model, cwd: thread.cwd || this.cwd, ...lineage(thread) });
     }
     if (message.method === 'turn/started' && message.params?.threadId) this.active.set(message.params.threadId, message.params.turn?.id || null);
     if (message.method === 'turn/completed' && message.params?.threadId &&
@@ -367,12 +370,35 @@ export class CodexBridge {
   // is ready. The continue is a new turn: the failed turn's input is never sent again.
   // The waiter stays registered until the continue is sent or given up, so the owner
   // writing first cancels it at any point.
-  wait(threadId) {
-    if (!this.waiter || this.closed || !this.threads.has(threadId) || !this.route?.slot) return;
+  wait(threadId, slot = this.route?.slot, after = new Date().toISOString()) {
+    if (!this.waiter || this.closed || !slot) return;
+    // A sub-agent that takes no turn of its own is continued through the thread that runs
+    // it, which gives it its next task as it would after any other stop.
+    let target = threadId;
+    for (const seen = new Set(); ;) {
+      const thread = this.threads.get(target);
+      if (!thread) {
+        this.learn(target).then(() => this.wait(threadId, slot, after), () => { if (!this.closed) this.onRoutingError('routing_continue_failed'); });
+        return;
+      }
+      if (thread.direct) break;
+      if (!thread.parent || seen.has(thread.parent)) return;
+      seen.add(target); target = thread.parent;
+    }
+    // In a turn, that thread is told by native and meets the limit itself. A waiter now
+    // would use up its ten minutes for a continue that is never sent into running work.
+    if (target !== threadId && (this.waiters.has(target) || this.active.has(target))) return;
     // A continue the waiter has said yes to stands while it is admitted, held or asked
     // for again. A new waiter would stand down on the ten-minute rule and take it along.
-    if (this.waiters.get(threadId)?.due) return;
-    this.watch(threadId, this.route.slot, new Date().toISOString(), false);
+    if (this.waiters.get(target)?.due) return;
+    this.watch(target, slot, after, false);
+  }
+  // Native does not announce a sub-agent's thread to the client that opened its
+  // conversation, so the first the bridge hears of one may be its failure.
+  async learn(threadId) {
+    const thread = (await this.rpc('thread/read', { threadId }))?.thread;
+    if (thread?.id !== threadId) throw error('routing_thread_unknown');
+    if (!this.threads.has(threadId)) this.threads.set(threadId, { model: thread.model, cwd: thread.cwd || this.cwd, ...lineage(thread) });
   }
   // `slot` and `after` are the account and the time of the failure. `again` starts the
   // waiter for a continue that was held. `due` is set once the waiter has said yes.
