@@ -583,6 +583,7 @@ mod tests {
     fn a_terminal_without_full_colour_gets_the_nearest_fixed_one() {
         assert_eq!(indexed([255, 255, 255]), 231);
         assert_eq!(indexed([0, 0, 0]), 16);
+        assert_eq!(indexed([255, 0, 0]), 196);
         assert_eq!(indexed(BACKGROUND), 234);
         assert_eq!(indexed([128, 128, 128]), 244);
         assert_eq!(indexed(Tone::Peach.rgb()), 209);

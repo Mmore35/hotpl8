@@ -227,6 +227,8 @@ mod tests {
         assert_eq!(rows(108, 32, 4, Colours::Indexed), Some(10));
         assert_eq!(rows(65, 40, 4, Colours::Indexed), None);
         assert_eq!(rows(108, 24, 4, Colours::Indexed), None);
+        // A standard terminal: the small cat, in whichever cells the terminal draws well.
+        assert_eq!((rows(77, 28, 4, Colours::True), rows(77, 28, 4, Colours::Indexed)), (Some(5), Some(10)));
     }
 
     #[test]
@@ -283,5 +285,49 @@ mod tests {
             at.map(|at| crate::paint::cells(&text(&row[..at])))
         };
         assert_eq!((star(0.0), star(1.0), star(1.5)), (None, Some(102), Some(96)));
+    }
+
+    #[test]
+    fn whole_cells_show_every_pixel_of_the_drawing() {
+        let sprite = shipped();
+        for (compact, art) in [(true, &sprite.compact), (false, &sprite.full)] {
+            // In a frame just as wide as the drawing, its first column is the terminal's.
+            let (scene, width) = (Scene { compact, cells: true }, art.frames[0][0].len() * 2 + 2);
+            for (tick, frame) in art.frames.iter().enumerate() {
+                for (row, pixels) in frame.iter().enumerate() {
+                    let spans = sprite.row(scene, tick as f64 / 12.0 + 0.001, width, row);
+                    let shown: Vec<(char, Option<Tone>)> = spans[1..].iter().flat_map(|span| span.text.chars().map(move |glyph| (glyph, span.background))).collect();
+                    assert_eq!(shown.len(), pixels.len() * 2);
+                    for (x, (glyph, background)) in shown.into_iter().enumerate() {
+                        assert_eq!(glyph, ' ');
+                        match pixels[x / 2] {
+                            // Open sky, or a star in it.
+                            BACKGROUND => assert!(background.is_none_or(|tone| TWINKLE.contains(&tone))),
+                            pixel => assert_eq!(background, Some(Tone::Rgb(pixel))),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_small_cat_keeps_its_eyes_and_every_cell_a_colour_of_the_drawing() {
+        let sprite = shipped();
+        for (tick, small) in sprite.compact.frames.iter().enumerate() {
+            // The highlight in each eye, and the cheek beside it.
+            assert_eq!((small[5][21], small[5][27], small[6][20], small[6][29]), ([255; 3], [255; 3], [255, 175, 199], [255, 175, 199]));
+            for (scene, art) in [(Scene { compact: true, cells: false }, &sprite.compact), (HALF, &sprite.full)] {
+                let drawn = |tone: Tone| match tone {
+                    Tone::Rgb(rgb) => art.frames[tick].iter().flatten().any(|pixel| *pixel == rgb),
+                    sky => sky == Tone::Text || TWINKLE.contains(&sky),
+                };
+                for row in 0..scene.rows() {
+                    for span in &sprite.row(scene, tick as f64 / 12.0 + 0.001, 44, row)[1..] {
+                        assert!(drawn(span.tone) && span.background.is_none_or(drawn), "{span:?}");
+                    }
+                }
+            }
+        }
     }
 }

@@ -1481,4 +1481,495 @@ pub mod tests {
             assert!(frame(&status, &policy, now, &view(100, 40), &mut Tweens::default()).is_err(), "{unreadable}");
         }
     }
+
+    /// A Thursday, and a fleet read at that instant: three Claude accounts, the third in use
+    /// and the first held in reserve, and one Codex account. Its policy was written before
+    /// there were modes.
+    pub const THURSDAY: &str = "2026-09-10T12:00:00.0000000+00:00";
+    pub const FLEET_POLICY: &str = r#"{"labels":{"2":"work","1":"reserve","3":"work2"},"prefer":[1,2,3],"reserve":[1],"codex":{"defaultMeter":"codex","slots":[{"id":"main","label":"Main"}]}}"#;
+    pub const FLEET: &str = r#"{"active":3,"generatedAt":"2026-09-10T12:00:00.0000000+00:00","providers":{"codex":{"slots":[{"label":"Main","status":"ok","observedAt":"2026-09-10T12:00:00.0000000+00:00","id":"main","buckets":{"codex_bengalfox":{"windows":{"300":{"resetsAt":1789059600,"usedPercent":0,"anchorState":"unconfirmed","remainingPercent":100}},"status":"constraint_unknown"},"codex":{"windows":{"10080":{"resetsAt":1789300800,"usedPercent":35,"anchorState":"observed-active","remainingPercent":65}},"status":"observed"}}}],"recommendedSlot":"main","defaultMeter":"codex"}},"slots":[{"reset7d":"2026-09-12T12:00:00.0000000+00:00","label":"Claude 1","fresh":true,"used5h":25,"active":false,"reset5h":"2026-09-10T14:00:00.0000000+00:00","status":"ok","slot":1,"used7d":50},{"reset7d":"2026-09-12T12:00:00.0000000+00:00","label":"Claude 2","fresh":true,"used5h":25,"active":false,"reset5h":"2026-09-10T14:00:00.0000000+00:00","status":"ok","slot":2,"used7d":50},{"reset7d":"2026-09-12T12:00:00.0000000+00:00","label":"Claude 3","fresh":true,"used5h":25,"active":true,"reset5h":"2026-09-10T14:00:00.0000000+00:00","status":"ok","slot":3,"used7d":50}]}"#;
+
+    fn thursday() -> Dto {
+        noon();
+        Dto::parse(THURSDAY).ok().unwrap()
+    }
+
+    /// That Thursday at another time of day.
+    fn clock(time: &str) -> String {
+        format!("2026-09-10T{time}.0000000+00:00")
+    }
+
+    /// `text` with the one `old` in it said as `new`.
+    fn with(text: &str, old: &str, new: &str) -> String {
+        assert_eq!(text.matches(old).count(), 1, "{old}");
+        text.replacen(old, new, 1)
+    }
+
+    /// `text` with `old` said as `new` in each of the three Claude accounts.
+    fn with_each(text: &str, old: &str, new: &str) -> String {
+        assert_eq!(text.matches(old).count(), 3, "{old}");
+        text.replace(old, new)
+    }
+
+    /// A status with what `old` says of Claude account `slot` said as `new`.
+    fn of_account(status: &str, slot: usize, old: &str, new: &str) -> String {
+        const OPENS: &str = r#"{"reset7d""#;
+        let mut parts: Vec<String> = status.split(OPENS).map(str::to_owned).collect();
+        assert_eq!(parts.len(), 4);
+        parts[slot] = with(&parts[slot], old, new);
+        parts.join(OPENS)
+    }
+
+    /// An object with more members.
+    fn and(object: &str, members: &str) -> String {
+        format!("{},{members}}}", object.strip_suffix('}').unwrap())
+    }
+
+    /// The fleet with another outcome and time for the Codex account's own reading.
+    fn main_read(outcome: &str, observed: &str) -> String {
+        let read = r#""label":"Main","status":"ok","observedAt":"2026-09-10T12:00:00.0000000+00:00""#;
+        with(FLEET, read, &format!(r#""label":"Main","status":"{outcome}","observedAt":"{}""#, clock(observed)))
+    }
+
+    /// The fleet read at another time of day.
+    fn generated(time: &str) -> String {
+        with(FLEET, r#""generatedAt":"2026-09-10T12:00:00.0000000+00:00""#, &format!(r#""generatedAt":"{}""#, clock(time)))
+    }
+
+    /// The fleet's policy with switching between accounts allowed, and with it left alone.
+    fn automated() -> String {
+        and(FLEET_POLICY, r#""mode":"automate","switchEnabled":true"#)
+    }
+
+    fn monitored() -> String {
+        and(FLEET_POLICY, r#""mode":"monitor""#)
+    }
+
+    /// A status with what the collector did on its last run.
+    fn acted(status: &str, switching: bool, warming: bool) -> String {
+        and(status, &format!(r#""actions":{{"switching":{switching},"warming":{warming},"probing":false}}"#))
+    }
+
+    /// The fleet with every optional line on its Claude accounts and a second Codex account,
+    /// the one to launch next: the first has nothing left. With the policy that names both.
+    pub fn crowded() -> (String, String) {
+        const LEFT: &str = r#""usedPercent":35,"anchorState":"observed-active","remainingPercent":65"#;
+        let main = FLEET.split_once(r#"{"codex":{"slots":["#).unwrap().1.split_once(r#"],"recommendedSlot""#).unwrap().0;
+        let work = with(&with(&with(main, r#""label":"Main""#, r#""label":"Work""#), r#""id":"main""#, r#""id":"work""#), LEFT, r#""usedPercent":22,"anchorState":"observed-active","remainingPercent":78"#);
+        let spent = with(&with(main, LEFT, r#""usedPercent":100,"anchorState":"observed-active","remainingPercent":0"#), r#""status":"observed""#, r#""status":"blocked""#);
+        let status = with(&with(FLEET, main, &format!("{spent},{work}")), r#""recommendedSlot":"main""#, r#""recommendedSlot":"work""#);
+        let status = with_each(&status, r#""status":"ok","slot""#, r#""warmOutcome":{"outcome":"observed-active"},"actionBlock":"outside_work_hours","modelBlock":"model_below_margin","status":"ok","slot""#);
+        (status, with(FLEET_POLICY, r#"{"id":"main","label":"Main"}"#, r#"{"id":"main","label":"Main"},{"id":"work","label":"Work"}"#))
+    }
+
+    /// A terminal that wide and tall, as it is first drawn.
+    pub fn terminal(width: usize, height: usize) -> View {
+        View { plain: false, motion: true, ..view(width, height) }
+    }
+
+    /// The frame of a state as it was that Thursday. No status is a state never collected.
+    pub fn fleet_drawn(status: &str, policy: &str, view: &View) -> Frame {
+        let now = thursday();
+        let status = if status.is_empty() { V::Null } else { parse(status, "").ok().unwrap() };
+        frame(&status, &parse(policy, "").ok().unwrap(), now, view, &mut Tweens::default()).ok().unwrap()
+    }
+
+    /// Every row of a frame as it is shown, one to a line.
+    pub fn page(frame: &Frame) -> String {
+        frame.lines.iter().map(|line| paint::text(&line.spans)).collect::<Vec<_>>().join("\n")
+    }
+
+    /// The fleet's frame with room for every row.
+    fn fleet(status: &str) -> String {
+        page(&fleet_drawn(status, FLEET_POLICY, &terminal(100, 100)))
+    }
+
+    /// The title of a frame.
+    fn title_of(status: &str, policy: &str, view: &View) -> String {
+        paint::text(&fleet_drawn(status, policy, view).lines[1].spans)
+    }
+
+    /// Whether a row gives that window that much left: its name, its bar, the percentage.
+    pub fn leaves(page: &str, window: &str, percent: &str) -> bool {
+        page.lines().any(|line| line.split_whitespace().collect::<Vec<_>>().windows(3).any(|said| said[0] == window && said[2] == percent))
+    }
+
+    /// Whether a title says a word or phrase as one of its own, not as part of another.
+    fn says(title: &str, phrase: &str) -> bool {
+        let apart = |beside: Option<char>| beside.is_none_or(|c| c.is_whitespace() || c == '·');
+        title.match_indices(phrase).any(|(at, found)| apart(title[..at].chars().next_back()) && apart(title[at + found.len()..].chars().next()))
+    }
+
+    /// The rows of a frame the cat flies in.
+    fn cat_rows(frame: &Frame) -> Vec<String> {
+        let flies = |line: &&Line| matches!(line.live.as_ref().map(|live| &live.paint), Some(Paint::Nyan { .. }));
+        frame.lines.iter().filter(flies).map(|line| paint::text(&line.spans)).collect()
+    }
+
+    #[test]
+    fn a_policy_with_no_account_is_shown_how_to_connect_the_first() {
+        let first = fleet_drawn("", r#"{"mode":"monitor","prefer":[],"codex":{"slots":[]}}"#, &terminal(80, 24));
+        let shown = rows(&first);
+        // No collector is implied to be running, and with no account there is nothing to
+        // switch between: the title stays quiet.
+        assert_eq!(shown[1], across(80, "  (=^.^=)  hotpl8", "no reading"));
+        assert_eq!(
+            shown[8..13],
+            [
+                "  No accounts yet.",
+                "  Connect your first account: hotpl8 setup",
+                "  Or ask your agent to add a Claude or Codex account.",
+                "  Complete provider sign-in only when needed.",
+                "  HotPl8 connects the account and reads usage for you."
+            ]
+        );
+        let text = page(&first);
+        for unsaid in ["AccountHome", "hotpl8 refresh", "LIVE", "every 5m", "auto-switch"] {
+            assert!(!text.contains(unsaid), "{unsaid}");
+        }
+    }
+
+    #[test]
+    fn a_reading_gone_stale_and_an_account_signed_out_each_say_what_to_do() {
+        let text = fleet(&of_account(&generated("11:00:00"), 1, r#""status":"ok""#, r#""status":"authentication_required""#));
+        assert!(text.contains("hotpl8 refresh") && text.contains("SIGN-IN NEEDED") && !text.contains("account unavailable"), "{text}");
+    }
+
+    #[test]
+    fn one_busy_or_slow_codex_read_retries_quietly_until_its_last_success_ages_out() {
+        for (failure, named) in [("home_busy", "HOME BUSY"), ("timeout", "TIMEOUT")] {
+            let text = fleet(&main_read(failure, "11:55:00"));
+            assert!(text.contains("READ RETRYING") && !text.contains("account unavailable"), "{text}");
+            let text = fleet(&main_read(failure, "11:00:00"));
+            assert!(!text.contains("READ RETRYING") && text.contains(named) && !text.contains("account unavailable"), "{text}");
+        }
+        let text = fleet(&main_read("transport_failed", "12:00:00"));
+        assert!(text.contains("TRANSPORT FAILED") && !text.contains("account unavailable"), "{text}");
+        assert_eq!(badge_tone("READ RETRYING").ok().unwrap(), Tone::Amber);
+    }
+
+    #[test]
+    fn the_trouble_of_one_account_is_on_its_own_row_and_never_a_general_line() {
+        assert!(!fleet(FLEET).contains("account unavailable"));
+        let text = fleet(&main_read("authentication_required", "12:00:00"));
+        assert!(text.contains("AUTHENTICATION REQUIRED") && !text.contains("account unavailable") && !text.contains("provider checks incomplete"), "{text}");
+        // What can be used now says nothing of it either.
+        let summary = text.lines().skip(3).take(4).collect::<Vec<_>>().join("\n");
+        for word in ["SIGN-IN", "read", "plan unknown", "UNAVAILABLE", "PICK MANUALLY", "NO LAUNCH", "monitor"] {
+            assert!(!summary.contains(word), "{word}: {summary}");
+        }
+    }
+
+    #[test]
+    fn every_account_is_shown_and_a_meter_that_is_not_the_chosen_one_is_not() {
+        let text = fleet(FLEET);
+        for said in ["3 subscriptions", "1 subscription", "Claude 1", "Claude 2", "Claude 3", "NEXT LAUNCH", "ACTIVE", "Main  [main]"] {
+            assert!(text.contains(said), "{said}: {text}");
+        }
+        assert!(leaves(&text, "5h", "75%") && leaves(&text, "7d", "65%"), "{text}");
+        assert!(!text.contains("    Main") && !text.contains("Spark"), "{text}");
+    }
+
+    #[test]
+    fn accounts_never_read_are_listed_without_a_balance() {
+        let text = fleet("");
+        for said in ["reserve", "Main", "NO OBSERVATION"] {
+            assert!(text.contains(said), "{said}: {text}");
+        }
+        assert!(!text.contains(" 100%"), "{text}");
+    }
+
+    #[test]
+    fn a_codex_account_read_long_ago_or_used_up_is_not_the_next_launch() {
+        let text = fleet(&main_read("ok", "11:00:00"));
+        assert!(text.contains("STALE") && !text.contains("NEXT LAUNCH"), "{text}");
+        let spent = with(FLEET, r#""anchorState":"observed-active","remainingPercent":65"#, r#""anchorState":"observed-active","remainingPercent":0"#);
+        assert!(!fleet(&spent).contains("NEXT LAUNCH"));
+    }
+
+    #[test]
+    fn a_reset_that_has_passed_is_due_and_one_not_confirmed_is_no_countdown() {
+        let now = thursday();
+        let said = |reset: V, unix: bool, wide: bool, unconfirmed: bool| reset_text(&reset, now, unix, wide, unconfirmed).ok().unwrap();
+        assert_eq!(said(V::from(clock("11:59:59")), false, false, false), "reset due");
+        // An hour on, as seconds since 1970.
+        let hour = || V::from(1_789_045_200_i64);
+        assert_eq!(said(hour(), true, false, true), "reset unconfirmed");
+        assert_eq!(said(hour(), true, false, false), "reset 1h 00m");
+        assert_eq!(said(hour(), true, true, false), "reset 1h 00m  ·  Thu 13:00");
+        for unknown in [V::Null, V::from("")] {
+            assert_eq!(said(unknown, false, true, false), "reset ?");
+        }
+        // A reset HotPl8 never writes is not guessed at: no frame is drawn.
+        assert!(reset_text(&V::from("soon"), now, false, true, false).is_err());
+        assert_eq!([0.0, 59.9, 3599.0, 3600.0, 187200.0, -5.0].map(span_text), ["0s", "59s", "59m", "1h 00m", "2d 04h", "0s"]);
+    }
+
+    #[test]
+    fn a_reset_that_elapsed_after_the_reading_refills_the_bar() {
+        // Every account's plan is known and its five hour reset has passed. What differs is
+        // whether the reset had already passed when the reading arrived.
+        let elapsed = |observed: &str, reset: &str| {
+            let known = format!(r#""reset5h":"{}","plan":{{"status":"detected","profile":"claude-pro","observedAt":"{THURSDAY}"}},"observedAt":"{}","status":"ok""#, clock(reset), clock(observed));
+            with_each(FLEET, r#""reset5h":"2026-09-10T14:00:00.0000000+00:00","status":"ok""#, &known)
+        };
+        let rolled = elapsed("11:55:00", "11:59:59");
+        let text = fleet(&rolled);
+        assert!(leaves(&text, "5h", "100%"), "{text}");
+        assert!(text.contains("reset · awaiting read") && !text.contains("reset due"), "{text}");
+        // The fleet stays measured: its total is a percentage, not the dotted unknown.
+        assert!(!text.contains("? now"), "{text}");
+        let narrow = page(&fleet_drawn(&rolled, FLEET_POLICY, &terminal(79, 100)));
+        assert!(narrow.contains("awaiting read") && !narrow.contains("reset · awaiting read"), "{narrow}");
+
+        let text = fleet(&elapsed("11:59:40", "11:59:30"));
+        assert!(leaves(&text, "5h", "75%") && text.contains("reset due") && !text.contains("? now"), "{text}");
+        // Nothing can be told of now: the Claude total stays empty rather than invented.
+        let lines: Vec<&str> = text.lines().collect();
+        let at = lines.iter().position(|line| line.starts_with("│  CLAUDE ")).unwrap();
+        assert!(!lines[at + 1].contains("% now"), "{}", lines[at + 1]);
+
+        // A reading that never arrived is not refilled by a reset that passed.
+        let text = fleet(&with_each(&rolled, r#""used5h":25"#, r#""used5h":null"#));
+        assert!(text.contains("no reading") && !leaves(&text, "5h", "100%"), "{text}");
+    }
+
+    #[test]
+    fn the_title_states_auto_switch_as_the_collector_last_applied_it() {
+        let (on, wide) = (automated(), terminal(100, 40));
+        let title = title_of(&acted(FLEET, true, false), &on, &wide);
+        assert!(title.contains("● auto-switch on") && !title.contains("warming"), "{title}");
+        // A run that only observed reports switching off, though the policy allows it.
+        let title = title_of(&acted(FLEET, false, false), &on, &wide);
+        assert!(title.contains("○ auto-switch off"), "{title}");
+        let title = title_of(&and(FLEET, r#""mode":"monitor""#), &on, &wide);
+        assert!(title.contains("auto-switch off"), "{title}");
+        let title = title_of(&and(FLEET, r#""mode":"automate""#), &monitored(), &wide);
+        assert!(title.contains("auto-switch off"), "{title}");
+        let paused = and(&acted(FLEET, false, false), &format!(r#""automationPause":{{"until":"{}"}}"#, clock("12:42:00")));
+        let title = title_of(&paused, &on, &wide);
+        assert!(title.contains("◐ auto-switch paused 42m"), "{title}");
+        let held = and(&acted(FLEET, true, true), &format!(r#""hold":{{"until":"{}"}}"#, clock("14:00:00")));
+        let title = title_of(&held, &on, &wide);
+        assert!(title.contains("◐ auto-switch held 2h 00m") && title.contains("● warming on"), "{title}");
+    }
+
+    #[test]
+    fn the_auto_switch_state_is_kept_at_every_width() {
+        for width in [48, 60, 79, 100] {
+            let title = title_of(FLEET, FLEET_POLICY, &terminal(width, 40));
+            // A policy from before there were modes keeps the switching it had.
+            assert!(title.contains("● auto-switch on") && cells(&title) == width, "{width}: {title}");
+        }
+    }
+
+    #[test]
+    fn a_narrow_title_gives_way_in_whole_words_and_keeps_the_state_and_any_warning() {
+        let (on, monitor, stale) = (automated(), monitored(), generated("10:55:00"));
+        let paused_stale = and(&acted(&stale, false, false), &format!(r#""automationPause":{{"until":"{}"}}"#, clock("15:00:00")));
+        let held = and(&acted(FLEET, true, false), &format!(r#""hold":{{"until":"{}"}}"#, clock("14:00:00")));
+        let preview_stale = and(&stale, r#""displayPolicy":true"#);
+        // A state and its policy, whether it is frozen, a word of each side that every width
+        // keeps, and what a wide title says in full.
+        let cases: [(&str, &str, &str, bool, [&str; 2], [&str; 2]); 9] = [
+            ("off, stale", stale.as_str(), monitor.as_str(), false, ["off", "stale"], ["○ auto-switch off", "stale 1h 05m"]),
+            ("accounts, never read", "", on.as_str(), false, ["on", "no reading"], ["● auto-switch on", "no reading"]),
+            ("frozen", FLEET, on.as_str(), true, ["on", "FROZEN"], ["● auto-switch on", "FROZEN · read 0s ago"]),
+            ("paused, stale", paused_stale.as_str(), on.as_str(), false, ["paused", "stale"], ["◐ auto-switch paused 3h 00m", "stale 1h 05m"]),
+            ("held", held.as_str(), on.as_str(), false, ["held", "0s"], ["◐ auto-switch held 2h 00m", "read 0s ago"]),
+            // Two things to say on the right: the warning about the reading outlasts FROZEN.
+            ("frozen, stale", stale.as_str(), monitor.as_str(), true, ["off", "stale"], ["○ auto-switch off", "FROZEN · stale 1h 05m"]),
+            ("frozen, paused, stale", paused_stale.as_str(), on.as_str(), true, ["paused", "stale"], ["◐ auto-switch paused 3h 00m", "FROZEN · stale 1h 05m"]),
+            ("frozen, never read", "", on.as_str(), true, ["on", "no reading|no data"], ["● auto-switch on", "FROZEN · no reading"]),
+            ("preview, stale", preview_stale.as_str(), monitor.as_str(), false, ["off", "stale"], ["○ auto-switch off", "PREVIEW POLICY · stale 1h 05m"]),
+        ];
+        for (name, status, policy, frozen, words, full) in cases {
+            for width in [48, 50, 52, 56, 60, 79, 100] {
+                let title = title_of(status, policy, &View { frozen, motion: false, ..terminal(width, 40) });
+                let label = format!("{name} at {width}: {title}");
+                // Two cells before the edge: nothing was cut to fit.
+                assert!(cells(&title) == width && title.ends_with("  │"), "{label}");
+                assert!(title.split_whitespace().any(|word| word == "auto" || word == "auto-switch"), "{label}");
+                for word in words {
+                    assert!(word.split('|').any(|either| says(&title, either)), "{label} lacks {word}");
+                }
+                for phrase in full.iter().filter(|_| width == 100) {
+                    assert!(title.contains(phrase), "{label} lacks {phrase}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_next_codex_launch_is_named_and_a_lone_event_is_not_said_twice() {
+        let event = format!(r#"{{"provider":"codex","slot":"main","kind":"recommendation","reason":"next_launch_only","at":"{}"}}"#, clock("11:55:00"));
+        let one = and(FLEET, &format!(r#""recentActions":[{event}]"#));
+        let text = fleet(&one);
+        assert!(text.contains("next: Main") && !text.contains("RECENT"), "{text}");
+        // Too narrow for the row of keys to carry it: the one event stays listed.
+        let narrow = page(&fleet_drawn(&one, FLEET_POLICY, &terminal(48, 100)));
+        assert!(narrow.contains("RECENT") && narrow.contains("codex next"), "{narrow}");
+        assert!(fleet(&and(FLEET, &format!(r#""recentActions":[{event},{event}]"#))).contains("RECENT"));
+    }
+
+    #[test]
+    fn a_changed_bar_glides_to_its_new_value_under_a_number_that_is_already_exact() {
+        let (now, policy) = (thursday(), parse(FLEET_POLICY, "").ok().unwrap());
+        let mut tweens = Tweens::default();
+        let mut window = |status: &str, seconds: f64| {
+            let drawn = frame(&parse(status, "").ok().unwrap(), &policy, now, &View { seconds, ..terminal(100, 100) }, &mut tweens).ok().unwrap();
+            drawn.lines.into_iter().find(|line| paint::text(&line.spans).contains("5h ")).unwrap()
+        };
+        window(FLEET, 10.0);
+        let used = of_account(FLEET, 1, r#""used5h":25"#, r#""used5h":75"#);
+        let row = window(&used, 10.0);
+        // A quarter is left, drawn part of the way down from the three quarters on screen.
+        let text = paint::text(&row.spans);
+        assert!(leaves(&text, "5h", "25%"), "{text}");
+        let live = row.live.as_ref().unwrap();
+        assert!(live.until > 10.0 && live.moving(10.2) && !live.moving(10.6));
+        let later = paint::text(&window(&used, 10.6).spans);
+        assert!(leaves(&later, "5h", "25%"), "{later}");
+        let bar = |text: &str| text.split_whitespace().nth(2).unwrap().to_owned();
+        assert_ne!(bar(&text), bar(&later));
+        // Between the two layouts the row is drawn as the second one has it.
+        assert_eq!(paint::text(&live.spans(10.6)), later);
+    }
+
+    #[test]
+    fn a_narrow_frame_and_a_last_page_fit_the_terminal() {
+        for width in [50, 79, 100, 110] {
+            for offset in [0, 999] {
+                let drawn = fleet_drawn(FLEET, FLEET_POLICY, &View { offset, ..terminal(width, 18) });
+                assert!(drawn.lines.len() <= 18, "{width} from {offset}");
+                for line in &drawn.lines {
+                    assert_eq!(cells(&paint::text(&line.spans)), width);
+                }
+            }
+        }
+        assert!(leaves(&page(&fleet_drawn(FLEET, FLEET_POLICY, &View { offset: 999, ..terminal(79, 18) })), "7d", "65%"));
+    }
+
+    #[test]
+    fn a_standard_terminal_shows_what_can_be_used_now_above_the_accounts() {
+        let drawn = fleet_drawn(FLEET, FLEET_POLICY, &terminal(79, 23));
+        let text = page(&drawn);
+        assert!(drawn.lines.len() <= 23 && text.contains("% now"), "{text}");
+        let (claude, codex, accounts) = (text.find("│  CLAUDE ").unwrap(), text.find("│  CODEX ").unwrap(), text.find("CLAUDE  /").unwrap());
+        assert!(claude < codex && codex < accounts, "{text}");
+    }
+
+    #[test]
+    fn a_label_cannot_drive_the_terminal_and_a_wide_one_keeps_the_edges_aligned() {
+        let named = of_account(FLEET, 1, r#""label":"Claude 1""#, r#""label":"\u001b[2J\r\n中文 cafe""#);
+        let drawn = fleet_drawn(&named, FLEET_POLICY, &terminal(50, 100));
+        for line in &drawn.lines {
+            let text = paint::text(&line.spans);
+            assert_eq!(cells(&text), 50, "{text}");
+            assert!(!text.chars().any(char::is_control), "{text:?}");
+        }
+        assert!(page(&drawn).contains("[2J  中文 cafe  [1]"), "{}", page(&drawn));
+    }
+
+    #[test]
+    fn a_codex_login_switched_off_shows_no_balance_from_before() {
+        let text = fleet(&main_read("disabled", "12:00:00"));
+        assert!(text.contains("Main  [main]  ·  DISABLED"), "{text}");
+        assert!(!leaves(&text, "7d", "65%") && !text.contains("NEXT LAUNCH"), "{text}");
+    }
+
+    #[test]
+    fn accounts_with_every_optional_line_cannot_hide_the_codex_account_to_launch_next() {
+        let (status, policy) = crowded();
+        for width in [79, 110] {
+            let drawn = fleet_drawn(&status, &policy, &terminal(width, 40));
+            let text = page(&drawn);
+            for said in ["Main  [main]", "EXHAUSTED", "Work  [work]", "NEXT LAUNCH"] {
+                assert!(text.contains(said), "{width} lacks {said}: {text}");
+            }
+            assert!(leaves(&text, "7d", "78%") && drawn.lines.len() <= 40, "{text}");
+            for line in &drawn.lines {
+                assert_eq!(cells(&paint::text(&line.spans)), width);
+            }
+        }
+        let last = page(&fleet_drawn(&status, &policy, &View { offset: 999, ..terminal(79, 24) }));
+        assert!(last.contains("Work  [work]") && leaves(&last, "7d", "78%"), "{last}");
+        // Where every row fits there is nowhere to scroll to.
+        assert_eq!(fleet_drawn(&status, &policy, &View { offset: 10, ..terminal(110, 40) }).offset, 0);
+    }
+
+    #[test]
+    fn an_account_last_read_long_ago_is_stale_though_the_collector_just_ran() {
+        let text = fleet(&of_account(FLEET, 1, r#""status":"ok""#, &format!(r#""observedAt":"{}","status":"ok""#, clock("11:00:00"))));
+        assert!(text.contains("Claude 1  [1]  ·  STALE"), "{text}");
+    }
+
+    #[test]
+    fn the_cat_is_as_large_as_leaves_the_accounts_their_room() {
+        let sizes = |colours: Colours| {
+            [(48, 24), (79, 28), (94, 35), (110, 40), (79, 17)].map(|(width, height)| {
+                let drawn = fleet_drawn(FLEET, FLEET_POLICY, &View { nyan: true, colours, ..terminal(width, height) });
+                assert!(drawn.lines.len() <= height, "{width}x{height}");
+                for line in &drawn.lines {
+                    assert_eq!(cells(&paint::text(&line.spans)), width);
+                }
+                let flown = cat_rows(&drawn);
+                // Whole cells are whole cells: no half blocks where a terminal draws them with gaps.
+                assert!(colours == Colours::True || !flown.iter().any(|row| row.contains(['▀', '▄', '█'])), "{width}x{height}");
+                flown.len()
+            })
+        };
+        assert_eq!(sizes(Colours::True), [5, 5, 5, 9, 0]);
+        assert_eq!(sizes(Colours::Indexed), [0, 10, 10, 18, 0]);
+    }
+
+    #[test]
+    fn the_cat_between_two_layouts_is_the_cat_the_next_layout_draws() {
+        let (now, status, policy) = (noon(), parse(STATUS, "").ok().unwrap(), parse(POLICY, "").ok().unwrap());
+        for colours in [Colours::True, Colours::Indexed] {
+            // Both drawings, through every frame of the cat and on into its second lap.
+            for (width, height) in [(110, 40), (81, 30)] {
+                let laid = |seconds: f64| frame(&status, &policy, now, &View { colours, width, height, ..lit(seconds, true) }, &mut Tweens::default()).ok().unwrap();
+                let first = laid(0.001);
+                assert!(!cat_rows(&first).is_empty(), "{width}x{height}");
+                for tick in 1..=13 {
+                    let seconds = f64::from(tick) / 12.0 + 0.001;
+                    let next = laid(seconds);
+                    for (before, after) in first.lines.iter().zip(&next.lines) {
+                        if let Some(live) = before.live.as_ref().filter(|live| matches!(live.paint, Paint::Nyan { .. })) {
+                            assert!(live.spans(seconds) == after.spans, "{width}x{height} at {seconds}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_terminal_is_sent_only_the_colours_it_can_show() {
+        let sent = |colours: Colours| {
+            let mut out = String::new();
+            for line in &fleet_drawn(FLEET, FLEET_POLICY, &View { nyan: true, colours, ..terminal(113, 33) }).lines {
+                paint::ansi(&line.spans, colours, &mut out);
+            }
+            out
+        };
+        // Every colour is one of the fixed ones by its number, and none of the first sixteen,
+        // which a theme may repaint.
+        let fixed = sent(Colours::Indexed);
+        assert!(fixed.contains("\x1b[48;5;234m"));
+        let mut colours = 0;
+        for code in fixed.split("\x1b[").skip(1).map(|rest| &rest[..=rest.find(['m', 'K']).unwrap()]) {
+            if code == "K" {
+                continue;
+            }
+            let number = code.strip_prefix("38;5;").or_else(|| code.strip_prefix("48;5;")).and_then(|number| number.strip_suffix('m')).and_then(|number| number.parse::<u16>().ok());
+            assert!(number.is_some_and(|number| (16..=255).contains(&number)), "{code}");
+            colours += 1;
+        }
+        assert!(colours > 100, "{colours} colours");
+        let full = sent(Colours::True);
+        assert!(full.contains("\x1b[38;2;220;225;238m") && full.contains("\x1b[48;2;18;23;35m"));
+        assert!(!full.contains("\x1b[38;5;") && !full.contains("\x1b[48;5;"));
+    }
 }

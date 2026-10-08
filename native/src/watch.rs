@@ -420,4 +420,53 @@ mod tests {
         assert!(matches!(release.look(), Look::Replaced));
         std::fs::remove_dir_all(&directory).unwrap();
     }
+
+    #[test]
+    fn a_policy_being_tried_is_named_in_the_title_and_nothing_is_written() {
+        let state = scratch("tried");
+        std::fs::write(state.join("policy.json"), POLICY).unwrap();
+        std::fs::write(state.join("status.json"), STATUS).unwrap();
+        for command in [Command::Watch, Command::Nyan] {
+            let mut request = asked(command, &state);
+            assert!(!crate::display::answer(&request).ok().unwrap().contains("PREVIEW POLICY"));
+            request.policy = Some(state.join("policy.json"));
+            assert!(crate::display::answer(&request).ok().unwrap().contains("PREVIEW POLICY"));
+        }
+        let mut kept: Vec<_> = std::fs::read_dir(&state).unwrap().map(|entry| entry.unwrap().file_name()).collect();
+        kept.sort();
+        assert_eq!(kept, ["policy.json", "status.json"]);
+        assert_eq!(std::fs::read_to_string(state.join("status.json")).unwrap(), STATUS);
+        std::fs::remove_dir_all(&state).unwrap();
+    }
+
+    #[test]
+    fn scrolling_stops_at_the_last_page_and_comes_back_from_it() {
+        use crate::dashboard::tests::{crowded, fleet_drawn, leaves, page, terminal};
+        let (status, policy) = crowded();
+        for (nyan, height) in [(false, 21), (true, 28)] {
+            // Each key moves from where the frame before it settled.
+            let shown = |offset: &mut usize| {
+                let drawn = fleet_drawn(&status, &policy, &View { offset: *offset, nyan, ..terminal(79, height) });
+                *offset = drawn.offset;
+                page(&drawn)
+            };
+            let (mut offset, mut text) = (0, String::new());
+            for _ in 0..25 {
+                offset = scrolled(offset, Key::Down);
+                text = shown(&mut offset);
+            }
+            assert!(leaves(&text, "7d", "78%") && text.contains("-15/15]"), "{text}");
+            if !nyan {
+                assert!(text.contains("[6-15/15]") && offset == 5, "{offset}: {text}");
+            }
+            for key in [Key::End, Key::Down, Key::PageDown] {
+                offset = scrolled(offset, key);
+            }
+            let text = shown(&mut offset);
+            assert!(leaves(&text, "7d", "78%") && offset < 15, "{offset}: {text}");
+            offset = scrolled(offset, Key::Up);
+            assert!(!shown(&mut offset).contains("-15/15]"));
+        }
+        assert_eq!(scrolled(0, Key::PageUp), 0);
+    }
 }
