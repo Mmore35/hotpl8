@@ -4,10 +4,15 @@
 //! These are implemented here and nowhere else. A launcher hands the reader the words the
 //! user typed (`user`, in door.rs); the PowerShell entry, which has the rest of HotPl8, hands
 //! it a request it has already understood (request.rs). Either way the answer printed is this
-//! program's. The scheduler starts the collector (`wake`, in door.rs, and wake.rs). The
+//! program's. The scheduler starts the collector (`wake`, in door.rs, and wake.rs).
+//!
+//! The same program holds the rules the rest of HotPl8 goes by. The PowerShell commands ask
+//! it for each one they need (`rule`, in rule.rs), the T3 bridge asks it which account a
+//! session gets (`route`), and `hotpl8 codex` is started in it (`codex`, in launch.rs). The
 //! contract is docs/plans/rust-read-side.md.
 
 mod activity;
+mod agent;
 mod automation;
 mod capacity;
 mod claude;
@@ -23,6 +28,7 @@ mod cswap;
 mod dashboard;
 mod decision;
 mod display;
+mod doctor;
 mod door;
 mod files;
 mod forecast;
@@ -45,6 +51,7 @@ mod registry;
 mod replay;
 mod request;
 mod route;
+mod rule;
 mod runtime;
 mod selection;
 mod sha256;
@@ -138,6 +145,17 @@ fn main() -> ExitCode {
     // A route answers its caller's pipe with one line, and that line is all it prints.
     if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "route") {
         return match route::started(words) {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => ExitCode::from(FAILED),
+            Err(why) => {
+                let _ = writeln!(std::io::stderr().lock(), "HotPl8: {}", ps::safe_text(&why));
+                ExitCode::from(FAILED)
+            }
+        };
+    }
+    // A rule answers the PowerShell that asked with one line, and that line is all it prints.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "rule") {
+        return match rule::started(words) {
             Ok(true) => ExitCode::SUCCESS,
             Ok(false) => ExitCode::from(FAILED),
             Err(why) => {

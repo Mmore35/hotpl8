@@ -727,6 +727,15 @@ pub fn round1(value: f64) -> R<f64> {
     Ok((value * 10.0).round_ties_even() / 10.0)
 }
 
+/// [math]::Round($double, 3)
+#[track_caller]
+pub fn round3(value: f64) -> R<f64> {
+    if !value.is_finite() || value.abs() >= 1e16 {
+        return unreadable();
+    }
+    Ok((value * 1000.0).round_ties_even() / 1000.0)
+}
+
 /// A double converted to a whole number the way a PowerShell cast does (half to even).
 #[track_caller]
 pub fn double_to_i64(value: f64) -> R<i64> {

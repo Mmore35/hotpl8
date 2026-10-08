@@ -108,8 +108,18 @@ pub enum Unlocked {
 
 /// [IO.File]::Open($path,'OpenOrCreate','ReadWrite','None')
 pub fn lock(path: &Path) -> Result<Lock, Unlocked> {
+    alone(path, true)
+}
+
+/// Whether [IO.File]::Open($path,'Open','ReadWrite','None') is refused: the file is held, or
+/// it cannot be opened at all. Looking creates nothing.
+pub fn held(path: &Path) -> bool {
+    alone(path, false).is_err()
+}
+
+fn alone(path: &Path, create: bool) -> Result<Lock, Unlocked> {
     let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
+    options.read(true).write(true).create(create).truncate(false);
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;

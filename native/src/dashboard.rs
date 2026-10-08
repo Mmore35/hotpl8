@@ -202,7 +202,7 @@ fn warm_text(outcome: &str) -> R<String> {
 }
 
 /// Format-Hotpl8ParkReason, from src/overview.ps1.
-fn park_reason(candidate: &V) -> R<String> {
+pub(crate) fn park_reason(candidate: &V) -> R<String> {
     if candidate.g("reason")?.eq_s("canceled")? {
         return Ok(cat!("plan ended (now ", candidate.g("planType")?, ")"));
     }

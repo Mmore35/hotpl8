@@ -19,7 +19,7 @@ pub fn set_source(directory: PathBuf) {
     SOURCE.with(|cell| *cell.borrow_mut() = directory);
     CATALOG.with(|cell| *cell.borrow_mut() = None);
 }
-fn catalog() -> R<Vec<V>> {
+pub fn catalog() -> R<Vec<V>> {
     if let Some(known) = CATALOG.with(|cell| cell.borrow().clone()) {
         return Ok(known);
     }
@@ -522,25 +522,54 @@ pub struct Account {
     pub label: V,
 }
 
-/// Get-Hotpl8ProviderAccounts: who each account is, in the order the policy gives them.
-pub fn provider_accounts(policy: &V) -> R<Vec<Account>> {
+/// One account as its provider's part of the policy names it.
+struct Named {
+    provider: V,
+    part: V,
+    id: V,
+    slot: String,
+    label: V,
+}
+
+/// The accounts of every configured provider, in the order the policy gives them.
+fn named_accounts(policy: &V) -> R<Vec<Named>> {
     let mut accounts = Vec::new();
     for registration in configured_providers(policy, false)? {
         let driver = provider_driver(&registration.g("driver")?)?;
-        let (provider, part) = (registration.g("id")?.s()?, registration.g("policy")?);
+        let (provider, part) = (registration.g("id")?, registration.g("policy")?);
         if driver.g("slotKind")?.eq_s("numeric")? {
             for id in part.g("prefer")?.arr() {
                 let slot = id.s()?;
                 let label = part.g("labels")?.gd(&slot)?;
-                accounts.push(Account { provider: provider.clone(), slot, label });
+                accounts.push(Named { provider: provider.clone(), part: part.clone(), id, slot, label });
             }
         } else {
-            for slot in filter(&part.g("slots")?.each(), |slot| slot.t())? {
-                accounts.push(Account { provider: provider.clone(), slot: slot.g("id")?.s()?, label: slot.g("label")? });
+            for row in filter(&part.g("slots")?.each(), |slot| slot.t())? {
+                accounts.push(Named { provider: provider.clone(), part: part.clone(), id: row.g("id")?, slot: row.g("id")?.s()?, label: row.g("label")? });
             }
         }
     }
     Ok(accounts)
+}
+
+/// Get-Hotpl8ProviderAccounts: who each account is, in the order the policy gives them.
+pub fn provider_accounts(policy: &V) -> R<Vec<Account>> {
+    named_accounts(policy)?.into_iter().map(|named| Ok(Account { provider: named.provider.s()?, slot: named.slot, label: named.label })).collect()
+}
+
+/// Get-Hotpl8ProviderAccounts, each account the row a PowerShell command is given.
+pub fn provider_account_rows(policy: &V) -> R<Vec<V>> {
+    let row = |named: &Named| {
+        Ok(obj! {
+            "provider" => &named.provider,
+            "slot" => named.slot.as_str(),
+            "label" => &named.label,
+            "capacity" => named.part.g("capacity")?.gd(&named.slot)?,
+            "disabled" => named.id.is_in(&named.part.g("disabled")?)?,
+            "reserve" => named.id.is_in(&named.part.g("reserve")?)?,
+        })
+    };
+    named_accounts(policy)?.iter().map(row).collect()
 }
 
 #[cfg(test)]

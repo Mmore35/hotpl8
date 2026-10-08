@@ -123,7 +123,7 @@ fn read_ledger(directory: &Path) -> R<Option<V>> {
 }
 
 /// Get-Hotpl8LeasePause
-fn lease_pause(directory: &Path, now: Dto) -> R<V> {
+pub fn lease_pause(directory: &Path, now: Dto) -> R<V> {
     let Some(ledger) = read_ledger(directory)? else {
         return Ok(obj! {"until" => V::Null, "reason" => "invalid_leases", "invalid" => true, "leaseCount" => V::Null});
     };

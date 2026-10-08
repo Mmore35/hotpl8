@@ -25,7 +25,7 @@ pub fn future_reset(reset: &V, now: Dto, unix: bool) -> R<bool> {
     Ok(future.unwrap_or(false))
 }
 /// Test-Hotpl8OverviewPercent
-fn overview_percent(value: &V) -> R<bool> {
+pub(crate) fn overview_percent(value: &V) -> R<bool> {
     Ok(value.is_number() && value.ge_i(0)? && value.le_i(100)?)
 }
 /// `$list.Count` as PowerShell holds it.
