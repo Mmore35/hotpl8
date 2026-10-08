@@ -430,14 +430,14 @@ PY
         self.assertNotEqual(subprocess.run(command, timeout=20).returncode, 0)
         self.assertEqual(d.read(self.root / 'job-runs/collector.json'), invalid)
 
-    def test_default_dashboard_with_native_binding_does_not_hold_update_lease(self):
+    def test_dashboard_and_native_client_with_native_binding_do_not_hold_update_lease(self):
         with zipfile.ZipFile(self.source) as source:
             files = {name: source.read(name) for name in source.namelist()}
         self.config['macos']['runtimes'] = dict(codex=sys.executable)
         d.write(self.root / 'delivery.json', self.config)
         files['hotpl8.ps1'] = b'''param([string]$Command='watch',[string]$CodexExecutable)
 $ErrorActionPreference='Stop'
-if($Command -ne 'watch' -or -not $CodexExecutable){exit 9}
+if($Command -ne 'codex' -or -not $CodexExecutable){exit 9}
 $lease=[IO.File]::Open((Join-Path $env:HOTPL8_INSTALL_DIRECTORY 'runtime.lock'),'OpenOrCreate','ReadWrite','None')
 $lease.Dispose()
 @{command=$Command;leaseFree=$true}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'display.json')
@@ -447,9 +447,17 @@ $lease.Dispose()
                 source.writestr(name, body)
         self.candidate(A)
         self.assertEqual(self.update()['state'], 'current')
-        result = subprocess.run([str(self.root / 'hotpl8')], capture_output=True, timeout=20)
+        # The plain command is the reader's dashboard, binding and all: no PowerShell entry
+        # starts, and an update that holds the installation alone does not keep it from opening.
+        with d.lock(self.root / 'runtime.lock'):
+            result = subprocess.run([str(self.root / 'hotpl8')], capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
-        self.assertEqual(d.read(self.state / 'display.json'), dict(command='watch', leaseFree=True))
+        self.assertIn('hotpl8', result.stdout.decode())
+        self.assertFalse((self.state / 'display.json').exists())
+        # A native client is PowerShell's still, and the launcher holds no lease while it runs.
+        result = subprocess.run([str(self.root / 'hotpl8'), 'codex'], capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(d.read(self.state / 'display.json'), dict(command='codex', leaseFree=True))
 
     def test_t3_modified_binding_refuses_update_and_missing_receipt_stays_visible(self):
         self.assertEqual(self.update()['state'], 'current')
