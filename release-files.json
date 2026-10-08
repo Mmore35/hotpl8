@@ -129,6 +129,7 @@
     "docs/t3-integration.md",
     "docs/plans/t3-codex-integration.md",
     "docs/plans/t3-concurrent-admission.md",
+    "docs/plans/t3-admission-under-load.md",
     "docs/plans/t3-active-turn-admission.md",
     "src/job-host.ps1",
     "src/jobs/process.cs",
