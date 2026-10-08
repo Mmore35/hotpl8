@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// What a caller sets that would sign Codex in as someone else, or send it somewhere else.
-const CONFLICTS: [&str; 5] = ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "CODEX_SQLITE_HOME", "OPENAI_BASE_URL"];
+pub const CONFLICTS: [&str; 5] = ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "CODEX_SQLITE_HOME", "OPENAI_BASE_URL"];
 
 /// The refusals the bridge is told by name. Any other is `routing_failed`.
 const REFUSALS: [&str; 17] = [
@@ -78,12 +78,12 @@ pub struct Route<'a> {
 type Reading = Result<Rc<Account>, &'static str>;
 
 /// The key a record is bound to its home by.
-fn bound(slot: &V) -> R<String> {
+pub fn bound(slot: &V) -> R<String> {
     Ok(sha256::hash(&home_path(&slot.g("home")?.s()?)?))
 }
 
 /// `$rows | Where-Object id -EQ $id`, or the rows that are left when `kept` is false.
-fn named(rows: &[V], id: &str, kept: bool) -> R<Vec<V>> {
+pub fn named(rows: &[V], id: &str, kept: bool) -> R<Vec<V>> {
     filter(rows, |row| Ok(row.g("id")?.eq_s(id)? == kept))
 }
 
@@ -461,7 +461,7 @@ pub fn started(arguments: &[OsString]) -> Result<bool, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::codex_read::Auth;
     use crate::files::tests::scratch;
@@ -480,29 +480,29 @@ mod tests {
 
     /// Two accounts, `a` preferred to `b`, in a directory of their own. No Codex is started:
     /// each test says what a read answers. It is noon throughout, and time passes only as
-    /// the route pauses or a read says it took.
-    struct Lab {
-        directory: PathBuf,
+    /// the route pauses or a read says it took. A launch is tried at the same accounts.
+    pub struct Lab {
+        pub directory: PathBuf,
         spent: Cell<i64>,
         conflicted: Cell<bool>,
-        policy: V,
+        pub policy: V,
         /// The percent of its week each account has used, as a read finds it.
         used: RefCell<Vec<(&'static str, i32)>>,
         reads: RefCell<Vec<Seen>>,
     }
 
-    fn noon() -> Dto {
+    pub fn noon() -> Dto {
         Dto::parse(NOON).ok().unwrap()
     }
 
     /// What Codex says of an account's limits: one weekly window that resets in an hour.
-    fn limits(used: i32) -> V {
+    pub fn limits(used: i32) -> V {
         let resets = noon().unix_seconds() + 3600;
         let quota = format!(r#"{{"rateLimits":{{"limitId":"codex","primary":{{"usedPercent":{used},"windowDurationMins":10080,"resetsAt":{resets}}},"secondary":null,"spendControlReached":false}}}}"#);
         json::parse(&quota, "").ok().unwrap()
     }
 
-    fn failed(name: &'static str) -> HomeRead {
+    pub fn failed(name: &'static str) -> HomeRead {
         HomeRead { elapsed_ms: 5, outcome: Err(name) }
     }
 
@@ -523,7 +523,7 @@ mod tests {
     }
 
     impl Lab {
-        fn new() -> Lab {
+        pub fn new() -> Lab {
             set_core(false);
             crate::display::packaged_data(&Path::new(env!("CARGO_MANIFEST_DIR")).join(".."));
             let directory = scratch("route");
@@ -551,34 +551,34 @@ mod tests {
             lab
         }
 
-        fn home(&self, id: &str) -> String {
+        pub fn home(&self, id: &str) -> String {
             self.directory.join(format!("home-{id}")).to_string_lossy().into_owned()
         }
 
-        fn save(&self, name: &str, value: &V) {
+        pub fn save(&self, name: &str, value: &V) {
             std::fs::write(self.directory.join(name), json::write(value, 30).ok().unwrap()).unwrap();
         }
 
-        fn remove(&self, name: &str) {
+        pub fn remove(&self, name: &str) {
             std::fs::remove_file(self.directory.join(name)).unwrap();
         }
 
         /// The settings as the user has them: HotPl8 acts, and may move a session.
-        fn automate(&self) {
+        pub fn automate(&self) {
             self.policy.set("mode", "automate".into()).ok().unwrap();
             self.policy.add_member("switchEnabled", true.into(), true).ok().unwrap();
             self.save("policy.json", &self.policy);
         }
 
         /// One of the settings of the accounts, changed.
-        fn accounts(&self, name: &str, value: V) {
+        pub fn accounts(&self, name: &str, value: V) {
             self.policy.g("codex").ok().unwrap().add_member(name, value, true).ok().unwrap();
             self.save("policy.json", &self.policy);
         }
 
         /// The snapshot a collection left `age` seconds ago: both accounts a tenth used,
         /// each read `read_age` seconds ago and found as `status` says.
-        fn collected(&self, status: &str, read_age: i64, age: i64) {
+        pub fn collected(&self, status: &str, read_age: i64, age: i64) {
             let at = |age: i64| noon().plus_seconds(-age).ok().unwrap().o();
             let rows: Vec<V> = ["a", "b"]
                 .iter()
@@ -590,7 +590,7 @@ mod tests {
 
         /// What the collector keeps of who each home belongs to, `changed` in place of
         /// what it wrote for the members named.
-        fn recorded(&self, changed: &[(&str, &str, &str)]) {
+        pub fn recorded(&self, changed: &[(&str, &str, &str)]) {
             let slots: Vec<(&str, V)> = ["a", "b"]
                 .iter()
                 .map(|id| {
@@ -603,18 +603,18 @@ mod tests {
         }
 
         /// The automation is paused, or a selection is held, for five more minutes.
-        fn until(&self, name: &str) {
+        pub fn until(&self, name: &str) {
             let until = noon().plus_seconds(300).ok().unwrap().o();
             self.save(name, &obj! {"until" => until, "reason" => "fixture"});
         }
 
-        fn uses(&self, id: &'static str, percent: i32) {
+        pub fn uses(&self, id: &'static str, percent: i32) {
             self.used.borrow_mut().retain(|(known, _)| *known != id);
             self.used.borrow_mut().push((id, percent));
         }
 
         /// What a read of the account answers when nothing is in its way.
-        fn fresh(&self, id: &str) -> HomeRead {
+        pub fn fresh(&self, id: &str) -> HomeRead {
             let used = self.used.borrow().iter().find(|(known, _)| *known == id).map_or(10, |(_, used)| *used);
             HomeRead {
                 elapsed_ms: 40,

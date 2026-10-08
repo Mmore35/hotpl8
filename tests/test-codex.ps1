@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $root 'src/config.ps1')
 . (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
+. (Join-Path $root 'src/native.ps1')
 $script:passed = 0; $script:failed = 0
 function Check([string]$Name, [scriptblock]$Body) {
     try { & $Body; $script:passed++; 'PASS ' + $Name }
@@ -214,51 +215,6 @@ try {
         }
     }
     $status=[pscustomobject]@{observedAt=$now.ToString('o');recommendations=[pscustomobject]@{codex='a'};slots=@((Make-Slot a),(Make-Slot b))}
-    Check 'automatic launch chooses recommended account' { $p=Get-CodexLaunchPlan $policy $status '' '' @() $now; Assert ($p.slot.id -eq 'a'); Assert $p.automatic }
-    Check 'new launch recomputes shared policy instead of trusting a cached recommendation' {
-        $changed=Copy-Value $policy;$changed.prefer=@('b','a')
-        $p=Get-CodexLaunchPlan $changed $status '' '' @() $now
-        Assert ($status.recommendations.codex -eq 'a' -and $p.slot.id -eq 'b')
-    }
-    Check 'unknown held binding defers automatic launch while an explicit home stays manual' {
-        $context=[pscustomobject]@{intent='admit';hold=$true;bindingKnown=$false}
-        $threw=$false;try{Get-CodexLaunchPlan $policy $status '' '' @() $now $context|Out-Null}catch{$threw=$true};Assert $threw
-        $p=Get-CodexLaunchPlan $policy $status b '' @() $now $context
-        Assert ($p.slot.id -eq 'b' -and -not $p.automatic)
-    }
-    Check 'stale automatic launch rejected' { $s=Copy-Value $status; $s.observedAt=$now.AddHours(-1).ToString('o'); $threw=$false; try { Get-CodexLaunchPlan $policy $s '' '' @() $now | Out-Null } catch { $threw=$true }; Assert $threw }
-    Check 'explicit launch works without cached recommendation' { $p=Get-CodexLaunchPlan $policy $null b '' @() $now; Assert ($p.slot.id -eq 'b'); Assert (-not $p.automatic) }
-    Check 'nondefault account basis is preserved and cannot borrow ordinary quota' {
-        $special=Copy-Value $policy; $special.defaultMeter='codex_bengalfox'
-        $threw=$false;try { Get-CodexLaunchPlan $special $status '' 'future-model' @() $now | Out-Null } catch { $threw=$true }; Assert $threw
-        $p=Get-CodexLaunchPlan $special $null b 'future-model' @() $now
-        Assert ($p.meter -eq 'codex_bengalfox' -and $p.model -eq 'future-model' -and -not $p.automatic)
-    }
-    Check 'resume requires owning slot' { $threw=$false; try { Get-CodexLaunchPlan $policy $status '' '' @('resume','abc') $now | Out-Null } catch { $threw=$true }; Assert $threw }
-    Check 'resume explicit owner retained' { $p=Get-CodexLaunchPlan $policy $status b '' @('resume','abc') $now; Assert ($p.slot.id -eq 'b'); Assert ($p.arguments[0] -eq 'resume') }
-    Check 'unfamiliar and omitted models use the configured account quota basis' {
-        $p=Get-CodexLaunchPlan $policy $status '' 'future-model' @() $now; Assert ($p.slot.id -eq 'a' -and $p.model -eq 'future-model')
-        $p=Get-CodexLaunchPlan $policy $status '' '' @() $now; Assert (-not $p.model)
-        $unmapped=Copy-Value $policy; $unmapped.PSObject.Properties.Remove('modelMeters'); Assert-CodexPolicy $unmapped
-        $p=Get-CodexLaunchPlan $unmapped $status '' 'future-model' @() $now; Assert ($p.slot.id -eq 'a')
-        $legacy=Copy-Value $policy
-        foreach($n in 1..300){$legacy.modelMeters|Add-Member NoteProperty ('retired-'+$n) 'codex'}
-        $p=Get-CodexLaunchPlan $legacy $status '' 'future-model' @() $now; Assert ($p.slot.id -eq 'a') 'ignored legacy maps acquire no new size gate'
-    }
-    Check 'API auth override detected without printing secret' { $env:OPENAI_API_KEY='SECRET_DO_NOT_LOG'; try { $threw=$false; try { Get-CodexLaunchPlan $policy $status '' '' @() $now | Out-Null } catch { $threw=$true; Assert (-not $_.Exception.Message.Contains('SECRET_DO_NOT_LOG')) }; Assert $threw } finally { $env:OPENAI_API_KEY=$null } }
-    Check 'native config override cannot bypass quota choice' { $threw=$false; try { Get-CodexLaunchPlan $policy $status a '' @('--config=model_provider="other"') $now | Out-Null } catch { $threw=$true }; Assert $threw }
-    Check 'native argument quoting and child home preserved' {
-        $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'launch.json'
-        $argsToTest=@('a b','a"b','C:\ends with slash\','', '$literal', 'x&y', 'semi;colon', 'Unicode: Ω中')
-        $p=Get-CodexLaunchPlan $policy $status b '' $argsToTest $now
-        $original=$env:CODEX_HOME
-        $code=Invoke-Hotpl8Codex $p $dir $fake $homeA
-        $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH
-        Assert ($code -eq 7); Assert ($record.home -eq $homeB); Assert ($record.cwd -eq $homeA); Assert ($env:CODEX_HOME -eq $original)
-        $actual=@($record.args)
-        Assert ($actual.Count -eq $argsToTest.Count) ('argument count '+$actual.Count)
-        for ($i=0; $i -lt $actual.Count; $i++) { Assert ($actual[$i] -ceq $argsToTest[$i]) ('argument '+$i) }
-    }
     Check 'pure Codex hook is bounded and does not collect' {
         $payload=@{ generatedAt=$now.ToString('o'); active=0; slots=@(); providers=@{ codex=$status } }
         Write-Hotpl8Text (Join-Path $dir 'policy.json') (@{codex=$policy}|ConvertTo-Json -Depth 12)
@@ -331,14 +287,42 @@ try {
         Assert ($saved.codex.slots[0].label -eq 'Everyday' -and $saved.mode -eq 'monitor' -and -not $saved.warm)
         Assert (-not (Test-Path (Join-Path $enrollment 'auth.json')))
     }
+    # A launch is the compiled program's, and its rules are tested where they are held
+    # (native/src/launch.rs). These start one as a session does, against the stand-in, and
+    # read how it ended and what the stand-in recorded of its start.
+    function Launch([string[]]$Words) {
+        $env:HOTPL8_TEST_LAUNCH=Join-Path $dir ('launch-'+[guid]::NewGuid().ToString('N')+'.json')
+        $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'hotpl8.ps1'),'codex','-StateDirectory',$dir,'-CodexExecutable',$fake)+$Words
+        $ended=Invoke-Hotpl8NativeProcess 'powershell.exe' $arguments
+        $record=if(Test-Path -LiteralPath $env:HOTPL8_TEST_LAUNCH){Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH}else{$null}
+        return [pscustomobject]@{exitCode=$ended.exitCode;errors=$ended.errors.Trim();record=$record}
+    }
     Check 'automatic native launch rechecks the real binding' {
         # The launcher reads the record the collector kept of the account it read.
         $c=Wake $dir
-        $p=Get-CodexLaunchPlan $policy $c '' '' @('test') ([datetimeoffset]::UtcNow)
-        Assert ($p.automatic -and $p.slot.id -eq 'a')
-        $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'auto-launch.json'
-        Assert ((Invoke-Hotpl8Codex $p $dir $fake $homeA) -eq 7)
-        $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH; Assert ($record.home -eq $p.slot.home)
+        $l=Launch @('test')
+        Assert ($l.exitCode -eq 7) $l.errors
+        Assert ($l.record.home -eq $homeA -and $l.record.slot -eq 'a' -and ($l.record.args -join '|') -eq 'test')
+    }
+    Check 'native argument quoting and child home preserved' {
+        $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'launch.json'
+        $argsToTest=@('a b','a"b','C:\ends with slash\','', '$literal', 'x&y', 'semi;colon', 'Unicode: Ω中')
+        $original=$env:CODEX_HOME
+        # A session that has moved: its location is no longer the directory of its process.
+        Push-Location -LiteralPath $homeA
+        try { & (Join-Path $root 'hotpl8.ps1') codex -Slot b -Model future-model -StateDirectory $dir -CodexExecutable $fake @argsToTest }
+        finally { Pop-Location }
+        $code=$LASTEXITCODE
+        $record=Read-Hotpl8Json $env:HOTPL8_TEST_LAUNCH
+        Assert ($code -eq 7); Assert ($record.home -eq $homeB); Assert ($record.slot -eq 'b'); Assert ($record.cwd -eq $homeA); Assert ($env:CODEX_HOME -eq $original)
+        $expected=@('--model','future-model')+$argsToTest
+        $actual=@($record.args)
+        Assert ($actual.Count -eq $expected.Count) ('argument count '+$actual.Count)
+        for ($i=0; $i -lt $actual.Count; $i++) { Assert ($actual[$i] -ceq $expected[$i]) ('argument '+$i) }
+    }
+    Check 'a launch with no words gives Codex none' {
+        $l=Launch @('-Slot','a')
+        Assert ($l.exitCode -eq 7 -and $l.record.home -eq $homeA -and @($l.record.args).Count -eq 0) $l.errors
     }
     Check 'Windows command shim launches the selected home and preserves exit code' {
         $env:HOTPL8_TEST_LAUNCH=Join-Path $dir 'cmd-launch.json'
@@ -348,24 +332,38 @@ try {
         Assert ($record.home -eq $homeA); Assert ($record.cwd -eq (Get-Location).Path)
         Assert (($record.args -join '|') -eq 'exec|--json|fixture prompt')
     }
-    Check 'policy drift between planning and native launch is refused before dispatch' {
-        $path=Join-Path $dir 'policy.json';$before=[IO.File]::ReadAllText($path)
-        try {
-            $p=Get-CodexLaunchPlan $policy $status b '' @() $now
-            $changed=$before|ConvertFrom-Json;$changed.codex.margin5h=[double]$changed.codex.margin5h+1
-            Write-Hotpl8Text $path ($changed|ConvertTo-Json -Depth 24)
-            $threw=$false;try{Invoke-Hotpl8Codex $p $dir $fake $homeA -ControlDirectory $dir|Out-Null}catch{$threw=$true;Assert ($_.Exception.Message -match 'Policy changed before native launch')}
-            Assert $threw
-        } finally {[IO.File]::WriteAllText($path,$before)}
+    Check 'a launch that is refused says why and starts nothing' {
+        $l=Launch @('-Slot','a','exec','--remote=ws://other')
+        Assert ($l.exitCode -eq 1 -and -not $l.record)
+        Assert ($l.errors -ceq 'HotPl8: Use HotPl8 -Model for model selection. Config/profile/auth/workdir overrides require native Codex directly; they cannot be verified against a subscription recommendation.') $l.errors
+        $l=Launch @('resume','abc')
+        Assert ($l.exitCode -eq 1 -and -not $l.record)
+        Assert ($l.errors -ceq 'HotPl8: Resume/fork requires -Slot naming the home that owns the conversation.') $l.errors
+        $l=Launch @('-Slot','b','resume','abc')
+        Assert ($l.exitCode -eq 7 -and $l.record.home -eq $homeB -and ($l.record.args -join '|') -eq 'resume|abc') $l.errors
+        # An option of another command is refused as it always was, by the entry.
+        $l=Launch @('-Slot','a','-Label','x')
+        Assert ($l.exitCode -eq 1 -and -not $l.record)
+        Assert ($l.errors -ceq 'HotPl8: -AccountHome and -Label are enrollment options. Use hotpl8 enroll.') $l.errors
+    }
+    Check 'API auth override detected without printing secret' {
+        $env:OPENAI_API_KEY='SECRET_DO_NOT_LOG'
+        try { $l=Launch @('-Slot','a','test') } finally { $env:OPENAI_API_KEY=$null }
+        Assert ($l.exitCode -eq 1 -and -not $l.record)
+        Assert ($l.errors -ceq 'HotPl8: Conflicting environment setting: OPENAI_API_KEY. Use native Codex directly for an explicitly different authentication mode.') $l.errors
     }
     Check 'binding changed since collection prevents automatic dispatch' {
         $c=Wake $dir
-        $p=Get-CodexLaunchPlan $policy $c '' '' @('test') ([datetimeoffset]::UtcNow)
-        $state=Read-Hotpl8Json (Join-Path $dir 'codex-state.json');$state.slots.($p.slot.id).identityKey='different'
-        Write-Hotpl8Text (Join-Path $dir 'codex-state.json') ($state|ConvertTo-Json -Depth 24)
-        $threw=$false;try{Invoke-Hotpl8Codex $p $dir $fake $homeA|Out-Null}catch{$threw=$true};Assert $threw
+        $path=Join-Path $dir 'codex-state.json'
+        $state=Read-Hotpl8Json $path;$state.slots.a.identityKey='different'
+        Write-Hotpl8Text $path ($state|ConvertTo-Json -Depth 24)
+        $l=Launch @('test')
+        Assert ($l.exitCode -eq 1 -and -not $l.record)
+        Assert ($l.errors -ceq 'HotPl8: Account binding changed since collection. Refresh HotPl8 before automatic launch.') $l.errors
+        # The account that is named is the user's own choice.
+        $l=Launch @('-Slot','a','test')
+        Assert ($l.exitCode -eq 7 -and $l.record.home -eq $homeA) $l.errors
     }
-    Check 'remote endpoint override rejected by launcher' { $threw=$false;try{Get-CodexLaunchPlan $policy $status a '' @('--remote=ws://other') $now|Out-Null}catch{$threw=$true};Assert $threw }
     Check 'five-hour and weekly guards both apply' {
         $q=Fixture 10 300;$q.rateLimits.secondary=(Fixture 99).rateLimits.primary
         $slot=Make-Slot a;$slot.buckets=ConvertTo-CodexBuckets $q $null $now

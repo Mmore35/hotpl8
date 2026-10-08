@@ -29,6 +29,7 @@ mod forecast;
 mod insights;
 mod json;
 mod lane;
+mod launch;
 mod num;
 mod nyan;
 mod observation;
@@ -144,6 +145,19 @@ fn main() -> ExitCode {
                 ExitCode::from(FAILED)
             }
         };
+    }
+    // A launch is the user's own terminal handed to Codex, and ends as Codex ends: a status
+    // of any size, which `ExitCode` cannot carry.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "codex") {
+        match launch::started(words) {
+            Ok(status) => std::process::exit(status),
+            Err(why) => {
+                let line = format!("HotPl8: {}{}", ps::safe_text(&why), if cfg!(windows) { "\r\n" } else { "\n" });
+                let mut stderr = std::io::stderr().lock();
+                let _ = stderr.write_all(&door::bytes_for(&line, &stderr));
+                return ExitCode::from(FAILED);
+            }
+        }
     }
     // The PowerShell entry reads UTF-8 from the reader. A launcher's start is the user's own,
     // and its streams are written to as door.rs says.

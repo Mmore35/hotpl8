@@ -433,12 +433,16 @@ hotpl8-native route --root <release> --state <directory> [--codex <program>]
 
 ## Contract: `hotpl8 codex`
 
-`hotpl8.ps1` still reads the words typed, since they are PowerShell parameters followed by words for Codex. It then starts the program on the same terminal and ends with its status:
+`hotpl8.ps1` still reads the words typed, since they are PowerShell parameters followed by words for Codex. It then starts the program on the same terminal and ends with its status, before it has loaded anything but `src/native.ps1`:
 
 ```text
-hotpl8-native codex --root <release> --state <directory> [--codex <program>] [--provider <id>]
-                    [--slot <id>] [--model <name>] [--words <JSON list of the words for Codex>]
+hotpl8-native codex --root <release> [--state <directory>] [--codex <program>] [--provider <id>]
+                    [--slot <id>] [--model <name>] [--directory <directory>] [-- <the words for Codex>]
 ```
+
+Every word after `--` is Codex's, as it was written, whatever it looks like. `--directory` is the session's location, which is not the directory of its process once the session has moved. Without `--state` the state directory is found as every other command finds it.
+
+`-Live`, `-TrustRevision`, `-PreviewPolicy`, `-AccountHome` and `-Label` were never options of `codex`. A launch written with one of them is still refused by `hotpl8.ps1`, in the sentence it always was.
 
 | Behavior | Label | Notes |
 |---|---|---|
@@ -454,6 +458,18 @@ hotpl8-native codex --root <release> --state <directory> [--codex <program>] [--
 |---|---|
 | A launch loads no PowerShell module but the one that starts the program | It loaded all of them |
 | The read before the launch is the program's | The differences of that read apply |
+| A launch written with no words gives Codex none | PowerShell gave Codex one empty word |
+| A Codex that cannot be started is reported as `Codex could not be started:` and the system's reason. So is a session whose location is no directory Codex can be started in | PowerShell reported its own exception's words |
+| While Codex runs, Ctrl+C and Ctrl+Break are left to Codex: the program neither ends before Codex has nor makes Codex ignore them | PowerShell's own handling stood between the terminal and Codex |
+| The words are compared with the refused ones letter by letter, ignoring the case of ASCII letters and reading `İ` and `ı` as `i`, `ſ` as `s` and the Kelvin sign as `k`, which is every character some culture's comparison folds to one of those letters. A word that differs from a refused one only by characters a culture's comparison ignores is given to Codex as written | PowerShell compared by the culture it ran under |
+| A home's model provider is `openai` when it is those letters in any ASCII case | The same culture comparison |
+| A reading whose time is not written as HotPl8 writes it is no current reading | PowerShell parsed any date its culture could |
+| A state file in a shape HotPl8 never writes is refused in the program's words for it, `This state cannot be shown:` and the reason | PowerShell's error for the property it could not read |
+| Words the program cannot read as text, which only a broken caller can produce, are refused as `The launch was started with words it does not take.` and are not repeated | Not possible before |
+| A relative `-CodexExecutable` is looked for from the directory of the process | PowerShell tested it from the session's location and then started the one at the process's directory |
+| A `resume` or `fork` whose `-Slot` is written as blanks is refused like one with no `-Slot`, since it names no home | PowerShell resumed it in the account it would have chosen |
+
+Two sentences cannot be reached through the command in either implementation: `This Codex slot is disabled. Enable it before launch.` and `Unknown or duplicate Codex slot.` A named account that is disabled or unknown is refused earlier, as `No eligible subscription for this launch: binding_changed`. The program keeps both as guards.
 
 ## Packaging
 

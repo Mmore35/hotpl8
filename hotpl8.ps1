@@ -49,7 +49,9 @@ try {
     # version, status, explain and tray -Once are answered by the compiled reader, their only
     # implementation. A plain request goes there before anything else is loaded. One with other
     # parameters is checked below like any command, and then asks the same reader. So are
-    # watch and nyan, once it is known that there is an account to show.
+    # watch and nyan, once it is known that there is an account to show. codex is the reader's
+    # too: it chooses the account and starts Codex, and only the options codex never took are
+    # refused here.
     # No Join-Path here: see the note on modules at the top of src/native.ps1.
     . ([IO.Path]::Combine($PSScriptRoot,'src','native.ps1'))
     # The Mac launcher adds its Codex binding to every request; none of these reads it.
@@ -60,6 +62,9 @@ try {
     }
     if($plain -and -not @($PSBoundParameters.Keys|Where-Object{$_ -notin $plain}).Count){
         Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy ($AsJson -or $Command -eq 'tray')
+    }
+    if($Command -eq 'codex' -and -not ($Live -or $TrustRevision -or $PreviewPolicy -or $AccountHome -or $Label)){
+        Exit-Hotpl8NativeCodex $PSScriptRoot $StateDirectory $CodexExecutable $Provider $Slot $Model $ExecutionContext.SessionState.Path.CurrentLocation.Path $CodexArguments
     }
     . (Join-Path $PSScriptRoot 'src/common.ps1')
     if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}
@@ -395,17 +400,6 @@ try {
 
     # refresh and tick end here too, with the status they collected.
     if ($Command -in @('status', 'explain')) { Exit-Hotpl8Native $PSScriptRoot $Command $StateDirectory $PreviewPolicy $AsJson }
-
-    $status = Read-Hotpl8Snapshot $StateDirectory -SkipDisplay
-    $launchControls=Get-Hotpl8ControlSnapshot $StateDirectory
-    $policy=$launchControls.policy;Assert-Hotpl8Policy $policy
-    $view=Get-Hotpl8ProviderView $status $policy $Provider
-    if(-not $view.registration.definition.capabilities.nativeLaunch -or $view.provider -ne 'codex'){throw 'Native launch is not supported by this registered driver.'}
-    if(-not $view.policy.codex.slots){throw 'No native account homes configured.'}
-    $context=Get-Hotpl8ProviderActionContext $policy $StateDirectory ([pscustomobject]@{intent='admit';bindingKnown=$false})
-    $plan=Get-CodexLaunchPlan $view.policy.codex $view.snapshot.providers.codex $Slot $Model $CodexArguments ([datetimeoffset]::UtcNow) $context
-    $launchState=Get-Hotpl8ProviderStateDirectory $StateDirectory $Provider
-    exit (Invoke-Hotpl8Codex $plan $launchState $CodexExecutable (Get-Location).Path -ControlDirectory $StateDirectory -ProviderId $Provider)
 } catch {
     [Console]::Error.WriteLine('HotPl8: ' + (ConvertTo-Hotpl8SafeText $_.Exception.Message))
     exit 1

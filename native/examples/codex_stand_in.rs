@@ -19,6 +19,10 @@
 //! `<text>` `<CR>`, `<LF>` and `<BOM>` are those characters. The home is left two files:
 //! `started.txt` (the words, directory and home the program was started with) and
 //! `heard.txt` (every line it was sent).
+//!
+//! Started with any other words it is a session someone launched. It leaves `launched.txt`
+//! (the account, state directory and meter it was told of, and each word on a line of its
+//! own), does the lines whose `<when>` is `launch`, and ends with status 7.
 
 use std::io::{BufRead, Write};
 use std::path::Path;
@@ -58,10 +62,19 @@ fn main() {
     let home = Path::new(&home);
     let directory = std::env::current_dir().unwrap();
     std::fs::write(home.join("started.txt"), format!("words {}\ndirectory {}\nhome {}\n", words.join(" "), directory.display(), home.display())).unwrap();
+    let script = std::fs::read_to_string(home.join("stand-in.txt"));
     if words != ["app-server", "--stdio"] {
+        let told = |name: &str| std::env::var(name).unwrap_or_default();
+        let mut launched = format!("slot {}\nstate {}\nmeter {}\n", told("HOTPL8_SLOT"), told("HOTPL8_STATE_DIRECTORY"), told("HOTPL8_METER"));
+        words.iter().for_each(|word| launched.push_str(&format!("word {word}\n")));
+        std::fs::write(home.join("launched.txt"), launched).unwrap();
+        for line in script.unwrap_or_default().lines().filter(|line| line.starts_with("launch ")) {
+            let mut parts = line.splitn(3, ' ').skip(1);
+            act(parts.next().unwrap(), parts.next().unwrap_or(""), "0");
+        }
         std::process::exit(7);
     }
-    let script = std::fs::read_to_string(home.join("stand-in.txt")).unwrap();
+    let script = script.unwrap();
     let steps: Vec<(&str, &str, &str)> = script
         .lines()
         .filter(|line| !line.is_empty())

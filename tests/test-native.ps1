@@ -144,7 +144,7 @@ try{
         $handOver=$text.Substring(0,$text.IndexOf(". (Join-Path `$PSScriptRoot 'src/common.ps1')",[StringComparison]::Ordinal))
         $tree=[Management.Automation.Language.Parser]::ParseInput($handOver+'}catch{}',[ref]$null,[ref]$null)
         $used=@($tree.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)|ForEach-Object{$_.GetCommandName()}|Where-Object{$_}|Sort-Object -Unique)
-        Assert (($used -join ',') -ceq 'Exit-Hotpl8Native,Where-Object') ('the hand-over in hotpl8.ps1 calls '+($used -join ', '))
+        Assert (($used -join ',') -ceq 'Exit-Hotpl8Native,Exit-Hotpl8NativeCodex,Where-Object') ('the hand-over in hotpl8.ps1 calls '+($used -join ', '))
     }
     Check 'the built reader names the commit it was built from' {
         $identity=Invoke-Hotpl8NativeProcess $real @('self-check')

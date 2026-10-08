@@ -142,11 +142,6 @@ try{
         $stores=@(Get-Hotpl8HistoryStores $p $dir)
         Assert ($stores.Count -eq 1 -and $stores[0].samples -eq 2 -and $stores[0].providers.Count -eq 2)
     }
-    Check 'explicit launch cannot bypass a disabled Codex home' {
-        $p=Clone @{slots=@(@{id='off';home=(Join-Path $dir 'off')},@{id='on';home=(Join-Path $dir 'on')});disabled=@('off');prefer=@('off','on')}
-        $s=Clone @{observedAt=$now.ToString('o');slots=@(@{id='off';label='off';status='disabled'},@{id='on';label='on';status='home_missing'})}
-        Reject {Get-CodexLaunchPlan $p $s off '' @() $now}
-    }
     Check 'notifications survive restarts without reset-drift duplicates and rearm on recovery' {
         $c=Clone @{key='codex/opaque/codex/weekly';title='Quota';text='estimate'}
         $first=Select-Hotpl8NewAlerts @($c) $null $now

@@ -226,7 +226,7 @@ fn gathered(wake: &Wake) -> R<Outcome> {
 
 /// Initialize-Hotpl8OnboardingTools: the tools setup installed for this user are found
 /// before any the machine has, by this program and by whatever it starts.
-fn onboarding_tools(directory: &Path) {
+pub fn onboarding_tools(directory: &Path) {
     let bin = directory.join("runtime").join("bin");
     if !bin.is_dir() {
         return;
