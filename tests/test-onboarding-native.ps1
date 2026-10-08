@@ -12,7 +12,24 @@ function New-Hotpl8OnboardingProcess($Executable,$Arguments,$AccountHome,$Provid
     $fixture=if($Provider -eq 'claude'){'onboarding-claude-fixture.mjs'}else{'onboarding-native-fixture.mjs'}
     & $script:nativeFactory $script:node @((Join-Path $PSScriptRoot $fixture)) $AccountHome $Provider
 }
-function New-CodexProcessInfo($Executable,$AccountHome,$Arguments,$WorkingDirectory){New-Hotpl8OnboardingProcess $Executable $Arguments $AccountHome codex}
+# An account's identity is read by the compiled program, which starts the Codex it is given
+# and never a script in its place. So the fixture gets a program of its own, which starts
+# it with the reader's pipes and CODEX_HOME, and every read here is given that program:
+# none is left to find the machine's own Codex.
+$script:codex=Join-Path $lab $(if($env:OS -eq 'Windows_NT'){'codex-fixture.exe'}else{'codex-fixture'})
+$script:codexFixture=Join-Path $PSScriptRoot 'onboarding-native-fixture.mjs'
+if($env:OS -eq 'Windows_NT'){
+    $quoted={param($Text) '@"'+$Text.Replace('"','""')+'"'}
+    Add-Type -OutputAssembly $script:codex -OutputType ConsoleApplication -TypeDefinition ('public static class CodexFixture { public static int Main() { var start = new System.Diagnostics.ProcessStartInfo('+(& $quoted $script:node)+', "\"" + '+(& $quoted $script:codexFixture)+' + "\""); start.UseShellExecute = false; using (var node = System.Diagnostics.Process.Start(start)) { node.WaitForExit(); return node.ExitCode; } } }')
+}else{
+    [IO.File]::WriteAllText($script:codex,"#!/bin/sh`nexec '"+$script:node+"' '"+$script:codexFixture+"'`n")
+    & chmod 700 $script:codex
+    if($LASTEXITCODE -ne 0){throw 'The Codex fixture could not be made runnable.'}
+}
+$script:readAccount=${function:Read-CodexQuota}
+function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutMs,[string]$WorkingDirectory,[switch]$IdentityOnly){
+    & $script:readAccount $AccountHome $script:codex $TimeoutMs $WorkingDirectory -IdentityOnly:$IdentityOnly
+}
 function Assert($Value,$Message='assertion failed'){if(-not $Value){throw $Message}}
 $script:passed=0;$script:failed=0
 function Check($Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message+' at '+$_.ScriptStackTrace}}
@@ -190,26 +207,18 @@ try{
             $child=Join-Path $lab 'detached-native.ps1';$result=Join-Path $lab 'detached-native.json'
             $release=Join-Path $lab 'release-worker';$ended=Join-Path $lab 'worker-ended'
             Write-Hotpl8Text $child @'
-param($Root,$Node,$Fixture,$AccountHome,$Result,$Release,$Ended)
+param($Root,$Codex,$AccountHome,$Result,$Release,$Ended)
 $ErrorActionPreference='Stop'
 . (Join-Path $Root 'src/common.ps1')
 . (Join-Path $Root 'src/providers/codex.ps1')
-function Resolve-CodexExecutable {return $Node}
-function New-CodexProcessInfo($Executable,$AccountHome,$Arguments,$WorkingDirectory){
-    $psi=New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName=$Node;$psi.Arguments=ConvertTo-NativeArgument $Fixture
-    $psi.UseShellExecute=$false;$psi.WorkingDirectory=$AccountHome
-    $psi.EnvironmentVariables['CODEX_HOME']=$AccountHome
-    return $psi
-}
-$read=Read-CodexQuota $AccountHome '' 12000 -IdentityOnly
+$read=Read-CodexQuota $AccountHome $Codex 12000 -IdentityOnly
 Write-Hotpl8Text $Result (@{status=$read.status;verified=[bool]$read.identityVerified}|ConvertTo-Json) -NoBom
 # Stay alive until the test has consumed the caller's response and releases us.
 $clock=[Diagnostics.Stopwatch]::StartNew()
 while(-not (Test-Path $Release) -and $clock.Elapsed.TotalSeconds -lt 150){Start-Sleep -Milliseconds 100}
 Write-Hotpl8Text $Ended 'done' -NoBom
 '@ -NoBom
-            $argv=@('-NoProfile','-File',$child,'-Root',$root,'-Node',$script:node,'-Fixture',(Join-Path $PSScriptRoot 'onboarding-native-fixture.mjs'),'-AccountHome',$h,'-Result',$result,'-Release',$release,'-Ended',$ended)
+            $argv=@('-NoProfile','-File',$child,'-Root',$root,'-Codex',$script:codex,'-AccountHome',$h,'-Result',$result,'-Release',$release,'-Ended',$ended)
             $workerArguments=(@($argv|ForEach-Object{ConvertTo-NativeArgument $_})) -join ' '
             $parent=Join-Path $lab 'worker-caller.ps1'
             $argumentsPath=Join-Path $lab 'worker-arguments.json'
