@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { CodexBridge, validateArgs, assertConfig, assertEnvironment, assertSharedHome, readLines } from '../src/t3-codex.mjs';
 
-function harness() {
+function harness(options = {}) {
   const native = [], client = [], requests = [];
   let selected = 'a', reject = false, config = { model: 'fixture-model', cli_auth_credentials_store: 'ephemeral' };
   const broker = async request => {
@@ -12,7 +12,7 @@ function harness() {
     const slot = request.operation === 'refresh' ? request.previousSlot : selected;
     return { slot, home: `fixture/${slot}`, meter: 'codex', auth: { accessToken: `SECRET-${slot}`, chatgptAccountId: slot } };
   };
-  const bridge = new CodexBridge({ broker, cwd: 'fixture', toClient: msg => client.push(msg), toNative: msg => {
+  const bridge = new CodexBridge({ ...options, broker, cwd: 'fixture', toClient: msg => client.push(msg), toNative: msg => {
     native.push(msg);
     if (String(msg.id).startsWith('hotpl8-internal-')) queueMicrotask(() => bridge.native({ id: msg.id, result: msg.method === 'config/read' ? { config } : {} }));
   }});
@@ -293,6 +293,78 @@ test('observation bursts coalesce, and shutdown prevents late authentication', a
   for (let n = 0; n < 50; n++) assert.equal(h.bridge.observe(), first);
   h.bridge.close(); release(); await first;
   assert.equal(h.native.length, before); assert.equal(h.bridge.route, null);
+});
+
+// A background validation that never answers on its own, as when its native read is
+// slow or it is waiting on a held account lock. It ends only when it is stopped.
+function stalled(h) {
+  const broker = h.bridge.broker, seen = { stopped: 0 };
+  h.bridge.broker = (request, signal) => request.intent !== 'rebind' ? broker(request) : new Promise((_, reject) => {
+    h.requests.push(request);
+    signal.addEventListener('abort', () => { seen.stopped++; reject(Object.assign(new Error(), { code: 'routing_cancelled' })); });
+  });
+  return seen;
+}
+
+test('an admission does not wait behind a background validation, running or queued', async () => {
+  const h = harness(); await opened(h); started(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  const seen = stalled(h);
+  const observing = h.bridge.observe(); await new Promise(done => setImmediate(done));
+  assert.equal(h.requests.at(-1).intent, 'rebind');
+  assert.equal((await h.bridge.select()).slot, 'a');
+  assert.equal(seen.stopped, 1); assert.equal(h.requests.at(-1).intent, 'admit');
+  await observing; assert.deepEqual(errors, []); assert.equal(h.bridge.route.slot, 'a');
+  let release; h.bridge.routing = new Promise(done => { release = done; });
+  const before = h.requests.length;
+  const queued = h.bridge.observe(), admission = h.bridge.select();
+  release(); await Promise.all([queued, admission]);
+  assert.deepEqual(h.requests.slice(before).map(request => request.intent), ['admit']);
+  assert.deepEqual(errors, []); h.bridge.close();
+});
+
+test('a background validation that finds the account lock held is skipped without a diagnostic', async () => {
+  const h = harness(); await opened(h); started(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  const broker = h.bridge.broker;
+  h.bridge.broker = async request => { throw Object.assign(new Error(), { code: 'routing_account_busy' }); };
+  await h.bridge.observe();
+  assert.deepEqual(errors, []); assert.equal(h.bridge.route.slot, 'a');
+  // The same answer to an admission is a failure someone is waiting on.
+  await assert.rejects(h.bridge.select(), { code: 'routing_account_busy' });
+  h.bridge.broker = broker; h.bridge.close();
+});
+
+test('native quota notifications share one validation per interval and all reach the client', async () => {
+  const h = harness({ quotaIntervalMs: 300 }); await opened(h); started(h);
+  const before = h.requests.length;
+  for (let n = 0; n < 20; n++) h.bridge.native({ method: 'account/rateLimits/updated', params: { n } });
+  await new Promise(done => setImmediate(done));
+  assert.equal(h.requests.length, before);
+  await new Promise(done => setTimeout(done, 450));
+  assert.equal(h.requests.length, before + 1); assert.equal(h.requests.at(-1).intent, 'rebind');
+  assert.equal(h.client.filter(m => m.method === 'account/rateLimits/updated').length, 20);
+  // An interval with no validation in it: the next notification validates at once.
+  await new Promise(done => setTimeout(done, 350));
+  h.bridge.native({ method: 'account/rateLimits/updated', params: {} });
+  await new Promise(done => setImmediate(done));
+  assert.equal(h.requests.length, before + 2);
+  // Collector publications are not held back.
+  await h.bridge.observe();
+  assert.equal(h.requests.length, before + 3); h.bridge.close();
+});
+
+test('closing the bridge stops a validation in flight and any held-back wakeup', async () => {
+  const h = harness({ quotaIntervalMs: 50 }); await opened(h); started(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  const seen = stalled(h);
+  const observing = h.bridge.observe(); await new Promise(done => setImmediate(done));
+  h.bridge.native({ method: 'account/rateLimits/updated', params: {} });
+  const before = h.requests.length;
+  h.bridge.close(); await observing;
+  assert.equal(seen.stopped, 1); assert.deepEqual(errors, []);
+  await new Promise(done => setTimeout(done, 120));
+  assert.equal(h.requests.length, before);
 });
 
 test('active sibling models do not affect account selection or permit rebinding', async () => {

@@ -44,6 +44,9 @@ compiled integration fixture exercises overlapping title/chat admissions.
 - Run the T3 Windows/protocol suites, existing Codex regression, static checks
   and the full CI workflow before merging.
 
+The waits and deadlines above were later lengthened for saturated machines; see
+[admission under load](t3-admission-under-load.md).
+
 No native credential migration is required. Initial installations pinned their
 source snapshot; the [managed delivery repair](t3-managed-delivery.md) supersedes
 that deployment path. Existing provider processes retain their loaded revision.

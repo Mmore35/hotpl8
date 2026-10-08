@@ -90,14 +90,22 @@ export function readLines(stream, onMessage, onFailure, onEnd = () => {}) {
 }
 
 export function createBroker(config) {
-  return request => new Promise((resolveRoute, reject) => {
+  return (request, signal) => new Promise((resolveRoute, reject) => {
     const proc = spawn(config.powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'codex-route.ps1'),
       '-StateDirectory', config.stateDirectory, '-Executable', config.codex], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let output = '', failed = false;
-    const fail = () => { failed = true; killTree(proc); reject(error('routing_broker_failed')); };
-    const timer = setTimeout(fail, request.operation === 'refresh' ? 8500 : 25000);
-    proc.on('error', fail);
-    proc.stdin.on('error', fail);
+    const fail = (code = 'routing_broker_failed') => {
+      if (failed) return;
+      failed = true; clearTimeout(timer); killTree(proc); reject(error(code));
+    };
+    // The broker ends its own validation after 30 s (refresh: 6.5 s) and names the
+    // reason. The rest is PowerShell starting, which takes seconds on a saturated machine.
+    const timer = setTimeout(() => fail(), request.operation === 'refresh' ? 8500 : 40000);
+    // Stopping the broker also ends its native read and frees the account lock.
+    if (signal?.aborted) fail('routing_cancelled');
+    else signal?.addEventListener('abort', () => fail('routing_cancelled'), { once: true });
+    proc.on('error', () => fail());
+    proc.stdin.on('error', () => fail());
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', data => { output += data; if (output.length > 65536) fail(); });
     proc.on('close', code => {
@@ -129,13 +137,21 @@ export function createWaiter(config) {
 
 // The dispatcher is transport-independent so tests drive the exact production state machine.
 export class CodexBridge {
-  constructor({ broker, waiter = null, toNative, toClient, cwd, onFatal = () => {}, onRoutingError = () => {}, timeoutMs = 30000 }) {
-    Object.assign(this, { broker, waiter, toNative, toClient, cwd, onFatal, onRoutingError, timeoutMs });
+  constructor({ broker, waiter = null, toNative, toClient, cwd, onFatal = () => {}, onRoutingError = () => {}, timeoutMs = 30000, quotaIntervalMs = 60000 }) {
+    Object.assign(this, { broker, waiter, toNative, toClient, cwd, onFatal, onRoutingError, timeoutMs, quotaIntervalMs });
     this.internal = new Map(); this.pending = new Map(); this.threads = new Map(); this.waiters = new Map();
     this.active = new Map(); this.reservations = new Map(); this.route = null; this.initialized = false; this.closed = false;
     this.counter = 0; this.serial = Promise.resolve();
     this.routing = Promise.resolve(); this.observing = null; this.observationPending = false;
     this.rebinding = null;
+    this.brokers = new Set(); this.background = null; this.admissions = 0; this.validatedAt = 0; this.quotaTimer = null;
+  }
+  async ask(request, background = false) {
+    const control = new AbortController();
+    this.brokers.add(control);
+    if (background) this.background = control;
+    try { return await this.broker(request, control.signal); }
+    finally { this.brokers.delete(control); if (this.background === control) this.background = null; }
   }
   rpc(method, params) {
     const id = `hotpl8-internal-${++this.counter}`;
@@ -165,15 +181,21 @@ export class CodexBridge {
     return this.serial;
   }
   select(cwd = this.cwd, background = false) {
+    // Someone is waiting on an admission's reply. A background validation in its
+    // way is abandoned, running or queued: the admission validates afresh and the
+    // next wakeup repeats the background one.
+    if (!background) { this.admissions++; this.background?.abort(); }
     const operation = this.routing.then(() => this.selectNow(cwd, background));
     this.routing = operation.catch(() => {});
+    if (!background) operation.catch(() => {}).then(() => { this.admissions--; });
     return operation;
   }
   async selectNow(cwd, background) {
     if (this.closed) throw error('routing_closed');
-    if (background && !(this.active.size || this.reservations.size)) return this.route;
-    const route = await this.broker({ operation: 'select', intent: background ? 'rebind' : 'admit',
-      cwd, previousSlot: this.route?.slot, criticalState: this.route?.criticalState });
+    if (background && (this.admissions || !(this.active.size || this.reservations.size))) return this.route;
+    this.validatedAt = Date.now();
+    const route = await this.ask({ operation: 'select', intent: background ? 'rebind' : 'admit',
+      cwd, previousSlot: this.route?.slot, criticalState: this.route?.criticalState }, background);
     if (this.closed) throw error('routing_closed');
     if (!route.auth?.accessToken || !route.auth?.chatgptAccountId) throw error('routing_auth_unavailable');
     const changed = this.route?.accountId !== route.auth.chatgptAccountId || this.route?.slot !== route.slot;
@@ -215,10 +237,25 @@ export class CodexBridge {
       while (this.observationPending && !this.closed) {
         this.observationPending = false;
         try { await this.select(this.cwd, true); }
-        catch (err) { if (!this.closed) this.onRoutingError(/^routing_[a-z_]+$/.test(err.code) ? err.code : 'routing_failed'); }
+        catch (err) {
+          // Abandoned for an admission, or another reader held the account lock:
+          // this validation was skipped, not failed.
+          if (!this.closed && !['routing_cancelled', 'routing_account_busy'].includes(err.code)) this.onRoutingError(/^routing_[a-z_]+$/.test(err.code) ? err.code : 'routing_failed');
+        }
       }
     })().finally(() => { this.observing = null; });
     return this.observing;
+  }
+  // Native Codex reports quota after every model response. Each validation starts
+  // a broker and a native read under the account lock that admissions need, and
+  // the collector itself reads no more than once a minute, so these wakeups share
+  // one validation per interval. The last one in an interval is not lost.
+  quotaChanged() {
+    if (this.closed || this.quotaTimer) return;
+    const wait = this.validatedAt + this.quotaIntervalMs - Date.now();
+    if (wait <= 0) { void this.observe(); return; }
+    this.quotaTimer = setTimeout(() => { this.quotaTimer = null; this.quotaChanged(); }, wait);
+    this.quotaTimer.unref?.();
   }
   async checkConfig(cwd = this.cwd) {
     const result = await this.rpc('config/read', { includeLayers: false, cwd });
@@ -308,7 +345,7 @@ export class CodexBridge {
     }
     // Treat notifications only as wakeups: their quota may belong to an old
     // in-flight request. The broker verifies native account identity and quota.
-    if (message.method === 'account/rateLimits/updated') void this.observe();
+    if (message.method === 'account/rateLimits/updated') this.quotaChanged();
     // Internal login notifications have no useful T3 request correlation.
     if (message.method === 'account/login/completed') return;
     this.toClient(message);
@@ -317,7 +354,7 @@ export class CodexBridge {
     const route = this.rebinding || this.route;
     try {
       if (!route || message.params?.previousAccountId !== route.accountId) throw error('routing_binding_changed');
-      const fresh = await this.broker({ operation: 'refresh', previousSlot: route.slot, accountId: route.accountId, cwd: this.cwd });
+      const fresh = await this.ask({ operation: 'refresh', previousSlot: route.slot, accountId: route.accountId, cwd: this.cwd });
       if (fresh.auth?.chatgptAccountId !== route.accountId || (this.rebinding || this.route)?.accountId !== route.accountId) throw error('routing_binding_changed');
       this.toNative({ id: message.id, result: fresh.auth });
     } catch {
@@ -360,6 +397,9 @@ export class CodexBridge {
     this.closed = true;
     for (const waiter of this.waiters.values()) waiter.kill();
     this.waiters.clear();
+    // A broker left running would keep its native read and the account lock.
+    for (const control of this.brokers) control.abort();
+    clearTimeout(this.quotaTimer); this.quotaTimer = null;
     for (const pending of this.internal.values()) { clearTimeout(pending.timer); pending.reject(error('routing_closed')); }
     this.internal.clear(); this.route = null; this.rebinding = null;
     this.active.clear(); this.reservations.clear(); this.observationPending = false;
