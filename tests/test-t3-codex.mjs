@@ -583,7 +583,7 @@ function child(h, threadId = 'child', id = 'c1') {
 const ended = (threadId = 'child', id = 'c1') => ({ method: 'turn/completed', params: { threadId, turn: { id, status: 'completed' } } });
 const continues = h => turns(h).filter(m => String(m.id).startsWith('hotpl8-internal-'));
 const logins = h => h.native.filter(m => m.method === 'account/login/start').length;
-/// The waiter says continue while one sub-agent still runs on the account that must be left.
+// The waiter says continue while one sub-agent still runs on the account that must be left.
 async function held(h) {
   const calls = await limitedTurn(h);
   const errors = []; h.bridge.onRoutingError = code => errors.push(code);
@@ -716,6 +716,40 @@ test('a repeated limit failure does not replace a held continue', async () => {
   // Once it is sent, a new failure is an ordinary one again.
   h.bridge.native(limited(h));
   assert.deepEqual([calls.length, calls[2].held], [3, false]); h.bridge.close();
+});
+
+// The conversation's limit failure is reported once more while its continue is being admitted.
+function repeated(h) {
+  const send = h.bridge.toNative, seen = { count: 0 };
+  h.bridge.toNative = message => {
+    if (message.method === 'config/read' && !seen.count++) h.bridge.native(limited(h));
+    send(message);
+  };
+  return seen;
+}
+
+test('a repeated limit failure while the continue is admitted does not cancel it', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  const seen = repeated(h);
+  h.select('b'); await finished(h, calls[0], 2);
+  assert.ok(seen.count); assert.equal(calls.length, 1); assert.equal(continues(h).length, 1);
+  assert.equal(h.bridge.route.slot, 'b'); assert.equal(h.bridge.waiters.size, 0); assert.deepEqual(errors, []);
+  h.bridge.close();
+});
+
+test('a repeated limit failure while the continue is admitted does not keep it from being held', async () => {
+  const h = harness(); await opened(h);
+  const calls = await limitedTurn(h);
+  const errors = []; h.bridge.onRoutingError = code => errors.push(code);
+  const seen = repeated(h);
+  child(h); h.select('b'); await finished(h, calls[0], 2);
+  assert.ok(seen.count); assert.equal(calls.length, 1);
+  assert.equal(h.bridge.waiters.get('t').held, true); assert.equal(continues(h).length, 0);
+  await finished(h, await asked(h, calls), 2);
+  assert.equal(continues(h).length, 1); assert.equal(h.bridge.route.slot, 'b');
+  assert.equal(h.bridge.waiters.size, 0); assert.deepEqual(errors, []); h.bridge.close();
 });
 
 test('a held continue that still cannot be admitted is dropped with one fixed diagnostic', async () => {

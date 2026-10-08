@@ -369,21 +369,21 @@ export class CodexBridge {
   // writing first cancels it at any point.
   wait(threadId) {
     if (!this.waiter || this.closed || !this.threads.has(threadId) || !this.route?.slot) return;
-    // A continue that was held stands. A new waiter would stand down on the
-    // ten-minute rule and take it along.
-    const current = this.waiters.get(threadId);
-    if (current?.held || current?.again) return;
+    // A continue the waiter has said yes to stands while it is admitted, held or asked
+    // for again. A new waiter would stand down on the ten-minute rule and take it along.
+    if (this.waiters.get(threadId)?.due) return;
     this.watch(threadId, this.route.slot, new Date().toISOString(), false);
   }
   // `slot` and `after` are the account and the time of the failure. `again` starts the
-  // waiter for a continue that was held.
+  // waiter for a continue that was held. `due` is set once the waiter has said yes.
   watch(threadId, slot, after, again) {
     this.stopWaiting(threadId);
-    const waiter = { ...this.waiter(threadId, slot, after, again), slot, after, again, held: false };
+    const waiter = { ...this.waiter(threadId, slot, after, again), slot, after, due: again, held: false };
     this.waiters.set(threadId, waiter);
     waiter.done.then(code => {
       if (this.waiters.get(threadId) !== waiter) return;
       if (code !== 2) { this.waiters.delete(threadId); return; }
+      waiter.due = true;
       // Any failure drops this continue; the owner's next message works as it always has.
       this.serial = this.serial.then(() => this.resume(threadId, waiter)).catch(() => {
         if (this.waiters.get(threadId) === waiter) this.waiters.delete(threadId);

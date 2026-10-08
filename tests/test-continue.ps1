@@ -85,6 +85,9 @@ try{
     Check 'a held continue is asked for again within those ten minutes, and counts from then' {
         $r=Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0),'-Held')
         Assert ($r.code -eq 2 -and $r.text -ceq 'Automated message: continue.')
+        # With the record older than ten minutes, only the held answer's own record stands the next waiter down.
+        [IO.File]::SetLastWriteTimeUtc((Join-Path $state 'continue/thread-one'),[datetime]::UtcNow.AddMinutes(-11))
+        Assert ((Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0),'-Held')).code -eq 2)
         Assert ((Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0))).code -eq 0)
     }
     Check 'a held continue still obeys the setting, monitor mode and a pause' {
