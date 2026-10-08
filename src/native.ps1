@@ -7,7 +7,8 @@
 # a fresh Windows PowerShell loads one and costs 50 to 80 ms, so this file and the hand-over
 # in hotpl8.ps1 call .NET directly.
 # -Attended gives the reader this terminal as it is, keys and screen, and collects nothing.
-function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[switch]$Attended) {
+# -Asked is the whole of what the program reads, and without it the program reads nothing.
+function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[switch]$Attended,[string]$Asked) {
     $process=$null
     try{
         $info=[Diagnostics.ProcessStartInfo]::new()
@@ -25,10 +26,20 @@ function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[switch]$
         }
         $info.CreateNoWindow=$true
         $info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
+        $info.RedirectStandardInput=$PSBoundParameters.ContainsKey('Asked')
         $info.StandardOutputEncoding=[Text.UTF8Encoding]::new($false);$info.StandardErrorEncoding=[Text.UTF8Encoding]::new($false)
         $process=[Diagnostics.Process]::Start($info)
         # Drain both pipes before waiting: a reader blocked on a full pipe never exits.
         $output=$process.StandardOutput.ReadToEndAsync();$errors=$process.StandardError.ReadToEndAsync()
+        if($info.RedirectStandardInput){
+            # Written as bytes: the writer a process is given encodes as the console does. A
+            # program that ended without reading says so by how it ended.
+            try{
+                $bytes=[Text.UTF8Encoding]::new($false).GetBytes($Asked)
+                $process.StandardInput.BaseStream.Write($bytes,0,$bytes.Length);$process.StandardInput.BaseStream.Flush()
+            }catch{}
+            try{$process.StandardInput.Close()}catch{}
+        }
         $process.WaitForExit()
         return [pscustomobject]@{exitCode=$process.ExitCode;output=$output.Result;errors=$errors.Result}
     }finally{if($process){$process.Dispose()}}

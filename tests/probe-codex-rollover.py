@@ -2,9 +2,10 @@
 
 Never uses a real credential home or model service. Dynamic tool calls are
 answered by this fixture and perform no work. This is not billing qualification.
---policy-broker runs the real policy/broker with only its native quota Reader
-replaced by synthetic canonical-account facts; actual Codex model requests and
-the bridge's external-auth adoption are exercised against localhost.
+--policy-broker runs the real policy/broker (the compiled program a release ships)
+with a stand-in read in place of Codex for each account's facts, which a checkout
+builds with `cargo build --examples`; actual Codex model requests and the bridge's
+external-auth adoption are exercised against localhost.
 """
 import argparse
 import base64
@@ -283,7 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=Path)
     parser.add_argument('--transport', choices=['http', 'websocket'], default='http')
     parser.add_argument('--bridge', action='store_true', help='Qualify the production dispatcher with a synthetic broker')
-    parser.add_argument('--policy-broker', action='store_true', help='Qualify shared policy, real broker, bridge and native via a synthetic quota Reader; implies --bridge')
+    parser.add_argument('--policy-broker', action='store_true', help='Qualify shared policy, real broker, bridge and native via a stand-in account reader; implies --bridge')
     args = parser.parse_args()
     result = run(args.codex, args.scratch.resolve(), args.transport, args.bridge or args.policy_broker, args.policy_broker)
     text = json.dumps(result, indent=2) + '\n'

@@ -429,7 +429,7 @@ pub fn configured_providers(policy: &V, include_unconfigured: bool) -> R<Vec<V>>
 }
 
 /// Get-Hotpl8ConfiguredProvider
-fn configured_provider(policy: &V, provider: &str, include_unconfigured: bool) -> R<V> {
+pub fn configured_provider(policy: &V, provider: &str, include_unconfigured: bool) -> R<V> {
     provider_definition(provider)?;
     let matches = filter(&configured_providers(policy, include_unconfigured)?, |r| r.g("id")?.ceq_s(provider))?;
     if matches.len() != 1 {

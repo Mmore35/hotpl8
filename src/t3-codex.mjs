@@ -89,17 +89,22 @@ export function readLines(stream, onMessage, onFailure, onEnd = () => {}) {
   });
 }
 
+// The account a session is given is chosen by the compiled program this copy ships
+// (native/src/route.rs), asked over a private pipe and answered there.
+const routeProgram = join(here, '..', 'bin', ...(process.platform === 'win32' ? ['windows', 'hotpl8-native.exe']
+  : [process.platform === 'darwin' ? 'macos' : 'linux', 'hotpl8-native']));
+
 export function createBroker(config) {
   return (request, signal) => new Promise((resolveRoute, reject) => {
-    const proc = spawn(config.powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(here, 'codex-route.ps1'),
-      '-StateDirectory', config.stateDirectory, '-Executable', config.codex], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    const proc = spawn(routeProgram, ['route', '--root', join(here, '..'), '--state', config.stateDirectory, '--codex', config.codex],
+      { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let output = '', failed = false;
     const fail = (code = 'routing_broker_failed') => {
       if (failed) return;
       failed = true; clearTimeout(timer); killTree(proc); reject(error(code));
     };
     // The broker ends its own validation after 30 s (refresh: 6.5 s) and names the
-    // reason. The rest is PowerShell starting, which takes seconds on a saturated machine.
+    // reason. The rest is for a program to start on a saturated machine.
     const timer = setTimeout(() => fail(), request.operation === 'refresh' ? 8500 : 40000);
     // Stopping the broker also ends its native read and frees the account lock.
     if (signal?.aborted) fail('routing_cancelled');

@@ -420,6 +420,16 @@ hotpl8-native route --root <release> --state <directory> [--codex <program>]
 | The bridge starts the program, not PowerShell | `src/t3-codex.mjs` names `bin/<platform>/hotpl8-native` of its own release. A release without one answers `routing_broker_failed` |
 | The request and the home are read by the program's JSON reader and its Codex read | The [differences of that read](#differences-from-the-powershell-codex-collection) apply: one fixed spelling of the requests, the program's reading of `auth.json`, its bounds on the search for Codex |
 | A request that is JSON but not an object is `routing_invalid_request` | PowerShell read members of whatever it was given and usually answered the same |
+| The request line is read strictly: text that is not JSON, or an object that names a member twice, is `routing_failed` | PowerShell's reader kept the last of two members |
+| A state file or a request in a shape HotPl8 never writes is `routing_failed` | PowerShell converted what it could and carried on with the rest |
+| Times in the request stay the text the caller wrote, on every platform | PowerShell 7 turned text that looks like a time into a time and wrote it back in its own form |
+| The time of the stored readings is read only in the form HotPl8 writes it; any other text is `routing_stale` | PowerShell accepted every form its culture could read |
+| A request that is wrong is said to be wrong before the caller's environment is looked at | PowerShell looked at the environment first. A caller that has both sees `routing_invalid_request` |
+| A mark of the UTF-8 encoding before the request is passed over | Windows PowerShell writes one when it opens a pipe to a program, which is how `src/codex-route.ps1` passes the request on |
+| `src/codex-route.ps1` with no program to start answers `{"error":"routing_failed"}` and records nothing | There is no rule left in PowerShell to record it with |
+| A `--codex` program ending `.cmd`, `.bat` or `.ps1` is `native_codex_required` | The rule of the program's Codex read. PowerShell's route started a script through its interpreter |
+| A T3 integration is set up with the compiled program in its snapshot, and setup refuses when there is none | `setup-t3.ps1` copied only the scripts. In a checkout the program is built first with `scripts/build-native.ps1` |
+| The opt-in rollover check asks the compiled program, with a stand-in read in place of Codex | `tests/t3-native-rollover.mjs --policy-broker` needs `cargo build --examples` in a checkout. It ran PowerShell's route before |
 
 ## Contract: `hotpl8 codex`
 

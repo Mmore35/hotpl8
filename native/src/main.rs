@@ -43,6 +43,7 @@ mod ps;
 mod registry;
 mod replay;
 mod request;
+mod route;
 mod runtime;
 mod selection;
 mod sha256;
@@ -125,6 +126,17 @@ fn main() -> ExitCode {
     // A wake prints what it did, and never an answer a reader would.
     if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "collect") {
         return match wake::started(words) {
+            Ok(true) => ExitCode::SUCCESS,
+            Ok(false) => ExitCode::from(FAILED),
+            Err(why) => {
+                let _ = writeln!(std::io::stderr().lock(), "HotPl8: {}", ps::safe_text(&why));
+                ExitCode::from(FAILED)
+            }
+        };
+    }
+    // A route answers its caller's pipe with one line, and that line is all it prints.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "route") {
+        return match route::started(words) {
             Ok(true) => ExitCode::SUCCESS,
             Ok(false) => ExitCode::from(FAILED),
             Err(why) => {

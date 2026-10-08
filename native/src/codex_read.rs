@@ -1,7 +1,8 @@
 //! One Codex account, read through the program Codex ships: it is started in the account's
 //! own home and asked over its standard streams who is signed in, what the limits say and
-//! how it is set up. Signing in stays Codex's business. Nothing here refreshes a sign-in,
-//! and no token is kept, printed or passed on.
+//! how it is set up. Signing in stays Codex's business. A collection refreshes no sign-in
+//! and takes no token. The one caller that does both is the route T3 asks (route.rs), which
+//! hands the token to its own caller over a private pipe and to nothing else.
 
 use crate::cswap::runnable;
 use crate::files;
@@ -41,6 +42,31 @@ pub struct Account {
     pub model_provider: String,
     /// Requests go to the subscription's own service, not to an address the user set.
     pub standard_transport: bool,
+    /// For a read of who is signed in: the sign-in names both an address and an account,
+    /// and `identity_key` is made from those two alone.
+    pub identity_verified: bool,
+    /// The sign-in itself, for the one caller that asks for it.
+    pub auth: Option<Auth>,
+}
+
+/// A sign-in as Codex keeps it. It has no printed form.
+pub struct Auth {
+    pub access_token: String,
+    pub account_id: String,
+}
+
+/// What a read is asked for beyond what a collection asks.
+#[derive(Clone, Copy, Default)]
+pub struct Asked<'a> {
+    /// Where the caller works: the program is started there and asked how it is set up
+    /// there. A collection has no such place and uses the home.
+    pub directory: Option<&'a str>,
+    /// Codex renews the sign-in before it answers.
+    pub refresh: bool,
+    /// Who is signed in, and nothing of the limits.
+    pub identity_only: bool,
+    /// The sign-in is answered too, read while the home's lock is held.
+    pub token: bool,
 }
 
 /// One read of one home: how long it took, and the account or the name of what failed.
@@ -307,27 +333,48 @@ impl Wire {
     }
 }
 
-/// The account id Codex keeps beside the sign-in, which `account/read` leaves out. The
-/// rest of the file is let go unread.
-fn signed_account(home: &str) -> V {
+/// What Codex keeps beside the sign-in: the account id, which `account/read` leaves out,
+/// and the token. The rest of the file is let go unread.
+fn signed_in(home: &str) -> V {
     let Ok(bytes) = std::fs::read(Path::new(home).join("auth.json")) else { return V::Null };
     if bytes.len() > 16_000_000 {
         return V::Null;
     }
     let text = String::from_utf8_lossy(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes));
     let file = json::parse_foreign(&text).unwrap_or(V::Null);
-    member(&member(&file, "tokens"), "account_id")
+    member(&file, "tokens")
 }
 
 /// What the answers say of the account. The address signed in with goes no further than
 /// the name made from it here.
-fn described(home: &str, account: &V, quota: V, config: &V) -> R<Account> {
+fn described(home: &str, account: &V, quota: V, config: &V, asked: &Asked) -> Result<R<Account>, &'static str> {
+    let tokens = signed_in(home);
+    let signed = member(&tokens, "account_id");
+    let auth = match asked.token {
+        false => None,
+        true => {
+            let token = member(&tokens, "access_token");
+            match (token.t(), signed.t(), token.s(), signed.s()) {
+                (Ok(true), Ok(true), Ok(access_token), Ok(account_id)) => Some(Auth { access_token, account_id }),
+                _ => return Err("subscription_login_required"),
+            }
+        }
+    };
+    drop(tokens);
+    Ok(named(account, quota, config, &signed, asked, auth))
+}
+
+fn named(account: &V, quota: V, config: &V, signed: &V, asked: &Asked, auth: Option<Auth>) -> R<Account> {
     let mut workspace = member(config, "forced_chatgpt_workspace_id").s()?;
-    let signed = signed_account(home);
     if signed.t()? {
         workspace = format!("{workspace}|{}", signed.s()?);
     }
-    let identity_key = sha256::hash(&format!("{}|{workspace}", member(account, "email").s()?));
+    let address = member(account, "email");
+    let mut identity_key = sha256::hash(&format!("{}|{workspace}", address.s()?));
+    let identity_verified = asked.identity_only && address.t()? && signed.t()?;
+    if identity_verified {
+        identity_key = sha256::hash(&format!("{}|{}", address.s()?.trim().to_lowercase(), signed.s()?));
+    }
     let mut standard_transport = !member(&member(&member(config, "model_providers"), "openai"), "base_url").t()?;
     let address = member(config, "chatgpt_base_url");
     if address.t()? && !subscription_address(&address.s()?) {
@@ -340,29 +387,35 @@ fn described(home: &str, account: &V, quota: V, config: &V) -> R<Account> {
         model: member(config, "model").s()?,
         model_provider: member(config, "model_provider").s()?,
         standard_transport,
+        identity_verified,
+        auth,
     })
 }
 
-/// The four requests of one read, in order.
-fn conversation(wire: &mut Wire, home: &str) -> Result<Account, &'static str> {
+/// The four requests of one read, in order. A read of who is signed in leaves the third out.
+fn conversation(wire: &mut Wire, home: &str, asked: &Asked) -> Result<Account, &'static str> {
     wire.ask(1, r#"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"hotpl8","version":"0.1"},"capabilities":{"experimentalApi":true}}}"#)?;
     wire.say(r#"{"method":"initialized"}"#)?;
-    let account = member(&wire.ask(2, r#"{"id":2,"method":"account/read","params":{"refreshToken":false}}"#)?, "account");
+    let account = member(&wire.ask(2, &format!(r#"{{"id":2,"method":"account/read","params":{{"refreshToken":{}}}}}"#, asked.refresh))?, "account");
     // A key is not a subscription: its limits are not the ones HotPl8 measures.
     if !member(&account, "type").as_str().is_some_and(|kind| kind.eq_ignore_ascii_case("chatgpt")) {
         return Err("subscription_login_required");
     }
-    let quota = wire.ask(3, r#"{"id":3,"method":"account/rateLimits/read"}"#)?;
-    let asked = format!(r#"{{"id":4,"method":"config/read","params":{{"includeLayers":false,"cwd":{}}}}}"#, json::text(home));
-    let config = member(&wire.ask(4, &asked)?, "config");
-    described(home, &account, quota, &config).map_err(|_| "transport_failed")
+    let quota = match asked.identity_only {
+        true => V::Null,
+        false => wire.ask(3, r#"{"id":3,"method":"account/rateLimits/read"}"#)?,
+    };
+    let place = json::text(asked.directory.unwrap_or(home));
+    let config = member(&wire.ask(4, &format!(r#"{{"id":4,"method":"config/read","params":{{"includeLayers":false,"cwd":{place}}}}}"#))?, "config");
+    described(home, &account, quota, &config, asked)?.map_err(|_| "transport_failed")
 }
 
-/// The program as it is started for one home: in that home, told that the home is its
-/// own, with no window and nothing of the caller's that would sign it in as someone else.
-fn command(program: &Path, home: &str) -> Command {
+/// The program as it is started for one home: in that home unless the caller works
+/// somewhere, told that the home is its own, with no window and nothing of the caller's
+/// that would sign it in as someone else.
+fn command(program: &Path, home: &str, directory: Option<&str>) -> Command {
     let mut command = Command::new(program);
-    command.args(["app-server", "--stdio"]).current_dir(home).env("CODEX_HOME", home);
+    command.args(["app-server", "--stdio"]).current_dir(directory.unwrap_or(home)).env("CODEX_HOME", home);
     for name in WITHHELD {
         command.env_remove(name);
     }
@@ -389,6 +442,13 @@ fn lock_path(full_home: &str) -> PathBuf {
 /// Read-CodexQuota, as a collection uses it. `program` is what the search for a Codex
 /// program came to; a home that is missing or busy is said before a program that is.
 pub fn read_home(home: &str, program: &Result<PathBuf, &'static str>, timeout_ms: u64) -> HomeRead {
+    read_home_as(home, program, timeout_ms, &Asked::default())
+}
+
+/// Read-CodexQuota with what its other callers add: a place to work in, a renewed sign-in,
+/// the identity alone, the token.
+pub fn read_home_as(home: &str, program: &Result<PathBuf, &'static str>, timeout_ms: u64, asked: &Asked) -> HomeRead {
+    let asked = &Asked { directory: asked.directory.filter(|directory| !directory.is_empty()), ..*asked };
     let started = Instant::now();
     let done = |outcome| HomeRead { elapsed_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX), outcome };
     let (true, Ok(full_home)) = (Path::new(home).is_dir(), home_path(home)) else { return done(Err("home_missing")) };
@@ -398,14 +458,14 @@ pub fn read_home(home: &str, program: &Result<PathBuf, &'static str>, timeout_ms
         Ok(program) => program,
         Err(name) => return done(Err(name)),
     };
-    let Ok(child) = command(program, home).spawn() else { return done(Err("transport_failed")) };
+    let Ok(child) = command(program, home, asked.directory).spawn() else { return done(Err("transport_failed")) };
     let mut running = Running(child);
     let (Some(input), Some(output)) = (running.0.stdin.take(), running.0.stdout.take()) else { return done(Err("transport_failed")) };
     let (sender, heard) = mpsc::sync_channel(8);
     std::thread::spawn(move || lines(output, |line| sender.send(line).is_ok()));
     // Its input closes before the program is waited for, which is how it is told to leave.
     let mut wire = Wire { input, heard, started, timeout: Duration::from_millis(timeout_ms) };
-    done(conversation(&mut wire, home))
+    done(conversation(&mut wire, home, asked))
 }
 
 #[cfg(test)]
@@ -500,7 +560,7 @@ pub mod tests {
 
     #[test]
     fn the_program_is_given_the_home_and_none_of_the_callers_keys() {
-        let command = command(Path::new("codex"), "/fixture/home");
+        let command = command(Path::new("codex"), "/fixture/home", None);
         let set: Vec<(String, Option<String>)> = command.get_envs().map(|(name, value)| (name.to_string_lossy().into_owned(), value.map(|value| value.to_string_lossy().into_owned()))).collect();
         assert!(set.contains(&("CODEX_HOME".into(), Some("/fixture/home".into()))));
         for name in WITHHELD {
@@ -526,18 +586,18 @@ pub mod tests {
         for (file, expected) in [("not json", "fixture-a@example.invalid|"), (r#"{"tokens":{"account_id":""}}"#, "fixture-a@example.invalid|"), (r#"{"tokens":{"account_id":42}}"#, "fixture-a@example.invalid||42"), ("[]", "fixture-a@example.invalid|")] {
             let directory = scratch("auth");
             std::fs::write(directory.join("auth.json"), file).unwrap();
-            let account = described(&directory.to_string_lossy(), &json::parse_foreign(ACCOUNT).ok().unwrap().g("account").ok().unwrap(), V::Null, &V::Null).ok().unwrap();
+            let account = described(&directory.to_string_lossy(), &json::parse_foreign(ACCOUNT).ok().unwrap().g("account").ok().unwrap(), V::Null, &V::Null, &Asked::default()).unwrap().ok().unwrap();
             assert_eq!(account.identity_key, sha256::hash(expected), "{file}");
             std::fs::remove_dir_all(&directory).unwrap();
         }
         // A value that is not one thing has no text, and the read is not used.
         let odd = json::parse_foreign(r#"{"email":["a","b"]}"#).ok().unwrap();
-        assert!(described("/fixture/none", &odd, V::Null, &V::Null).is_err());
+        assert!(described("/fixture/none", &odd, V::Null, &V::Null, &Asked::default()).unwrap().is_err());
     }
 
     #[test]
     fn a_set_address_is_not_the_subscriptions_own() {
-        let standard = |config: &str| described("/fixture/none", &V::Null, V::Null, &json::parse_foreign(config).ok().unwrap()).ok().unwrap().standard_transport;
+        let standard = |config: &str| described("/fixture/none", &V::Null, V::Null, &json::parse_foreign(config).ok().unwrap(), &Asked::default()).unwrap().ok().unwrap().standard_transport;
         assert!(standard("{}"));
         assert!(standard(r#"{"model_providers":{"openai":{"base_url":""}},"chatgpt_base_url":null}"#));
         assert!(!standard(r#"{"model_providers":{"openai":{"base_url":"https://example.invalid/v1"}}}"#));
@@ -577,6 +637,89 @@ pub mod tests {
         ] {
             assert_eq!(name(value), expected, "{value}");
         }
+    }
+
+    fn heard(home: &str) -> Vec<String> {
+        std::fs::read_to_string(Path::new(home).join("heard.txt")).unwrap().lines().map(str::to_owned).collect()
+    }
+
+    /// A caller that works somewhere has the program started there and asked how it is
+    /// set up there, and may have the sign-in renewed first. Neither adds anything to
+    /// what is answered.
+    #[test]
+    fn a_read_works_where_its_caller_does() {
+        set_core(false);
+        let home = home("placed", &answers(&[]));
+        let place = scratch("place");
+        let named = place.to_string_lossy().into_owned();
+        let read = read_home_as(&home, &Ok(stand_in()), 20_000, &Asked { directory: Some(&named), refresh: true, ..Asked::default() });
+        let account = read.outcome.ok().unwrap();
+        assert!(account.auth.is_none() && !account.identity_verified);
+        assert_eq!(account.identity_key, sha256::hash("fixture-a@example.invalid|"));
+        let lines = heard(&home);
+        assert_eq!(lines[2], r#"{"id":2,"method":"account/read","params":{"refreshToken":true}}"#);
+        assert_eq!(lines[4], format!(r#"{{"id":4,"method":"config/read","params":{{"includeLayers":false,"cwd":{}}}}}"#, json::text(&named)));
+        let started = std::fs::read_to_string(Path::new(&home).join("started.txt")).unwrap();
+        let directory = started.lines().nth(1).unwrap().strip_prefix("directory ").unwrap().to_owned();
+        assert_eq!(Path::new(&directory).canonicalize().unwrap(), place.canonicalize().unwrap());
+        remove(&home);
+        remove(&named);
+        // A place with no name is the home.
+        let home = self::home("unplaced", &answers(&[]));
+        assert!(read_home_as(&home, &Ok(stand_in()), 20_000, &Asked { directory: Some(""), ..Asked::default() }).outcome.is_ok());
+        assert_eq!(heard(&home)[4], format!(r#"{{"id":4,"method":"config/read","params":{{"includeLayers":false,"cwd":{}}}}}"#, json::text(&home)));
+        remove(&home);
+    }
+
+    /// A read of who is signed in asks nothing of the limits, and names the subscription
+    /// by its address and account alone once the sign-in holds both.
+    #[test]
+    fn who_is_signed_in_is_read_without_the_limits() {
+        set_core(false);
+        let only = Asked { identity_only: true, ..Asked::default() };
+        let account = r#"reply {"account":{"type":"chatgpt","email":" Fixture-A@example.invalid ","planType":"plus"}}"#;
+        let config = r#"reply {"config":{"model":"gpt-fixture","model_provider":"openai","forced_chatgpt_workspace_id":"ws-fixture"}}"#;
+        let home = home("who", &answers(&[("account/read", account), ("config/read", config)]));
+        std::fs::write(Path::new(&home).join("auth.json"), r#"{"tokens":{"access_token":"fixture-not-a-token","account_id":"acct-fixture"}}"#).unwrap();
+        let read = read_home_as(&home, &Ok(stand_in()), 20_000, &only).outcome.ok().unwrap();
+        assert!(read.identity_verified && read.quota.is_null() && read.auth.is_none());
+        assert_eq!(read.identity_key, sha256::hash("fixture-a@example.invalid|acct-fixture"));
+        let lines = heard(&home);
+        assert_eq!(lines.len(), 4);
+        assert!(lines.iter().all(|line| !line.contains("rateLimits")) && lines[3].starts_with(r#"{"id":4,"method":"config/read""#));
+        // The same home, asked the usual way, is named the usual way.
+        let usual = read_home(&home, &Ok(stand_in()), 20_000).outcome.ok().unwrap();
+        assert!(!usual.identity_verified && !usual.quota.is_null());
+        assert_eq!(usual.identity_key, sha256::hash(" Fixture-A@example.invalid |ws-fixture|acct-fixture"));
+        // A sign-in that names no account is not vouched for, and keeps the usual name.
+        std::fs::remove_file(Path::new(&home).join("auth.json")).unwrap();
+        let unsigned = read_home_as(&home, &Ok(stand_in()), 20_000, &only).outcome.ok().unwrap();
+        assert!(!unsigned.identity_verified);
+        assert_eq!(unsigned.identity_key, sha256::hash(" Fixture-A@example.invalid |ws-fixture"));
+        remove(&home);
+    }
+
+    /// The sign-in is answered only to the caller that asks for it, and a home that does
+    /// not hold all of one is not answered at all.
+    #[test]
+    fn the_sign_in_is_answered_only_when_asked_for() {
+        set_core(false);
+        let with = Asked { token: true, ..Asked::default() };
+        let home = home("token", &answers(&[]));
+        let file = Path::new(&home).join("auth.json");
+        std::fs::write(&file, r#"{"tokens":{"access_token":"fixture-not-a-token","account_id":"acct-fixture","refresh_token":"fixture-never-read"}}"#).unwrap();
+        let account = read_home_as(&home, &Ok(stand_in()), 20_000, &with).outcome.ok().unwrap();
+        let auth = account.auth.unwrap();
+        assert_eq!((auth.access_token.as_str(), auth.account_id.as_str()), ("fixture-not-a-token", "acct-fixture"));
+        assert_eq!(account.identity_key, sha256::hash("fixture-a@example.invalid||acct-fixture"));
+        assert!(read(&home, 20_000).outcome.ok().unwrap().auth.is_none());
+        for partial in [r#"{"tokens":{"account_id":"acct-fixture"}}"#, r#"{"tokens":{"access_token":"fixture-not-a-token"}}"#, r#"{"tokens":{"access_token":"","account_id":"acct-fixture"}}"#, "{}"] {
+            std::fs::write(&file, partial).unwrap();
+            assert_eq!(failure(&read_home_as(&home, &Ok(stand_in()), 20_000, &with)), "subscription_login_required", "{partial}");
+        }
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(failure(&read_home_as(&home, &Ok(stand_in()), 20_000, &with)), "subscription_login_required");
+        remove(&home);
     }
 
     /// What Windows PowerShell made of each of these lines as the answer to request 1,

@@ -1,28 +1,18 @@
-# Internal anonymous-pipe endpoint. Its success response is sensitive; never log it.
+# Internal anonymous-pipe endpoint, kept at the path an installed entry looks for. The account
+# is chosen by the compiled program this copy ships (native/src/route.rs): this passes it the
+# one line asked and answers with its one line. A success response is sensitive; never log it.
 param([Parameter(Mandatory=$true)][string]$StateDirectory,[Parameter(Mandatory=$true)][string]$Executable)
 $ErrorActionPreference='Stop'
 [Console]::InputEncoding=New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
+$result=$null
 try{
-    . (Join-Path $PSScriptRoot 'common.ps1')
-    . (Join-Path $PSScriptRoot 'config.ps1')
-    . (Join-Path $PSScriptRoot 'diagnostics.ps1')
-    . (Join-Path $PSScriptRoot 'providers/claude.ps1')
-    . (Join-Path $PSScriptRoot 'providers/codex.ps1')
-    . (Join-Path $PSScriptRoot 'codex-routing.ps1')
+    . ([IO.Path]::Combine($PSScriptRoot,'native.ps1'))
+    $root=[IO.Path]::GetDirectoryName($PSScriptRoot)
     $line=[Console]::ReadLine()
-    if(-not $line -or $line.Length -gt 16384){throw 'routing_invalid_request'}
-    $request=$line|ConvertFrom-Json
-    $result=Get-Hotpl8CodexRoute $request $StateDirectory $Executable
-    [Console]::WriteLine(($result|ConvertTo-Json -Depth 12 -Compress))
-}catch{
-    $code=[string]$_.Exception.Message
-    if($code -in @('action_control_busy','action_state_unavailable')){$code='routing_control_unavailable'}
-    if($code -notin @('routing_environment_conflict','routing_invalid_request','routing_duplicate_identity','routing_stale','routing_unavailable','routing_binding_changed','routing_refresh_failed','routing_auth_unavailable','routing_account_busy','routing_validation_timeout','routing_monitor_only','routing_automation_paused','routing_switching_disabled','routing_selection_held','routing_binding_unknown','routing_state_changed','routing_control_unavailable')){$code='routing_failed'}
-    # Fixed code and time only: never persist the request, slot/home, native
-    # exception or successful broker response (which carries an access token).
-    # A background validation that found the lock held was skipped, not failed.
-    if(-not ($code -eq 'routing_account_busy' -and $request.intent -eq 'rebind')){Write-Hotpl8Event $StateDirectory $code}
-    [Console]::WriteLine((@{error=$code}|ConvertTo-Json -Compress))
-    exit 1
-}
+    $result=Invoke-Hotpl8NativeProcess (Get-Hotpl8NativePath $root) @('route','--root',$root,'--state',$StateDirectory,'--codex',$Executable) -Asked ([string]$line+"`n")
+}catch{$result=$null}
+# The program names every refusal itself. With no answer there was no program to ask.
+if(-not $result -or -not $result.output){[Console]::WriteLine('{"error":"routing_failed"}');exit 1}
+[Console]::Out.Write($result.output)
+exit $result.exitCode
