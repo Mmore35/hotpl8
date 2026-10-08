@@ -333,26 +333,30 @@ try{
         }
     }
     Check 'one installed dashboard update reaches watch and nyan through the same launcher' {
-        $renderer=Join-Path $source 'src/dashboard.ps1';$checksums=Join-Path $source 'checksums.json'
-        $original=[IO.File]::ReadAllBytes($renderer);$originalHashes=[IO.File]::ReadAllBytes($checksums)
+        $reader='bin/windows/hotpl8-native.exe'
+        $program=Join-Path $source $reader;$checksums=Join-Path $source 'checksums.json'
+        $original=[IO.File]::ReadAllBytes($program);$originalHashes=[IO.File]::ReadAllBytes($checksums)
         try{
-            # Simulate a later shared-dashboard update in a fixture release.
-            Add-Content -LiteralPath $renderer -Encoding UTF8 -Value "`nfunction New-DashboardTitleRow { New-DashboardRow 'SHARED UPDATE PROBE' text }"
+            # A later update of the program that draws both, in a fixture release: a stand-in
+            # that says how it was asked.
+            Remove-Item -LiteralPath $program -Force
+            Add-Type -TypeDefinition 'public static class Probe { public static int Main(string[] asked) { System.Console.WriteLine("SHARED UPDATE PROBE " + string.Join(" ", asked)); return 0; } }' -OutputAssembly $program -OutputType ConsoleApplication
             $hashes=Read-Hotpl8Json $checksums
-            $hashes.'src/dashboard.ps1'=(Get-FileHash $renderer -Algorithm SHA256).Hash
+            $hashes.$reader=(Get-FileHash $program -Algorithm SHA256).Hash
             Write-Hotpl8Text $checksums ($hashes|ConvertTo-Json -Depth 4) -NoBom
             & (Join-Path $source 'install.ps1') -InstallDirectory $install -NoPath|Out-Null
             foreach($mode in @('watch','nyan')){
                 $output=& (Join-Path $install 'hotpl8.cmd') $mode -ReducedMotion
-                Assert ($LASTEXITCODE -eq 0 -and ($output -join "`n").Contains('SHARED UPDATE PROBE'))
+                Assert ($LASTEXITCODE -eq 0 -and ($output -join "`n") -ceq ('SHARED UPDATE PROBE user '+$mode+' -ReducedMotion')) ($output -join "`n")
             }
-            foreach($asset in @('src/presentation.ps1','data/nyan-frames.json')){
+            foreach($asset in @($reader,'data/nyan-frames.json')){
                 Assert ((Get-FileHash (Join-Path $install ('app/'+$asset))).Hash -eq (Get-FileHash (Join-Path $source $asset)).Hash)
             }
         }finally{
-            [IO.File]::WriteAllBytes($renderer,$original);[IO.File]::WriteAllBytes($checksums,$originalHashes)
+            [IO.File]::WriteAllBytes($program,$original);[IO.File]::WriteAllBytes($checksums,$originalHashes)
             & (Join-Path $source 'install.ps1') -InstallDirectory $install -NoPath|Out-Null
         }
+        Assert ((Get-FileHash (Join-Path $install ('app/'+$reader))).Hash -eq (Get-FileHash $program).Hash)
     }
     Check 'tampered archive refuses upgrade before changing installed code' {
         $path=Join-Path $source 'VERSION';$original=[IO.File]::ReadAllText($path)
@@ -371,6 +375,29 @@ try{
         try{try{& (Join-Path $source 'install.ps1') -InstallDirectory $install -NoPath|Out-Null}catch{$rejected=$true}}finally{$lock.Dispose()}
         Assert ($rejected -and (Get-FileHash (Join-Path $install 'app/VERSION')).Hash -eq $appBefore)
         Assert ((Get-FileHash (Join-Path $state 'policy.json')).Hash -eq $policyBefore)
+    }
+    Check 'a program still running from the installation stops rollback and uninstall before anything is removed' {
+        # A dashboard stays open for days, and Windows removes no file of a running program.
+        # A stand-in that waits is put where the installed reader is and started from there.
+        $program=Join-Path $install 'app/bin/windows/hotpl8-native.exe';$original=[IO.File]::ReadAllBytes($program)
+        $waits=Join-Path $dir 'waits.exe'
+        Add-Type -TypeDefinition 'public static class Waits { public static void Main() { System.Threading.Thread.Sleep(600000); } }' -OutputAssembly $waits -OutputType ConsoleApplication
+        $kept=@('hotpl8.cmd','installation.json','app/hotpl8.ps1','app/VERSION','app/src/common.ps1','previous/hotpl8.ps1','previous/VERSION')
+        $hooks=Join-Path $state 'policy.json';$policyBefore=(Get-FileHash $hooks).Hash
+        [IO.File]::Copy($waits,$program,$true)
+        $open=Start-Process -FilePath $program -WindowStyle Hidden -PassThru
+        try{
+            foreach($script in @('rollback.ps1','uninstall.ps1')){
+                $reason=''
+                try{& (Join-Path $source $script) -InstallDirectory $install|Out-Null}catch{$reason=$_.Exception.Message}
+                Assert ($reason -like 'HotPl8 cannot remove *hotpl8-native.exe while it is in use:*Nothing was removed.') ($script+': '+$reason)
+                foreach($name in $kept){Assert (Test-Path -LiteralPath (Join-Path $install $name)) ($script+' took '+$name)}
+            }
+            Assert (-not $open.HasExited -and (Get-FileHash $hooks).Hash -eq $policyBefore)
+        }finally{
+            if(-not $open.HasExited){$open.Kill()};$open.WaitForExit();$open.Dispose()
+            [IO.File]::WriteAllBytes($program,$original)
+        }
     }
     Check 'incompatible previous reader blocks rollback before removing current app' {
         $reader=Join-Path $install 'previous/src/config.ps1';$original=[IO.File]::ReadAllText($reader)
