@@ -2,7 +2,8 @@
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/insights.ps1')
-. (Join-Path $root 'src/dashboard.ps1')
+. (Join-Path $root 'src/native.ps1')
+. (Join-Path $PSScriptRoot 'fixtures/frame.ps1')
 $now=[datetimeoffset]::Parse('2026-09-13T12:00:00Z')
 $p=@{prefer=@(1,2,3);reserve=@(3);mode='automate';margin5h=20;margin7d=10;margin7dWork=5;codex=@{slots=@(@{id='main'});prefer=@('main');defaultMeter='codex';margin7d=5}}|ConvertTo-Json -Depth 9|ConvertFrom-Json
 $s=@{generatedAt=$now.ToString('o');active=1;slots=@(1..3|ForEach-Object {@{slot=$_;status='ok';fresh=$true;streamKey=('fictional-'+$_);observedAt=$now.ToString('o');used5h=10;used7d=($_-1)*50;reset5h=$now.AddHours(1).ToString('o');reset7d=$now.AddDays(2).ToString('o')}});providers=@{codex=@{recommendedSlot='main';slots=@(@{id='main';status='ok';observedAt=$now.ToString('o');buckets=@{codex=@{status='observed';windows=@{'10080'=@{usedPercent=20;remainingPercent=80;anchorState='observed-active';resetsAt=$now.AddDays(2).ToUnixTimeSeconds()}}}}})}}}|ConvertTo-Json -Depth 15|ConvertFrom-Json
@@ -97,7 +98,7 @@ Check 'new model constraints re-evaluate cached scope observations' {
 Check 'pause and monitor status never claim automatic routing' {
     $c=Copy-Value $s;$c|Add-Member NoteProperty automationPause @{until=$now.AddHours(1).ToString('o')}
     Assert ((Get-Hotpl8ProviderOverview $c $p $now).claude.automation -eq 'automation paused')
-    Assert (((Get-Hotpl8DashboardFrame $c $p $now 50 18).text -join '') -match 'PAUSED')
+    Assert ((@(Get-Hotpl8TestFrame $c $p $now 50 18 -Files @{'automation-pause.json'=$c.automationPause}) -join '') -cmatch 'auto-switch paused')
     $policy=Copy-Value $p;$policy.mode='monitor'
     Assert ((Get-Hotpl8ProviderOverview $s $policy $now).claude.automation -eq 'monitor only')
 }
@@ -122,11 +123,11 @@ Check 'collector and sign-in failures remain visible in the overview' {
 Check 'summary and view are pure and pinned when scrolling' {
     $before=$s|ConvertTo-Json -Depth 24 -Compress
     $overview=Get-Hotpl8ProviderOverview $s $p $now
-    $first=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 0)
-    $last=@(Get-Hotpl8DashboardFrame $s $p $now 79 23 999)
-    Assert (($first[2..7].text -join '') -eq ($last[2..7].text -join ''))
+    $first=@(Get-Hotpl8TestFrame $s $p $now 79 23)
+    $last=@(Get-Hotpl8TestFrame $s $p $now 79 23 -As @('--offset','999'))
+    Assert (($first[2..7] -join '') -ceq ($last[2..7] -join '') -and ($first -join '') -cne ($last -join ''))
     Assert (($s|ConvertTo-Json -Depth 24 -Compress) -eq $before)
-    Assert (($first.text -join '') -match '│  CLAUDE\s' -and ($first.text -join '') -match '│  CODEX\s')
+    Assert (($first -join '') -match '│  CLAUDE\s' -and ($first -join '') -match '│  CODEX\s')
 }
 Check 'CLI status and explain re-evaluate policy and clock without collecting' {
     $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-overview-'+[guid]::NewGuid().ToString('N'))

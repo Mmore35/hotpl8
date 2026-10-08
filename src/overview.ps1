@@ -110,31 +110,6 @@ function Get-Hotpl8ProviderOverview($Snapshot,$Policy,[datetimeoffset]$Now=[date
     }
     return [pscustomobject]$result
 }
-function Test-Hotpl8CodexReadRetrying($Slot,[datetimeoffset]$Now) {
-    # One busy or slow read is not an outage: T3 routing still validates an
-    # account whose last success is fresh. Older or other failures stay loud.
-    return ($Slot.status -in @('home_busy','timeout') -and (Test-Hotpl8FreshTimestamp $Slot.observedAt $Now))
-}
-function Get-Hotpl8CodexAccountState($Slot,$Part,$Provider,[datetimeoffset]$Now) {
-    if(-not $Slot){return 'NO OBSERVATION'}
-    if($Slot.id -in @($Part.disabled) -or $Slot.status -eq 'disabled'){return 'DISABLED'}
-    if(Test-Hotpl8CodexReadRetrying $Slot $Now){return 'READ RETRYING'}
-    if($Slot.status -ne 'ok'){return ([string]$Slot.status).Replace('_',' ').ToUpperInvariant()}
-    if(-not (Test-Hotpl8FreshTimestamp $Slot.observedAt $Now)){return 'STALE'}
-    $bucket=$Slot.buckets.codex
-    if(@($bucket.windows.PSObject.Properties|Where-Object {(Test-Hotpl8Number $_.Value.remainingPercent) -and $_.Value.remainingPercent -eq 0}).Count){return 'EXHAUSTED'}
-    $eligibility=Get-CodexEligibility $Slot $Part 'codex' $Now ([bool]$Provider.critical.codex.active)
-    if($eligibility -eq 'eligible'){
-        $next=if($Provider.recommendations.codex){$Provider.recommendations.codex}elseif($Provider.defaultMeter -eq 'codex'){$Provider.recommendedSlot}else{$null}
-        if($Slot.id -eq $next){return 'NEXT LAUNCH'}
-        return 'AVAILABLE'
-    }
-    switch($eligibility){
-        'below_margin'{return 'LOW BALANCE'}
-        'blocked'{return 'BLOCKED'}
-        default{return 'LIMIT UNCONFIRMED'}
-    }
-}
 # Accounts that look unfunded, from cached evidence only so that doctor and park
 # stay offline. 'canceled' needs a current reading that reports no paid plan.
 # 'dormant' is a sign-in failure that has outlasted a week; it never claims a cause.

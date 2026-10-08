@@ -1813,6 +1813,16 @@ pub mod tests {
     }
 
     #[test]
+    fn a_sign_in_that_was_not_renewed_is_listed_as_a_warning() {
+        let event = |kind: &str, reason: &str| format!(r#"{{"provider":"codex","slot":"main","kind":"{kind}","reason":"{reason}","at":"{}"}}"#, clock("11:59:00"));
+        let status = and(FLEET, &format!(r#""recentActions":[{},{}]"#, event("warm_attempt", "sent"), event("credential_unrenewed", "warm")));
+        let drawn = fleet_drawn(&status, FLEET_POLICY, &terminal(100, 100));
+        let tone_of = |phrase: &str| drawn.lines.iter().flat_map(|line| &line.spans).find(|span| span.text.contains(phrase)).map(|span| span.tone);
+        assert_eq!(tone_of("sign-in not renewed · Main"), Some(Tone::Amber), "{}", page(&drawn));
+        assert_eq!(tone_of("warm sent · Main"), Some(Tone::Muted));
+    }
+
+    #[test]
     fn a_changed_bar_glides_to_its_new_value_under_a_number_that_is_already_exact() {
         let (now, policy) = (thursday(), parse(FLEET_POLICY, "").ok().unwrap());
         let mut tweens = Tweens::default();
