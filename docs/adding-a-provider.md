@@ -13,11 +13,11 @@ a second registration of the existing native contract, not proof that an unrelat
 service supports that protocol or authentication model.
 
 Every definition is validated by
-[the registry](../src/provider-registry.ps1). Unknown fields, executable paths,
+[the registry](../native/src/registry.rs). Unknown fields, executable paths,
 unsupported driver IDs, changed window applicability and overstated capabilities
-are rejected. The compiled reader checks the same files by the same rules when it answers
-`status` and `explain` (`native/src/registry.rs`), so a rule added to one is added to the
-other until the PowerShell registry is retired. `integrations.native` identifies the native adapter family;
+are rejected. That is the one check there is: the collector, the display commands and the
+PowerShell commands, which ask the program, all read a definition through it.
+`integrations.native` identifies the native adapter family;
 `integrations.t3` is the host's exact driver identifier (`claudeAgent` or `codex`).
 A compatible host driver is not evidence that this registration is enrolled in
 the host. T3 setup and live-session adoption require their own supported boundary.

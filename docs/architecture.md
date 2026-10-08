@@ -29,7 +29,7 @@ There is no separate Warden component in this repository: collection and decisio
 3. Among healthy peers, use configured preference order or the soonest reset. Unmeasurable reset times sort behind known expiry times.
 4. Avoid needless changes. Claude uses a headroom band in preference mode or a reset lead in soonest-reset mode; a hold blocks the switch. Both adapters invoke the same normalized decision function; different quota facts or native activation boundaries remain explicit inputs.
 
-Shared decisions: [provider-decision.ps1](../src/provider-decision.ps1), fed by [native observation adapters](../src/provider-observation.ps1). Legacy Claude/Codex selector signatures are compatibility wrappers over that core. These choose according to configured policy; “best” is not a universal optimization guarantee.
+Shared decisions: [decision.rs](../native/src/decision.rs) in the compiled program, fed by [native observation adapters](../native/src/observation.rs). The collector, the display commands, the choice of an account for T3 and the Codex launch all call it, and PowerShell holds no copy. These choose according to configured policy; “best” is not a universal optimization guarantee.
 
 ## Warming is a separate decision
 
@@ -70,36 +70,35 @@ For example, an elapsed reset is read against the observation that reported it. 
 hotpl8.cmd / hotpl8.ps1       User commands
 hotpl8-launch.cmd           Windows launcher: asks the compiled reader, then PowerShell
 native/                     Compiled program: version, status, explain, the tray's
-                            view, the dashboard and the collector
+                            view, the dashboard, the collector, the choice of an
+                            account for T3, the Codex launch, and every rule the
+                            PowerShell commands ask for
 tick.ps1                    Starts one wake of the compiled collector
 continue.ps1                One waiter for automatic continue, both providers
 setup-codex.ps1             Native account enrollment and optional hooks
 install/uninstall/rollback.ps1
                             Stable installation entrypoints
 src/
-  provider-registry.ps1     Validated data catalog, v1/v2/v3 compatibility views
-  provider-observation.ps1  Native quota decoders into the shared contract
-  provider-decision.ps1     One eligibility, ranking and action-intent decision
-  provider-actions.ps1      Short control authorization and generation boundary
+  rules.ps1                 The one place PowerShell asks the program for a rule:
+                            policy and provider checks, pauses, the snapshot,
+                            park candidates, Codex and cswap lookups, doctor
+  provider-actions.ps1      Writing a control file under the control lock
   native.ps1                Hand-over of version, status, explain, the tray's view
                             and the dashboard to the reader
   common.ps1                Atomic files, quoting, bounded processes
-  config.ps1                State resolution and policy validation
+  config.ps1                State resolution; the policy check is asked of the program
   diagnostics.ps1           Offline doctor and bounded event logs
   dashboard.ps1             A comment: the dashboard is the compiled program's
   lifecycle.ps1             Install ownership, manifests, scheduler
-  automation.ps1            Pause and schedule gates of the PowerShell commands
   collection.ps1            The category a failure is recorded under
   lane.ps1                  What a wake still asks PowerShell for: the continue
                             hook, a finished account addition
-  overview.ps1              Pure provider summaries shared by all cached views
-  insights.ps1              Health and the snapshot as views read it
-  selection.ps1 / replay.ps1 Optional ranking keys and production-selector replay
   management.ps1            Validated account operations and setup
   parking.ps1               Park/unpark records kept outside policy
   updates.ps1               Release identity and provenance verification
   tray.ps1                  The tray's window and menu; what it shows is the reader's
-  providers/                Claude and Codex adapters
+  codex-route.ps1           Passes a T3 request to the program and its answer back
+  providers/                Codex account setup and enrollment; Claude plan discovery
 tests/                      Offline regression suites
   fixtures/                 Fictional documentation data
 scripts/                    Checks, tests, packaging, screenshots
@@ -111,7 +110,7 @@ Public entrypoints stay at the root so existing commands, scheduled tasks, and h
 
 ## Tradeoffs and limits
 
-PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status`, `explain`, what the tray shows and the dashboard are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it and reads the Claude and the Codex accounts itself, and PowerShell is started only to keep Claude's continue hook and to close an account addition. The other commands still calculate the rules they share with it in PowerShell; [the plan](plans/rust-read-side.md) lists which of those are compared on every test run and which stage removes them. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
+PowerShell keeps the Windows installation small, but other platforms are not release-qualified. `version`, `status`, `explain`, what the tray shows and the dashboard are answered by a small compiled program that ships beside the scripts, and by nothing else. The same program is the collector: every wake runs in it and reads the Claude and the Codex accounts itself, and PowerShell is started only to keep Claude's continue hook and to close an account addition. The other commands change things a person owns (accounts, pauses, the installation, the continue hook) and stay in PowerShell, but they calculate no rule about accounts: each one they need is [a question to the program](plans/rust-read-side.md#contract-what-powershell-asks-the-program), so a copy whose program cannot start refuses those commands too. Native provider contracts can change: fixture tests establish local behavior, while live compatibility needs separate evidence. A new policy switches accounts and continues limited conversations by itself; warming and recovery probes need explicit configuration, and monitor mode turns every action off. See [compatibility](compatibility.md) for the tested scope and remaining qualification work.
 
 The collector adds insights and shadow decisions before one atomic publication. Views consume recorded decisions and overlay the latest collector/pause state; they never run selection actions. [Operations and state contracts](operations.md).
 
@@ -119,7 +118,7 @@ Provider summaries are additive `providerOverview` fields on snapshots and statu
 
 ## Capacity and emergency selection
 
-`src/capacity.ps1` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `src/critical.ps1` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. The compiled dashboard (`native/src/dashboard.rs`, `display.rs`, `paint.rs` and `nyan.rs`) lays out sanitized styled cells and the clock-driven animation, and the screenshot harness draws its images from the same frames. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).
+`native/src/capacity.rs` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `native/src/critical.rs` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. The compiled dashboard (`native/src/dashboard.rs`, `display.rs`, `paint.rs` and `nyan.rs`) lays out sanitized styled cells and the clock-driven animation, and the screenshot harness draws its images from the same frames. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).
 
 ## Local agent boundary
 
