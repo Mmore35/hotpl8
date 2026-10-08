@@ -82,6 +82,34 @@ try{
         $r=Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0))
         Assert ($r.code -eq 0 -and -not $r.text -and 'continue_skipped' -in (Get-Events))
     }
+    Check 'a held continue is asked for again within those ten minutes, and counts from then' {
+        $r=Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0),'-Held')
+        Assert ($r.code -eq 2 -and $r.text -ceq 'Automated message: continue.')
+        # With the record older than ten minutes, only the held answer's own record stands the next waiter down.
+        [IO.File]::SetLastWriteTimeUtc((Join-Path $state 'continue/thread-one'),[datetime]::UtcNow.AddMinutes(-11))
+        Assert ((Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0),'-Held')).code -eq 2)
+        Assert ((Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0))).code -eq 0)
+    }
+    Check 'a held continue still obeys the setting, monitor mode and a pause' {
+        $skipped=@(Get-Events|Where-Object {$_ -eq 'continue_skipped'}).Count
+        Set-Policy @{automation=[pscustomobject]@{continue=$false}}
+        Assert ((Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0),'-Held')).code -eq 0)
+        Set-Policy @{mode='monitor'}
+        Assert ((Invoke-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0),'-Held')).code -eq 0)
+        Assert (@(Get-Events|Where-Object {$_ -eq 'continue_skipped'}).Count -eq $skipped+2)
+        Set-Policy
+        Set-Hotpl8Pause $state 60 'pause'
+        $p=Start-Waiter @('-Conversation','thread-one','-Slot','1','-After',(Stamp 0),'-Held')
+        Assert-Waiting $p
+        Set-Hotpl8Pause $state 0 'resume'
+        Assert ((Complete-Waiter $p).code -eq 2)
+    }
+    Check 'a failure more than six hours old is not continued, held or not' {
+        Assert ((Invoke-Waiter @('-Conversation','thread-late','-Slot','1','-After',(Stamp -21700))).code -eq 0)
+        Assert ((Invoke-Waiter @('-Conversation','thread-late','-Slot','1','-After',(Stamp -21700),'-Held')).code -eq 0)
+        Assert (-not (Test-Path -LiteralPath (Join-Path $state 'continue/thread-late')))
+        Assert ((Invoke-Waiter @('-Conversation','thread-late','-Slot','1','-After',(Stamp -21000),'-Held')).code -eq 2)
+    }
     Check 'old continue records are removed and never the hook record' {
         $old=Join-Path $state 'continue/thread-old';[IO.File]::WriteAllText($old,'')
         [IO.File]::SetLastWriteTimeUtc($old,[datetime]::UtcNow.AddDays(-2))
