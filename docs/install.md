@@ -54,13 +54,13 @@ Ordinary guided installation registers one per-user collector: a hidden Windows 
 
 Windows adds its command to user PATH for new terminals. Mac places a command in `~/.local/bin`; setup itself opens the view immediately. If your shell does not include that directory, an agent can use the installed `hotpl8` launcher directly. No terminal restart is required to complete setup.
 
-Rerun the ordinary installer to update its owned application. `rollback.ps1 -InstallDirectory PATH` restores the previous code when compatible. `uninstall.ps1 -InstallDirectory PATH` removes owned code and integration while retaining state, onboarding progress, and native account data. A separately enrolled [main delivery installation](delivery.md) keeps its existing delivery owner; ordinary setup will not overwrite it.
+Rerun the ordinary installer to update its owned application. `rollback.ps1 -InstallDirectory PATH` restores the previous code when compatible. `uninstall.ps1 -InstallDirectory PATH` removes owned code and integration while retaining state, onboarding progress, and native account data. On Windows, close the installation's dashboard before a rollback or an uninstall: the dashboard is a program running from the installation, Windows will not remove its file, and both scripts stop before removing anything and say so. An update needs no dashboard closed. A separately enrolled [main delivery installation](delivery.md) keeps its existing delivery owner; ordinary setup will not overwrite it.
 
 The private Mac bootstrap runtime is retained at `~/Library/Application Support/HotPl8-Runtimes` because installed launchers may reference it. Remove it only after no installation uses it. Claude adapter runtimes remain with preserved state.
 
 ## The launcher
 
-On Windows, `hotpl8` is a command file that asks HotPl8's compiled reader first. `version`, `status` and `explain` in their plain spellings are answered by the reader, and PowerShell is not started. For any other words the launcher starts PowerShell with the same words, as it always has. On a Mac the launcher starts PowerShell for every command for now, and PowerShell hands those three to the reader.
+On Windows, `hotpl8` is a command file that asks HotPl8's compiled reader first. `version`, `status` and `explain` in their plain spellings are answered by the reader, and so is the dashboard (`hotpl8`, `hotpl8 watch`, `hotpl8 nyan`); PowerShell is not started. For any other words the launcher starts PowerShell with the same words, as it always has. On a Mac the installed command asks the reader in the same way before it starts PowerShell. A dashboard for a user with no policy or no account yet is the one case of those words left to PowerShell, which guides setup and then opens the reader's dashboard.
 
 | Copy | What `hotpl8` runs |
 |---|---|

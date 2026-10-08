@@ -67,7 +67,7 @@ pub fn assert_capacity_policy(part: &V) -> R<()> {
 }
 
 /// Test-Hotpl8DetectedPlan, from src/providers/claude-plans.ps1.
-fn detected_plan(plan: &V, now: Dto) -> R<bool> {
+pub(crate) fn detected_plan(plan: &V, now: Dto) -> R<bool> {
     if !plan.t()? || !plan.g("status")?.in_s(&["detected", "partial"])? {
         return Ok(false);
     }

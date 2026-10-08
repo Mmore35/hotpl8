@@ -61,8 +61,14 @@ try{
     # POSIX single-quoted literals; generated paths are not interpolated as shell code.
     $shellQuote="'"+$shell.Replace("'",("'"+'"'+"'"+'"'+"'"))+"'"
     $fileQuote="'"+(Join-Path $app 'hotpl8.ps1').Replace("'",("'"+'"'+"'"+'"'+"'"))+"'"
+    $readerQuote="'"+(Join-Path $app 'bin/macos/hotpl8-native').Replace("'",("'"+'"'+"'"+'"'+"'"))+"'"
     $shim=Join-Path $destination 'hotpl8'
-    Write-Hotpl8Text $shim ("#!/bin/sh`nexec "+$shellQuote+' -NoProfile -File '+$fileQuote+' "$@"'+"`n") -NoBom
+    # The compiled reader is asked first, as hotpl8-launch.cmd asks it on Windows: 0 and 1 are
+    # its own endings, and anything else leaves the words to PowerShell. The braces have sh
+    # read all of this before it runs any: a dashboard stays open across an update.
+    $asks=@('#!/bin/sh','{',('if [ -x '+$readerQuote+' ]; then'),('  '+$readerQuote+' user "$@"'),'  status=$?','  if [ "$status" -lt 2 ]; then exit "$status"; fi','fi',
+        ('exec '+$shellQuote+' -NoProfile -File '+$fileQuote+' "$@"'),'}')
+    Write-Hotpl8Text $shim (($asks -join "`n")+"`n") -NoBom
     [IO.File]::SetUnixFileMode($shim,[IO.UnixFileMode]'UserRead,UserWrite,UserExecute')
     if($receipt.pathAdded){
         $bin=Join-Path (Get-Hotpl8UserHome) '.local/bin';[void][IO.Directory]::CreateDirectory($bin)

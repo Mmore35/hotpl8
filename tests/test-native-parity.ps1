@@ -1,15 +1,17 @@
-# `hotpl8 status`, `hotpl8 explain` and what the tray shows are the compiled reader's, but the
-# rules behind them are still computed twice: by the reader for those, and by PowerShell for
-# the dashboard, the agent interface and account management. This suite holds the two to each
-# other and pins what the reader prints.
+# `hotpl8 status`, `hotpl8 explain`, the dashboard and what the tray shows are the compiled
+# reader's, but the rules behind them are still computed twice: by the reader for those, and
+# by PowerShell for the agent interface and account management. This suite holds the two to
+# each other and pins what the reader prints.
 #
 #   data     What PowerShell's rules compute from a set of files (tests/parity/referee.ps1) is
 #            what the reader computes, value for value and type for type. Where PowerShell
 #            refuses the files the reader refuses them, in the same words when the words are
 #            HotPl8's own.
-#   text     PowerShell has no status text, no explanation and no tray view. What the reader
-#            prints for each case is compared with expected-status.txt, expected-explain.txt
-#            and expected-tray.txt in tests/parity. After a change that is meant, run this
+#   text     PowerShell has no status text, no explanation, no dashboard and no tray view.
+#            What the reader prints for each case is compared with expected-status.txt,
+#            expected-explain.txt, expected-tray.txt and expected-watch.txt in tests/parity.
+#            The last is the dashboard as `hotpl8 watch` gives it to a pipe: one frame, 100
+#            columns wide and as tall as it needs. After a change that is meant, run this
 #            suite with -Update and review the difference like any other change.
 #
 # Starting a program costs more than any answer, so the reader answers all the questions of a
@@ -50,7 +52,7 @@ $shellVersion=$PSVersionTable.PSVersion
 if($edition -eq 'core' -and ($shellVersion.Major -lt 7 -or ($shellVersion.Major -eq 7 -and $shellVersion.Minor -lt 5))){throw 'The reader computes as PowerShell 7.5 or later does. Run this suite in one, or in Windows PowerShell.'}
 $now=[datetimeoffset]::Parse('2026-09-12T12:00:00Z',[Globalization.CultureInfo]::InvariantCulture)
 $forms='status-json','explain-json'
-$commands='status','explain','tray'
+$commands='status','explain','tray','watch'
 $lab=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-parity-test-'+[guid]::NewGuid().ToString('N'))
 $priorState=$env:HOTPL8_STATE_DIRECTORY
 $script:passed=0;$script:failed=0;$script:labs=0;$script:batches=0
@@ -306,7 +308,7 @@ function Get-PrintedText([object[]]$Cases,[string]$Command) {
     ,$sections
 }
 function ConvertTo-ExpectedText($Sections,[string]$Command) {
-    $what=if($Command -eq 'tray'){'the tray shows'}else{'`hotpl8 '+$Command+'` prints'}
+    $what=if($Command -eq 'tray'){'the tray shows'}elseif($Command -eq 'watch'){'`hotpl8 watch` gives a pipe'}else{'`hotpl8 '+$Command+'` prints'}
     $builder=New-Object Text.StringBuilder
     [void]$builder.Append('# What '+$what+' for each parity case at '+$now.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ',[Globalization.CultureInfo]::InvariantCulture)+", read in UTC.`n# Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.`n")
     foreach($name in $Sections.Keys){[void]$builder.Append("`n== "+$name+"`n"+$Sections[$name])}
@@ -399,7 +401,7 @@ try{
             $place=New-Lab $case $now
             foreach($form in $forms+$commands){[void]$asked.Add((Get-ReaderArguments $form $place))}
         }
-        Assert ($asked.Count -eq 20) 'a case this check relies on is gone'
+        Assert ($asked.Count -eq 24) 'a case this check relies on is gone'
         $together=Invoke-ReaderBatch $asked.ToArray()
         for($index=0;$index -lt $asked.Count;$index++){
             $alone=Invoke-Hotpl8NativeProcess $real $asked[$index]
@@ -407,7 +409,7 @@ try{
                 else{$alone.exitCode -eq 1 -and $alone.output -eq '' -and $alone.errors -ceq ('HotPl8: '+$together[$index].output+"`n")}
             Assert $same (($asked[$index] -join ' ')+': the reader answers differently among other questions than in a start of its own')
         }
-        Assert (@($together|Where-Object{$_.kind -ceq 'answer'}).Count -eq 15 -and @($together|Where-Object{$_.kind -ceq 'ruled'}).Count -eq 5)
+        Assert (@($together|Where-Object{$_.kind -ceq 'answer'}).Count -eq 18 -and @($together|Where-Object{$_.kind -ceq 'ruled'}).Count -eq 6)
     }
     $script:curated=$null
     Check ('PowerShell''s rules and the reader''s agree on '+$chosen.Count+' cases') {

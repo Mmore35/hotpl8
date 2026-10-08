@@ -416,6 +416,17 @@ def dispatch(root, command, arguments):
                                    ('cswap', '-CswapExecutable', ('tick',))]:
             if key in runtimes and arguments[0] in entries and not any(x.lower().rstrip(':') == flag.lower() for x in arguments[1:]):
                 arguments += [flag, runtimes[key]]
+        if arguments[0] == 'hotpl8':
+            # version, status, explain and the dashboard are the compiled reader's. The
+            # release's program asks the reader of the release in force (native/src/door.rs)
+            # and no PowerShell starts: 0 and 1 are that reader's own endings. Everything
+            # else, a program that cannot start among it, is the launcher's below.
+            try:
+                status = subprocess.call([str(release / "bin/macos/hotpl8-native"), "ask", str(root), *arguments[1:]])
+            except OSError:
+                status = None
+            if status in (0, 1):
+                return status
         return subprocess.call([config["powershell"], "-NoProfile", "-File", str(release / "delivery/launch.ps1"),
                                 "-InstallDirectory", str(root), "-Entry", arguments[0], *arguments[1:]])
     if len(arguments) != 1 or arguments[0] not in ("collector", "updater"):

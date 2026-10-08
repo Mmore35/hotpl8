@@ -28,7 +28,7 @@ PACKAGE = "hotpl8-0.0.0-" + PLATFORM + ".zip"
 def source_zip(extra=None):
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as z:
-        for name in ("hotpl8.ps1", "src/dashboard.ps1", "tests/fixtures/screenshots.ps1"):
+        for name in ("hotpl8.ps1", "src/common.ps1", "tests/fixtures/screenshots.ps1"):
             z.writestr("repo-head/" + name, "# fictional candidate")
         for name, value in (extra or {}).items():
             if isinstance(name, zipfile.ZipInfo):
@@ -107,7 +107,7 @@ class Preview(unittest.TestCase):
             self.children.append((argv, kwargs))
             reader = Path(argv[argv.index("-SourceDirectory") + 1], READER)
             self.readers.append((reader.read_bytes(), os.access(reader, os.X_OK)) if reader.is_file() else None)
-            self.assertTrue(Path(argv[argv.index("-SourceDirectory") + 1], "src/dashboard.ps1").is_file())
+            self.assertTrue(Path(argv[argv.index("-SourceDirectory") + 1], "src/common.ps1").is_file())
             self.assertTrue("HOTPL8_INSTALL_DIRECTORY" not in kwargs["env"])
             self.assertTrue("GH_TOKEN" not in kwargs["env"])
             self.assertNotIn("stdout", kwargs)  # Native terminal is inherited, not piped.
@@ -180,7 +180,7 @@ class Preview(unittest.TestCase):
 
     def test_unsafe_archive_rejected_before_any_extraction(self):
         for name in ("repo-head/../outside", "/absolute", "repo-head/a\\b", "repo-head/C:drive", "repo-head/con",
-                     "repo-head/file.", "repo-head/file ", "second-root/a", "repo-head/SRC/dashboard.ps1",
+                     "repo-head/file.", "repo-head/file ", "second-root/a", "repo-head/SRC/common.ps1",
                      "repo-head/src", "repo-head/a/./b"):
             with self.subTest(name=name):
                 self.children.clear()

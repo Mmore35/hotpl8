@@ -515,6 +515,34 @@ pub fn provider_account_count(registration: &V) -> R<usize> {
     Ok(filter(&part.g("slots")?.each(), |slot| slot.t())?.len())
 }
 
+/// One account a policy configures.
+pub struct Account {
+    pub provider: String,
+    pub slot: String,
+    pub label: V,
+}
+
+/// Get-Hotpl8ProviderAccounts: who each account is, in the order the policy gives them.
+pub fn provider_accounts(policy: &V) -> R<Vec<Account>> {
+    let mut accounts = Vec::new();
+    for registration in configured_providers(policy, false)? {
+        let driver = provider_driver(&registration.g("driver")?)?;
+        let (provider, part) = (registration.g("id")?.s()?, registration.g("policy")?);
+        if driver.g("slotKind")?.eq_s("numeric")? {
+            for id in part.g("prefer")?.arr() {
+                let slot = id.s()?;
+                let label = part.g("labels")?.gd(&slot)?;
+                accounts.push(Account { provider: provider.clone(), slot, label });
+            }
+        } else {
+            for slot in filter(&part.g("slots")?.each(), |slot| slot.t())? {
+                accounts.push(Account { provider: provider.clone(), slot: slot.g("id")?.s()?, label: slot.g("label")? });
+            }
+        }
+    }
+    Ok(accounts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

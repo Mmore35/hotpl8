@@ -1,5 +1,5 @@
-//! HotPl8's compiled program: the reader (`version`, `status` and `explain`) and the
-//! collector (`collect`, one wake).
+//! HotPl8's compiled program: the reader (`version`, `status`, `explain` and the dashboard,
+//! `watch` and `nyan`) and the collector (`collect`, one wake).
 //!
 //! These are implemented here and nowhere else. A launcher hands the reader the words the
 //! user typed (`user`, in door.rs); the PowerShell entry, which has the rest of HotPl8, hands
@@ -20,6 +20,7 @@ mod contract;
 mod control;
 mod critical;
 mod cswap;
+mod dashboard;
 mod decision;
 mod display;
 mod door;
@@ -29,8 +30,10 @@ mod insights;
 mod json;
 mod lane;
 mod num;
+mod nyan;
 mod observation;
 mod overview;
+mod paint;
 mod pause;
 mod phase;
 mod plans;
@@ -43,11 +46,13 @@ mod request;
 mod runtime;
 mod selection;
 mod sha256;
+mod terminal;
 mod time;
 mod tray;
 mod version;
 mod wake;
 mod warming;
+mod watch;
 
 use std::ffi::OsString;
 use std::io::Write;
@@ -61,6 +66,8 @@ use crate::request::{Command, Request};
 /// PowerShell entry with them. Only the front door answers so.
 const NOT_MINE: u8 = 64;
 const FAILED: u8 = 1;
+/// Exit status of a dashboard that ended for another release's to be opened in its place.
+const HANDED_OFF: u8 = 75;
 
 /// Why a start of the reader printed no answer.
 #[derive(Debug)]
@@ -111,6 +118,10 @@ fn main() -> ExitCode {
     if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "wake") {
         return ExitCode::from(door::woken(words));
     }
+    // A launcher's start for an installation it names: the release in force is asked.
+    if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "ask") {
+        return ExitCode::from(door::asked(words));
+    }
     // A wake prints what it did, and never an answer a reader would.
     if let Some((_, words)) = arguments.split_first().filter(|(command, _)| *command == "collect") {
         return match wake::started(words) {
@@ -140,6 +151,19 @@ fn main() -> ExitCode {
         let _ = stderr.write_all(&bytes);
         ExitCode::from(FAILED)
     };
+    // With someone at a terminal the dashboard stays open on it. Anything else is given one
+    // frame of it below, as an answer.
+    if terminal::attended() {
+        let asked = match user {
+            true => door::dashboard(&arguments[1..]),
+            false => Request::explicit(&arguments).ok().filter(|request| request.command.draws() && request.shot.is_none()),
+        };
+        match asked.as_ref().map(watch::open) {
+            Some(Ok(Some(status))) => return ExitCode::from(status),
+            Some(Err(stop)) => return complain(stop.message()),
+            Some(Ok(None)) | None => {}
+        }
+    }
     match respond(&arguments) {
         Ok(output) => {
             let mut stdout = std::io::stdout().lock();
@@ -166,7 +190,7 @@ fn respond(arguments: &[OsString]) -> Result<String, Refusal> {
 pub fn answer(request: &Request) -> R<String> {
     match request.command {
         Command::Version => version::answer(request),
-        Command::Status | Command::Explain | Command::Tray => display::answer(request),
+        Command::Status | Command::Explain | Command::Tray | Command::Watch | Command::Nyan => display::answer(request),
     }
 }
 
@@ -246,6 +270,7 @@ mod tests {
         // The test program is no release, so the front door has nothing to answer from.
         assert_eq!(told(&["user", "status"]), Err(("not-mine", String::new())));
         assert_eq!(told(&["user"]), Err(("not-mine", String::new())));
+        assert_eq!(told(&["user", "nyan", "-StateDirectory", place]), Err(("not-mine", String::new())));
         assert_eq!(told(&["version", "--root", place]), Err(("stopped", "This copy of HotPl8 has no VERSION file.".to_owned())));
         assert_eq!(told(&["status", "--root", place, "--state", place]), Err(("ruled", "No valid policy.json. Run hotpl8 setup or see docs/install.md.".to_owned())));
         std::fs::write(root.join("policy.json"), "{\"mode\":\"sideways\"}").unwrap();

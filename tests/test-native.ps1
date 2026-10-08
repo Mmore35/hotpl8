@@ -138,7 +138,7 @@ try{
         # Each of these costs a fresh Windows PowerShell 50 to 80 ms on first use.
         $tree=[Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'src/native.ps1'),[ref]$null,[ref]$null)
         $used=@($tree.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)|ForEach-Object{$_.GetCommandName()}|Where-Object{$_}|Sort-Object -Unique)
-        $extra=@($used|Where-Object{$_ -notin @('ForEach-Object','Invoke-Hotpl8NativeProcess','Get-Hotpl8NativePath')})
+        $extra=@($used|Where-Object{$_ -notin @('ForEach-Object','Invoke-Hotpl8NativeProcess','Get-Hotpl8NativePath','Exit-Hotpl8Native')})
         Assert (-not $extra.Count) ('src/native.ps1 calls '+($extra -join ', '))
         $text=[IO.File]::ReadAllText((Join-Path $root 'hotpl8.ps1'))
         $handOver=$text.Substring(0,$text.IndexOf(". (Join-Path `$PSScriptRoot 'src/common.ps1')",[StringComparison]::Ordinal))
@@ -178,6 +178,31 @@ try{
         # A parameter the three do not read takes the long way round to the same answer.
         Assert-SameAnswer 'status -NoColor' {Invoke-Entry @('status','-NoColor','-StateDirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader @('status','--root',$release,'--state',$state)).output}
         Assert-SameAnswer 'explain -ReducedMotion -AsJson' {Invoke-Entry @('explain','-ReducedMotion','-StateDirectory',$state,'-AsJson')} {ConvertTo-EntryOutput (Invoke-Reader @('explain','--root',$release,'--state',$state,'-AsJson')).output}
+    }
+    Check 'the dashboard is the reader''s frame, from the words a user types and through the entry' {
+        # Nothing here is a terminal, so each is given one frame as text and waits on no key.
+        foreach($view in 'watch','nyan'){
+            $asked=@($view,'--root',$release,'--state',$state)
+            $frame=(Invoke-Reader $asked).output
+            Assert ($frame.StartsWith([string][char]0x256D) -and $frame.Contains('Everyday') -and -not $frame.Contains([string][char]27)) $frame
+            Assert ($frame.Contains('hotpl8 / nyan') -eq ($view -eq 'nyan')) $frame
+            # A frame is drawn with characters outside ASCII, and on Windows a user's words are
+            # answered in the console's code page: those starts are compared byte for byte below.
+            if($windows){continue}
+            Assert-SameAnswer ('user '+$view) {Invoke-Reader @('user',$view,'-StateDirectory',$state,'-ReducedMotion','-NoColor')} {ConvertTo-EntryOutput (Invoke-Reader $asked).output}
+            Assert-SameAnswer ('entry '+$view) {Invoke-Entry @($view,'-StateDirectory',$state,'-CodexExecutable',$real)} {ConvertTo-EntryOutput (Invoke-Reader $asked).output}
+            Assert-SameAnswer ('entry '+$view+' -NoColor') {Invoke-Entry @($view,'-NoColor','-ReducedMotion','-StateDirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader $asked).output}
+        }
+        if(-not $windows){
+            # With no command the dashboard is meant.
+            Assert-SameAnswer 'user' {Invoke-Reader @('user','-StateDirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader @('watch','--root',$release,'--state',$state)).output}
+            Assert-SameAnswer 'a preview policy' {Invoke-Entry @('watch','-PreviewPolicy',$previewPolicy,'-StateDirectory',$state)} {ConvertTo-EntryOutput (Invoke-Reader @('watch','--root',$release,'--state',$state,'--policy',$previewPolicy)).output}
+        }
+        Assert ((Invoke-Reader @('watch','--root',$release,'--state',$state)).output -cne (Invoke-Reader @('watch','--root',$release,'--state',$state,'--policy',$previewPolicy)).output) 'the preview policy does not show'
+        # A state with no policy is refused by the reader asked for a frame of it. The words a
+        # user types are left to PowerShell there, which sets the first account up.
+        $result=Invoke-Reader @('watch','--root',$release,'--state',$emptyState)
+        Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and (ConvertTo-EntryOutput $result.errors) -ceq $noPolicy) ([string]$result.exitCode+' '+$result.output+$result.errors)
     }
     Check 'text arrives one line at a time and JSON as one value' {
         $lines=(Invoke-Reader @('explain','--root',$release,'--state',$state)).output.Split("`n").Count-1
@@ -223,7 +248,7 @@ try{
         Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq $noPolicy) $result.errors
     }
     Check 'every other request is left to PowerShell with 64 and nothing printed' {
-        foreach($words in @(@(),@('watch'),@('refresh'),@('nyan','-StateDirectory',$state),@('status','-NoColor'),@('status','-Slot','main'),@('version','-StateDirectory',$state),@('status','--now','2026-09-12T12:00:00Z'))){
+        foreach($words in @(@(),@('watch'),@('refresh'),@('watch','-StateDirectory',$emptyState),@('nyan','-StateDirectory',$emptyState,'-NoColor'),@('nyan','-AsJson','-StateDirectory',$state),@('watch','-NoColor','-NoColor','-StateDirectory',$state),@('watch','-Slot','main','-StateDirectory',$state),@('status','-NoColor'),@('status','-Slot','main'),@('version','-StateDirectory',$state),@('status','--now','2026-09-12T12:00:00Z'))){
             $result=Invoke-Reader (@('user')+$words)
             Assert ($result.exitCode -eq 64 -and $result.output -eq '' -and $result.errors -eq '') (($words -join ' ')+': '+$result.exitCode+' '+$result.output+$result.errors)
         }
@@ -265,29 +290,34 @@ try{
         }
         Set-Reader $real
     }
-    Check 'the live preview asks a candidate''s reader for the dashboard, and shows PowerShell''s when it has none' {
+    Check 'the live preview shows the dashboard a candidate''s reader draws, and nothing in its place' {
         # delivery/live-preview.ps1 runs from the installed release against a candidate's source.
         $demo=Join-Path $lab 'preview state';[void][IO.Directory]::CreateDirectory($demo)
         $url='https://github.com/example/hotpl8/pull/1'
         $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'delivery/live-preview.ps1'),'-SourceDirectory',$release,'-StateDirectory',$demo,'-PrUrl',$url,'-Revision',$fixtureSha)
         $asked='user|nyan|-StateDirectory|'+$demo
         Use-Fake
-        $result=Invoke-Hotpl8Process $shell $arguments 60000
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
         Assert ($result.exitCode -eq 0 -and $result.output.Contains('native-sentinel') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
         Assert (((Get-Calls) -join ';') -ceq $asked) ((Get-Calls) -join ';')
         Assert ((@([IO.Directory]::GetFiles($demo)|ForEach-Object{[IO.Path]::GetFileName($_)}|Sort-Object) -join ',') -ceq 'policy.json,status.json')
-        # A compiled dashboard that fails is shown failing; the other one does not cover for it.
+        # A dashboard that fails is shown failing.
         Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='3'}
-        $result=Invoke-Hotpl8Process $shell $arguments 60000
-        Assert ($result.exitCode -eq 3 -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
-        # This build's reader has no dashboard, and a candidate may ship no reader at all.
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 3 -and $result.errors.Contains('Candidate reader exited with 3.') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
+        # A reader from before it drew the dashboard leaves it to PowerShell, and a candidate
+        # may ship no reader at all: either has nothing to preview, and the preview says so.
+        Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='64'}
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 1 -and $result.errors.Contains('left the dashboard to PowerShell') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
         foreach($name in $names){[Environment]::SetEnvironmentVariable($name,'')}
-        foreach($candidate in $real,''){
-            Set-Reader $candidate
-            $result=Invoke-Hotpl8Process $shell $arguments 60000
-            Assert ($result.exitCode -eq 0 -and $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) $result.output
-        }
+        Set-Reader ''
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 1 -and $result.errors.Contains('ships no compiled reader for this system') -and -not $result.output.Contains('Demo Everyday') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
+        # This build's reader draws the fictional accounts: one plain frame where no terminal is.
         Set-Reader $real
+        $result=Invoke-Hotpl8NativeProcess $shell $arguments
+        Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output.Contains('Demo Everyday') -and $result.output.Contains('Demo Work') -and $result.output.Contains('Preview ended: '+$url)) ($result.output+$result.errors)
     }
     Check 'a launcher that sessions are started from keeps the text it shipped with' {
         # cmd comes back to a command file by position after every line, so text that is
@@ -352,6 +382,15 @@ try{
                 $got=Assert-SameStart $words {Invoke-Typed ($launcher+' '+$words)} {Invoke-Typed ($slow+' '+$words)}
                 Assert ($got.exitCode -eq 0 -and $got.errors -eq '' -and $got.output.EndsWith("`r`n")) ($words+': '+$got.exitCode+' '+$got.errors)
             }
+            # The dashboard's frame is drawn with such characters whatever the labels are.
+            $frames=@{}
+            foreach($words in @(('watch -StateDirectory "'+$farState+'"'),('NYAN -statedirectory "'+$farState+'" -NoColor -ReducedMotion'),('-StateDirectory "'+$state+'"'),('watch -StateDirectory "'+$state+'" -PreviewPolicy "'+$previewPolicy+'"'))){
+                $got=Assert-SameStart $words {Invoke-Typed ($launcher+' '+$words)} {Invoke-Typed ($slow+' '+$words)}
+                Assert ($got.exitCode -eq 0 -and $got.errors -eq '' -and $got.output.EndsWith("`r`n") -and $got.output.Contains('hotpl8') -and -not $got.output.Contains([string][char]27)) ($words+': '+$got.exitCode+' '+$got.errors+$got.output)
+                Assert ($got.output.Contains('hotpl8 / nyan') -eq $words.StartsWith('NYAN')) ($words+': '+$got.output)
+                $frames[$words]=$got.output
+            }
+            Assert (@($frames.Values|Select-Object -Unique).Count -eq 4) 'two of the four frames are one frame'
             $words='status -StateDirectory "'+$emptyState+'"'
             $got=Assert-SameStart $words {Invoke-Typed ($launcher+' '+$words)} {Invoke-Typed ($slow+' '+$words)}
             Assert ($got.exitCode -eq 1 -and $got.output -eq '' -and $got.errors -ceq $noPolicy) ($words+': '+$got.exitCode+' '+$got.errors)
@@ -406,6 +445,15 @@ try{
             foreach($words in 'status','explain -AsJson'){
                 $got=Assert-SameStart $words {Invoke-Typed ($launcher+' '+$words) $path} {Invoke-Typed ($slow+' '+$words)}
                 Assert ($got.exitCode -eq 0 -and $got.errors -eq '' -and -not (Get-Calls).Count) ($words+': '+$got.exitCode+' '+$got.errors+((Get-Calls) -join ';'))
+            }
+            # A launcher that keeps no copy beside it names the installation to the release's own
+            # program, as a Mac's does: the same answer, and 64 for what is PowerShell's.
+            $named='"'+(Join-Path $inForce $relative)+'" ask "'+$managed+'"'
+            $result=Invoke-Typed ($named+' version -CodexExecutable codex') $path
+            Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output -ceq ($version+' main '+$fixtureSha.Substring(0,12)+$line) -and -not (Get-Calls).Count) ('named: '+$result.exitCode+' '+$result.output+$result.errors)
+            foreach($words in 'refresh -Slot main','status -Live',''){
+                $result=Invoke-Typed ($(if($words){$named+' '+$words}else{'"'+(Join-Path $inForce $relative)+'" ask'})) $path
+                Assert ($result.exitCode -eq 64 -and $result.output -eq '' -and $result.errors -eq '' -and -not (Get-Calls).Count) ('named '+$words+': '+$result.exitCode+' '+$result.output+$result.errors)
             }
             # Everything else goes to launch.ps1 in the same words.
             $result=Invoke-Typed ($launcher+' refresh -Slot main') $path

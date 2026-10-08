@@ -53,11 +53,21 @@ function Remove-Hotpl8App([string]$Path, [switch]$ValidateOnly) {
     $full=Assert-Hotpl8Path $Path
     if(-not (Test-Path -LiteralPath $full)){return}
     $allowed=@(Get-Hotpl8ReleaseFiles $full)+@('install-state.json','checksums.json','build-info.json')
+    $programs=@()
     foreach($item in Get-ChildItem -LiteralPath $full -Recurse -Force){
         if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Refusing to remove an application containing links.'}
         if(-not $item.PSIsContainer){
             $relative=$item.FullName.Substring($full.Length+1).Replace('\','/')
             if($relative -notin $allowed){throw ('Unrecognized file in application directory: '+$relative)}
+            if($relative.StartsWith('bin/',[StringComparison]::Ordinal)){$programs+=$item.FullName}
+        }
+    }
+    # Windows does not remove the file of a program that is running, and a removal that stops
+    # at that file has already taken the ones before it. A dashboard stays open for days.
+    if($env:OS -eq 'Windows_NT'){
+        foreach($program in $programs){
+            try{[IO.File]::Open($program,[IO.FileMode]::Open,[IO.FileAccess]::Write,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)).Dispose()}
+            catch{throw ('HotPl8 cannot remove '+$program+' while it is in use: a dashboard or a command of this installation is still running. Close it and run this again. Nothing was removed.')}
         }
     }
     if($ValidateOnly){return}

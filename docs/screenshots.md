@@ -2,15 +2,16 @@
 
 `operations.png` uses the optional operations fixture: collector health, weekly pace, an unconfirmed warm receipt and work-hour blocking. Like the primary dashboard image, it is rendered from fictional data through the production frame renderer.
 
-From the repository root, on Windows with Windows PowerShell 5.1 and Consolas:
+From the repository root, on Windows with Windows PowerShell 5.1 and Consolas, with the compiled reader built:
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-native.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\screenshots.ps1
 ```
 
 Commit the regenerated PNGs in [assets](assets/dashboard.png) with the UI change. Open all images before committing; inspect legibility, clipping, colors, and the first-run instructions. No screenshot tool or provider installation is required.
 
-The harness calls the production [dashboard renderer](../src/dashboard.ps1) and its shared palette. It draws those terminal cells into PNGs with a small caption using Windows System.Drawing. It is a reproducible rendering of the actual UI, not a capture of a live account session. The caption identifies the data as fictional.
+The harness stages each fictional state in a temporary directory and asks the compiled reader, the program that draws the dashboard, for one frame of it as a terminal would be sent it, with the fixture's clock and UTC as the zone. It reads the cells and their colours out of that frame and draws them into PNGs with a small caption using Windows System.Drawing. It is a reproducible rendering of the actual UI, not a capture of a live account session. The caption identifies the data as fictional.
 
 The [fixture](../tests/fixtures/screenshots.ps1) fixes account labels, percentages and the clock. The harness fixes viewport, font, DPI and cell size. Identical inputs on the same Windows/font environment produce identical bytes; other font/OS revisions may rasterize differently. Use `-OutputDirectory PATH` to compare a second render without replacing the committed images.
 
@@ -18,9 +19,9 @@ Change the renderer for a UI change, or the fixture for a different documentatio
 
 `dashboard.png` fixes the opening view at 94 columns by 25 rows. `details.png` renders the last details page at 94 by 34 with the same pinned provider overview. `operations.png` exercises operational detail at 110 by 50. All use the same fixed clock and renderer.
 
-Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bundled attributed animation with a frozen frame; critical/unknown frames should be added or regenerated alongside main/detail screenshots. `unknown.png` removes the Claude capacity weights, so its Claude bar shows the equal-weight estimate; Codex keeps its calibrated weights. Both screenshot and terminal paths consume the same sanitized styled spans and palette.
+Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bundled attributed animation with a frozen frame; critical/unknown frames should be added or regenerated alongside main/detail screenshots. `unknown.png` removes the Claude capacity weights, so its Claude bar shows the equal-weight estimate; Codex keeps its calibrated weights. An image is drawn from the escape sequences a terminal is sent, so it has the terminal's cells and palette.
 
-`nyan-compact.png` shows the animation at 48 columns by 24 rows. The cat switches between purpose-drawn five-row compact and nine-row original sprites, reserving space for account details. Both use exact palette pixels without interpolation or blur. Playback uses 12 sprite frames per second and approximately 24 starfield updates per second. Background layout keeps periodic dashboard refreshes off the animation thread.
+`nyan-compact.png` shows the animation at 48 columns by 24 rows. The cat switches between purpose-drawn five-row compact and nine-row original sprites, reserving space for account details. Both use exact palette pixels without interpolation or blur. Playback uses 12 sprite frames per second and approximately 24 starfield updates per second. A refresh of the state takes a few milliseconds, so it is laid out between two frames of the animation.
 
 `available-now.png` shows the important counterexample: 90% weekly remaining, zero usable now, and a projected refill in five hours. It uses fictional detected Pro plans without window conversions, exercising the plan-weighted quota estimate.
 

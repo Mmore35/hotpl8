@@ -60,13 +60,26 @@ class EnrollmentContract(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             config = dict(powershell=sys.executable, macos=dict(runtimes=dict(codex=sys.executable)))
-            for arguments, expected in [(['hotpl8'], 'watch'), (['hotpl8', 'status'], 'status')]:
+            def dispatched(arguments, endings):
                 with patch.object(m, 'native_only'), patch.object(m, 'owned_config', return_value=({}, config)), \
-                        patch.object(m, 'selected', return_value=root), patch.object(m.subprocess, 'call', return_value=0) as call:
-                    self.assertEqual(m.dispatch(root, 'run', arguments), 0)
-                    argv = call.call_args.args[0]
-                    self.assertEqual(argv[argv.index('-Entry') + 1:],
-                                     ['hotpl8', expected, '-CodexExecutable', sys.executable])
+                        patch.object(m, 'selected', return_value=root), patch.object(m.subprocess, 'call', side_effect=endings) as call:
+                    return m.dispatch(root, 'run', arguments), [started.args[0] for started in call.call_args_list]
+
+            for arguments, expected in [(['hotpl8'], 'watch'), (['hotpl8', 'status'], 'status')]:
+                words = [expected, '-CodexExecutable', sys.executable]
+                # The release's compiled program is asked first, with the same words. 0 and 1
+                # are its reader's own endings; anything else starts the PowerShell launcher.
+                for endings, launched in [([0], False), ([1], False), ([64, 0], True), ([-6, 3], True), ([OSError(), 0], True)]:
+                    status, started = dispatched(arguments, endings)
+                    self.assertEqual(status, endings[-1])
+                    self.assertEqual(started[0], [str(root / 'bin/macos/hotpl8-native'), 'ask', str(root)] + words)
+                    self.assertEqual(len(started), 2 if launched else 1)
+                    if launched:
+                        self.assertEqual(started[1][started[1].index('-Entry') + 1:], ['hotpl8'] + words)
+            # No other entry is the reader's.
+            status, started = dispatched(['status-print'], [0])
+            self.assertEqual((status, len(started)), (0, 1))
+            self.assertEqual(started[0][started[0].index('-Entry') + 1:], ['status-print'])
 
     def test_cli_default_and_explicit_collector_mode(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -257,6 +270,14 @@ class Lifecycle(unittest.TestCase):
         self.assertTrue(os.access(installed, os.X_OK))
         self.assertEqual(d.digest(installed), d.digest(self.native))
         self.assertEqual(answer(), version + ' main ' + A[:12] + '\n')
+        # The launcher asks the release's program first, and what the reader owns starts no
+        # PowerShell: the answer is the same with none to start.
+        config = d.read(self.root / 'delivery.json')
+        d.write(self.root / 'delivery.json', dict(config, powershell='/usr/bin/false'))
+        try:
+            self.assertEqual(answer(), version + ' main ' + A[:12] + '\n')
+        finally:
+            d.write(self.root / 'delivery.json', config)
         # A release whose reader is missing, or is not a program, is refused before it is selected.
         for sha, reader in ((B, None), (C, b'not a program')):
             self.product(reader)
@@ -409,14 +430,14 @@ PY
         self.assertNotEqual(subprocess.run(command, timeout=20).returncode, 0)
         self.assertEqual(d.read(self.root / 'job-runs/collector.json'), invalid)
 
-    def test_default_dashboard_with_native_binding_does_not_hold_update_lease(self):
+    def test_dashboard_and_native_client_with_native_binding_do_not_hold_update_lease(self):
         with zipfile.ZipFile(self.source) as source:
             files = {name: source.read(name) for name in source.namelist()}
         self.config['macos']['runtimes'] = dict(codex=sys.executable)
         d.write(self.root / 'delivery.json', self.config)
         files['hotpl8.ps1'] = b'''param([string]$Command='watch',[string]$CodexExecutable)
 $ErrorActionPreference='Stop'
-if($Command -ne 'watch' -or -not $CodexExecutable){exit 9}
+if($Command -ne 'codex' -or -not $CodexExecutable){exit 9}
 $lease=[IO.File]::Open((Join-Path $env:HOTPL8_INSTALL_DIRECTORY 'runtime.lock'),'OpenOrCreate','ReadWrite','None')
 $lease.Dispose()
 @{command=$Command;leaseFree=$true}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:HOTPL8_STATE_DIRECTORY 'display.json')
@@ -426,9 +447,17 @@ $lease.Dispose()
                 source.writestr(name, body)
         self.candidate(A)
         self.assertEqual(self.update()['state'], 'current')
-        result = subprocess.run([str(self.root / 'hotpl8')], capture_output=True, timeout=20)
+        # The plain command is the reader's dashboard, binding and all: no PowerShell entry
+        # starts, and an update that holds the installation alone does not keep it from opening.
+        with d.lock(self.root / 'runtime.lock'):
+            result = subprocess.run([str(self.root / 'hotpl8')], capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
-        self.assertEqual(d.read(self.state / 'display.json'), dict(command='watch', leaseFree=True))
+        self.assertIn('hotpl8', result.stdout.decode())
+        self.assertFalse((self.state / 'display.json').exists())
+        # A native client is PowerShell's still, and the launcher holds no lease while it runs.
+        result = subprocess.run([str(self.root / 'hotpl8'), 'codex'], capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(d.read(self.state / 'display.json'), dict(command='codex', leaseFree=True))
 
     def test_t3_modified_binding_refuses_update_and_missing_receipt_stays_visible(self):
         self.assertEqual(self.update()['state'], 'current')

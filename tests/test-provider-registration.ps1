@@ -247,8 +247,14 @@ try{
         $probeText=@'
 param([string]$Package)
 $ErrorActionPreference='Stop'
-foreach($name in @('common','config','diagnostics','insights','management','agent-api','mcp','dashboard','tray','collection')){. (Join-Path $Package ('src/'+$name+'.ps1'))}
+foreach($name in @('common','config','diagnostics','insights','management','agent-api','mcp','native','tray','collection')){. (Join-Path $Package ('src/'+$name+'.ps1'))}
 function Assert($Value,[string]$Message){if(-not $Value){throw $Message}}
+# The dashboard as the package's compiled reader draws it from a state directory.
+function Shown([string]$Directory){
+    $drawn=Invoke-Hotpl8NativeProcess (Get-Hotpl8NativePath $Package) @('watch','--root',$Package,'--state',$Directory,'--size','110x200')
+    Assert ($drawn.exitCode -eq 0 -and $drawn.errors -eq '') ('dashboard not drawn: '+$drawn.exitCode+' '+$drawn.errors)
+    $drawn.output
+}
 function Reject([scriptblock]$Body,[string]$Message){$rejected=$false;try{& $Body|Out-Null}catch{$rejected=$true};Assert $rejected $Message}
 function Request([string]$Operation,$Arguments=@{}){Invoke-Hotpl8AgentRequest ([pscustomobject]@{apiVersion=1;operation=$Operation;arguments=[pscustomobject]$Arguments}) $state}
 function Hash-State { @((Get-ChildItem -LiteralPath $state -File -Recurse|Sort-Object FullName|ForEach-Object {(Get-FileHash -LiteralPath $_.FullName).Hash})) -join ':' }
@@ -297,8 +303,8 @@ Assert ($readiness.ok -and $readiness.data.provider -eq 'fictional' -and $readin
 $status=Request status
 Assert ($status.ok -and $status.data.providers.fictional.eligible) 'API status omitted registration'
 Assert (($status|ConvertTo-Json -Depth 32) -notmatch 'PRIVATE-FIXTURE-LABEL|fictional-native-home|identityKey|accessToken') 'private data leaked into API'
-$rows=@(Get-Hotpl8DashboardRows $snapshot $policy ([datetimeoffset]::UtcNow) 110 -ReducedMotion)
-Assert (($rows.text -join "`n") -match 'FICTIONAL' -and ($rows.text -join "`n") -match 'NEXT LAUNCH') 'dashboard omitted registered account'
+$shown=Shown $state
+Assert ($shown -cmatch 'FICTIONAL  /  1 subscription' -and $shown -cmatch 'NEXT LAUNCH') 'dashboard omitted registered account'
 $tools=@(Get-Hotpl8McpTools $false)
 Assert ('fictional' -in @($tools|Where-Object name -EQ hotpl8_readiness)[0].inputSchema.properties.provider.enum) 'MCP schema omitted registration'
 $tray=Read-Hotpl8TrayModel $state $Package
@@ -344,13 +350,15 @@ Write-Hotpl8Text $activityPath ([pscustomobject]@{events=$recorded;schemaVersion
 Assert ($LASTEXITCODE -eq 0) 'collection with recorded activity failed'
 $snapshot=Read-Hotpl8Snapshot $state
 Assert (@($snapshot.recentActions|Where-Object provider -CEQ fictional).Count -ge 2) 'native or registered activity event omitted'
-$note=Get-DashboardActivityNote ([pscustomobject]@{provider='fictional';slot='one';kind='recommendation';at=$at.ToString('o')}) $policy $at
-Assert ($note.text -match '^fictional next' -and $note.text -notmatch '^codex') 'activity mislabeled registered provider'
-$note=Get-DashboardActivityNote ([pscustomobject]@{provider='fictional';slot='one';kind='credential_unrenewed';reason='warm';at=$at.ToString('o')}) $policy $at
-Assert ($note.text -match '^sign-in not renewed' -and $note.tone -eq 'amber') 'an unrenewed sign-in must read as a warning'
-$failedSnapshot=Copy-Hotpl8ProviderValue $snapshot;$failedSnapshot.providers.fictional.slots[0].status='authentication_required'
-$failedRows=@(Get-Hotpl8DashboardRows $failedSnapshot $policy $at 110 -ReducedMotion).text -join "`n"
-Assert ($failedRows -match 'AUTHENTICATION REQUIRED' -and $failedRows -notmatch 'account unavailable') 'a later registered provider must show its failed account on its own row'
+$shown=Shown $state
+Assert ($shown -cmatch 'RECENT' -and $shown -cmatch 'fictional next' -and $shown -cnotmatch 'codex next') 'activity mislabeled registered provider'
+# The same state with the account signed out, in a directory of its own.
+$failedState=Join-Path (Split-Path $Package -Parent) 'failed-state';[void][IO.Directory]::CreateDirectory($failedState)
+[IO.File]::Copy($policyPath,(Join-Path $failedState 'policy.json'))
+$failedSnapshot=Read-Hotpl8Json (Join-Path $state 'status.json');$failedSnapshot.providers.fictional.slots[0].status='authentication_required'
+Write-Hotpl8Text (Join-Path $failedState 'status.json') ($failedSnapshot|ConvertTo-Json -Depth 32 -Compress)
+$failedRows=Shown $failedState
+Assert ($failedRows -cmatch 'AUTHENTICATION REQUIRED' -and $failedRows -notmatch 'account unavailable') 'a later registered provider must show its failed account on its own row'
 Assert (@($snapshot.shadow|Where-Object stream -Like 'fictional/codex_bengalfox/*').Count -eq 0) 'shadow comparison invented unsupported registered meter'
 Set-Hotpl8Pause $state 5 'fixture'
 $paused=Request readiness @{provider='fictional'}
