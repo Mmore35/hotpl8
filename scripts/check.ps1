@@ -1,9 +1,7 @@
-# Offline checks for parse errors, data validity, private paths, and broken local Markdown links.
+# Offline checks for parse errors, JSON that cannot be read, private paths, and broken local
+# Markdown links. Nothing here is run: the example policies are checked by the program's tests.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-. (Join-Path $root 'src/common.ps1')
-. (Join-Path $root 'src/config.ps1')
-. (Join-Path $root 'src/providers/codex.ps1')
 $files=@(Get-ChildItem -LiteralPath $root -Recurse -File|Where-Object{$_.FullName -notmatch '[\\/](dist|artifacts|\.git|native[\\/]target)[\\/]'})
 $failures=@()
 foreach($file in $files){
@@ -28,14 +26,9 @@ foreach($file in $files){
         }
     }
 }
-foreach($path in @((Join-Path $root 'policy.example.json'))+@(Get-ChildItem (Join-Path $root 'examples') -Filter '*.json'|ForEach-Object FullName)){
-    $policy=Read-Hotpl8Json $path
-    Assert-Hotpl8Policy $policy
-    if($policy.codex){Assert-CodexPolicy $policy.codex}
-}
 if((Get-Command Invoke-ScriptAnalyzer -ErrorAction SilentlyContinue) -or (Get-Module -ListAvailable PSScriptAnalyzer)){
     $findings=@(Invoke-ScriptAnalyzer -Path $root -Recurse -Settings (Join-Path $root 'PSScriptAnalyzerSettings.psd1'))
     if($findings){$findings|Format-Table RuleName,ScriptName,Line;throw 'Static analyzer findings.'}
 }else{'PSScriptAnalyzer not installed locally; CI installs the pinned analyzer.'}
 if($failures){$failures|ForEach-Object{[Console]::Error.WriteLine($_)};exit 1}
-'Static, JSON, example-policy, privacy, and local-link checks passed.'
+'Static, JSON, privacy, and local-link checks passed.'

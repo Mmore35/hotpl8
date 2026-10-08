@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot 'rules.ps1')
+. (Join-Path $PSScriptRoot 'provider-actions.ps1')
 . (Join-Path $PSScriptRoot 'delivery-policy.ps1')
 . (Join-Path $PSScriptRoot 'parking.ps1')
 function ConvertTo-Hotpl8PolicyV2($Policy) {
@@ -151,70 +153,6 @@ function Set-Hotpl8Pause([string]$Directory, [int]$Minutes, [string]$Reason) {
         Invoke-Hotpl8ControlWrite $Directory { Write-Hotpl8Text (Join-Path $Directory 'automation-pause.json') ($pause|ConvertTo-Json) }
     }finally{if($lock){$lock.Dispose()}}
 }
-function Get-Hotpl8ProviderDiscovery($Policy) {
-    foreach($definition in @(Get-Hotpl8ProviderCatalog)){
-        $driver=Get-Hotpl8ProviderDriver $definition.driver;$installed=$false;$homes=@()
-        try{
-            if($driver.slotKind -eq 'numeric'){$installed=[bool](Resolve-CswapExecutable '')}
-            else{$null=Resolve-CodexExecutable '';$installed=$true}
-        }catch{}
-        $record=@(Get-Hotpl8ConfiguredProviders $Policy|Where-Object id -CEQ $definition.id)
-        if($driver.slotKind -eq 'native-home'){
-            $homes=@(@($record.policy.slots|ForEach-Object home)+@($env:CODEX_HOME,(Join-Path (Get-Hotpl8UserHome) '.codex'))|Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -Unique)
-        }
-        [pscustomobject]@{id=$definition.id;name=$definition.name;driver=$definition.driver;installed=$installed;configured=($record.Count -gt 0);slotKind=$driver.slotKind;nativeHomes=$homes;capabilities=$definition.capabilities}
-    }
-}
-function Get-Hotpl8Capabilities([string]$Directory) {
-    $d=Get-Hotpl8Doctor $Directory;$status=Read-Hotpl8Snapshot $Directory
-    $policy=Read-Hotpl8Json (Join-Path $Directory 'policy.json');if(-not $policy){$policy=[pscustomobject]@{}}
-    $providers=[ordered]@{}
-    foreach($r in @(Get-Hotpl8ConfiguredProviders $policy -IncludeUnconfigured)){
-        $view=Get-Hotpl8ProviderView $status $policy $r.id
-        $part=if($view.provider -eq 'claude'){$view.snapshot}else{$view.snapshot.providers.codex}
-        $installed=if($view.driver.slotKind -eq 'numeric'){$d.cswapFound}else{$d.codexFound}
-        $providers[$r.id]=[pscustomobject]@{installed=[bool]$installed;configured=(@(Get-Hotpl8ProviderAccounts $policy|Where-Object provider -CEQ $r.id).Count -gt 0);freshAccounts=@($part.slots|Where-Object {$_.status -eq 'ok' -and (Test-Hotpl8FreshTimestamp $_.observedAt)}).Count;observe='native adapter';selection=$(if($view.driver.slotKind -eq 'numeric'){'experimental'}else{'next-launch'});warming=$(if($r.definition.capabilities.warming){'experimental'}else{'unsupported'});authentication='native; verify with refresh';driver=$r.driver;capabilities=$r.definition.capabilities;contexts=[pscustomobject]@{native=$(if($r.definition.capabilities.nativeLaunch){'next-launch'}else{'global-native-activation'});t3=$(if($r.definition.capabilities.t3Rollover){'managed bridge: qualified request boundary'}else{'native client adoption'})}}
-        if($view.driver.slotKind -eq 'numeric'){
-            $providers[$r.id].observe='supported adapter'
-            $providers[$r.id]|Add-Member NoteProperty planDetection 'automatic profile discovery'
-            $providers[$r.id]|Add-Member NoteProperty detectedPlans @($part.slots|Where-Object {Test-Hotpl8DetectedPlan $_.plan}).Count
-        }else{$providers[$r.id].observe='native app-server'}
-    }
-    return [pscustomobject]@{schemaVersion=1;platform=$(if($env:OS -eq 'Windows_NT'){'windows-preview'}else{'source-only-unqualified'});runtime=$d.runtime;policyValid=$d.policyValid;collector=Get-Hotpl8Health (Read-Hotpl8Json (Join-Path $Directory 'collector.json'));providers=[pscustomobject]$providers;capacity='configured relative-window estimates';critical='opt-in; action-scope selection';motion='cat and nyan; reduced-motion supported';tray=($env:OS -eq 'Windows_NT');macHandoff='docs/plans/macos-handoff.md'}
-}
-function Invoke-Hotpl8Setup([string]$Directory, [string]$CodeDirectory, [switch]$Interactive) {
-    [void][IO.Directory]::CreateDirectory($Directory)
-    $path=Join-Path $Directory 'policy.json'
-    if(-not (Test-Path -LiteralPath $path)){[IO.File]::Copy((Join-Path $CodeDirectory 'policy.example.json'),$path,$false)}
-    if(-not $Interactive){
-        'Policy ready. Use hotpl8 setup -Interactive for guided enrollment.'
-        foreach($item in @(Get-Hotpl8ProviderDiscovery (Read-Hotpl8Json $path))){$item.name+' ['+$item.id+']: '+$(if($item.installed){'native integration found'}else{'native integration required'})}
-        'Codex: hotpl8 enroll -Slot main -AccountHome PATH'
-        'Claude: sign in and enroll using cswap, then hotpl8 enroll -Provider claude -Slot NUMBER'
-        'Capacity: hotpl8 accounts -Operation capacity -Provider PROVIDER -Slot ID -CapacityProfile PROFILE -WeeklyCapacity UNITS -FiveHourCapacity UNITS'
-        'Claude plans are detected automatically on refresh when profile metadata is available.'
-        'See docs/capacity.md for calibrated units and opt-in critical mode.'
-        'Next: hotpl8 refresh; hotpl8 explain; hotpl8'
-        return
-    }
-    if([Console]::IsInputRedirected){throw 'Interactive setup needs a terminal. Use hotpl8 enroll for scripting.'}
-    $discovered=@(Get-Hotpl8ProviderDiscovery (Read-Hotpl8Json $path))
-    foreach($item in $discovered){$item.name+': '+$(if($item.installed){'native tool found'}else{'native tool needed'})}
-    $provider=Read-Host ('Provider ('+($discovered.id -join ' / ')+'; blank cancels)')
-    if(-not $provider){return}
-    $definition=Get-Hotpl8ProviderDefinition $provider
-    $driver=Get-Hotpl8ProviderDriver $definition.driver
-    $slot=Read-Host 'Account slot (existing cswap number for Claude; label such as main for Codex)'
-    if(-not $slot){return}
-    $label=Read-Host 'Display label (optional)'
-    if($driver.slotKind -eq 'native-home'){
-        $accountPath=Read-Host 'Full path to the independently signed-in native Codex home'
-        if(-not $accountPath){return}
-        $available=@($discovered|Where-Object id -CEQ $provider);foreach($homePath in @($available.nativeHomes)){'Existing native home: '+$homePath}
-        Add-Hotpl8RegisteredAccount $Directory $provider $slot $accountPath $label
-    }else{Add-Hotpl8RegisteredAccount $Directory $provider $slot '' $label}
-    'Account enrolled. Run hotpl8 refresh, then hotpl8.'
-}
 function Add-Hotpl8ClaudeAccount([string]$Directory,[string]$Slot,[string]$Label) {
     if($Slot -notmatch '^[1-9][0-9]{0,3}$'){throw 'Claude slot must be an existing cswap account number.'}
     $path=Join-Path $Directory 'policy.json';$hash=(Get-FileHash $path -Algorithm SHA256).Hash
@@ -233,7 +171,7 @@ function Add-Hotpl8ClaudeAccount([string]$Directory,[string]$Slot,[string]$Label
 
 function Set-Hotpl8CapacityProfile($Policy,[string]$Provider,[string]$Slot,[string]$Profile,$Weekly,$FiveHour) {
     $next=Set-Hotpl8Account $Policy $Provider $Slot 'capacity' ''
-    $driver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver
+    $driver=Get-Hotpl8ProviderDriver -Provider $Provider
     $part=if($next.schemaVersion -eq 3){$next.providers.$Provider}elseif($driver.provider -eq 'claude'){$next}else{$next.codex}
     if(-not $part.capacity){$part|Add-Member NoteProperty capacity ([pscustomobject]@{}) -Force}
     $c=[ordered]@{}

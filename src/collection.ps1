@@ -1,6 +1,4 @@
 ﻿# The category a failure is recorded under.
-. (Join-Path $PSScriptRoot 'provider-registry.ps1')
-
 function Get-Hotpl8FailureCode($ErrorRecord) {
     # Exception messages may include paths or native output. Export only known categories.
     $exception=$ErrorRecord.Exception

@@ -142,6 +142,13 @@ mod tests {
         std::fs::write(directory.join("policy.json"), "abc").unwrap();
         let named = "policy.json:BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD|hold.json:absent|automation-pause.json:absent|automation-leases.json:absent";
         assert_eq!(control_generation(&directory).ok().unwrap(), sha256::hash(named));
+        // An empty file and one with a byte order mark are named by their exact bytes.
+        std::fs::write(directory.join("automation-leases.json"), "").unwrap();
+        std::fs::write(directory.join("automation-pause.json"), [0xEF, 0xBB, 0xBF, 0x7B, 0x7D]).unwrap();
+        let named = "policy.json:BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD|hold.json:absent|automation-pause.json:AA25E978046D680EF8740D837E6DE5BC1E2A2DC6089DBDA1012544B538D53F65|automation-leases.json:E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855";
+        assert_eq!(control_generation(&directory).ok().unwrap(), sha256::hash(named));
+        // A state directory that is not there has every file absent.
+        assert_eq!(control_generation(&directory.join("none")).ok().unwrap(), empty);
         std::fs::create_dir(directory.join("hold.json")).unwrap();
         assert_eq!(control_generation(&directory).err().unwrap().said(), Some("action_state_unavailable"));
         std::fs::remove_dir_all(&directory).unwrap();
@@ -154,6 +161,9 @@ mod tests {
         let (policy, generation) = control_snapshot(&directory).ok().unwrap();
         assert!(policy.g("mode").ok().unwrap().eq_s("automate").ok().unwrap());
         assert_eq!(action_authorization(&directory, &generation, || Ok(7)).ok(), Some(7));
+        // No one writes a control file while an action is being authorized.
+        let inside = action_authorization(&directory, &generation, || Ok(control_write(&directory, 20, || Ok(())).err().unwrap().said().map(str::to_string)));
+        assert_eq!(inside.ok().unwrap().as_deref(), Some("action_control_busy"));
         assert_eq!(action_authorization(&directory, "", || Ok(7)).err().unwrap().said(), Some("action_state_changed"));
         std::fs::write(directory.join("hold.json"), "{}").unwrap();
         assert_eq!(action_authorization(&directory, &generation, || Ok(7)).err().unwrap().said(), Some("action_state_changed"));
@@ -174,8 +184,15 @@ mod tests {
         let made = provider_action_context(&policy, &directory, &context, now).ok().unwrap();
         let text = json::write(&made, 4).ok().unwrap().replace(['\n', ' '], "");
         assert_eq!(text, r#"{"intent":"warm","previousId":"1","actionSlot":"2","mode":"automate","switching":true,"paused":false,"hold":false,"actionEnabled":true}"#);
-        std::fs::write(directory.join("automation-pause.json"), "{oh no").unwrap();
+        // A hold stops a switch. It leaves warming, which is enabled on its own, as it was.
         std::fs::write(directory.join("hold.json"), r#"{"until":"2026-10-06T13:00:00Z"}"#).unwrap();
+        let listed = || std::fs::read_dir(&directory).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+        let before = listed();
+        let made = provider_action_context(&policy, &directory, &context, now).ok().unwrap();
+        let text = json::write(&made, 4).ok().unwrap().replace(['\n', ' '], "");
+        assert_eq!(text, r#"{"intent":"warm","previousId":"1","actionSlot":"2","mode":"automate","switching":true,"paused":false,"hold":true,"actionEnabled":true}"#);
+        assert_eq!(listed(), before, "the context is only read");
+        std::fs::write(directory.join("automation-pause.json"), "{oh no").unwrap();
         let made = provider_action_context(&policy, &directory, &obj! {"intent" => "probe"}, now).ok().unwrap();
         let text = json::write(&made, 4).ok().unwrap().replace(['\n', ' '], "");
         assert_eq!(text, r#"{"intent":"probe","mode":"automate","switching":true,"paused":true,"hold":true,"safetyInvalid":true,"actionEnabled":false}"#);

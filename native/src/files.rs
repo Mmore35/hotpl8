@@ -214,8 +214,9 @@ pub mod tests {
     }
 
     /// One part of tests/parity/shared-rules.json. It holds what PowerShell's side of a
-    /// rule answers for each case, tests/test-shared-rules.ps1 holds PowerShell to it, and
-    /// the test beside the rule here holds this side to it.
+    /// rule answered for each case, and the test beside the rule here holds the program to
+    /// it. The kind of a failure is still named on both sides: tests/test-safety.ps1 holds
+    /// PowerShell to those cases.
     pub fn shared_rules(part: &str) -> V {
         let rules = crate::json::parse(include_str!("../../tests/parity/shared-rules.json"), "shared-rules.json").ok().unwrap();
         rules.g(part).ok().unwrap()
@@ -275,6 +276,13 @@ pub mod tests {
         assert!(lines[1].contains("\"failureCode\":\"state_io_failed\",\"stateFile\":\"status.json\",\"ioCode\":"));
         assert!(lines[1].contains("\"source\":\"files.rs\",\"line\":"));
         assert!(lines[2].contains("\"failureCode\":\"unexpected_collection_error\",\"source\":\"files.rs\""));
+        // What a failure said is never written, nor a file HotPl8 does not name.
+        let stop = Stop::reported::<()>("PRIVATE_CANARY", Some("PRIVATE_CANARY".to_string()), Some(("PRIVATE_CANARY".to_string(), 5)), None).err().unwrap();
+        event(&directory, "collector_failed", Some(&stop));
+        let stop = fail::<()>("PRIVATE_CANARY native credential data").err().unwrap();
+        event(&directory, "collector_failed", Some(&stop));
+        let text = std::fs::read_to_string(directory.join("events.jsonl")).unwrap();
+        assert!(text.lines().count() == 5 && !text.contains("PRIVATE_CANARY") && !text.contains("credential"), "{text}");
         std::fs::write(directory.join("events.jsonl"), "x".repeat(262_145)).unwrap();
         event(&directory, "collector_failed", None);
         assert!(std::fs::metadata(directory.join("events.jsonl")).unwrap().len() < 1000);

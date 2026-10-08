@@ -74,6 +74,12 @@ fn words(asked: &V, name: &str) -> R<String> {
 fn named(text: &str) -> Option<&str> {
     Some(text).filter(|text| !text.is_empty())
 }
+/// Get-Hotpl8LeasePause as PowerShell answered it: whoever asks is about to act, so a
+/// ledger that cannot be read holds them as a lease would.
+fn lease_pause(directory: &Path, now: Dto) -> V {
+    pause::lease_pause(directory, now).unwrap_or_else(|_| obj! {"until" => V::Null, "reason" => "invalid_leases", "invalid" => true, "leaseCount" => V::Null})
+}
+
 fn place(asked: &V, name: &str) -> R<PathBuf> {
     match named(&words(asked, name)?) {
         Some(path) => Ok(PathBuf::from(path)),
@@ -203,8 +209,17 @@ pub fn answer(question: &str, root: &Path, asked: &V, machine: &Machine) -> R<V>
         "provider.state" => path_text(&provider_state_directory(&place(asked, "directory")?, &words(asked, "provider")?)?)?.into(),
         "provider.view" => provider_view(&asked.g("snapshot")?, &asked.g("policy")?, &words(asked, "provider")?, &[])?,
         "provider.accounts" => provider_account_rows(&asked.g("policy")?)?.into(),
-        "pause" => pause::pause(&place(asked, "directory")?, now()?)?,
-        "lease.pause" => pause::lease_pause(&place(asked, "directory")?, now()?)?,
+        // A pause that cannot be read is a pause, and so is a ledger of leases that cannot.
+        "pause" => {
+            let (directory, now) = (place(asked, "directory")?, now()?);
+            let leases = lease_pause(&directory, now);
+            if leases.g("invalid")?.t()? {
+                leases
+            } else {
+                crate::automation::pause(&directory, now)
+            }
+        }
+        "lease.pause" => lease_pause(&place(asked, "directory")?, now()?),
         "capacity.catalog" => capacity::catalog()?,
         "fresh" => capacity::fresh_timestamp(&asked.g("timestamp")?, now()?)?.into(),
         "snapshot" => {
@@ -214,7 +229,6 @@ pub fn answer(question: &str, root: &Path, asked: &V, machine: &Machine) -> R<V>
             let policy = if explicit { given } else { json::read_or_null(&directory.join("policy.json")) };
             insights::read_snapshot(&directory, &policy, explicit, now()?)?
         }
-        "health" => insights::health(&asked.g("collector")?, now()?, &words(asked, "provider")?)?.into(),
         "history" => history_stores(&asked.g("policy")?, &place(asked, "directory")?)?.into(),
         "park.candidates" => park_candidates(&asked.g("snapshot")?, &asked.g("policy")?, now()?)?.into(),
         "park.reason" => park_reason(&asked.g("candidate")?)?.into(),
@@ -433,7 +447,6 @@ mod tests {
     #[test]
     fn a_question_brings_its_clock_or_reads_the_machines() {
         let directory = state("rule-clock");
-        let collector = file(&directory, "status.json").g("collector").ok().unwrap();
         let reading = "2026-09-12T11:59:18.0000000+00:00";
         let day_later = "2026-09-13T12:00:00.0000000+00:00";
         let noon_stand = Stand::bare();
@@ -442,14 +455,10 @@ mod tests {
         assert_eq!(noon_stand.text("fresh", obj! {"timestamp" => reading}), "true");
         assert_eq!(noon_stand.heard(), ["clock"]);
         assert_eq!(late.text("fresh", obj! {"timestamp" => reading}), "false");
-        assert_eq!(noon_stand.text("health", obj! {"collector" => &collector, "provider" => "claude"}), r#""recent collection completed""#);
-        assert_eq!(late.text("health", obj! {"collector" => &collector, "provider" => "claude"}), r#""collector overdue""#);
-        assert_eq!(late.heard(), ["clock", "clock"]);
-        assert_eq!(noon_stand.heard(), ["clock"]);
+        assert_eq!(late.heard(), ["clock"]);
         // The question's own, and then the machine's is not read at all.
         assert_eq!(late.text("fresh", obj! {"timestamp" => reading, "now" => "2026-09-12T14:00:00.0000000+02:00"}), "true");
         assert_eq!(noon_stand.text("fresh", obj! {"timestamp" => reading, "now" => day_later}), "false");
-        assert_eq!(noon_stand.text("health", obj! {"collector" => &collector, "provider" => "claude", "now" => day_later}), r#""collector overdue""#);
         assert_eq!((late.heard(), noon_stand.heard()), (Vec::<String>::new(), Vec::<String>::new()));
         let broken = Stand::at(fail("no clock"));
         assert_eq!(broken.text("fresh", obj! {"timestamp" => reading, "now" => NOON_TEXT}), "true");
@@ -818,6 +827,15 @@ mod tests {
         assert_eq!(stand.text("pause", obj! {"directory" => place}), r#"{"until":"2026-09-12T13:00:00.0000000+00:00","reason":"fixture"}"#);
         assert_eq!(stand.text("lease.pause", obj! {"directory" => place}), "null");
         assert_eq!(stand.text("pause", obj! {"directory" => place, "now" => "2026-09-12T13:00:00.0000000+00:00"}), "null");
+        fs::write(directory.join("automation-pause.json"), "{").unwrap();
+        assert_eq!(stand.text("pause", obj! {"directory" => place}), r#"{"until":null,"reason":"invalid_pause","invalid":true}"#);
+        fs::remove_file(directory.join("automation-pause.json")).unwrap();
+        for ledger in ["{", r#"{"schemaVersion":2,"entries":[]}"#] {
+            fs::write(directory.join("automation-leases.json"), ledger).unwrap();
+            let invalid = r#"{"until":null,"reason":"invalid_leases","invalid":true,"leaseCount":null}"#;
+            assert_eq!((stand.text("pause", obj! {"directory" => place}).as_str(), stand.text("lease.pause", obj! {"directory" => place}).as_str()), (invalid, invalid), "{ledger}");
+        }
+        fs::remove_file(directory.join("automation-leases.json")).unwrap();
         assert_eq!(stand.refusal("pause", obj! {}), "The question names no directory.");
         assert_eq!(stand.refusal("lease.pause", obj! {}), "The question names no directory.");
 

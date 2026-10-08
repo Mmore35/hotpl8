@@ -187,7 +187,7 @@ fn member(value: &V, name: &str) -> V {
 
 /// ConvertTo-Hotpl8CodexPlanType. Plan names change faster than releases, so a well-formed
 /// one is passed on rather than hidden; anything else is `unknown`.
-fn plan_name(value: &V) -> String {
+pub(crate) fn plan_name(value: &V) -> String {
     let named = value.as_str().filter(|name| {
         let b = name.as_bytes();
         (1..=24).contains(&b.len()) && b[0].is_ascii_lowercase() && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_')

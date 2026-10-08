@@ -4,10 +4,7 @@ $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
-. (Join-Path $root 'src/insights.ps1')
-. (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
-. (Join-Path $root 'src/replay.ps1')
 $policy=Read-Hotpl8Json $PolicyPath;Assert-Hotpl8Policy $policy
 if($policy.codex){Assert-CodexPolicy $policy.codex}
 if((Get-Item -LiteralPath $Trace).Length -gt 16777216){throw 'Trace exceeds 16 MB. Split it into bounded comparisons.'}

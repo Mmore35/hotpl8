@@ -1,4 +1,4 @@
-//! The rules of src/providers/claude.ps1 that the status path reads: which account the
+//! The Claude rules the status path reads: which account the
 //! cached readings would select. Nothing here talks to an account.
 
 use crate::capacity::capacity_accounts;

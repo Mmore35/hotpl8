@@ -1,6 +1,8 @@
 # Parking takes an unfunded or unreadable account out of policy and keeps what is
 # needed to bring it back. policy.json describes only active accounts, so every
 # reader treats a parked account as absent without knowing that parking exists.
+. (Join-Path $PSScriptRoot 'rules.ps1')
+. (Join-Path $PSScriptRoot 'provider-actions.ps1')
 function Read-Hotpl8Parked([string]$Directory,[switch]$Strict) {
     $path=Join-Path $Directory 'parked.json'
     $file=Read-Hotpl8Json $path
@@ -52,7 +54,7 @@ function Get-Hotpl8ParkClaudeRow([string]$Slot) {
 function Get-Hotpl8ParkIdentity([string]$Directory,[string]$Provider,[string]$Slot,[string]$AccountHome,[string]$Executable,[switch]$Cached) {
     # Best effort: an unknown identity falls back to matching the slot alone.
     try{
-        $driver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver
+        $driver=Get-Hotpl8ProviderDriver -Provider $Provider
         if($driver.slotKind -eq 'numeric'){
             $row=Get-Hotpl8ParkClaudeRow $Slot
             # The binding plan discovery already uses: account plus organization.
@@ -190,7 +192,7 @@ function Invoke-Hotpl8Unpark([string]$Directory,[string]$Provider,[string]$Slot,
         Invoke-Hotpl8ParkRetry {Write-Hotpl8Parked $Directory @(Read-Hotpl8Parked $Directory -Strict|Where-Object {($_.provider+':'+$_.slot) -cne ($Provider+':'+$Slot)})}
         return [pscustomobject]@{record=$record;enrolled=$true;needsSignIn=$false;messages=@('That account is already enrolled; its parking record was cleared.')}
     }
-    $driver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver
+    $driver=Get-Hotpl8ProviderDriver -Provider $Provider
     if($driver.slotKind -eq 'numeric'){
         # Enrollment accepts any inventory row, so check before returning an
         # account that still cannot be read.

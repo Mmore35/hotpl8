@@ -1,4 +1,4 @@
-//! src/insights.ps1: the stored snapshot as a reader sees it, the text of `hotpl8 status`
+//! The stored snapshot as a reader sees it, the text of `hotpl8 status`
 //! and `hotpl8 explain`, and what the collector adds to a reading before it is stored.
 
 use std::path::Path;

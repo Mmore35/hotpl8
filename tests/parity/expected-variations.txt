@@ -1,0 +1,504 @@
+# What the compiled program holds for each seeded variation of the parity cases (seed 1): for status -AsJson and explain -AsJson, under
+# Windows PowerShell's numbers and PowerShell 7's, whether it answered and a digest of its typed
+# values or of its refusal.
+# Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.
+fuzz 1-1 from no policy, policy of array where the provider object belongs | answer 724df609e6fa33df | answer 57c750ad03e46b77 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-2 from fractional settings, policy of order soonest-reset | answer 236b3efff09b252d | answer 057e492557aafebb | answer 1904079b73b422d1 | answer 63a89ab866ad15a8
+fuzz 1-3 from same subscription enrolled twice | stopped 9af3999b1377f41b | answer 6bd9d7547c617f65 | stopped 9af3999b1377f41b | answer 8fb2ef5ac50fb0ec
+fuzz 1-4 from account signed out recently, policy of readings from the future | answer 9b6564da2c409c20 | answer 96e011ecfe598e76 | answer d2555034cb531907 | answer 463c0dd21055631e
+fuzz 1-5 from policy version one | answer 0e4ffb5f9180176c | answer 54b053d659a222c3 | answer 9fd760a9568b8abd | answer c35e5eea999d0f43
+fuzz 1-6 from policy with an unknown field | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5
+fuzz 1-7 from number with an exponent | answer c916ba2dc8f35d5e | answer 625a660776e72308 | answer 931b464646646110 | answer dbfad68b7ba19868
+fuzz 1-8 from capacity profiles, policy of policy version three with one provider | answer 964f26e4c2bca0d0 | answer 2d0586c134c3b082 | answer 62ce615210147831 | answer 9ee14318e183971d
+fuzz 1-9 from announcements with nothing wrong, policy of active account not enrolled | answer 44f69c13a59fa60d | answer 6610c776fbea865f | answer 8cb11193f5026971 | answer 30a77cab74498576
+fuzz 1-10 from same slot observed twice | answer 0706200f154d8130 | answer 47efe131c02c28d8 | answer cc20de41b92dd327 | answer 5619eb88abfefd3f
+fuzz 1-11 from order weekly-expiry with the second account active | answer ee2a0533e3167638 | answer b12b87f54257589a | answer 2bf1b2548f68e360 | answer 6ffe4c576c5180d6
+fuzz 1-12 from pause file without an end | answer 71fc691edcc7c815 | answer 5767f17bbdfbb462 | answer bdcad8d9e5b1e4ee | answer 24f8bef337ee6149
+fuzz 1-13 from collector with stale provider success, policy of critical allowance drained to zero | answer fd994623e88984b2 | answer dc1e73c117427929 | answer da7f13711c48184c | answer 1ebfd446f51b0f61
+fuzz 1-14 from one Codex account without capacity | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-15 from policy version three with no providers | answer 410c6b1bc7e6e9c8 | answer 0f80bc0acb17bb9e | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
+fuzz 1-16 from account needs sign-in | answer d5f69f4d379cf23b | answer f170d6db3968cc35 | answer f4dcab53ef983350 | answer 3f7e0459222243f1
+fuzz 1-17 from policy with a margin out of range | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8
+fuzz 1-18 from manual pause that ended, policy of lease and manual pause, lease later | answer 16ac97e95be42454 | answer f9fe37e858d81e2f | answer ae417d79b25aae27 | answer adf62ef0360a154a
+fuzz 1-19 from property name outside ASCII, policy of time without seconds | stopped 690dadee6519859b | stopped 690dadee6519859b | stopped 690dadee6519859b | stopped 690dadee6519859b
+fuzz 1-20 from account needs sign-in | answer 0748d6e260625717 | answer af93061f26e28254 | answer eaecfbfbfd4e5ea3 | answer 849ca1b72d2f1b5f
+fuzz 1-21 from lease and manual pause, pause later, policy of order weekly-expiry | ruled b1d892b1c228f6d8 | ruled b1d892b1c228f6d8 | ruled b1d892b1c228f6d8 | ruled b1d892b1c228f6d8
+fuzz 1-22 from scoped model limits not observed | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-23 from one account stale, policy of announcements with nothing wrong | answer 96085edafe39cffb | answer 7cbd00d8fda9f793 | answer 598221d389062400 | answer 5917a7b417570746
+fuzz 1-24 from readings without usage, collector.json of collector unable to write state | answer 315aaafa14840dff | answer 91202532e0617e60 | answer 3c6fc5a51542f1ce | answer d1c9963e19c65b78
+fuzz 1-25 from lease and manual pause, pause later | answer 40c741e11043c253 | answer 32c77759fde50adc | answer da59b90d250bb4ce | answer 8617652807e82ca3
+fuzz 1-26 from plain | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-27 from Codex selection held, policy of no capacity settings | answer cc4ce36e05beb004 | answer 8ae25d9c5a3c996b | answer 21506239b02002a1 | answer abcba5d148a2e340
+fuzz 1-28 from comment in a state file | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3
+fuzz 1-29 from preview policy without a stored policy | answer 86f2d972f76c3138 | answer 4674f641c7860790 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-30 from preview policy without a stored policy | answer c22865e503eba3c5 | answer ddecdca8c6100668 | answer 83ca60e3638dd1c2 | answer 989bc71a48c44dd8
+fuzz 1-31 from readings twenty minutes old | answer ec52b403be3c6e28 | answer 80e193e5fbd48c86 | answer e88bd2d58bcdf7c7 | answer efb75074558311bf
+fuzz 1-32 from weekly allowance nearly spent | answer 05ac4ee777bd162b | answer bf2c7466ebe27579 | answer bae002fc4ab583e5 | answer f341c3f2229ddcb1
+fuzz 1-33 from scoped model limits with capacity | ruled 894848de75024bec | ruled 894848de75024bec | ruled 894848de75024bec | ruled 894848de75024bec
+fuzz 1-34 from policy version four | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0
+fuzz 1-35 from no active account, policy of policy version four | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0
+fuzz 1-36 from collector with stale provider success | answer f304e54b7c756b55 | answer bc5a25105f53c56d | answer 3dd2a791875338f9 | answer 3e4c8598699e98e3
+fuzz 1-37 from one Codex account without an id, collector.json of collector with stale provider success | answer f34fa12ccab1e3b2 | answer 53d163abdf6a2e10 | answer 482ec7b430f95c33 | answer 482ec7b430f95c33
+fuzz 1-38 from lease and manual pause, pause later | answer c83913d89964f92e | answer b50a1d587c7c11f4 | answer 48aac6697f6a4a8b | answer 56f5528fe349ccd6
+fuzz 1-39 from one Codex account without capacity | answer 6d79311aa4977937 | answer b4d0e138a623b05f | answer ecbbbb4901b76f95 | answer 6d3a520afefd130a
+fuzz 1-40 from fractional settings and readings, policy of labels outside ASCII | answer c564162a7a2dda99 | answer 7bc55a8188d05cba | answer 2534079afca7aaa4 | answer b88ba741f73619a6
+fuzz 1-41 from lease with the wrong end | answer e0f4c2fe6c2d8c10 | answer b8f11c3b9d660121 | answer 8157ac09a3a0a90b | answer fc698d049274987a
+fuzz 1-42 from two providers of the Claude driver | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3
+fuzz 1-43 from manual pause | answer ab74779ca33b04ef | answer b08fd32fb9415dec | answer fd0882c270c6f67b | answer 31e6cfa132cd39f5
+fuzz 1-44 from every account disabled | answer eb3279f744be2da3 | answer e21c810100db7608 | answer 021c4c352d22710f | answer 021c4c352d22710f
+fuzz 1-45 from order weekly-expiry | answer 4e2315648d9b12c3 | answer cd2d42edda22c3ec | answer a89d32900a0b9c30 | answer 9dbef2acb83b6bea
+fuzz 1-46 from order weekly-expiry with the second account active | answer 564cb11f43f1f125 | answer dfa391e4999474d6 | answer eca87051d9489b13 | answer dda74f41d3f4453d
+fuzz 1-47 from readings without usage, policy of usage that is an object | answer 78c3cd804de4182b | answer 24c40177c7038eb5 | answer 0e11c7bfef1a8733 | answer 1e8ec894fcf8acbd
+fuzz 1-48 from a third provider | answer ce3a90a0a40a0f49 | answer 7df35bfaa25189b2 | answer fbf281b9dd57a92a | answer 47dedf79f495b64f
+fuzz 1-49 from same subscription enrolled twice | answer f9ea6513162a7430 | answer c3ebda9712eec174 | answer c7c5d643ab31c324 | answer e4066b2e45946c2c
+fuzz 1-50 from time without an offset, policy of every account below its margin | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-51 from scoped model limits | answer a2505fe0114ff2d8 | answer 0eaf3594421dc9f9 | answer 0f1beb5f9914924c | answer 5aa1d27f84e83108
+fuzz 1-52 from automatic selection while paused | answer 53fa7b293e381202 | answer 105c4f4212517013 | answer 16cc0b27f1139cad | answer 51b54ed14de0afa9
+fuzz 1-53 from automatic selection while paused | answer 081e1f6bac36ef87 | answer a0abb92269981d08 | answer d5e6c8ed48bcde35 | answer 2eeefd1020ae57c9
+fuzz 1-54 from automatic mode with selection off, policy of number with more digits than a decimal holds | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-55 from fractional settings and readings, policy of Codex configured but never observed | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-56 from plain | answer 9fe51a705a605193 | answer 25680ae446da8b83 | answer 614c01f23dc67459 | answer 4e45f3896f9ba96f
+fuzz 1-57 from collector with stale provider success, policy of automatic selection | answer 3055684044964f20 | answer c66cbb7998634294 | answer 2465e2ea42c3784f | answer ec4928803638c096
+fuzz 1-58 from comment in a state file, policy of definition with a window its driver has not | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3
+fuzz 1-59 from lease and manual pause, lease later | answer 56445ea4ef10909e | answer 0a7760ac2f755b08 | answer d398d875da286b43 | answer 917be3efce7da883
+fuzz 1-60 from one account stale | answer 5c415255e8053462 | answer bf78172230316561 | answer 30defe6bea921c1e | answer c83b31bad2cc77e6
+fuzz 1-61 from one account stale, policy of lease and a pause file without an end | answer 11889757d288d666 | answer 6c2c2f287cbb62e1 | answer 84bb42b772423e2a | answer 8bf2bfb11add4359
+fuzz 1-62 from policy that is not JSON, policy of policy with critical exit below entry | ruled f83935401cf95e83 | ruled f83935401cf95e83 | ruled f83935401cf95e83 | ruled f83935401cf95e83
+fuzz 1-63 from windows that reset before the reading, policy of thirds | answer f416aa91c40e2848 | answer 98a23f06347a4482 | answer 85f841337adeb0e7 | answer d1289ba9cf520b1a
+fuzz 1-64 from stored collector newer than the collector file, policy of Codex configured but never observed | answer 22af3f06b8e77779 | answer b524063594dc9c4f | answer e96ddb93c1ca66b4 | answer aabf9be5add77c08
+fuzz 1-65 from announcements outside working days, policy of automatic selection | answer 38bc3046dc883a2b | answer 1fee151ddf7fa913 | answer 8f9b4f6658d3f5c3 | answer 16a77b9aea20062a
+fuzz 1-66 from collector unable to write state | answer 745fafb9cb37f4b1 | answer 4a5edfe0b39da3ed | answer 829e2d1913163455 | answer 467e1a8538257167
+fuzz 1-67 from definition with a fractional display order | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012
+fuzz 1-68 from policy version three with a version two field | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2
+fuzz 1-69 from comment in a state file | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3
+fuzz 1-70 from policy with a reserve that is not enrolled, policy of order soonest-reset with the second account active | answer 55c57bd40e34fb32 | answer 7e41f161f4a3227a | answer 9370bd6c9a4a7781 | answer 98b66a1e80b22b9c
+fuzz 1-71 from collector overdue | answer 58a797300f51f278 | answer bf5b8f0ffd3392b1 | answer 1c59e3410319501e | answer 78ced51edfe292c5
+fuzz 1-72 from Codex only | answer ac5c07310d84841f | answer d80f4a77265421f4 | answer 28656ed9a5847b0d | answer 07967e01f85b4889
+fuzz 1-73 from policy version three with no providers, policy of definition with an unknown field | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-74 from collector with one provider failing | answer af0c0c36b8f37d50 | answer e3b4dd849515fd4a | answer 4365b086d549e831 | answer 2c1298216289274e
+fuzz 1-75 from fractional settings and readings | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-76 from scoped model limits not observed, policy of account needs sign-in | answer 33321525b5e3ec36 | answer 820525632b0407f0 | answer 3433462a3da84d19 | answer 5e6c6a9b2b955d13
+fuzz 1-77 from a third provider that is not configured | answer 7a85ca57a4d3163f | answer 40bb986b522e9ed6 | answer 773055d736866b41 | answer 5d007bbcf2c1f1b7
+fuzz 1-78 from pause reason with control characters | answer b17123c557518863 | answer 0cb1ea781fa8bf7c | answer 11c107c548b8fc9d | answer 5f2eef6f36b2021d
+fuzz 1-79 from lease and a pause file without an end, policy of policy without a version | answer d47676e9b600d00f | answer 6d6750b555a0ce4a | answer c16a67afae2cd2b1 | answer 8ce8d9702326182a
+fuzz 1-80 from definition with a fractional display order | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012
+fuzz 1-81 from single quoted text | stopped 3f9b8adb7e7fe58b | stopped 3f9b8adb7e7fe58b | stopped 3f9b8adb7e7fe58b | stopped 3f9b8adb7e7fe58b
+fuzz 1-82 from definition with an unknown driver | ruled 61998696d39f7f08 | ruled 61998696d39f7f08 | ruled 61998696d39f7f08 | ruled 61998696d39f7f08
+fuzz 1-83 from definition with an unknown field | ruled e19db7430973f026 | ruled e19db7430973f026 | ruled e19db7430973f026 | ruled e19db7430973f026
+fuzz 1-84 from providers that share a place in the display order | answer 308faa463d9b50ac | answer 4b9e0115e4738903 | answer c3cd299dc48a8746 | answer fd8889ca4df8f414
+fuzz 1-85 from windows that already reset | answer 5584304fcd5f0447 | answer 8a565033279ae7cb | answer 235ec1b64f50b3e2 | answer 1e1884a308fd682f
+fuzz 1-86 from stored collector newer than the collector file | answer de4e258aea6c8a6e | answer 0c43322ae11f0b15 | answer 3c1b8dd54cff7a27 | answer 93ba5fda27ccf5b1
+fuzz 1-87 from stored decisions, policy of one Codex account without an id | answer db935a927eaf88c0 | answer 65ab58c6459b76ab | answer 5c3afd369fbda6ba | answer 6c03a38978867dac
+fuzz 1-88 from policy with critical exit below entry | ruled f83935401cf95e83 | ruled f83935401cf95e83 | ruled f83935401cf95e83 | ruled f83935401cf95e83
+fuzz 1-89 from disabled accounts | answer 379490a2a7dab603 | answer 96aaf516a97b24a3 | answer a2223c57105cdf61 | answer 34ef0942dd041e5b
+fuzz 1-90 from manual pause that ended | answer 2ba3d42ecf1cd8f5 | answer 66254ff651253bdf | answer 70b76c24eef96700 | answer 443196642afaf930
+fuzz 1-91 from announcements | answer a3146e016c4c3799 | answer 1c03144dd7db9f08 | answer a9c4a3af68c3c955 | answer e414e612773fe809
+fuzz 1-92 from scoped model limits not observed | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-93 from definition of a capability its driver has not | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-94 from plain | answer 9da03832e071efbe | answer 4e432d5b27374611 | answer d0a64844a09c496b | answer 79e0893e4370fea4
+fuzz 1-95 from announcements with Claude only | answer 5c11d6c5397950f2 | answer 5cce9600786feca3 | answer 71eae7dcf9020612 | answer a586745c9f890a0b
+fuzz 1-96 from no capacity settings, policy of readings without usage | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-97 from disabled accounts, collector.json of collector with stale provider success | answer a77d56be2a010746 | answer b4acf452ede36a27 | answer 9b9a9002c26154b1 | answer 5b1fb478c62e3edf
+fuzz 1-98 from only released leases | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-99 from preview policy that is invalid, policy of readings from the future | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-100 from policy version three | answer 0251dc3dc816e8da | answer 4c965a6a804f0632 | answer c350efb49cb8e6ec | answer f648dcfa261e4059
+fuzz 1-101 from policy with an unknown field, policy of policy version three with a version two field | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2
+fuzz 1-102 from collector started in the future | answer 30a7f0a8a044d0e3 | answer b2769a105327eb1f | answer 3b7813ece2c8ae69 | answer b3075ada513f262f
+fuzz 1-103 from same subscription enrolled twice | answer c2baf158c1eee36d | answer 5a4bc01715d4ea38 | answer 24939750c04c072d | answer b58a18257c787d8f
+fuzz 1-104 from collector overdue | answer b83e6d8a8e0d2fa2 | answer 467a829d2eb6f90e | answer 584659471b830b79 | answer a2165766f17ec812
+fuzz 1-105 from policy without a version, policy of policy that is not JSON | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7
+fuzz 1-106 from collector without a start time, policy of announcements outside working days | ruled c38742b19ee768a9 | ruled c38742b19ee768a9 | ruled c38742b19ee768a9 | ruled c38742b19ee768a9
+fuzz 1-107 from announcements with Claude only | answer b475e271a94e4017 | answer 8d472bbf5677abea | answer b795a5480a9798e7 | answer cd1a6b1dd0b8eac2
+fuzz 1-108 from no active account, policy of several agent leases | answer 077c58db41f5a2b1 | answer 1c82a70d313f17d0 | answer 91bff72dfe5528a8 | answer dfbf5e903168cc17
+fuzz 1-109 from Codex margin beyond one hundred | answer 0bbb79e56dbee606 | answer 5e28ef0dec5ed2ed | answer 117980b749734332 | answer a53ebabb53610c65
+fuzz 1-110 from policy with a margin out of range | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8
+fuzz 1-111 from stored decisions for another provider | answer f1d13a9dd10442bd | answer 77ec350e67d5d424 | answer 2af5ea38765d48cd | answer b86e4e347674b2f9
+fuzz 1-112 from policy with a reserve that is not enrolled | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f
+fuzz 1-113 from policy with critical exit below entry, policy of policy that is an array | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400
+fuzz 1-114 from large whole numbers, policy of readings without reset times | answer 797cd0ba87b1753e | answer 7dff50af0e8dc3bd | answer 117980b749734332 | answer a53ebabb53610c65
+fuzz 1-115 from collector stalled, policy of collector started in the future | stopped 9af3999b1377f41b | answer 28bc2cbeecfff80b | stopped 9af3999b1377f41b | answer 225169841cdb503c
+fuzz 1-116 from weekly allowance nearly spent, policy of Claude only | answer f4fa10e5241b93c7 | answer bc963ad040092d19 | answer ebe198c7b54c64d8 | answer 5fda37ee9a90640b
+fuzz 1-117 from policy version three with a version two field | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2
+fuzz 1-118 from policy with an unknown field, policy of operations | answer 4c9c5fc8a157aa93 | answer 3a0e42ea69fccc30 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-119 from windows that reset before the reading, policy of pause file without an end | answer 0988935996bc2a74 | answer e71ffbe88ff3bf15 | answer 3daad91244ba38d4 | answer dea36b77d11b14f0
+fuzz 1-120 from definition with a window its driver has not | ruled 42f384e3707e1483 | ruled 42f384e3707e1483 | ruled 42f384e3707e1483 | ruled 42f384e3707e1483
+fuzz 1-121 from a third provider that is not configured, policy of plain | answer 6a9156e3c704f683 | answer cd5c99e35e391945 | answer 3911d7c64b3473d3 | answer 968975c1e6929c55
+fuzz 1-122 from definition of a capability its driver has not, policy of display settings and history flags | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-123 from policy version three with one provider | answer cbe64c1ba09d5530 | answer e3e0ab7f145dbeee | answer 6b69afdc8dccf2a8 | answer bdb2d9aefe3c4bd6
+fuzz 1-124 from collector with stale provider success | answer 7e7d370e51395d8e | answer 708b9305c49a4d47 | answer b2c93cce5fb0d22b | answer f5f7344e8817d17e
+fuzz 1-125 from policy with critical exit below entry | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-126 from Codex only | answer a482d2d9707f9137 | answer 6c6822412963766a | answer 03a3a23f7377ecd2 | answer 93fbb8c9ba18797f
+fuzz 1-127 from a shipped provider moved in the display order | answer 87888364627e08c6 | answer 897dc766b4e7e0ca | answer 55bcc43b12eb600c | answer 2bc585f7718e7609
+fuzz 1-128 from reading too large to write without an exponent, policy of windows that already reset | answer 0f2bc0c6607082a0 | answer 00d2b3b0d630ea5c | answer d677702c11eb1820 | answer 7b6eaf7f71e9c985
+fuzz 1-129 from rotation hold that ended, policy of usage that is an object | answer 2d33f5cb56219379 | answer 605c812e57354cdc | answer 6ac1245f5653c809 | answer bbed8ee74cd59e71
+fuzz 1-130 from trailing comma | stopped cd58f5a0eaf38f3f | stopped cd58f5a0eaf38f3f | stopped cd58f5a0eaf38f3f | stopped cd58f5a0eaf38f3f
+fuzz 1-131 from scoped model limits with capacity, policy of policy with a reserve that is not enrolled | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f
+fuzz 1-132 from preview policy that is invalid, policy of policy version four, collector.json of collector with one provider failing | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-133 from pause reason with control characters | answer 2e4ca9a0032529fb | answer fa7b9fe5e9e5dc6a | answer 6d0c1840f0041f07 | answer d5ab880d609a7e8e
+fuzz 1-134 from collector unable to write state | answer 5366bad7ccd3934e | answer c217257947310f44 | answer c203f352d5fd9a0a | answer 399eedb62bb5e0a6
+fuzz 1-135 from readings one second past the age limit | answer 344e12e45917097c | answer 999db3b0c4bb0f1e | answer 0986de1dcbe6889a | answer ffa797c1e8e0d4d7
+fuzz 1-136 from readings twenty minutes old | answer 0b644240aef80645 | answer a5c906160f0d938b | answer 602eb8457dea01d1 | answer 8c015ef06636744d
+fuzz 1-137 from manual pause that ended | answer bfade9ffd5c07fc5 | answer d4aa9422a2c60656 | answer f7492aafb5dc059b | answer ed81868da0484561
+fuzz 1-138 from fully used | answer 7372f2752e5a32cd | answer a58009ed99820439 | answer 018c93ef42526e43 | answer 86cce0de58e72b8a
+fuzz 1-139 from definition of a capability its driver has not, automation-leases.json of lease with the wrong end | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-140 from stored collector newer than the collector file | answer 232ef365923ef0be | answer 77bbaf6e00ecf930 | answer e90bd9e2754f129f | answer e2c2024c38ab4cf8
+fuzz 1-141 from Codex only | answer 12c0b4bc3eb5edb8 | answer 55468d9793c1a7fe | answer e44d169a16a0be11 | answer 8630c0afb778bf81
+fuzz 1-142 from forecast without a time to limit, policy of definition with a fractional display order | answer 20709df029ce1909 | answer fb56d102e01ad78d | answer 149ecd53ded7c7ca | answer d120b55f49c886c2
+fuzz 1-143 from collector without a start time, policy of thirds | stopped d761e3eb6ad1d13a | stopped d761e3eb6ad1d13a | stopped d761e3eb6ad1d13a | stopped d761e3eb6ad1d13a
+fuzz 1-144 from stored decisions for another provider, policy of policy with an unknown mode | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-145 from collector with one provider failing | answer a6faea037f348842 | answer f748e1ae9dce1db0 | answer a1f9d9fd8519b56c | answer ad0c977cc4068951
+fuzz 1-146 from definition with a fractional display order | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012
+fuzz 1-147 from number beyond 64 bits, policy of no active account | stopped 55a115a9166be91e | stopped 55a115a9166be91e | stopped 55a115a9166be91e | stopped 55a115a9166be91e
+fuzz 1-148 from same subscription enrolled twice | answer e8df87a8a82c3c3c | answer 58b3bfdb2433cc77 | answer 338132ddfd3add7c | answer 4bbe8a5fd353a45d
+fuzz 1-149 from every account disabled, policy of property name outside ASCII | answer 376a60830fae5067 | answer 6f54f5ef6dde0767 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-150 from collector shape | answer e9a6fc18f903d7b1 | answer d12f47d7dced3d1e | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+fuzz 1-151 from repeated property name | stopped 737cc37499afff9c | stopped 737cc37499afff9c | stopped 737cc37499afff9c | stopped 737cc37499afff9c
+fuzz 1-152 from fractional readings and automatic selection | answer f88c31558f454b9f | answer 04e56fcd3a4a6691 | answer 405bd76677fe60ed | answer 83e5e92b29034143
+fuzz 1-153 from labels outside ASCII | answer 5e5c6ef000007f2a | answer 90dc2ba7fe9ec011 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-154 from empty property name | stopped 093301373bf4711a | stopped 093301373bf4711a | stopped 093301373bf4711a | stopped 093301373bf4711a
+fuzz 1-155 from no capacity settings | answer c9f9c9842a3997b8 | answer 959c31e674e6006a | answer 04d6e2b517a528cc | answer 5d033073c68aa71e
+fuzz 1-156 from policy with an unknown mode | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-157 from a copy without the Claude definition | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5
+fuzz 1-158 from policy version three with an unknown provider, policy of policy with an unknown mode, collector.json of collector stalled | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-159 from windows that already reset, policy of critical allowance | answer 76abf88483b44302 | answer 3e34f0b9c4b1e757 | answer d19337dd47b8b76b | answer 6d2de1d5142c0d12
+fuzz 1-160 from thirds | answer dc80096bb0a27d7f | answer d8e415dd57cae95f | answer d0141213b980438d | answer d79a11162079bb0d
+fuzz 1-161 from policy version three with no providers, policy of Codex plan ended | answer c7841442ff016319 | answer 44bf1475d1133b87 | answer d0a64844a09c496b | answer 79e0893e4370fea4
+fuzz 1-162 from forecast without a time to limit | answer 482295f5608f20fe | answer 0d94ebc386f267c1 | answer 2cd594b347456978 | answer 4bc667e0fcd05468
+fuzz 1-163 from lease and manual pause, pause later, policy of manual pause | answer ba959f62bb20047e | answer 48d65457bff55e86 | answer 1030599ac811c900 | answer 2710a680f98e5c63
+fuzz 1-164 from collector started in the future, policy of only released leases | answer 540d3253daa3870d | answer 64801c7819b98de8 | answer 3b7813ece2c8ae69 | answer b3075ada513f262f
+fuzz 1-165 from account enrolled but not observed | answer bc21cc4aa43039df | answer 1cd7d37da03d564e | answer 9b4e385aa6bfb87c | answer 21c91b2522ba406e
+fuzz 1-166 from repeated property name, policy of array where the provider object belongs | stopped 737cc37499afff9c | stopped 737cc37499afff9c | stopped 737cc37499afff9c | stopped 737cc37499afff9c
+fuzz 1-167 from a copy without the Claude definition | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5
+fuzz 1-168 from Codex plan ended, collector.json of stored collector newer than the collector file | answer 9f83a114b903acf1 | answer 67a3ab15b1ad88b2 | answer 1e048dd2cc305e68 | answer 4c6015d3870070a0
+fuzz 1-169 from no capacity settings | answer 57cc619f556b34f5 | answer bf8aca3fbfdbc348 | answer 9070ddb01155d60f | answer 2f807c5657adf013
+fuzz 1-170 from order soonest-reset, policy of preview policy | answer 46c90bec08282214 | answer df068084904c7fea | answer af159813a2ef8ac7 | answer c5072990b88f42bf
+fuzz 1-171 from active account below its margin, policy of capacity profiles | answer 4782ad66b2c8f3eb | answer 97e5499ebbbc3a0d | answer b5fb6c9816129a3b | answer a74e97b883b0d68f
+fuzz 1-172 from empty policy file, policy of policy without a version | answer 3b272bf1a9876d8d | answer d9dcce28113cd676 | answer e6c0f9a294d39115 | answer 79b9e66075c4533c
+fuzz 1-173 from a shipped provider moved in the display order, automation-pause.json of pause file without an end | answer c11e33f2ecc35bb4 | answer 7bca8b8d36e7cd26 | answer 0eca4a034e9f5002 | answer b0417a65ded1a680
+fuzz 1-174 from generation time that is not a time | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-175 from pause file without an end | answer 2924464ac1c5329e | answer 2f0e346c282a146e | answer d27c2e58340c0ea9 | answer 0912f9e1012d2d8f
+fuzz 1-176 from fractional readings | answer 75e26533905c97ed | answer de23faa94f738e39 | answer 42fea88297cff1cf | answer 93b9b7e2e473b6d7
+fuzz 1-177 from policy version three with an unknown provider | ruled 4d1498e77f980458 | ruled 4d1498e77f980458 | ruled 4d1498e77f980458 | ruled 4d1498e77f980458
+fuzz 1-178 from definition with a window its driver has not | ruled 42f384e3707e1483 | ruled 42f384e3707e1483 | ruled 42f384e3707e1483 | ruled 42f384e3707e1483
+fuzz 1-179 from two providers of the Codex driver | answer 2d40cc5f68fd37bf | answer 63156f252e5add41 | answer cb07a3d09a50080f | answer 3cdfc8113ae75988
+fuzz 1-180 from array where the provider object belongs, policy of a shipped provider moved in the display order | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-181 from array where the provider object belongs | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-182 from Codex selection held | stopped 9af3999b1377f41b | answer 427dcffaee0bf33b | stopped 9af3999b1377f41b | answer dda394b73ff2374e
+fuzz 1-183 from Codex plan ended | answer 8c77740d7625bec2 | answer 46ab8a78ff1867a5 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-184 from property name outside ASCII | stopped 690dadee6519859b | stopped 690dadee6519859b | stopped 690dadee6519859b | stopped 690dadee6519859b
+fuzz 1-185 from array where the provider object belongs | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-186 from status without a generation time | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer 9910c36050e0dc7a | answer 2dbb950735862cc2
+fuzz 1-187 from capacity profile of the other provider | answer 1e4477052c6dad90 | answer 5931369a66fa4fbb | answer 691d2faa3c4b99ec | answer b1c85091584210e2
+fuzz 1-188 from definition of a capability its driver has not | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-189 from policy version three with an unknown provider | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28
+fuzz 1-190 from number beyond 64 bits | stopped e927df479fa460a5 | stopped e927df479fa460a5 | stopped e927df479fa460a5 | stopped e927df479fa460a5
+fuzz 1-191 from policy version three with one home enrolled twice | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5
+fuzz 1-192 from fractional readings and automatic selection | answer 8e3a7cf3d7403fe7 | answer f7394e90c666d148 | answer ee9f62e74181a524 | answer 9ff7eedc3198853c
+fuzz 1-193 from Codex windows that do not add up | answer 034b118eeb671b01 | answer 809bcbcbcd92a24f | answer ffca18938cc76530 | answer f838cfaa6e82a8a6
+fuzz 1-194 from active account below its margin | answer 39d64a3364c75bb2 | answer 941a468f236f5901 | answer c0e81e82482f0f48 | answer 35ff7d407103c39e
+fuzz 1-195 from Codex only | answer 2d60d5ab28ab58a5 | answer e78e1f9d86a498ce | answer 3e0c1d7a4b5095b3 | answer 24b7866364f73fe5
+fuzz 1-196 from display settings and history flags | answer 8190c107ad679511 | answer 014505f4d84a21ba | answer 3ca421144a67cb5c | answer 32aff83659708617
+fuzz 1-197 from announcements with Claude only | answer e064e8474889468c | answer 56fda216cfe801b6 | answer b795a5480a9798e7 | answer cd1a6b1dd0b8eac2
+fuzz 1-198 from critical setting off while low, policy of a copy without the Claude definition and no Claude accounts | answer b471144af1b79213 | answer 69d8badda5f81414 | answer 747964a695475206 | answer dee93ab102f1eb5e
+fuzz 1-199 from a shipped provider moved in the display order | answer 1738650fb63117f4 | answer d270fe0c09b883e2 | answer a33466a4bff8ac49 | answer ba69fe501790fa35
+fuzz 1-200 from one Codex account without an id | answer 17200f9232aaee72 | answer 37e0537d0e189e2e | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
+fuzz 1-201 from empty policy file | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400
+fuzz 1-202 from policy version three with no providers | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0
+fuzz 1-203 from policy version three with no providers, collector.json of collector with one provider failing | answer 557f1a1e32f80a4d | answer 75ff370b9b7afe19 | answer e40d5846ec543a7a | answer e40d5846ec543a7a
+fuzz 1-204 from active account not enrolled | answer 6d4fdd6466cb04a3 | answer c793e1bcd889114e | answer e8c74e089f19bc60 | answer cc47fd3f2089c54c
+fuzz 1-205 from lease ledger that is not an object | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb
+fuzz 1-206 from generation time that is not a time | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92
+fuzz 1-207 from preview policy | answer 8109405d15302085 | answer 533008572e36799f | answer ca8eb27a422de8de | answer e063966c5962cdf8
+fuzz 1-208 from scoped model limits not observed, policy of collector stalled | answer d42ab7095ce0faed | answer 9c1fd96ce328979a | answer ea16c2b80f333924 | answer 03cc6c0482cfb1cf
+fuzz 1-209 from two Codex accounts without an id | answer e9b449bea3d3b6e5 | answer f8814ecdac314c70 | answer 67eab7e604e54d52 | answer 67eab7e604e54d52
+fuzz 1-210 from forecast without a time to limit | answer 8863f445c1ecf59e | answer 54fc988b6ed605c1 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-211 from collector shape with Windows line ends and no byte order mark | answer 7e3ae2db3357cb26 | answer 4e69be151cd0e657 | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+fuzz 1-212 from Claude only | answer 708570404ae9514f | answer 68989f66750699b0 | answer b795a5480a9798e7 | answer cd1a6b1dd0b8eac2
+fuzz 1-213 from every account disabled | answer e2cc6f43f67cd121 | answer ce2523bf8d442838 | answer 230cfce0271d7178 | answer 230cfce0271d7178
+fuzz 1-214 from display settings and history flags | answer 14e128b23ca37bbb | answer 6e8547eb7ff7fcfa | answer 3a94b610f4ef99cb | answer 68597c4523c71266
+fuzz 1-215 from critical allowance | answer 41050f987595d105 | answer 714ad44786ba5a2a | answer fcb9a2afbbbfb6c8 | answer 257405599aac51a8
+fuzz 1-216 from scoped model limits, policy of policy version one with newer settings | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73
+fuzz 1-217 from plain, policy of display settings and history flags | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-218 from critical allowance, policy of two Codex accounts without an id | answer 200be8e447aa41e1 | answer 56ceaaac70ff462e | answer 67eab7e604e54d52 | answer 67eab7e604e54d52
+fuzz 1-219 from a copy without the Claude definition and no Claude accounts | answer 9363649c8937c57e | answer fd396ac985d9d21a | answer e4550f6d402d40d1 | answer 4bd11c390ef8f372
+fuzz 1-220 from windows that already reset | answer 9cb99b0a96ebe9b6 | answer d06a1bf2f10fb7f2 | answer a8683b8e7216a13c | answer e0855acc51afa6e8
+fuzz 1-221 from a third provider, policy of account needs sign-in | answer 48427e2b580c9082 | answer 56d883e1ed888d6a | answer 773055d736866b41 | answer 5d007bbcf2c1f1b7
+fuzz 1-222 from no providers configured, policy of windows that reset before the reading | answer fa4fabaee630f82f | answer 1603fbb37032aa46 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-223 from stored decisions | answer 6ade7a796793f0c7 | answer 308cd305bc8e46a5 | answer 47550d6ca1ae2c09 | answer 4cfc47f9aa091170
+fuzz 1-224 from collector overdue, policy of collector unable to write state | answer a8b604e2fe456b85 | answer ecd13dc936c40f16 | answer 01058f027af1c513 | answer d18673bc9b353da6
+fuzz 1-225 from time without seconds, policy of policy with a margin out of range | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92
+fuzz 1-226 from policy without a version, policy of announcements with Claude only | answer 8aced3f48f502f22 | answer fcb0eba32d6a95bc | answer 276cc90e5b54f20c | answer 406eb4c593e5a100
+fuzz 1-227 from weekly allowance nearly spent, policy of account marked not fresh | answer f7b78689dca5da90 | answer 3497c6243086e898 | answer 38af213fb5f25535 | answer e34602eb13582670
+fuzz 1-228 from comment in a state file | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3
+fuzz 1-229 from collector without a start time, policy of usage that is an object | answer 2c2a11dccd6efd9c | answer 4247d6bb33bed7d5 | answer fc390a7802e23880 | answer 462bc017ceee1f13
+fuzz 1-230 from policy version four | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0
+fuzz 1-231 from order balanced with the second account active | answer 502a10a75ee3b2f6 | answer 11040eac43d7d201 | answer d726681c16b106ea | answer b791fb18f189e1e7
+fuzz 1-232 from number with more digits than a decimal holds | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647
+fuzz 1-233 from critical allowance with stored state, policy of collector without a start time | answer 7a70b959dc409785 | answer 339f78a4dcd09434 | answer b2bbff4144a2b9d3 | answer e5691d7d06f3f8e2
+fuzz 1-234 from a copy without the Claude definition, policy of policy version three with one provider | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28
+fuzz 1-235 from scoped model limits, policy of automatic mode with selection off | answer cdbf2723d18f93c9 | answer a49e4d07c460998c | answer 0a11d5bf2f6c4482 | answer a2fb95c1fc67f633
+fuzz 1-236 from readings at the age limit, policy of critical allowance drained to zero | answer 8d58f0c23b9e39f1 | answer 43db29e042afe9ac | answer 20b49e03cd99e57b | answer ec525128dca4bee8
+fuzz 1-237 from no providers configured | answer 3783007d9e5b2b9f | answer 5003da6ebc36752e | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
+fuzz 1-238 from several agent leases | answer 5aa8fb86de383d24 | answer ac28230b68665427 | answer f49790e799410505 | answer 8950eb23ac5452c8
+fuzz 1-239 from collector running | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-240 from every account disabled, policy of no providers configured | answer 82497a749fa8872f | answer 3183c69ef6ef42a1 | answer b44fab4ed92b6f55 | answer b44fab4ed92b6f55
+fuzz 1-241 from Codex only | stopped ff22798fe81eb6bc | stopped ff22798fe81eb6bc | stopped ff22798fe81eb6bc | stopped ff22798fe81eb6bc
+fuzz 1-242 from thirds | answer fd3519445cd85aab | answer f8ab9038e596b29f | answer 79301a9205aebc8a | answer 79ec0bf3927b3053
+fuzz 1-243 from every account disabled | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73
+fuzz 1-244 from readings from the future, policy of pause reason with control characters | answer 071dc7ec05daa44f | answer ba92cc95711d1f04 | answer 9ac54d37062aebd3 | answer d7659cb408a41a04
+fuzz 1-245 from definition that is not JSON, policy of automatic mode with selection off | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9
+fuzz 1-246 from announcements with nothing wrong, policy of collector overdue | answer d5c65e952202f9d2 | answer 49511ec1e91e07a8 | answer 114f5fb82976e818 | answer 6c60924c6f77746f
+fuzz 1-247 from same subscription enrolled twice | answer 1ad43463a3068bf1 | answer ef83ce129314fa6f | answer aaad2d338d975f58 | answer 813e334efa0ce7bb
+fuzz 1-248 from critical setting off while low, policy of announcements with Claude only | answer 03977e60d9bdf37c | answer 6eb19aa5dfb7bd58 | answer 893c99548cd54f3a | answer 2302c84ce2a53c37
+fuzz 1-249 from two Codex accounts without an id | answer 2a1f93c38779a14f | answer f51468184cd126ae | answer 67eab7e604e54d52 | answer 67eab7e604e54d52
+fuzz 1-250 from a copy without the Claude definition | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5
+fuzz 1-251 from fractional readings and automatic selection, policy of Codex window with an unknown name | ruled 661ad1096544b1b4 | ruled 661ad1096544b1b4 | ruled 661ad1096544b1b4 | ruled 661ad1096544b1b4
+fuzz 1-252 from stored decisions | answer d3cc59a8f11474d0 | answer 16c46cbc31e1f4e2 | answer 8cd2a75e3a55eb5d | answer ae3bc313ba2615e0
+fuzz 1-253 from policy version three with no providers, automation-pause.json of automatic selection while paused | answer 97d1d6e0daaa6ea6 | answer 1a1157b55442eed7 | answer cc56f1e707705534 | answer b80c79a6d8c4f263
+fuzz 1-254 from policy version three with a version two field | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2
+fuzz 1-255 from single quoted text | stopped 3f9b8adb7e7fe58b | stopped 3f9b8adb7e7fe58b | stopped 3f9b8adb7e7fe58b | stopped 3f9b8adb7e7fe58b
+fuzz 1-256 from Codex window with an unknown name, policy of lease and a pause file without an end | answer d3309f5e7ffe430b | answer 036343882c402e38 | answer fdf7753bf09d6ac6 | answer 8becfd978ce0d31b
+fuzz 1-257 from order weekly-expiry with the second account active | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-258 from collector shape with Windows line ends and no byte order mark | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8
+fuzz 1-259 from definition of a capability its driver has not | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-260 from policy with critical exit below entry, policy of collector started in the future | answer 735b79321b970765 | answer f6a68cdaad0f192d | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-261 from collector unable to write state, policy of text where a percentage belongs | answer 3d6d2d695d7d37a8 | answer 2d979d82cc1a33ca | answer e274baff071c7100 | answer 8093f5cd0db4bad2
+fuzz 1-262 from providers that share a place in the display order, policy of policy with an unknown field, collector.json of collector overdue | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5
+fuzz 1-263 from capacity profile of the other provider | answer e3987675896b83ed | answer 85eafb23d1b66578 | answer 520bdad88914c663 | answer 603ca1bb31242939
+fuzz 1-264 from providers that share a place in the display order, policy of policy and pause only | answer 80142b79f902cd5f | answer 6b55339d590f0840 | answer 9eea7e5bb462becd | answer 6dbf38e839f36693
+fuzz 1-265 from display settings and history flags | answer 9792567a6aa3e27c | answer 72235c3223e5b894 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-266 from collector unable to write state | answer 2440d94486f6e712 | answer 5da73b56c276dd81 | answer 829e2d1913163455 | answer 467e1a8538257167
+fuzz 1-267 from usage that is an object | answer 218e4ad745bcce7f | answer ea9796c285dc9761 | answer 2e1436f5a90d1649 | answer 90f950db269f964f
+fuzz 1-268 from providers that share a place in the display order, collector.json of collector running | answer a3fd418b0d11b0a8 | answer d3d8d39663b720f5 | answer ea663ef0d3d9012b | answer bd838a02530d9fb7
+fuzz 1-269 from account marked not fresh | answer f9e98a64dfec09c1 | answer d6f8de7dad4d4b38 | answer a0826cea5982b0a7 | answer 7edd62b32fb1b5b7
+fuzz 1-270 from Codex plan ended | answer f7385a1ba1a78a0e | answer d0ce2109aeb2326f | answer 3433462a3da84d19 | answer 5e6c6a9b2b955d13
+fuzz 1-271 from policy without a version | answer 75b664992603d56e | answer 281acfd73882ed1c | answer 50b955b71efcd7ab | answer 3d7233bc7b8e30de
+fuzz 1-272 from rotation hold that ended | answer b639f465a0daa2bd | answer 4da8a2f5f4db147e | answer b1db3d0cb7965b82 | answer 5f498797db032599
+fuzz 1-273 from rotation hold that ended | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-274 from readings without usage, policy of announcements with nothing wrong | answer 37a5a0f8014dd023 | answer 3c41904bd5283454 | answer f4f5cd8f6c5e9d8c | answer de4c6d5c21df88cc
+fuzz 1-275 from weekly allowance nearly spent | answer 15e3ba0fc6fb2f23 | answer 91c2b968405ebc9c | answer 55be40483bcdd0f4 | answer 5537bdaca9726d3d
+fuzz 1-276 from time without seconds | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-277 from policy that is not JSON, policy of Codex plan ended, automation-pause.json of pause file without an end | answer 1b32d12b9e3ba191 | answer 622f0fd5f88e5bde | answer b18843cc71db2040 | answer 2d9b6a25251848f4
+fuzz 1-278 from policy version three with no providers | answer 189c0ae9236d0e9e | answer f6571388de84d5e3 | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
+fuzz 1-279 from array where the provider object belongs | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-280 from readings without reset times | answer a4c7815461383086 | answer 682c7d2131f96f7f | answer c8c5bb7ba245d59a | answer d9123eb163d9ab76
+fuzz 1-281 from several agent leases | stopped c7d49a600db6fd6c | stopped c7d49a600db6fd6c | stopped c7d49a600db6fd6c | stopped c7d49a600db6fd6c
+fuzz 1-282 from account needs sign-in | stopped 9af3999b1377f41b | stopped 9af3999b1377f41b | stopped 9af3999b1377f41b | stopped 9af3999b1377f41b
+fuzz 1-283 from collector overdue | answer 062437728f33caa0 | answer 317b531e197253b9 | answer df36f72931e93b53 | answer f7a3948b5f9a9fb6
+fuzz 1-284 from collector overdue | answer 4668ac760d9dbf91 | answer 8f08b7771f9bc32d | answer 6ee08ecef3f8aa82 | answer 47ac3e7180121ca1
+fuzz 1-285 from policy with an unknown field | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5
+fuzz 1-286 from announcements with nothing wrong | answer 3c4bc789e1b7fcad | answer f11a6e91a7f06ce0 | answer 260f0abc916579f1 | answer 64a4934e957d7b64
+fuzz 1-287 from number with more digits than a decimal holds, policy of lease ledger with an extra field | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647
+fuzz 1-288 from lease with the wrong end, policy of collector with one provider failing | answer 8849c061a7be2e8b | answer 9f7816d5d0d1941f | answer 4209d66166a2841b | answer e05dd3a669d6e750
+fuzz 1-289 from same subscription enrolled twice | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73
+fuzz 1-290 from policy with an unknown field | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5
+fuzz 1-291 from collector shape with Windows line ends and no byte order mark | answer 0371329689e5a42d | answer 8e67b7ecbb4d64c5 | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+fuzz 1-292 from readings too small to write without an exponent | answer 6e950efef8a1a24c | answer 9c7ee96ba78bec19 | answer 1b482928ed957b0e | answer 00023497451a4891
+fuzz 1-293 from number with more digits than a decimal holds | stopped b4bae954ae36abaf | stopped b4bae954ae36abaf | stopped b4bae954ae36abaf | stopped b4bae954ae36abaf
+fuzz 1-294 from one Codex account without an id, policy of windows that already reset | answer ec4000673909f1e0 | answer 982e7ee6c91ae0d3 | answer 54b92108d058f57a | answer 1841e4c4e73c27c7
+fuzz 1-295 from definition with a fractional display order | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012
+fuzz 1-296 from readings twenty minutes old | stopped c6fc02a51f6b08f0 | stopped c6fc02a51f6b08f0 | stopped c6fc02a51f6b08f0 | stopped c6fc02a51f6b08f0
+fuzz 1-297 from readings without usage, policy of active account not enrolled | answer c7389e27d018bd69 | answer 653548bb800487ff | answer 3724f2a0c825755d | answer 2cf8dbcee979806d
+fuzz 1-298 from Codex meter missing | answer 267637a39debbf27 | answer 6974580e77367dae | answer 3473b9445c7e5d09 | answer 3b96c04aca72e01a
+fuzz 1-299 from policy version three with one provider | ruled 4d1498e77f980458 | ruled 4d1498e77f980458 | ruled 4d1498e77f980458 | ruled 4d1498e77f980458
+fuzz 1-300 from preview policy that is invalid | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-301 from no capacity settings, policy of critical allowance drained to zero | answer 98805cb5daff4e65 | answer 023ed3d5cff6fd94 | answer f2413b30b3db30be | answer 7e16e6eb405ec4eb
+fuzz 1-302 from a copy without the Claude definition and no Claude accounts | answer 61a5a6955351f391 | answer da438cdffff968ed | answer ddd763ac63eee229 | answer 215dfe4663bf16ed
+fuzz 1-303 from preview policy | answer 9cb497efc79b16af | answer d7383cb5b8308bbf | answer a306dbe27ecd9082 | answer 93b1b22f9eb8f148
+fuzz 1-304 from fractional settings | answer b6ce149290bb678b | answer bb713298afcd8059 | answer b59bf83439d6cfd3 | answer 85e4b99617ae54f8
+fuzz 1-305 from comment in a state file, policy of windows that already reset | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3 | stopped c22af4a792726bf3
+fuzz 1-306 from policy with an unknown capacity profile, policy of Codex plan ended | answer 07555863a3f136d5 | answer 5be63deec854e044 | answer 3171d1ebb3fcf9dd | answer 7452f0de9c578b3f
+fuzz 1-307 from empty lease ledger | answer da457c657418561c | answer 8e00f79398165c29 | answer a61bda3703b1b4c3 | answer 92e3b7f7a7b7c685
+fuzz 1-308 from a third provider | answer 5c6d4aebdab66e5c | answer 8a6afbfd0bf6e95a | answer 3fad46fd15a7798c | answer f7c716801d86c691
+fuzz 1-309 from reading too large to write without an exponent | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-310 from property name outside ASCII | stopped 690dadee6519859b | stopped 690dadee6519859b | stopped 690dadee6519859b | stopped 690dadee6519859b
+fuzz 1-311 from negative zero | stopped 9ff65e74c3eeac54 | stopped 9ff65e74c3eeac54 | stopped 9ff65e74c3eeac54 | stopped 9ff65e74c3eeac54
+fuzz 1-312 from one account stale | answer 2933cef7d7f94dbe | answer fbab80fb610ce6c4 | answer acb5f9aecee44a76 | answer 29e87a8fdd541402
+fuzz 1-313 from collector stalled, collector.json of collector started in the future | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-314 from collector with stale provider success, policy of old Microsoft date text | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-315 from windows that already reset | answer 909c89d638751064 | answer 3e2019e2731bee7b | answer 554e6716d1c8fc46 | answer 4e4f58d80cd4a9d7
+fuzz 1-316 from Codex selection held | answer 4b0663dabb52889a | answer 1c4f8c1ed6ad1266 | answer 194ef0b67959cb0c | answer d80e2cd316e4dfad
+fuzz 1-317 from collector unable to write state | answer 4b555880b261f87c | answer aad5d99dd02e86f9 | answer 829e2d1913163455 | answer 467e1a8538257167
+fuzz 1-318 from forecast hours, policy of policy that is an array | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400
+fuzz 1-319 from fractional readings | answer 7aa91ad629b9a0bc | answer dae81635a3ab8109 | answer 2d780fad37830d0d | answer 4009b2676641c064
+fuzz 1-320 from critical allowance with stored state, policy of Codex only | answer f49854c5e0762543 | answer 68f13ce58e9afc18 | answer 442fa01041a00db2 | answer ab0d86f1b969442a
+fuzz 1-321 from disabled accounts | answer 4d750bf5a99f4f19 | answer 1b81ece460875fc9 | answer a2223c57105cdf61 | answer 34ef0942dd041e5b
+fuzz 1-322 from large whole numbers | answer 6e1934ab2baf4b41 | answer 64cfc7606a3f534a | answer 1730b4aed6fd3bd4 | answer 8abf55e5e5e9041d
+fuzz 1-323 from same slot observed twice | answer 9ec126f2a13a8864 | answer a54d28414b0ec1da | answer 5d9888b7dc72bc4d | answer 7000281665e5155e
+fuzz 1-324 from time without seconds | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-325 from empty lease ledger | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-326 from time without seconds, policy of account enrolled but not observed, automation-leases.json of empty lease ledger | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-327 from collector started in the future, policy of same subscription enrolled twice | answer 3e99cedeb90e28b1 | answer e4986356f0148cbf | answer 3b7813ece2c8ae69 | answer b3075ada513f262f
+fuzz 1-328 from rotation held | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-329 from readings from the future | answer f9b112efd295fed5 | answer 47519b070e33bcfd | answer 0b3c09064099e7de | answer a5a40a77b597f7aa
+fuzz 1-330 from critical allowance, policy of number with more digits than a decimal holds | answer 02e1abfb4cc21204 | answer 2908552cd2495aeb | answer 775a7d738a22f881 | answer 79ead7f9880c8061
+fuzz 1-331 from critical allowance with stored state | answer e5e43483255d02a4 | answer 4aad9c44aef9c65f | answer f9f54627436e7d15 | answer 1084b60f89e748de
+fuzz 1-332 from announcements with Claude only | answer 4cce54f753795ca2 | answer 1a61d766327dcaf4 | answer 915ecd4961f08c6e | answer 915ecd4961f08c6e
+fuzz 1-333 from definition under another file name, policy of scoped model limits | ruled 96d9e8f7a85999b7 | ruled 96d9e8f7a85999b7 | ruled 96d9e8f7a85999b7 | ruled 96d9e8f7a85999b7
+fuzz 1-334 from usage that is an object, policy of announcements | answer faae0b4ed4f0cf54 | answer ffd8021b7f80a831 | answer 51f933404a8695df | answer ad27a77d63370cbd
+fuzz 1-335 from two providers of the Claude driver | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3
+fuzz 1-336 from fractional readings, policy of order weekly-expiry with the second account active | answer f51666df2ffc55e5 | answer af33b821aab8db5b | answer 3008559455b8fda1 | answer 3af2974522e26ff7
+fuzz 1-337 from number beyond 64 bits, policy of stored decisions for another provider | stopped 6d0ec661d1a58c43 | stopped 6d0ec661d1a58c43 | stopped 6d0ec661d1a58c43 | stopped 6d0ec661d1a58c43
+fuzz 1-338 from large whole numbers | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-339 from order soonest-reset with the second account active, policy of every account below its margin | answer b64e41d4e6c678ce | answer c750b4be74d7e5d6 | answer f55bd38d19618ae4 | answer d9454a781daa8923
+fuzz 1-340 from generation time that is not a time | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-341 from fully used | answer ec90579bb480dd48 | answer 99a01d271e3794c6 | answer 018c93ef42526e43 | answer 86cce0de58e72b8a
+fuzz 1-342 from fully used, policy of lease ledger with an extra field | answer e925414c5ca10c94 | answer 34a65609991bb525 | answer 018c93ef42526e43 | answer 86cce0de58e72b8a
+fuzz 1-343 from active account below its margin | ruled c462a6feeabad1f9 | ruled c462a6feeabad1f9 | ruled c462a6feeabad1f9 | ruled c462a6feeabad1f9
+fuzz 1-344 from reading too large to write without an exponent | answer a749b2bcadb0751d | answer e15463c1847ba0c5 | answer aaeabe31dbdbb755 | answer 980488a3f678ea49
+fuzz 1-345 from fully used | answer 044ca59e7a7e0a87 | answer 46ce391763a31d25 | answer 1a9a60fc72728a16 | answer 2302d8b741305ae7
+fuzz 1-346 from order soonest-reset with the second account active | answer 02d26eec6e954a8f | answer a5e03cbae537274e | answer 4405e7b63c7e8879 | answer 700bcb0b2bf19844
+fuzz 1-347 from array where the provider object belongs, policy of definition that is not JSON | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-348 from fractional readings and automatic selection, policy of policy that is not JSON | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7
+fuzz 1-349 from forecast hours | answer fcbe5a8179c85676 | answer 43446a39e0b73acb | answer c9aecdff44d4314f | answer bf54a9d847653b1e
+fuzz 1-350 from policy version three with no providers | answer 0473a11d18ebc668 | answer db2f00cfdc93eb12 | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
+fuzz 1-351 from order balanced | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-352 from Codex selection held, policy of two Codex accounts without an id | answer 1471c0997f81447c | answer 38bf98f2665ddc84 | answer 017315088c864f34 | answer 017315088c864f34
+fuzz 1-353 from definition of a capability its driver has not | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-354 from two Codex accounts without an id | answer dc32758189ceb4cc | answer 0188440fc73993ec | answer 67eab7e604e54d52 | answer 67eab7e604e54d52
+fuzz 1-355 from policy with an unknown field | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5
+fuzz 1-356 from collector shape with Windows line ends and no byte order mark | answer 0708ee633948ef30 | answer 76409a767829451b | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+fuzz 1-357 from Codex account blocked until its reset | answer 7b2cb212bc442311 | answer 14295a22f3352aae | answer 9667d673da09b03f | answer 4688e536aaf5314f
+fuzz 1-358 from policy with a margin out of range, automation-leases.json of only released leases | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8
+fuzz 1-359 from labels outside ASCII, collector.json of collector stalled | answer d29f502cfcb8d752 | answer 9cf8f35dafca5705 | answer ec7b0239be3c3bd4 | answer e064b5690e5193b3
+fuzz 1-360 from number with more digits than a decimal holds, policy of scoped model limits with capacity | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647
+fuzz 1-361 from critical allowance drained to zero | answer 0d6b518734de4929 | answer b477fa2bc7970f27 | answer aca9bc1442b78dbb | answer 7778ef0edbcbbbb0
+fuzz 1-362 from empty policy file | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400
+fuzz 1-363 from number with more digits than a decimal holds | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647
+fuzz 1-364 from stored decisions for another provider, automation-pause.json of manual pause that ended | answer 82683dd470aafb1d | answer fdabf0f07cf62066 | answer 387db975b495a8fc | answer a7cf2798ab82fa9a
+fuzz 1-365 from definition with a fractional display order | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92
+fuzz 1-366 from policy version one | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-367 from definition with a window its driver has not | ruled 42f384e3707e1483 | ruled 42f384e3707e1483 | ruled 42f384e3707e1483 | ruled 42f384e3707e1483
+fuzz 1-368 from every account disabled | answer b2b77911e78b665f | answer 2391c4ea0a23907a | answer 230cfce0271d7178 | answer 230cfce0271d7178
+fuzz 1-369 from collector shape | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0
+fuzz 1-370 from windows that reset before the reading, policy of no active account | answer 22695f9271ef00f3 | answer 917edf39a53ff7ba | answer 0bb7d459f598423e | answer 04223ee8983f326d
+fuzz 1-371 from pause reason with control characters | answer 5e7f7767b30d614d | answer 55a27081ec584aa0 | answer 6d0c1840f0041f07 | answer d5ab880d609a7e8e
+fuzz 1-372 from policy with critical exit below entry | ruled f83935401cf95e83 | ruled f83935401cf95e83 | ruled f83935401cf95e83 | ruled f83935401cf95e83
+fuzz 1-373 from policy that is not JSON, policy of order balanced with the second account active | answer 4ecbd9d4f6ebc960 | answer 424160b15c57f1e5 | answer 2d23486f582dbefe | answer 17bf2342381b0892
+fuzz 1-374 from a copy without the Claude definition and no Claude accounts | answer 26fcd7d396945b98 | answer 09c21878e465a1a7 | answer e4550f6d402d40d1 | answer 4bd11c390ef8f372
+fuzz 1-375 from number with an exponent | answer 64713fe3d11d3854 | answer 0041310f1e518c17 | answer c31c3ce69423fa60 | answer befac8911264cde1
+fuzz 1-376 from policy version one with newer settings | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73
+fuzz 1-377 from collector stalled, policy of active account not enrolled | answer 47d4ee2eecb91cc1 | answer 5861d3ca7469ffd6 | answer 24c34efeadd7e5f7 | answer bdc0beba15d3be4d
+fuzz 1-378 from policy with an unknown capacity profile, policy of reading too large to write without an exponent | answer 6f40e958c7d56851 | answer ea5547e864f38810 | answer da9d6f253c3af946 | answer be6c405bacf0cca8
+fuzz 1-379 from collector overdue | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-380 from windows that reset before the reading, policy of every account disabled | answer 199fc32e9f18abc4 | answer 933733c906c9f43e | answer 230cfce0271d7178 | answer 230cfce0271d7178
+fuzz 1-381 from a copy without the Claude definition and no Claude accounts | answer e2d9239ff62b957f | answer 43a397f824c706db | answer 51037b9292ce933d | answer 08738a63d6ac3ab0
+fuzz 1-382 from Codex margin beyond one hundred | answer 48c1db72b54d5173 | answer 015d58a4d1fd99b6 | answer 90a70a92a1cc09a9 | answer 4145975cfea7124d
+fuzz 1-383 from announcements with Claude only | ruled f7adb63aca7515e2 | ruled f7adb63aca7515e2 | ruled f7adb63aca7515e2 | ruled f7adb63aca7515e2
+fuzz 1-384 from array where the provider object belongs | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-385 from reading too large to write without an exponent | answer 19b48f8afd576af6 | answer 27f0066172415c54 | answer f5c9da580f1a6f36 | answer 5ac132ed102983fb
+fuzz 1-386 from Codex account blocked until its reset | answer 22bf3818be20e30b | answer 3df8fa4813f69dfc | answer fd9a101f3331f7fc | answer 6a484fa121bcbb8d
+fuzz 1-387 from rotation hold that ended, policy of order soonest-reset | ruled 02a2ececc27da12e | ruled 02a2ececc27da12e | ruled 02a2ececc27da12e | ruled 02a2ececc27da12e
+fuzz 1-388 from generation time that is not a time, policy of Codex only | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-389 from Codex account blocked without a reason | answer 21eadbc03b061f18 | answer 1529ef917b1641ba | answer f3c54a57732dd79e | answer d8de0496bfa4551a
+fuzz 1-390 from order weekly-expiry with the second account active | answer c8916e719c060f6e | answer 4a265ed79fe5515b | answer 32d033d364b46f06 | answer 761d1134beaca7af
+fuzz 1-391 from one Codex account without capacity | answer 7f2040401baab475 | answer 479ddd6573f31d13 | answer ecbbbb4901b76f95 | answer 6d3a520afefd130a
+fuzz 1-392 from empty lease ledger | answer aec07bb64187ff8c | answer f730c9b49b2f8225 | answer 6ec6599793eda758 | answer 9fe3af870dc1acdc
+fuzz 1-393 from collector with stale provider success | answer 6d2aadd139ba9f8f | answer aa7e3df63fa3dbf6 | answer 2a67886614dbd2ca | answer 6062934c87f50d86
+fuzz 1-394 from collector running | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-395 from policy version three with a version two field | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2 | ruled 84ec1ca1e02632c2
+fuzz 1-396 from policy version three with one home enrolled twice | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5
+fuzz 1-397 from policy with an unknown capacity profile | ruled 36bfd121d755cfee | ruled 36bfd121d755cfee | ruled 36bfd121d755cfee | ruled 36bfd121d755cfee
+fuzz 1-398 from manual pause | answer 6ebf01788241b48b | answer 008ca8f971c2ebdf | answer fd0882c270c6f67b | answer 31e6cfa132cd39f5
+fuzz 1-399 from collector without a start time, policy of fractional settings and readings | answer ca3296ed5d5d4383 | answer 282f2bb8af355548 | answer 423128404e135cb9 | answer c8350ccd47ef996a
+fuzz 1-400 from order soonest-reset | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-401 from definition with a fractional display order, policy of collector without a start time | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012
+fuzz 1-402 from stored decisions, collector.json of collector with stale provider success | answer adb6540b5c3c3741 | answer 7e819e6e9a8f665f | answer 037b001fe6ea47de | answer 8ec141ccaef70174
+fuzz 1-403 from policy with a reserve that is not enrolled | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f | ruled bad8f9ffcc03f82f
+fuzz 1-404 from usage that is an object | answer 125cb367f6db54da | answer bd56de3c6f8ca6e1 | answer 74289be2277dc3d4 | answer e7e3fdf79a9105d8
+fuzz 1-405 from readings too small to write without an exponent | answer 6b96a2f58eb44e8d | answer b923b162375027c4 | answer 3c9eac5bcb600439 | answer 1d5adfcd1e8ee5a4
+fuzz 1-406 from lease and manual pause, lease later, policy of policy with a margin out of range | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8
+fuzz 1-407 from announcements outside working days | answer ea107ed9ce570e2e | answer 05e636744213e27e | answer 67e7ec70bce0e4c3 | answer 522ab67266835913
+fuzz 1-408 from collector shape | answer 90a0e4e2b59b0d67 | answer 35f0a10e2c62f591 | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+fuzz 1-409 from a third provider | answer d5e85b682b48a074 | answer 0749c71323e2f88c | answer 675cfb460b43f98d | answer de831e0ee84a4596
+fuzz 1-410 from one agent lease, policy of policy only | answer 22e4613e43e83c7d | answer 75b56ae5f1c7bbe7 | answer 10852e74a9c6ec48 | answer 6b7e6846a03e9ce0
+fuzz 1-411 from every account disabled, policy of negative zero | answer 39c9a597f2f53a00 | answer fbeac9c821d2bb7e | answer 30e4d230198c6325 | answer 137f593fef5d06af
+fuzz 1-412 from Codex selection held, policy of no providers configured | answer a7f4a25a246cf5ac | answer c42203bdc67932a1 | answer 918cd06761fa79be | answer 918cd06761fa79be
+fuzz 1-413 from scoped model limits with capacity, policy of plain | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-414 from two providers of the Claude driver | stopped c7d49a600db6fd6c | stopped c7d49a600db6fd6c | stopped c7d49a600db6fd6c | stopped c7d49a600db6fd6c
+fuzz 1-415 from collector overdue, policy of Codex windows that do not add up | answer 9b8fc60815bdff38 | answer 075c01f3ab19bc92 | answer 46d037b9f4f1ac9b | answer 5ac5781916ad0d98
+fuzz 1-416 from policy version one | answer 815345f82f77c61f | answer 0dae3c9080245bd4 | answer 9dc6d208169994c6 | answer fc6b172c232ed8f0
+fuzz 1-417 from readings too small to write without an exponent, policy of order weekly-expiry | answer 10fcf72913fc9a14 | answer 0f6d795f5a1e4c74 | answer 7a20f82f500442d0 | answer 54357f26c5bb388c
+fuzz 1-418 from definition with an unknown field | ruled e19db7430973f026 | ruled e19db7430973f026 | ruled e19db7430973f026 | ruled e19db7430973f026
+fuzz 1-419 from old Microsoft date text | stopped cf823ae4757f244c | stopped cf823ae4757f244c | stopped cf823ae4757f244c | stopped cf823ae4757f244c
+fuzz 1-420 from critical allowance drained to zero | answer 596f678cd2b7a144 | answer f5ffcd6b86d0c71e | answer b96557a6d517ef4a | answer c83d857e5e614e14
+fuzz 1-421 from time without an offset, policy of lease ledger that is not an object | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-422 from every account disabled | answer 15ca30322ef49dce | answer 7eba7dcb57fb0ce8 | answer 230cfce0271d7178 | answer 230cfce0271d7178
+fuzz 1-423 from display settings and history flags | answer d63c3b32bbe80b1d | answer b420276d3571ee27 | answer a9c360e6a66bc5e4 | answer 0a5a227e92dfa323
+fuzz 1-424 from text where a percentage belongs | answer 9519af2fb397258e | answer faef7c739252f184 | answer 0038b2c66b0413f8 | answer 2bec3b2cbaf8258a
+fuzz 1-425 from time in a regional form | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-426 from providers that share a place in the display order, policy of collector shape | answer 3fcfda2a81b9209e | answer 736bd1eb11cc58a5 | answer be97f89fbc2b904f | answer 2223a7bd5c3e92c1
+fuzz 1-427 from collector started in the future | answer cf442ceb8c748560 | answer 2cdbc4499a89e893 | answer 3b7813ece2c8ae69 | answer b3075ada513f262f
+fuzz 1-428 from scoped model limits not observed, policy of operations | answer 79b2d63ba10a37f9 | answer 0bdb3f5602ce6f22 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-429 from policy version four | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0
+fuzz 1-430 from same slot observed twice, policy of time without seconds | answer 49ec315013c2296c | answer ea87c2c154d27075 | answer 387db975b495a8fc | answer a7cf2798ab82fa9a
+fuzz 1-431 from one agent lease, policy of single quoted text | answer 8f949c4983769b68 | answer 8a3f4c59e2ccae18 | answer a81c3767d6717f46 | answer 770fb08f8cb4c425
+fuzz 1-432 from fractional readings | answer 8a3d92bd67acc265 | answer ff52af36e6230c29 | answer 9296cf9b71db7ff8 | answer fd41c59ec7ced108
+fuzz 1-433 from one agent lease | answer bc1dd237ad46d918 | answer 5ac82c4ea2663271 | answer 4633c1d82853914f | answer ca4cff13d78593e7
+fuzz 1-434 from same subscription enrolled twice | answer 44d6fa16d99ab2ee | answer fa35c3630b166a0f | answer 425e248976aabbbb | answer d1f9c1ac33a6aa1d
+fuzz 1-435 from definition of a capability its driver has not, automation-leases.json of lease with the wrong end | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92 | ruled 221d7f7c6f91cc92
+fuzz 1-436 from readings twenty minutes old | answer 6c4a9a6054c0f5d3 | answer 2af07fa1d49e1e88 | answer 65b9c79d38e9b3fc | answer 0c6b5ab06ec7aee5
+fuzz 1-437 from Claude only | answer 8b72959ba009daa8 | answer 3bbd2ce4787fa0f3 | answer b795a5480a9798e7 | answer cd1a6b1dd0b8eac2
+fuzz 1-438 from policy version three with an unknown provider | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28
+fuzz 1-439 from order soonest-reset with the second account active | answer 5a7f55b139fac789 | answer eef937b2c1ae4a15 | answer 50a730ca598afb7a | answer c89df4dbd71f1e6d
+fuzz 1-440 from manual pause, policy of policy version three with one home enrolled twice | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5
+fuzz 1-441 from time in a regional form, policy of collector shape | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
+fuzz 1-442 from collector started in the future | answer 101edc924a6585e1 | answer 21e379b2e4162c23 | answer 2ddeeacea124774e | answer ff3c222f559e1780
+fuzz 1-443 from order balanced | answer 90b99c7918f737fa | answer 8e11f1187ea2924a | answer eef09518f9ddc6d6 | answer 97961dd0452fa017
+fuzz 1-444 from readings without reset times | answer 2b1fa2fc23ac425e | answer 4046537225194b3c | answer 6690f1789f01aeef | answer cecaada1b2d28d0e
+fuzz 1-445 from pause file without an end | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986 | stopped 5677e8bae350c986
+fuzz 1-446 from usage that is an object | answer 861f6445ddfacf5c | answer 12bd26b0a72ccd3c | answer 13c63a40b0b7643a | answer f946f5665aa6fdb5
+fuzz 1-447 from time without an offset | answer bb1edfff5443660a | answer f3f45dc5d4f161cf | answer 387db975b495a8fc | answer a7cf2798ab82fa9a
+fuzz 1-448 from definition of a capability its driver has not | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-449 from rotation hold that ended | answer 038a8039aa2de39e | answer 7bce58c6ad5a076a | answer 8cb11193f5026971 | answer 30a77cab74498576
+fuzz 1-450 from stored decisions for another provider, policy of account marked not fresh | answer 678ade0cb71a057c | answer fc6669ac4660460c | answer bab44c5fab3a61c5 | answer 1dbf9d3ec83551cc
+fuzz 1-451 from pause file without an end | answer 12acbfb504d190c2 | answer 4e95affc019f165f | answer bf736fb1e939813a | answer 24a079998c29c97f
+fuzz 1-452 from number beyond 64 bits, policy of fractional readings and automatic selection | stopped 6d0ec661d1a58c43 | stopped 6d0ec661d1a58c43 | stopped 6d0ec661d1a58c43 | stopped 6d0ec661d1a58c43
+fuzz 1-453 from policy that is an array, policy of reading too large to write without an exponent | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+fuzz 1-454 from a copy without the Claude definition, policy of only released leases, collector.json of policy and collector only | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5
+fuzz 1-455 from definition with a fractional display order | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012
+fuzz 1-456 from rotation hold that ended | answer 31a44cc72a1c3467 | answer c31f2f4bbf32eeff | answer 8cb11193f5026971 | answer 30a77cab74498576
+fuzz 1-457 from capacity profile of the other provider, policy of policy with a margin out of range | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8 | ruled 90540269d449c8b8
+fuzz 1-458 from lease ledger with an extra field | answer 85d7bc816a161feb | answer 6b46b0bf8451e6bb | answer c210653b8360b7f9 | answer ad3a061c5cfb3689
+fuzz 1-459 from policy with an unknown capacity profile, policy of scoped model limits | answer ddc68141d612b4f1 | answer 77c115effb7dad7f | answer ab4493df4991f6a3 | answer 41c5d054a232afea
+fuzz 1-460 from plain | answer 44f0e8381e58f648 | answer be11da789f2c2b4a | answer b28262a8aefce9ab | answer 8ad5d9d156e11919
+fuzz 1-461 from announcements | answer a96df8e3f17d3f70 | answer fab28586326b31a6 | answer 947706d9ac1f6c92 | answer 275c4cfee1bd5624
+fuzz 1-462 from account needs sign-in, policy of two providers of the Codex driver | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28
+fuzz 1-463 from forecast hours | answer e0734e7de7838687 | answer a300b2883483331d | answer e4510ac046ecfb63 | answer 632794a5e4d78a9c
+fuzz 1-464 from one account stale, policy of empty property name | answer d1a42c14e958482b | answer 3c7187a944e237ab | answer d7c7e5300ed75222 | answer 26fcb159f5357bae
+fuzz 1-465 from active account not enrolled, policy of manual pause that ended | answer 29e67561edde6b4f | answer e2e39208dc7b10b8 | answer f791c325d474bb95 | answer c013ff4e87682210
+fuzz 1-466 from usage that is an object | answer 1ab9aa88d01a7b80 | answer c9e0514549cf34c2 | answer d62216a73a961ce4 | answer 72ba8350bd527c2b
+fuzz 1-467 from property name outside ASCII | stopped 2c7e7b1731fc8568 | stopped 2c7e7b1731fc8568 | stopped 2c7e7b1731fc8568 | stopped 2c7e7b1731fc8568
+fuzz 1-468 from policy version three with one home enrolled twice, policy of policy version one with newer settings | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73 | ruled f2d5a16b65b62e73
+fuzz 1-469 from preview policy that is invalid, policy of active account below its margin | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
+fuzz 1-470 from single quoted text | ruled 661ad1096544b1b4 | ruled 661ad1096544b1b4 | ruled 661ad1096544b1b4 | ruled 661ad1096544b1b4
+fuzz 1-471 from order soonest-reset with the second account active, policy of scoped model limits | answer 62e2a5802735f6df | answer b9290fb2d4f14416 | answer e006796198390929 | answer 96deee671665db03
+fuzz 1-472 from pause reason with control characters | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22 | stopped 9c1690cd87a15f22
+fuzz 1-473 from forecast without a time to limit | answer f228f3409f6f566f | answer 395f3aac384e70b4 | answer ca439a1df82aedd6 | answer ad7e2e26e109e2fe
+fuzz 1-474 from automatic selection | answer 95996e3d11e5556a | answer ce78691542e71e7f | answer 8f764cf7c256983e | answer 9a909340e276604a
+fuzz 1-475 from old Microsoft date text | stopped cf823ae4757f244c | stopped cf823ae4757f244c | stopped cf823ae4757f244c | stopped cf823ae4757f244c
+fuzz 1-476 from no capacity settings | answer 4075adf25184866e | answer 4734eb699b027e0b | answer 93fa9475f9848449 | answer eff749fda7c09f2c
+fuzz 1-477 from forecast without a time to limit, policy of old Microsoft date text | answer a091d70c0694b923 | answer 3384ec472eae224f | answer 6be9de5c62c7bccf | answer 3be86a4adda218dd
+fuzz 1-478 from windows that reset before the reading, collector.json of collector started in the future | answer 6b94fa0e4fc9fd66 | answer ac3201e8c5d10032 | answer 35796cc0f1ab0b35 | answer f94e13fedb9fad5a
+fuzz 1-479 from collector unable to write state | answer f88848151351f5e0 | answer 289e1cf480ae90aa | answer 1502bc0272dcc0b8 | answer 3ae81e11a421b429
+fuzz 1-480 from number with an exponent, policy of a third provider never observed | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28 | ruled 43224384d4110a28
+fuzz 1-481 from lease with the wrong end, policy of property name outside ASCII | answer 143f4521489d567e | answer 6423d793651ce4dd | answer 4a970535a2a9118c | answer d5339cd1c2480ed3
+fuzz 1-482 from number with more digits than a decimal holds | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647
+fuzz 1-483 from definition of a capability its driver has not | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed | ruled 905dde76a90907ed
+fuzz 1-484 from definition that is not JSON | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9
+fuzz 1-485 from critical allowance with stored state, policy of comment in a state file | answer 778227748db5f9ef | answer 97df6d0dff375841 | answer 73a371d893ff98ff | answer 08dfe16d0315feeb
+fuzz 1-486 from order balanced with the second account active, collector.json of collector started in the future | answer e163b95cba1c7b98 | answer 1b01377fe34fa038 | answer 4cd1f40422b2742d | answer 9f6669b38326c01d
+fuzz 1-487 from no active account, policy of Codex window with an unknown name | answer fea9bd324bbe4439 | answer 221cd967ef633cd9 | answer 53dab30e0ec037fc | answer ad709b9b2d8b60c4
+fuzz 1-488 from policy version four | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0 | ruled 52ed63f20b082fb0
+fuzz 1-489 from Codex windows that do not add up | answer 1aaa4e44cbeaf41c | answer ba76d7de3d761305 | answer cf6999f988ed1943 | answer 394f0e057437c4ea
+fuzz 1-490 from number with more digits than a decimal holds, policy of policy and collector only | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647 | stopped d6fa8496a0814647
+fuzz 1-491 from pause reason with control characters | answer 6ceb9c4c7102fb04 | answer f553a1f23ffa2588 | answer 577c0f9f499322ed | answer 0ae5c6e29b86062b
+fuzz 1-492 from fractional settings, policy of lease ledger with an extra field | answer c4ac6a6c6997ed13 | answer 58801540ac2d621d | answer ea16c2b80f333924 | answer 03cc6c0482cfb1cf
+fuzz 1-493 from no definitions at all, policy of disabled accounts | ruled 8d6b6eb4cb1528e5 | ruled 8d6b6eb4cb1528e5 | ruled 8d6b6eb4cb1528e5 | ruled 8d6b6eb4cb1528e5
+fuzz 1-494 from readings without usage | answer 1419e071f4110c68 | answer 8c0272138ca2547d | answer 3bcff2e4e4d0ee4e | answer 0dd791e64ed277fc
+fuzz 1-495 from lease ledger that is not an object, policy of generation time that is not a time | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb
+fuzz 1-496 from Claude only | answer 61cefab7cf34c187 | answer 8a1ead234df97207 | answer 0d92e2f7541351fc | answer 1eb4ba5e58b6b99c
+fuzz 1-497 from active account not enrolled | answer 5bef4b61a3a8d756 | answer d14697aad77fda2e | answer ed7aea4c8c23323a | answer 5edb0e33b2b0d7c5
+fuzz 1-498 from automatic selection while paused | answer 930a1d39b77ea067 | answer f697b6397eb26a9e | answer 66133e265bb37332 | answer 8a110c4e2af23ae3
+fuzz 1-499 from lease with the wrong end, automation-leases.json of lease ledger with an extra field | answer c6b175ce728740c8 | answer 14923554d97a0d2d | answer f1ad22acb8e0c1e6 | answer 31941307c7b5125a
+fuzz 1-500 from policy version three with one home enrolled twice | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5 | ruled d859e2663a563af5

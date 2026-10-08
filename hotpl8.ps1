@@ -71,9 +71,7 @@ try {
     if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}
     . (Join-Path $PSScriptRoot 'src/config.ps1')
     . (Join-Path $PSScriptRoot 'src/diagnostics.ps1')
-    . (Join-Path $PSScriptRoot 'src/providers/claude.ps1')
     . (Join-Path $PSScriptRoot 'src/providers/codex.ps1')
-    . (Join-Path $PSScriptRoot 'src/insights.ps1')
     . (Join-Path $PSScriptRoot 'src/management.ps1')
     . (Join-Path $PSScriptRoot 'src/onboarding.ps1')
     . (Join-Path $PSScriptRoot 'src/onboarding-install.ps1')
@@ -364,7 +362,7 @@ try {
 
     if ($Command -eq 'enroll') {
         if(-not $Slot -or $CodexArguments -or $Model -or $AsJson){throw 'Enrollment requires -Slot, driver-specific -AccountHome, and optional -Label.'}
-        $enrollmentDriver=Get-Hotpl8ProviderDriver (Get-Hotpl8ProviderDefinition $Provider).driver
+        $enrollmentDriver=Get-Hotpl8ProviderDriver -Provider $Provider
         if($enrollmentDriver.slotKind -eq 'native-home' -and -not $AccountHome){throw 'Enrollment requires -Slot ID -AccountHome PATH for an existing native account home.'}
         Add-Hotpl8RegisteredAccount $StateDirectory $Provider $Slot $AccountHome $Label $CodexExecutable -MigratePolicy:$MigratePolicy -KeepLabel:([bool]$Label)
         'Next: hotpl8 refresh, then hotpl8 to open the dashboard.'

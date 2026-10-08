@@ -1,4 +1,4 @@
-//! The warm schedule of src/providers/claude.ps1: at which minute of a five-hour cycle each
+//! The warm schedule of the Claude accounts: at which minute of a five-hour cycle each
 //! account's window is opened, so that the accounts' windows end apart rather than
 //! together.
 

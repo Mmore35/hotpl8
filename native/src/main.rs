@@ -47,6 +47,8 @@ mod plans;
 mod policy;
 mod process;
 mod ps;
+#[cfg(test)]
+mod recorded;
 mod registry;
 mod replay;
 mod request;
