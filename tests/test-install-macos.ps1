@@ -20,6 +20,24 @@ try{
   InstallFixture $script:installed
   $r=Invoke-Hotpl8Process (Join-Path $script:installed 'hotpl8') @('version','-AsJson') 15000
   Assert ($r.exitCode -eq 0 -and ($r.output|ConvertFrom-Json))
+  # The command asks the compiled reader first: with no PowerShell entry beside it, a plain
+  # request is answered all the same, and any other spelling of it is not.
+  $entry=Join-Path $script:installed 'app/hotpl8.ps1';$aside=$entry+'.aside'
+  $otherwise=Invoke-Hotpl8Process (Join-Path $script:installed 'hotpl8') @('version','-AsJso') 15000
+  Assert ($otherwise.exitCode -eq 0 -and $otherwise.output -ceq $r.output) 'PowerShell did not answer the spelling the reader leaves to it'
+  [IO.File]::Move($entry,$aside)
+  try{
+   # The reader looks for the entry to know the release it is part of.
+   [IO.File]::WriteAllText($entry,'exit 9')
+   $plain=Invoke-Hotpl8Process (Join-Path $script:installed 'hotpl8') @('version','-AsJson') 15000
+   Assert ($plain.exitCode -eq 0 -and $plain.output -ceq $r.output) 'the reader did not answer a plain request'
+   Assert ((Invoke-Hotpl8Process (Join-Path $script:installed 'hotpl8') @('version','-AsJso') 15000).exitCode -eq 9) 'another spelling did not reach the PowerShell entry'
+   # A reader that cannot start leaves every word to PowerShell.
+   $reader=Join-Path $script:installed 'app/bin/macos/hotpl8-native'
+   [IO.File]::SetUnixFileMode($reader,[IO.UnixFileMode]'UserRead,UserWrite')
+   try{Assert ((Invoke-Hotpl8Process (Join-Path $script:installed 'hotpl8') @('version','-AsJson') 15000).exitCode -eq 9) 'a reader that cannot start was not passed over'}
+   finally{[IO.File]::SetUnixFileMode($reader,[IO.UnixFileMode]'UserRead,UserWrite,UserExecute')}
+  }finally{[IO.File]::Delete($entry);[IO.File]::Move($aside,$entry)}
   $receipt=Read-Hotpl8Json (Join-Path $script:installed 'installation.json')
   Assert ($receipt.platform -eq 'macos' -and -not $receipt.scheduled -and -not $receipt.pathAdded)
   Assert (([IO.File]::GetUnixFileMode((Join-Path $script:installed 'state')) -band [IO.UnixFileMode]'OtherRead,GroupRead') -eq 0)

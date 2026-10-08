@@ -1306,6 +1306,29 @@ impl V {
             _ => unreadable(),
         }
     }
+    /// [math]::Round($value)
+    #[track_caller]
+    pub fn round(&self) -> R<V> {
+        match self {
+            V::Null => Ok(V::Dbl(0.0)),
+            V::Dbl(x) if x.is_finite() => dbl(x.round_ties_even()),
+            V::I32(x) => Ok(V::Dec(Dec::from_i64(*x as i64))),
+            V::I64(x) => Ok(V::Dec(Dec::from_i64(*x))),
+            V::Dec(x) => Ok(V::Dec(x.round0()?)),
+            _ => unreadable(),
+        }
+    }
+    /// `'{0:0}' -f $value` for a number, printed one way wherever HotPl8 runs.
+    #[track_caller]
+    pub fn whole(&self) -> R<String> {
+        match self {
+            V::Dbl(x) if x.is_finite() => Ok(num::double_whole(*x)),
+            V::Dec(x) => Ok(x.text_whole()),
+            V::I32(x) => Ok(x.to_string()),
+            V::I64(x) => Ok(x.to_string()),
+            _ => unreadable(),
+        }
+    }
     /// [math]::Floor($value)
     #[track_caller]
     pub fn floor(&self) -> R<V> {

@@ -75,9 +75,7 @@ function Show-Hotpl8Onboarding([string]$Directory,[string]$Provider,[switch]$New
                 'ready'{
                     if(-not $NewAccount -and -not [Console]::IsInputRedirected){try{Request-Hotpl8Warming $Directory}catch{$_.Exception.Message}}
                     'Setup complete. Opening your account view.'
-                    . (Join-Path $PSScriptRoot 'dashboard.ps1')
-                    Show-Hotpl8Dashboard $Directory
-                    return
+                    Exit-Hotpl8NativeDashboard ([IO.Path]::GetDirectoryName($PSScriptRoot)) 'watch' $Directory '' $false $false
                 }
                 'pending'{
                     if($retries -lt 2){

@@ -38,7 +38,7 @@ fn renamed(text: &str, family: &str, after: &str, name: &str) -> R<String> {
 }
 
 /// Test-Hotpl8CodexReadRetrying: one busy or slow read is not an outage.
-fn read_retrying(slot: &V, now: Dto) -> R<bool> {
+pub(crate) fn read_retrying(slot: &V, now: Dto) -> R<bool> {
     Ok(slot.g("status")?.in_s(&["home_busy", "timeout"])? && fresh_timestamp(&slot.g("observedAt")?, now)?)
 }
 

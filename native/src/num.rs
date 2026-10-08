@@ -401,8 +401,31 @@ impl Dec {
         tenths_text(self.neg && tenths != 0, &tenths.to_string())
     }
 
+    /// [math]::Round(x) for a decimal: half to even.
+    #[track_caller]
+    pub fn round0(self) -> R<Dec> {
+        Dec::done(self.neg, drop_digits(self.mant, self.scale as u32), 0, self.neg)
+    }
+
     /// '{0:N0}' -f $decimal and '{0:N1}' -f $decimal: half away from zero.
     pub fn text_grouped(self, decimals: usize) -> String {
+        let (negative, plain) = self.fixed(decimals);
+        grouped(negative, &plain)
+    }
+
+    /// '{0:0}' -f $decimal: half away from zero.
+    pub fn text_whole(self) -> String {
+        let (negative, plain) = self.fixed(0);
+        if negative {
+            format!("-{plain}")
+        } else {
+            plain
+        }
+    }
+
+    /// Rounded half away from zero to that many fraction digits: whether it is below zero
+    /// and not nothing, and its plain digits.
+    fn fixed(self, decimals: usize) -> (bool, String) {
         let (scale, wanted) = (self.scale as u32, decimals as u32);
         let kept = if scale <= wanted {
             self.mant * pow10(wanted - scale)
@@ -419,7 +442,7 @@ impl Dec {
         if decimals > 0 {
             plain.insert(plain.len() - decimals, '.');
         }
-        grouped(self.neg && kept != 0, &plain)
+        (self.neg && kept != 0, plain)
     }
 }
 
@@ -448,6 +471,11 @@ fn fifteen_digits(value: f64) -> (Vec<u8>, i32) {
 /// one. Rounding starts from the exact binary value; an exact tie goes up on Windows
 /// PowerShell and to even on PowerShell 7.
 fn significant_digits(value: f64, count: usize) -> (Vec<u8>, i32) {
+    rounded_digits(value, count, desktop())
+}
+
+/// The same, with what an exact tie does said by the caller.
+fn rounded_digits(value: f64, count: usize, tie_up: bool) -> (Vec<u8>, i32) {
     let exact = format!("{:.800e}", value.abs());
     let (mantissa, exponent) = exact.split_once('e').expect("exponent form");
     let mut exponent: i32 = exponent.parse().expect("exponent");
@@ -457,7 +485,7 @@ fn significant_digits(value: f64, count: usize) -> (Vec<u8>, i32) {
     let up = match all[count].cmp(&5) {
         Ordering::Greater => true,
         Ordering::Less => false,
-        Ordering::Equal => !tail_is_zero || desktop() || digits[count - 1] % 2 == 1,
+        Ordering::Equal => !tail_is_zero || tie_up || digits[count - 1] % 2 == 1,
     };
     if up {
         let mut index = count;
@@ -565,45 +593,59 @@ pub fn double_json(value: f64) -> String {
 /// Windows PowerShell takes fifteen digits and rounds half away from zero; PowerShell 7
 /// rounds the exact value, a half going to the even digit.
 pub fn double_grouped(value: f64, decimals: usize) -> String {
-    let (negative, plain) = if desktop() {
-        let (mut kept, mut up) = (Vec::new(), false);
-        if value != 0.0 {
-            let (digits, exponent) = fifteen_digits(value);
-            // digits[i] is worth 10^(exponent - i); the last digit kept sits at `last`.
-            let last = exponent + decimals as i32;
-            let digit = |index: i32| if index >= 0 && (index as usize) < digits.len() { digits[index as usize] } else { 0 };
-            kept = (0..=last).map(digit).collect();
-            up = last >= -1 && digit(last + 1) >= 5;
-        }
-        if up {
-            let mut index = kept.len();
-            loop {
-                if index == 0 {
-                    kept.insert(0, 1);
-                    break;
-                }
-                index -= 1;
-                if kept[index] == 9 {
-                    kept[index] = 0;
-                } else {
-                    kept[index] += 1;
-                    break;
-                }
+    let (negative, plain) = if desktop() { fixed(value, decimals) } else { (value.is_sign_negative(), format!("{:.*}", decimals, value.abs())) };
+    grouped(negative, &plain)
+}
+
+/// A double as a whole number, printed one way wherever HotPl8 runs: the fifteen digits a
+/// double has always been shown with, then half away from zero. What rounds to nothing
+/// is `0`, never `-0`.
+pub fn double_whole(value: f64) -> String {
+    let (negative, plain) = fixed(value, 0);
+    if negative {
+        format!("-{plain}")
+    } else {
+        plain
+    }
+}
+
+/// A double's fifteen digits rounded half away from zero to that many fraction digits:
+/// whether it is below zero and not nothing, and its plain digits.
+fn fixed(value: f64, decimals: usize) -> (bool, String) {
+    let (mut kept, mut up) = (Vec::new(), false);
+    if value != 0.0 {
+        let (digits, exponent) = rounded_digits(value, 15, true);
+        // digits[i] is worth 10^(exponent - i); the last digit kept sits at `last`.
+        let last = exponent + decimals as i32;
+        let digit = |index: i32| if index >= 0 && (index as usize) < digits.len() { digits[index as usize] } else { 0 };
+        kept = (0..=last).map(digit).collect();
+        up = last >= -1 && digit(last + 1) >= 5;
+    }
+    if up {
+        let mut index = kept.len();
+        loop {
+            if index == 0 {
+                kept.insert(0, 1);
+                break;
+            }
+            index -= 1;
+            if kept[index] == 9 {
+                kept[index] = 0;
+            } else {
+                kept[index] += 1;
+                break;
             }
         }
-        while kept.len() < decimals + 1 {
-            kept.insert(0, 0);
-        }
-        let first = kept.iter().position(|d| *d != 0).unwrap_or(kept.len()).min(kept.len() - decimals - 1);
-        let mut text: String = kept[first..].iter().map(|d| (b'0' + d) as char).collect();
-        if decimals > 0 {
-            text.insert(text.len() - decimals, '.');
-        }
-        (value < 0.0 && kept.iter().any(|d| *d != 0), text)
-    } else {
-        (value.is_sign_negative(), format!("{:.*}", decimals, value.abs()))
-    };
-    grouped(negative, &plain)
+    }
+    while kept.len() < decimals + 1 {
+        kept.insert(0, 0);
+    }
+    let first = kept.iter().position(|d| *d != 0).unwrap_or(kept.len()).min(kept.len() - decimals - 1);
+    let mut text: String = kept[first..].iter().map(|d| (b'0' + d) as char).collect();
+    if decimals > 0 {
+        text.insert(text.len() - decimals, '.');
+    }
+    (value < 0.0 && kept.iter().any(|d| *d != 0), text)
 }
 
 /// Plain digits with a comma between every three of the whole part.
@@ -897,6 +939,18 @@ mod tests {
         assert_eq!(d("-0.04").text_tenths(), "0");
         assert_eq!(d("64.5").text_tenths(), "64.5");
         assert_eq!(d("35").text_tenths(), "35");
+    }
+
+    #[test]
+    fn a_whole_number_is_printed_one_way_on_both_editions() {
+        for core in [false, true] {
+            crate::ps::set_core(core);
+            let printed: Vec<String> = [-0.04, -0.4, -0.5, 0.5, 1.5, 2.5, 0.49999999999999994, 99.5, 99.49999999999999, 1234.5, 0.0, -0.0, 100.0].map(double_whole).to_vec();
+            assert_eq!(printed, ["0", "0", "-1", "1", "2", "3", "1", "100", "100", "1235", "0", "0", "100"]);
+        }
+        crate::ps::set_core(false);
+        assert_eq!([d("2.5").text_whole(), d("-0.4").text_whole(), d("-2.5").text_whole(), d("1234.49").text_whole()], ["3", "0", "-3", "1234"]);
+        assert_eq!([t(d("2.5").round0()), t(d("3.5").round0()), t(d("2.51").round0())], ["2", "4", "3"]);
     }
 
     #[test]
