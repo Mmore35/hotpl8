@@ -1,11 +1,9 @@
-﻿# Render documentation PNGs from the real dashboard frame and palette, with fictional data.
-# Windows PowerShell 5.1 / Consolas. No native CLI, accounts, state, or network access.
+﻿# Render documentation PNGs from the frames the compiled reader draws, with fictional data.
+# Windows PowerShell 5.1 / Consolas. No provider CLI, accounts, state, or network access.
 param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-. (Join-Path $root 'src/common.ps1')
-. (Join-Path $root 'src/providers/codex.ps1')
-. (Join-Path $root 'src/dashboard.ps1')
+. (Join-Path $root 'src/native.ps1')
 . (Join-Path $root 'tests/fixtures/screenshots.ps1')
 . (Join-Path $root 'tests/fixtures/terminal.ps1')
 if ($env:OS -ne 'Windows_NT') { throw 'Screenshot rendering requires Windows and Consolas.' }
@@ -14,17 +12,34 @@ $output = [IO.Path]::GetFullPath($OutputDirectory)
 [void][IO.Directory]::CreateDirectory($output)
 Add-Type -AssemblyName System.Drawing
 $fixture = Get-Hotpl8ScreenshotFixture
-$palette = Get-Hotpl8DashboardPalette
+$reader = Get-Hotpl8NativePath $root
+if (-not [IO.File]::Exists($reader)) { throw 'Build the compiled reader first: scripts/build-native.ps1' }
+# The reader draws a state it reads from disk. Each image stages its fictional one here.
+$staging = Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-screenshots-' + [guid]::NewGuid().ToString('N'))
+
+# The frame as the reader writes it to a terminal, decoded into the cells it colours. The
+# fixture's clock and UTC stand in for this machine's, so every machine draws the same frame.
+function Get-DashboardCells($Status, $Policy, [int]$Columns, [int]$Rows, [int]$Offset, [bool]$Nyan, [bool]$TerminalAnsi) {
+    if ([IO.Directory]::Exists($staging)) { [IO.Directory]::Delete($staging, $true) }
+    [void][IO.Directory]::CreateDirectory($staging)
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    [IO.File]::WriteAllText((Join-Path $staging 'policy.json'), ($Policy | ConvertTo-Json -Depth 16 -Compress), $utf8)
+    if ($null -ne $Status) { [IO.File]::WriteAllText((Join-Path $staging 'status.json'), ($Status | ConvertTo-Json -Depth 16 -Compress), $utf8) }
+    $view = if ($Nyan) { 'nyan' } else { 'watch' }
+    $asked = @($view, '--root', $root, '--state', $staging, '--now', $fixture.now.ToString('o'), '--zone', '0',
+        '--size', ('' + $Columns + 'x' + $Rows), '--offset', [string]$Offset, '--ansi')
+    # A terminal image shows the first moment of a dashboard in motion; the others one at rest.
+    $asked += if ($TerminalAnsi) { @('--colours', 'indexed', '--at', '0') } else { @('--colours', 'true', '--reduced-motion') }
+    $drawn = Invoke-Hotpl8NativeProcess $reader $asked
+    if ($drawn.exitCode -ne 0) { throw ('The reader drew no frame: ' + $drawn.errors.Trim()) }
+    $lines = $drawn.output.Split("`n")
+    # The frame ends with the offset it settled on and a line end.
+    if ($lines.Count -lt 3 -or $lines[$lines.Count - 1] -ne '' -or $lines[$lines.Count - 2] -notmatch '^offset \d+$') { throw 'The reader''s answer is not a frame.' }
+    foreach ($line in $lines[0..($lines.Count - 3)]) { , @(ConvertFrom-Hotpl8TestAnsiRow $line) }
+}
 
 function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [int]$Rows, [int]$Offset=0,[switch]$Nyan,[switch]$TerminalAnsi) {
-    $frame = @(Get-Hotpl8DashboardFrame $Status $Policy $fixture.now $Columns $Rows $Offset -Nyan:$Nyan -ReducedMotion:(-not $TerminalAnsi))
-    if($TerminalAnsi){
-        $frame=@(foreach($row in $frame){
-            # Exercise the cached live sprite path as well as ordinary styled rows.
-            if($row.live.render -eq 'Get-Hotpl8NyanRow'){$row=Invoke-Hotpl8LiveRow $row 0}
-            New-Hotpl8StyledRow @(ConvertFrom-Hotpl8TestAnsiRow (ConvertTo-Hotpl8AnsiRow $row $palette))
-        })
-    }
+    $frame = @(Get-DashboardCells $Status $Policy $Columns $Rows $Offset ([bool]$Nyan) ([bool]$TerminalAnsi))
     $font = New-Object Drawing.Font('Consolas', 18, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
     if ($font.Name -ne 'Consolas') { $font.Dispose(); throw 'Install Consolas to reproduce documentation images.' }
     $cellWidth = 11; $lineHeight = 24; $padding = 28; $titleHeight = 44
@@ -32,42 +47,36 @@ function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [i
     $bitmap.SetResolution(96, 96)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
     $brushes = @{}
+    function Get-Brush([string]$Colour) {
+        if (-not $brushes.ContainsKey($Colour)) { $rgb = $Colour.Split(';'); $brushes[$Colour] = New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])) }
+        $brushes[$Colour]
+    }
     $format = [Drawing.StringFormat]::GenericTypographic.Clone()
     $format.FormatFlags = $format.FormatFlags -bor [Drawing.StringFormatFlags]::MeasureTrailingSpaces
     try {
-        $background='18;23;35'
-        if($TerminalAnsi){$background=@(ConvertFrom-Hotpl8TestAnsiRow ((Get-Hotpl8AnsiColor $script:Hotpl8Background -Background)+' '))[0].background}
-        $rgb=$background.Split(';')
-        $graphics.Clear([Drawing.Color]::FromArgb([int]$rgb[0],[int]$rgb[1],[int]$rgb[2]))
+        # Every row opens on the dashboard's own background, which the margin continues.
+        $background = $frame[0][0].background
+        $rgb = $background.Split(';')
+        $graphics.Clear([Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2]))
         $graphics.TextRenderingHint = [Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-        foreach ($tone in $palette.Keys) {
-            $rgb = @($palette[$tone].Split(';') | ForEach-Object { [int]$_ })
-            $brushes[$tone] = New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb($rgb[0], $rgb[1], $rgb[2]))
-        }
-        $caption=if($TerminalAnsi){'HotPl8 / fictional accounts / Apple Terminal 256 colors'}else{'HotPl8  /  fictional accounts'}
-        $graphics.DrawString($caption, $font, $brushes.muted, [single]$padding, [single]$padding, $format)
+        $caption = if ($TerminalAnsi) { 'HotPl8 / fictional accounts / Apple Terminal 256 colors' } else { 'HotPl8  /  fictional accounts' }
+        $graphics.DrawString($caption, $font, (Get-Brush '143;156;181'), [single]$padding, [single]$padding, $format)
         for ($row = 0; $row -lt $frame.Count; $row++) {
-            # Position glyphs on the terminal cell grid, including wide graphemes.
-            $column=0
-            foreach($span in @(Get-Hotpl8RowSpans $frame[$row])){
-                $fg=Get-Hotpl8Color $span.tone $palette
-                if(-not $brushes.ContainsKey($fg)){$rgb=$fg.Split(';');$brushes[$fg]=New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb([int]$rgb[0],[int]$rgb[1],[int]$rgb[2]))}
-                $elements=[Globalization.StringInfo]::GetTextElementEnumerator($span.text)
-                while($elements.MoveNext()){
-                    $glyph=[string]$elements.Current;$cells=Get-DashboardCells $glyph
-                    if($span.background){
-                        $bg=Get-Hotpl8Color $span.background $palette
-                        if(-not $brushes.ContainsKey($bg)){$rgb=$bg.Split(';');$brushes[$bg]=New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb([int]$rgb[0],[int]$rgb[1],[int]$rgb[2]))}
-                        $graphics.FillRectangle($brushes[$bg],[single]($padding+$column*$cellWidth),[single]($padding+$titleHeight+$row*$lineHeight),[single]($cells*$cellWidth),[single]$lineHeight)
-                    }
+            # Position glyphs on the terminal cell grid. The fixtures hold none wider than a cell.
+            $column = 0
+            foreach ($span in $frame[$row]) {
+                $elements = [Globalization.StringInfo]::GetTextElementEnumerator($span.text)
+                while ($elements.MoveNext()) {
+                    $glyph = [string]$elements.Current
+                    $left = [single]($padding + $column * $cellWidth); $top = [single]($padding + $titleHeight + $row * $lineHeight)
+                    if ($TerminalAnsi -or $span.background -ne $background) { $graphics.FillRectangle((Get-Brush $span.background), $left, $top, [single]$cellWidth, [single]$lineHeight) }
                     # Block pixels occupy terminal cells, not a font's padded glyph box.
-                    $left=[single]($padding+$column*$cellWidth);$top=[single]($padding+$titleHeight+$row*$lineHeight)
-                    if($glyph -in @('▀','▄','█')){
-                        $dy=if($glyph -eq '▄'){$lineHeight/2}else{0}
-                        $height=if($glyph -eq '█'){$lineHeight}else{$lineHeight/2}
-                        $graphics.FillRectangle($brushes[$fg],$left,($top+$dy),[single]($cells*$cellWidth),[single]$height)
-                    }elseif($glyph -ne ' '){$graphics.DrawString($glyph,$font,$brushes[$fg],$left,$top,$format)}
-                    $column+=$cells
+                    if ($glyph -in @('▀', '▄', '█')) {
+                        $dy = if ($glyph -eq '▄') { $lineHeight / 2 } else { 0 }
+                        $height = if ($glyph -eq '█') { $lineHeight } else { $lineHeight / 2 }
+                        $graphics.FillRectangle((Get-Brush $span.foreground), $left, ($top + $dy), [single]$cellWidth, [single]$height)
+                    } elseif ($glyph -ne ' ') { $graphics.DrawString($glyph, $font, (Get-Brush $span.foreground), $left, $top, $format) }
+                    $column++
                 }
             }
         }
@@ -80,6 +89,7 @@ function Write-DashboardImage([string]$Name, $Status, $Policy, [int]$Columns, [i
     }
 }
 
+try {
 Write-DashboardImage 'dashboard.png' $fixture.status $fixture.policy 94 25
 Write-DashboardImage 'details.png' $fixture.status $fixture.policy 94 34 999
 $emptyPolicy = @{ mode = 'monitor'; prefer = @(); codex = @{ slots = @() } } | ConvertTo-Json -Depth 4 | ConvertFrom-Json
@@ -145,10 +155,9 @@ Write-DashboardImage 'session-capacity.png' $session.status $session.policy 94 4
 
 Write-DashboardImage 'nyan-compact.png' $healthy.status $healthy.policy 48 24 -Nyan
 
-# Same real terminal encoding as Apple Terminal, with a deterministic live frame.
-$previousTerminal=$env:TERM_PROGRAM
-try{
-    $env:TERM_PROGRAM='Apple_Terminal'
-    Write-DashboardImage 'nyan-apple-terminal.png' $healthy.status $healthy.policy 113 33 -Nyan -TerminalAnsi
-    Write-DashboardImage 'nyan-apple-terminal-large.png' $healthy.status $healthy.policy 109 40 -Nyan -TerminalAnsi
-}finally{$env:TERM_PROGRAM=$previousTerminal}
+# The colours Apple Terminal is sent, with a deterministic live frame.
+Write-DashboardImage 'nyan-apple-terminal.png' $healthy.status $healthy.policy 113 33 -Nyan -TerminalAnsi
+Write-DashboardImage 'nyan-apple-terminal-large.png' $healthy.status $healthy.policy 109 40 -Nyan -TerminalAnsi
+} finally {
+    if ([IO.Directory]::Exists($staging)) { [IO.Directory]::Delete($staging, $true) }
+}
