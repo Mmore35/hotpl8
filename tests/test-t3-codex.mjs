@@ -360,6 +360,24 @@ test('native quota notifications share one validation per interval and all reach
   assert.equal(h.requests.length, before + 3); h.bridge.close();
 });
 
+test('a publication is validated once, after its notifications have stopped', async () => {
+  const h = harness({ settleMs: 300 }); await opened(h); started(h);
+  const before = h.requests.length;
+  for (let n = 0; n < 5; n++) h.bridge.published();
+  await new Promise(done => setTimeout(done, 100));
+  assert.equal(h.requests.length, before);
+  // A later notification of the same publication starts the wait again.
+  h.bridge.published();
+  await new Promise(done => setTimeout(done, 250));
+  assert.equal(h.requests.length, before);
+  await new Promise(done => setTimeout(done, 200));
+  assert.equal(h.requests.length, before + 1); assert.equal(h.requests.at(-1).intent, 'rebind');
+  // A publication still waiting when the bridge closes asks nothing.
+  h.bridge.published(); h.bridge.close();
+  await new Promise(done => setTimeout(done, 450));
+  assert.equal(h.requests.length, before + 1);
+});
+
 test('closing the bridge stops a validation in flight and any held-back wakeup', async () => {
   const h = harness({ quotaIntervalMs: 50 }); await opened(h); started(h);
   const errors = []; h.bridge.onRoutingError = code => errors.push(code);

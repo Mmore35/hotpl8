@@ -222,7 +222,11 @@ try{
     $brokerOutput=$proc.StandardOutput.ReadToEndAsync();$null=$proc.StandardError.ReadToEndAsync()
     $proc.StandardInput.WriteLine(($backgroundRequest|ConvertTo-Json -Compress));$proc.StandardInput.Close()
     Assert ($proc.WaitForExit(20000)) 'a skipped background validation answers without waiting for the lock'
-    Assert (($brokerOutput.Result|ConvertFrom-Json).error -eq 'routing_account_busy' -and -not (Test-Path -LiteralPath (Join-Path $dir 'events.jsonl'))) 'a skipped background validation is not recorded as a failure'
+    Assert (($brokerOutput.Result|ConvertFrom-Json).error -eq 'routing_account_busy') 'a skipped background validation answers that the account is busy'
+    # The log was emptied after the refusals above. Nothing since may have recorded anything,
+    # and a failure here names what did.
+    $recorded=@(if(Test-Path -LiteralPath (Join-Path $dir 'events.jsonl')){[IO.File]::ReadAllLines((Join-Path $dir 'events.jsonl'))|Where-Object{$_}|ForEach-Object{($_|ConvertFrom-Json).code}})
+    Assert ($recorded.Count -eq 0) ('a skipped background validation is not recorded as a failure: '+($recorded -join ', '))
     Stop-Hotpl8Process $proc;$proc=$null
     # An admission waits for the lock until its 30 s deadline.
     $proc=Start-CodexQuotaProcess $brokerPsi
