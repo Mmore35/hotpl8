@@ -1,4 +1,4 @@
-//! src/provider-contract.ps1, and Resolve-Hotpl8Window from src/common.ps1.
+//! The shapes every provider's rules share: a setting, an age, a window, an account, a margin.
 
 use crate::ps::*;
 use crate::time::Dto;

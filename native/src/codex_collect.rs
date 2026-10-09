@@ -440,7 +440,7 @@ mod tests {
     use std::path::PathBuf;
 
     /// tests/parity/codex-buckets.json holds what PowerShell's rule answered for each
-    /// case; tests/test-codex.ps1 holds PowerShell's rule to the same file.
+    /// case while PowerShell had the rule.
     #[test]
     fn limits_read_as_the_shared_cases_say() {
         set_core(false);
@@ -574,7 +574,7 @@ mod tests {
     fn account(identity: &str, plan: &str, used: i32) -> HomeRead {
         let quota = format!(r#"{{"rateLimits":{{"limitId":"codex","primary":{{"usedPercent":{used},"windowDurationMins":10080,"resetsAt":1791720000}},"secondary":null,"spendControlReached":false}}}}"#);
         let quota = json::parse(&quota, "").ok().unwrap();
-        HomeRead { elapsed_ms: 40, outcome: Ok(Account { quota, identity_key: identity.into(), plan_type: plan.into(), model: "gpt-fixture".into(), model_provider: "openai".into(), standard_transport: true }) }
+        HomeRead { elapsed_ms: 40, outcome: Ok(Account { quota, identity_key: identity.into(), plan_type: plan.into(), model: "gpt-fixture".into(), model_provider: "openai".into(), standard_transport: true, identity_verified: false, auth: None }) }
     }
 
     fn failed(name: &'static str) -> HomeRead {

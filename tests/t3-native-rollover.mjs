@@ -1,7 +1,8 @@
 // Opt-in companion to probe-codex-rollover.py; never a production launcher.
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CodexBridge, readLines } from '../src/t3-codex.mjs';
 
@@ -12,69 +13,58 @@ if (!/^openai_base_url = "http:\/\/127\.0\.0\.1:\d+\/v1"$/m.test(config) || !pro
 const tokens = JSON.parse(process.env.HOTPL8_FIXTURE_TOKENS);
 const policyBroker = process.argv.includes('--policy-broker');
 const brokerEvidence = { calls: 0, validatedSlots: [], routingErrors: [] };
-const fixtureBroker = join(process.env.CODEX_HOME, 'fixture-policy-broker.ps1');
-if (policyBroker) {
-  // Fixture-only injection at the existing native quota Reader boundary. The
-  // production broker still validates binding, transport, scope, quotas and
-  // action controls and delegates the decision to the production shared core.
-  writeFileSync(fixtureBroker, String.raw`param([string]$Root,[string]$FixtureHome,[string]$Executable)
-$ErrorActionPreference='Stop'
-[Console]::InputEncoding=New-Object Text.UTF8Encoding($false)
-[Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
-try {
-    foreach($name in @('common','config','providers/claude','providers/codex','codex-routing')){. (Join-Path $Root ('src/'+$name+'.ps1'))}
-    $request=[Console]::ReadLine()|ConvertFrom-Json
-    $directory=Join-Path $FixtureHome 'fixture-routing'
-    if($request.operation -eq 'fixture/init'){
-        [void][IO.Directory]::CreateDirectory($directory)
-        $now=[datetimeoffset]::UtcNow;$slots=@();$bindings=@{};$rows=@();$native=@{}
-        foreach($id in @('a','b')){
-            $accountHome=Join-Path $directory $id;[void][IO.Directory]::CreateDirectory($accountHome)
-            $slots+=@{id=$id;home=$accountHome}
-            $bindings[$id]=@{identityKey=('fixture-'+$id);binding=(Get-Hotpl8Hash ([IO.Path]::GetFullPath($accountHome)))}
-            $quota=[pscustomobject]@{rateLimits=[pscustomobject]@{limitId='codex';primary=[pscustomobject]@{usedPercent=10;windowDurationMins=10080;resetsAt=$now.AddDays(3).ToUnixTimeSeconds()};secondary=$null;spendControlReached=$false;rateLimitReachedType=$null}}
-            $native[$id]=$quota
-            $rows+=@{id=$id;status='ok';observedAt=$now.ToString('o');defaultModel='fixture-model';buckets=(ConvertTo-CodexBuckets $quota $null $now)}
-        }
-        $policy=@{schemaVersion=2;mode='automate';switchEnabled=$true;warm=$false;probeEnabled=$false;prefer=@();codex=@{slots=$slots;prefer=@('a','b');order='prefer';defaultMeter='codex';modelMeters=@{'fixture-model'='codex'};margin7d=20;margin7dWork=5}}
-        Write-Hotpl8Text (Join-Path $directory 'policy.json') ($policy|ConvertTo-Json -Depth 20)
-        Write-Hotpl8Text (Join-Path $directory 'codex-state.json') (@{slots=$bindings}|ConvertTo-Json -Depth 10)
-        Write-Hotpl8Text (Join-Path $directory 'status.json') (@{providers=@{codex=@{observedAt=$now.ToString('o');recommendations=@{codex='a'};slots=$rows}}}|ConvertTo-Json -Depth 20)
-        Write-Hotpl8Text (Join-Path $directory 'fixture-quota.json') ($native|ConvertTo-Json -Depth 15)
-        [Console]::WriteLine('{"initialized":true}');exit 0
-    }
-    if($request.operation -eq 'fixture/rollover'){
-        $native=Read-Hotpl8Json (Join-Path $directory 'fixture-quota.json');$native.a.rateLimits.primary.usedPercent=96
-        Write-Hotpl8Text (Join-Path $directory 'fixture-quota.json') ($native|ConvertTo-Json -Depth 15)
-        $snapshot=Read-Hotpl8Json (Join-Path $directory 'status.json');$now=[datetimeoffset]::UtcNow
-        foreach($row in $snapshot.providers.codex.slots){$row.observedAt=$now.ToString('o');$row.buckets=ConvertTo-CodexBuckets $native.($row.id) $row.buckets $now}
-        $snapshot.providers.codex.observedAt=$now.ToString('o')
-        Write-Hotpl8Text (Join-Path $directory 'status.json') ($snapshot|ConvertTo-Json -Depth 20)
-        [Console]::WriteLine('{"published":true}');exit 0
-    }
-    $script:validated=@()
-    $reader={param($slot,$refresh,$budget)
-        $script:validated+= [string]$slot.id
-        $native=Read-Hotpl8Json (Join-Path $directory 'fixture-quota.json')
-        $tokens=$env:HOTPL8_FIXTURE_TOKENS|ConvertFrom-Json
-        [pscustomobject]@{status='ok';identityKey=('fixture-'+$slot.id);standardTransport=$true;modelProvider='openai';model='fixture-model';quota=$native.($slot.id);auth=@{accessToken=$tokens.($slot.id);chatgptAccountId=('fixture-'+$slot.id);chatgptPlanType='plus'}}
-    }
-    $result=Get-Hotpl8CodexRoute $request $directory $Executable $reader
-    $result|Add-Member NoteProperty fixtureEvidence @{validatedSlots=@($script:validated)}
-    [Console]::WriteLine(($result|ConvertTo-Json -Depth 20 -Compress))
-}catch{
-    $code=[string]$_.Exception.Message
-    if($code -notmatch '^routing_[a-z_]+$'){$code='fixture_broker_failed'}
-    [Console]::WriteLine((@{error=$code}|ConvertTo-Json -Compress));exit 1
-}
-`, 'utf8');
-}
-const callPolicyBroker = request => new Promise((resolve, reject) => {
-  const executable = process.platform === 'win32'
-    ? join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : 'pwsh';
-  const proc = spawn(executable, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', fixtureBroker,
-    '-Root', fileURLToPath(new URL('../', import.meta.url)), '-FixtureHome', process.env.CODEX_HOME,
-    '-Executable', process.argv[2]], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+// With --policy-broker the account is chosen by the compiled program a release ships,
+// started as the bridge starts it. Only what it reads is the fixture's: a stand-in is read
+// in place of Codex for each account's facts (native/examples/codex_stand_in.rs, which a
+// checkout builds with `cargo build --examples`), beside what a collection would have
+// published of the same two accounts.
+const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
+const windows = process.platform === 'win32';
+const routeProgram = join(root, 'bin', ...(windows ? ['windows', 'hotpl8-native.exe'] : [process.platform === 'darwin' ? 'macos' : 'linux', 'hotpl8-native']));
+const reader = join(root, 'native', 'target', 'debug', 'examples', windows ? 'codex_stand_in.exe' : 'codex_stand_in');
+const routing = resolve(process.env.CODEX_HOME, 'fixture-routing');
+const slots = ['a', 'b'];
+const address = id => `${id}@example.invalid`;
+const save = (name, value) => writeFileSync(join(routing, name), JSON.stringify(value), 'utf8');
+const hash = text => createHash('sha256').update(text, 'utf8').digest('hex');
+const resets = Math.floor(Date.now() / 1000) + 3 * 86400;
+// What each account answers when it is read, and what a collection published of it.
+const publish = used => {
+  const at = new Date().toISOString().replace('Z', '0000+00:00');
+  for (const id of slots) {
+    const limits = { rateLimits: { limitId: 'codex', primary: { usedPercent: used[id], windowDurationMins: 10080, resetsAt: resets },
+      secondary: null, spendControlReached: false, rateLimitReachedType: null } };
+    writeFileSync(join(routing, id, 'stand-in.txt'), [
+      'initialize reply {}',
+      `account/read reply ${JSON.stringify({ account: { type: 'chatgpt', email: address(id), planType: 'plus' } })}`,
+      `account/rateLimits/read reply ${JSON.stringify(limits)}`,
+      `config/read reply ${JSON.stringify({ config: { model: 'fixture-model', model_provider: 'openai' } })}`, ''].join('\n'), 'utf8');
+  }
+  const measured = id => ({ codex: { meter: 'codex', status: 'observed', blockReason: null, warm: 'not applicable: no five-hour window',
+    windows: { 10080: { usedPercent: used[id], remainingPercent: 100 - used[id], resetsAt: resets, anchorState: 'unconfirmed', observedAt: at } } } });
+  save('status.json', { providers: { codex: { observedAt: at, recommendations: { codex: 'a' },
+    slots: slots.map(id => ({ id, status: 'ok', observedAt: at, defaultModel: 'fixture-model', buckets: measured(id) })) } } });
+};
+const initialize = () => {
+  if (!existsSync(routeProgram) || !existsSync(reader)) throw new Error('fixture_broker_unbuilt');
+  const recorded = {};
+  for (const id of slots) {
+    const home = join(routing, id);
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, 'auth.json'), JSON.stringify({ tokens: { access_token: tokens[id], account_id: `fixture-${id}` } }), 'utf8');
+    // Who a collection found the home to belong to, and where the home was.
+    recorded[id] = { identityKey: hash(`${address(id)}||fixture-${id}`), binding: hash(home) };
+  }
+  save('policy.json', { schemaVersion: 2, mode: 'automate', switchEnabled: true, warm: false, probeEnabled: false, prefer: [],
+    codex: { slots: slots.map(id => ({ id, home: join(routing, id) })), prefer: slots, order: 'prefer', defaultMeter: 'codex',
+      modelMeters: { 'fixture-model': 'codex' }, margin7d: 20, margin7dWork: 5 } });
+  save('codex-state.json', { slots: recorded });
+  publish({ a: 10, b: 10 });
+};
+const callPolicyBroker = request => new Promise((resolveRoute, reject) => {
+  // The stand-in leaves this file in each home it is started in.
+  for (const id of slots) rmSync(join(routing, id, 'started.txt'), { force: true });
+  const proc = spawn(routeProgram, ['route', '--root', root, '--state', routing, '--codex', reader], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
   let output = '';
   const timeout = setTimeout(() => { proc.kill(); reject(new Error('fixture_broker_timeout')); }, 25000);
   proc.stdout.setEncoding('utf8'); proc.stdout.on('data', data => { output += data; });
@@ -82,19 +72,18 @@ const callPolicyBroker = request => new Promise((resolve, reject) => {
   proc.on('close', code => {
     clearTimeout(timeout);
     try {
-      const result = JSON.parse(output.replace(/^\uFEFF/, ''));
+      const result = JSON.parse(output);
       if (code || result.error) { const err = new Error(result.error || 'fixture_broker_failed'); err.code = err.message; reject(err); return; }
-      if (result.fixtureEvidence) {
-        brokerEvidence.calls++;
-        brokerEvidence.validatedSlots.push(...result.fixtureEvidence.validatedSlots);
-      }
-      resolve(result);
+      brokerEvidence.calls++;
+      brokerEvidence.validatedSlots.push(...slots.filter(id => existsSync(join(routing, id, 'started.txt'))));
+      resolveRoute(result);
     } catch { reject(new Error('fixture_broker_invalid_response')); }
   });
+  proc.stdin.on('error', () => {});
   proc.stdin.end(JSON.stringify(request) + '\n');
 });
 if (policyBroker) {
-  try { await callPolicyBroker({ operation: 'fixture/init' }); }
+  try { initialize(); }
   catch {
     // The Python client begins with initialize id1. Report a bounded fixture
     // startup error instead of making it wait for a response from a dead child.
@@ -122,7 +111,7 @@ readLines(child.stdout, message => {
 readLines(process.stdin, message => {
   if (message.method === 'fixture/rollover') {
     void (async () => {
-      if (policyBroker) await callPolicyBroker({ operation: 'fixture/rollover' });
+      if (policyBroker) publish({ a: 96, b: 10 });
       else selected = 'b';
       await bridge.observe();
       write(process.stdout, { id: message.id, result: { selected: bridge.route?.slot, policyBroker, ...brokerEvidence } });

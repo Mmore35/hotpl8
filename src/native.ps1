@@ -1,13 +1,14 @@
-# version, status, explain, what the tray shows and the dashboard (watch and nyan) are the
-# compiled reader's: PowerShell holds no implementation of them and hands each request to
-# the reader this copy ships (native/, built by scripts/build-native.ps1). hotpl8.ps1 loads
+# version, status, explain, what the tray shows, the dashboard (watch and nyan) and a Codex
+# launch are the compiled reader's: PowerShell holds no implementation of them and hands each
+# request to the reader this copy ships (native/, built by scripts/build-native.ps1). hotpl8.ps1 loads
 # this before src/common.ps1, so it must stay self-contained: a plain request is only fast
 # while it loads nothing it has no use for.
 # That includes PowerShell's own modules: the first Join-Path, New-Object or Select-Object in
 # a fresh Windows PowerShell loads one and costs 50 to 80 ms, so this file and the hand-over
 # in hotpl8.ps1 call .NET directly.
 # -Attended gives the reader this terminal as it is, keys and screen, and collects nothing.
-function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[switch]$Attended) {
+# -Asked is the whole of what the program reads, and without it the program reads nothing.
+function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[switch]$Attended,[string]$Asked) {
     $process=$null
     try{
         $info=[Diagnostics.ProcessStartInfo]::new()
@@ -25,10 +26,20 @@ function Invoke-Hotpl8NativeProcess([string]$Path,[string[]]$Arguments,[switch]$
         }
         $info.CreateNoWindow=$true
         $info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
+        $info.RedirectStandardInput=$PSBoundParameters.ContainsKey('Asked')
         $info.StandardOutputEncoding=[Text.UTF8Encoding]::new($false);$info.StandardErrorEncoding=[Text.UTF8Encoding]::new($false)
         $process=[Diagnostics.Process]::Start($info)
         # Drain both pipes before waiting: a reader blocked on a full pipe never exits.
         $output=$process.StandardOutput.ReadToEndAsync();$errors=$process.StandardError.ReadToEndAsync()
+        if($info.RedirectStandardInput){
+            # Written as bytes: the writer a process is given encodes as the console does. A
+            # program that ended without reading says so by how it ended.
+            try{
+                $bytes=[Text.UTF8Encoding]::new($false).GetBytes($Asked)
+                $process.StandardInput.BaseStream.Write($bytes,0,$bytes.Length);$process.StandardInput.BaseStream.Flush()
+            }catch{}
+            try{$process.StandardInput.Close()}catch{}
+        }
         $process.WaitForExit()
         return [pscustomobject]@{exitCode=$process.ExitCode;output=$output.Result;errors=$errors.Result}
     }finally{if($process){$process.Dispose()}}
@@ -91,4 +102,23 @@ function Exit-Hotpl8NativeDashboard([string]$Root,[string]$Command,[string]$Stat
     try{$result=Invoke-Hotpl8NativeProcess ([Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) $again -Attended}catch{$result=$null}
     if($result){exit $result.exitCode}
     exit 1
+}
+# Ends codex as Codex ends it. The reader chooses the account, reads its home and starts
+# Codex on this terminal, in the directory this session is in. The words after -- are
+# Codex's, as they were written.
+function Exit-Hotpl8NativeCodex([string]$Root,[string]$StateDirectory,[string]$CodexExecutable,[string]$Provider,[string]$Slot,[string]$Model,[string]$Directory,[string[]]$Words) {
+    $arguments=@('codex','--root',$Root,'--provider',$Provider,'--directory',$Directory)
+    if($StateDirectory){$arguments+=@('--state',$StateDirectory)}
+    if($CodexExecutable){$arguments+=@('--codex',$CodexExecutable)}
+    if($Slot){$arguments+=@('--slot',$Slot)}
+    if($Model){$arguments+=@('--model',$Model)}
+    $arguments+='--'
+    if($Words){$arguments+=$Words}
+    $result=$null
+    try{$result=Invoke-Hotpl8NativeProcess (Get-Hotpl8NativePath $Root) $arguments -Attended}catch{$result=$null}
+    if(-not $result){
+        [Console]::Error.WriteLine('HotPl8: This copy has no compiled reader it can start, and Codex is launched by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.')
+        exit 1
+    }
+    exit $result.exitCode
 }

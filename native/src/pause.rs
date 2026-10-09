@@ -1,5 +1,5 @@
-//! src/leases.ps1 and Get-Hotpl8Pause of src/automation.ps1: what is holding automation
-//! back. Only the reading side is here; nothing writes a ledger.
+//! What is holding automation back: a pause a person set, and the leases agents hold.
+//! Only the reading side is here; src/leases.ps1 writes the ledger.
 
 use crate::json;
 use crate::obj;
@@ -123,7 +123,7 @@ fn read_ledger(directory: &Path) -> R<Option<V>> {
 }
 
 /// Get-Hotpl8LeasePause
-fn lease_pause(directory: &Path, now: Dto) -> R<V> {
+pub fn lease_pause(directory: &Path, now: Dto) -> R<V> {
     let Some(ledger) = read_ledger(directory)? else {
         return Ok(obj! {"until" => V::Null, "reason" => "invalid_leases", "invalid" => true, "leaseCount" => V::Null});
     };

@@ -2,7 +2,6 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 foreach($module in @('common','config','diagnostics','management','onboarding','onboarding-native','onboarding-install','onboarding-ui','agent-api','mcp')){. (Join-Path $root ('src/'+$module+'.ps1'))}
-. (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
 $lab=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-onboarding-flow-'+[guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($lab)

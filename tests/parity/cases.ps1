@@ -1,8 +1,7 @@
 # Parity cases for `hotpl8 status` and `hotpl8 explain`.
 #
-# A case is a set of state files, written as JSON text so PowerShell's rules and the compiled
-# reader's read the same bytes. Times are tokens relative to the instant the case
-# runs at (see Expand-Hotpl8ParityText). Every name, label and reading here is fictional.
+# A case is a set of state files, written as JSON text. Times are tokens relative to the
+# instant the case runs at (see Expand-Hotpl8ParityText). Every name, label and reading here is fictional.
 #
 #   name     unique
 #   files    file name -> JSON text, written into the state directory
@@ -12,13 +11,10 @@
 #   noBom    write the files without a byte order mark
 #   catalog  file name -> text: the provider definitions of the copy the case is asked of,
 #            all of them, in place of the two a release ships
-#   expect   what the compiled reader must do with files PowerShell's rules take:
-#              'answer'   compute the same (the default)
-#              'refuse'   refuse them, because it reads files more strictly
-#              'either'   refuse them, or compute the same
-#            A hash table sets it per form: status-json, explain-json, explain, and default.
+#   expect   'refuse' for files the compiled program must refuse; it reads them more strictly
+#            than the PowerShell commands it replaced did
 #
-# Files PowerShell's rules refuse, the reader must refuse; no case can ask for anything else.
+# What the program says of each case is recorded beside this file (tests/test-native-parity.ps1).
 
 # Case files carry times relative to the instant a case runs at, so the same text serves a
 # pinned instant and the real clock:

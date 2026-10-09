@@ -118,7 +118,7 @@ move its thread selections back before removal.
 1. T3 starts the native launcher with its original argument boundaries and pipes.
 2. The bridge starts Codex against T3's existing shared home, forcing ephemeral
    credential storage. It validates the effective provider/transport configuration.
-3. A private PowerShell broker reuses HotPl8's selectors, reserves, critical policy,
+3. A private broker, the compiled program HotPl8 ships, applies HotPl8's selectors, reserves, critical policy,
    holds, the configured account quota basis, freshness checks and canonical identity bindings.
    It validates the selected home through native account/quota reads. A newly
    exhausted candidate is excluded and another fresh eligible candidate can win.
@@ -261,6 +261,7 @@ Codex process, the actual launcher/broker pipes, argument escaping, settings
 installation/removal and token redaction. Run:
 
 ```powershell
+cargo test --locked --manifest-path native/Cargo.toml route::
 node --test tests/test-t3-codex.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-routing.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/test-t3-migration.ps1

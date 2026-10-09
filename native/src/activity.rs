@@ -1,4 +1,4 @@
-//! The activity record of src/insights.ps1: what HotPl8 did or saw happen to an account,
+//! The activity record: what HotPl8 did or saw happen to an account,
 //! newest last, for `hotpl8 status` to show.
 
 use crate::files;

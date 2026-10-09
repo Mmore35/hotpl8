@@ -1,8 +1,7 @@
 # Offline contracts for persistent automation, estimates, replay and desktop delivery.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-foreach($file in @('common','config','diagnostics','insights','management','collection','updates','tray')){. (Join-Path $root ('src/'+$file+'.ps1'))}
-. (Join-Path $root 'src/providers/claude.ps1')
+foreach($file in @('common','config','diagnostics','management','collection','updates','tray')){. (Join-Path $root ('src/'+$file+'.ps1'))}
 . (Join-Path $root 'src/providers/codex.ps1')
 . (Join-Path $PSScriptRoot 'fixtures/screenshots.ps1')
 $script:passed=0;$script:failed=0
@@ -14,16 +13,6 @@ $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-operations-'+[guid]::NewGuid(
 [void][IO.Directory]::CreateDirectory($dir)
 $now=[datetimeoffset]::Parse('2026-09-13T12:00:00Z')
 try{
-    Check 'one provider storage failure does not mark the other provider unhealthy' {
-        # As the collector records a read that worked beside one it could not write down.
-        $at=$now.ToString('o')
-        $c=[pscustomobject]@{startedAt=$at;completedAt=$at;status='incomplete';providers=[pscustomobject]@{
-            claude=[pscustomobject]@{lastAttemptAt=$at;lastSuccessAt=$at;failures=0;nextAttemptAt=$now.AddMinutes(5).ToString('o');status='ok'}
-            codex=[pscustomobject]@{lastAttemptAt=$at;lastSuccessAt=$null;failures=1;nextAttemptAt=$now.AddMinutes(1).ToString('o');status='unavailable';failureCode='state_io_failed'}}}
-        Assert ((Get-Hotpl8Health $c $now claude) -eq 'recent collection completed')
-        Assert ((Get-Hotpl8Health $c $now codex) -eq 'local state write failed; retrying')
-        Assert ((Get-Hotpl8Health $c $now) -eq 'local state write failed; retrying')
-    }
     Check 'completed snapshot outranks its older collector started marker' {
         $p=Read-Hotpl8Json (Join-Path $root 'policy.example.json')
         $started=$now.AddSeconds(-2).ToString('o');$done=$now.ToString('o')
@@ -34,15 +23,6 @@ try{
         Write-Hotpl8Text (Join-Path $dir 'collector.json') (@{startedAt=$now.AddSeconds(1).ToString('o');completedAt=$done;status='ok'}|ConvertTo-Json)
         $s=Read-Hotpl8Snapshot $dir $p
         Assert ($s.collector.startedAt -eq $now.AddSeconds(1).ToString('o')) 'a genuinely newer in-progress collection stays visible'
-    }
-    Check 'a Sunday overnight schedule is a valid policy' {
-        $s=[pscustomobject]@{days=@(0);start='22:00';end='02:00';timeZone='UTC'}
-        Assert-Hotpl8AutomationPolicy (Clone @{automation=@{schedule=$s}})
-    }
-    Check 'invalid work days time zone and budgets fail validation' {
-        foreach($a in @(@{dailyAttemptLimit=0},@{dailyAttemptLimit='12'},@{schedule=@{days=@(0);start='25:00';end='12:00'}},@{schedule=@{days=@(0,0);start='10:00';end='12:00'}},@{schedule=@{days=@(0);start='10:00';end='12:00';timeZone='not-a-time-zone'}})){
-            Reject {Assert-Hotpl8AutomationPolicy (Clone @{automation=$a})}
-        }
     }
     Check 'persistent pause is read back until it is resumed' {
         Set-Hotpl8Pause $dir 60 'test pause'
@@ -83,39 +63,21 @@ try{
         Reject {Save-Hotpl8Policy $dir $p $hash}
         Assert ((Read-Hotpl8Json (Join-Path $dir 'policy.json')).schemaVersion -eq 2)
     }
-    Check 'health distinguishes collecting stalled overdue and partial collection' {
-        $s=Clone @{startedAt=$now.ToString('o')}
-        Assert ((Get-Hotpl8Health $s $now) -eq 'collecting')
-        Assert ((Get-Hotpl8Health $s $now.AddMinutes(5)) -eq 'collector stalled')
-        $s|Add-Member NoteProperty completedAt $now.AddSeconds(1).ToString('o');$s|Add-Member NoteProperty status 'incomplete'
-        Assert ((Get-Hotpl8Health $s $now.AddMinutes(1)) -eq 'provider checks incomplete')
-        Assert ((Get-Hotpl8Health $s $now.AddMinutes(16)) -eq 'collector overdue')
-    }
     Check 'a stalled first collection is visible before any status snapshot exists' {
         $first=Join-Path $dir 'first-collection';[void][IO.Directory]::CreateDirectory($first)
         Write-Hotpl8Text (Join-Path $first 'collector.json') (@{schemaVersion=1;startedAt=$now.AddMinutes(-10).ToString('o')}|ConvertTo-Json)
         $s=Read-Hotpl8Snapshot $first
-        Assert ($null -eq $s.generatedAt -and (Get-Hotpl8Health $s.collector $now) -eq 'collector stalled')
+        Assert ($null -eq $s.generatedAt -and $s.collector.startedAt -eq $now.AddMinutes(-10).ToString('o'))
         Assert (-not (Test-Path -LiteralPath (Join-Path $first 'status.json')))
     }
-    Check 'a native launch read skips only the reader-side display summaries' {
+    Check 'a read works out the overview again and adds park advice, whatever the collector stored' {
         $launch=Join-Path $dir 'launch-read';[void][IO.Directory]::CreateDirectory($launch)
         $f=Get-Hotpl8ScreenshotFixture
-        # The collector publishes its own overview in status.json; a launch read leaves it as stored.
         $f.status|Add-Member NoteProperty providerOverview ([pscustomobject]@{stored='collector copy'}) -Force
         Write-Hotpl8Text (Join-Path $launch 'policy.json') ($f.policy|ConvertTo-Json -Depth 24)
         Write-Hotpl8Text (Join-Path $launch 'status.json') ($f.status|ConvertTo-Json -Depth 24)
-        $full=Read-Hotpl8Snapshot $launch;$lean=Read-Hotpl8Snapshot $launch -SkipDisplay
-        Assert ($full.providerOverview.codex -and -not $full.providerOverview.stored -and $full.PSObject.Properties['parkCandidates']) 'default read recomputes the overview and adds park advice'
-        Assert ($lean.providerOverview.stored -ceq 'collector copy' -and -not $lean.PSObject.Properties['parkCandidates']) 'launch read keeps the stored snapshot and computes no display summary'
-        foreach($snapshot in @($full,$lean)){foreach($name in @('providerOverview','parkCandidates')){if($snapshot.PSObject.Properties[$name]){$snapshot.PSObject.Properties.Remove($name)}}}
-        Assert ($full.providers.codex -and ($full|ConvertTo-Json -Depth 24) -ceq ($lean|ConvertTo-Json -Depth 24)) 'everything a launch reads is unchanged'
-    }
-    Check 'weekly-expiry and balanced ranking have distinct defined objectives' {
-        $early=$now.AddDays(1).ToString('o');$late=$now.AddDays(5).ToString('o')
-        Assert ((Get-Hotpl8SelectionKey weekly-expiry 50 20 $early $now) -lt (Get-Hotpl8SelectionKey weekly-expiry 90 90 $late $now))
-        Assert ((Get-Hotpl8SelectionKey balanced 50 80 $early $now) -lt (Get-Hotpl8SelectionKey balanced 90 90 $late $now))
-        Assert ((Get-Hotpl8SelectionKey weekly-expiry 100 100 '' $now) -eq [double]::MaxValue)
+        $full=Read-Hotpl8Snapshot $launch
+        Assert ($full.providers.codex -and $full.providerOverview.codex -and -not $full.providerOverview.stored -and $full.PSObject.Properties['parkCandidates'])
     }
     Check 'shadow replay respects Codex disabled and reserve eligibility in every strategy' {
         $f=Get-Hotpl8ScreenshotFixture
@@ -141,11 +103,6 @@ try{
         Write-Hotpl8Text (Join-Path $dir 'usage-history.json') '{"schemaVersion":1,"samples":[{"key":"claude/x"},{"key":"codex/y"}]}'
         $stores=@(Get-Hotpl8HistoryStores $p $dir)
         Assert ($stores.Count -eq 1 -and $stores[0].samples -eq 2 -and $stores[0].providers.Count -eq 2)
-    }
-    Check 'explicit launch cannot bypass a disabled Codex home' {
-        $p=Clone @{slots=@(@{id='off';home=(Join-Path $dir 'off')},@{id='on';home=(Join-Path $dir 'on')});disabled=@('off');prefer=@('off','on')}
-        $s=Clone @{observedAt=$now.ToString('o');slots=@(@{id='off';label='off';status='disabled'},@{id='on';label='on';status='home_missing'})}
-        Reject {Get-CodexLaunchPlan $p $s off '' @() $now}
     }
     Check 'notifications survive restarts without reset-drift duplicates and rearm on recovery' {
         $c=Clone @{key='codex/opaque/codex/weekly';title='Quota';text='estimate'}

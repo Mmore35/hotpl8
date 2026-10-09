@@ -1,11 +1,10 @@
 # Offline broker, native launcher and reversible settings integration.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
+. (Join-Path $root 'src/native.ps1')
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
-. (Join-Path $root 'src/providers/claude.ps1')
 . (Join-Path $root 'src/providers/codex.ps1')
-. (Join-Path $root 'src/codex-routing.ps1')
 $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-t3-'+[guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($dir)
 $passed=0
@@ -27,204 +26,78 @@ try{
         $read=Read-CodexQuota $accountHome $exe 5000 $dir
         Assert ($read.status -eq 'ok' -and -not $read.PSObject.Properties['auth']) 'ordinary collection must not export access tokens'
         $bindings[$id]=@{binding=(Get-Hotpl8Hash $accountHome);identityKey=$read.identityKey}
-        $rows+=@{id=$id;status='ok';observedAt=$now.ToString('o');defaultModel='fixture-model';buckets=(ConvertTo-CodexBuckets $read.quota $null $now)}
+        # The buckets a collection would store of that reading: one weekly window, a tenth used.
+        $limit=$read.quota.rateLimits.primary
+        $week=@{usedPercent=[double]$limit.usedPercent;remainingPercent=100.0-[double]$limit.usedPercent;resetsAt=$limit.resetsAt;anchorState='unconfirmed';observedAt=$now.ToString('o')}
+        $rows+=@{id=$id;status='ok';observedAt=$now.ToString('o');defaultModel='fixture-model';buckets=@{codex=@{meter='codex';status='observed';blockReason=$null;windows=@{'10080'=$week};warm='not applicable: no five-hour window'}}}
     }
     $policy=@{schemaVersion=2;mode='monitor';prefer=@();codex=@{slots=$slots;prefer=@('a','b');reserve=@();order='prefer';defaultMeter='codex';modelMeters=@{'fixture-model'='codex'};margin7d=20;margin7dWork=5}}
     $status=@{observedAt=$now.ToString('o');recommendations=@{codex='a'};slots=$rows}
     Save 'policy.json' $policy;Save 'status.json' @{providers=@{codex=$status}};Save 'codex-state.json' @{slots=$bindings}
     $request=[pscustomobject]@{operation='select';model='fixture-model';cwd=$dir}
-    $route=Get-Hotpl8CodexRoute $request $dir $exe
-    Assert ($route.slot -eq 'a' -and $route.auth.accessToken -eq 'FAKE-a') 'preferred native account selected'
-    Assert (($route|ConvertTo-Json -Depth 10) -notmatch 'NEVER_EXPORT') 'refresh token never exported'
+    # Which account a request is given is decided by the compiled program, and each rule of
+    # that decision is tested beside it (native/src/route.rs). These start the program as
+    # the bridge does and let it read the fixture Codex: one request a process.
+    $native=Get-Hotpl8NativePath $root
+    function Ask($Request,[string]$Line){
+        if(-not $Line){$Line=$Request|ConvertTo-Json -Depth 10 -Compress}
+        $answer=Invoke-Hotpl8NativeProcess $native @('route','--root',$root,'--state',$dir,'--codex',$exe) -Asked ($Line+"`n")
+        $script:answered=$answer.output
+        if($answer.errors -or $answer.output -cnotmatch '\A[^\n]+\n\z'){throw 'a route answers one line and nothing else'}
+        $said=$answer.output|ConvertFrom-Json
+        if($said.error){
+            if($answer.exitCode -ne 1 -or @($said.PSObject.Properties).Count -ne 1){throw 'a refusal is its code alone and ends with 1'}
+            throw [string]$said.error
+        }
+        if($answer.exitCode -ne 0){throw 'an account that is given ends with 0'}
+        $said
+    }
+    $route=Ask $request
+    Assert ($route.slot -eq 'a' -and $route.home -eq (Join-Path $dir 'a') -and $route.meter -eq 'codex' -and $route.auth.accessToken -eq 'FAKE-a' -and $route.auth.chatgptAccountId -eq 'a') 'preferred native account selected'
+    Assert ($script:answered -notmatch 'NEVER_EXPORT') 'refresh token never exported'
+    Assert ($route.criticalState.selected -eq 'a' -and $route.authorizationGeneration -match '^[a-f0-9]{64}$') 'an answer names what it was authorized under'
+    $execRequest=[pscustomobject]@{operation='exec';model='fixture-model';cwd=$dir}
+    $route=Ask $execRequest
+    Assert ($route.slot -eq 'a' -and $null -eq $route.auth -and $script:answered -notmatch 'FAKE-') 'a run that is not a chat is not handed the sign-in'
     # A saturated machine makes every native read slow, the collector's included.
-    # An admission that allowed its own read less time than the collector's lost
-    # the preferred account, and with every account slow had none left.
     [IO.File]::WriteAllText((Join-Path $dir 'a/start-delay-ms'),'7000')
-    $script:readBudgets=@()
-    $timedRead={param($slot,$refresh,$budget)
-        $script:readBudgets+=$budget
-        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
-    }
-    $slowClock=[Diagnostics.Stopwatch]::StartNew()
-    Assert ((Get-Hotpl8CodexRoute $request $dir $exe $timedRead).slot -eq 'a') 'a slow native read still admits the preferred account'
-    Assert ($slowClock.ElapsedMilliseconds -ge 7000 -and $script:readBudgets.Count -eq 1 -and $script:readBudgets[0] -eq (Get-CodexReadBudgetMs)) 'admission allows a native read the time the collector allows'
+    Assert ((Ask $request).slot -eq 'a') 'a slow native read still admits the preferred account'
     [IO.File]::Delete((Join-Path $dir 'a/start-delay-ms'))
-    # A collector that collided with a broker retains its previous quota. A new
-    # admission must be able to validate that fresh candidate after the lock clears.
-    foreach($row in $rows){$row.status='home_busy'}
-    Save 'status.json' @{providers=@{codex=$status}}
-    Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'a') 'cached collector contention is recoverable through fresh native validation'
-    $script:recoveryReads=0
-    $recoveryFailure={param($slot,$refresh);$script:recoveryReads++;[pscustomobject]@{status='authentication_required'}}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
-    Assert ($script:recoveryReads -eq 2) 'cached quota alone cannot authorize a contended account'
-    foreach($row in $rows){$row.observedAt=$now.AddHours(-1).ToString('o')}
-    Save 'status.json' @{providers=@{codex=$status}}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
-    Assert ($script:recoveryReads -eq 2) 'contention recovery preserves per-account freshness gates'
-    # One slow collector read under load is the same: the retained quota is
-    # still fresh, and fresh native validation still decides.
-    foreach($row in $rows){$row.status='timeout';$row.observedAt=$now.ToString('o')}
-    Save 'status.json' @{providers=@{codex=$status}}
-    Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'a') 'a fresh account after one timed-out collector read is recoverable'
-    $script:recoveryReads=0
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
-    Assert ($script:recoveryReads -eq 2) 'cached quota alone cannot authorize a timed-out account'
-    foreach($row in $rows){$row.observedAt=$now.AddHours(-1).ToString('o')}
-    Save 'status.json' @{providers=@{codex=$status}}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
-    Assert ($script:recoveryReads -eq 2) 'timeout recovery preserves per-account freshness gates'
-    foreach($row in $rows){$row.status='authentication_required';$row.observedAt=$now.ToString('o')}
-    Save 'status.json' @{providers=@{codex=$status}}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $recoveryFailure} 'routing_unavailable'
-    Assert ($script:recoveryReads -eq 2) 'only a busy or slow read is reconsidered'
-    foreach($row in $rows){$row.status='ok';$row.observedAt=$now.ToString('o')}
-    Save 'status.json' @{providers=@{codex=$status}}
     $background=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='a';cwd=$dir}
-    $script:controlReads=0
-    $unexpectedRead={param($slot,$refresh);$script:controlReads++;throw 'unexpected native read'}
-    Reject {Get-Hotpl8CodexRoute $background $dir $exe $unexpectedRead} 'routing_monitor_only'
-    Assert ($script:controlReads -eq 0) 'monitor suppresses autonomous routing before native validation'
-    $policy.mode='automate';$policy.switchEnabled=$false;Save 'policy.json' $policy
-    Reject {Get-Hotpl8CodexRoute $background $dir $exe $unexpectedRead} 'routing_switching_disabled'
-    $policy.switchEnabled=$true;Save 'policy.json' $policy
-    Save 'automation-pause.json' @{until=$now.AddMinutes(5).ToString('o');reason='fixture'}
-    Reject {Get-Hotpl8CodexRoute $background $dir $exe $unexpectedRead} 'routing_automation_paused'
-    Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'a') 'explicit admission remains available during pause'
-    $pinned=[pscustomobject]@{operation='refresh';previousSlot='a';accountId='a';model='fixture-model';cwd=$dir}
-    Assert ((Get-Hotpl8CodexRoute $pinned $dir $exe).slot -eq 'a') 'same-identity token refresh remains available during pause'
+    Reject {Ask $background} 'routing_monitor_only'
+    $policy.mode='automate';$policy.switchEnabled=$true;Save 'policy.json' $policy
+    Save 'automation-pause.json' @{until=[datetimeoffset]::UtcNow.AddMinutes(5).ToString('o');reason='fixture'}
+    Reject {Ask $background} 'routing_automation_paused'
+    Assert ((Ask $request).slot -eq 'a') 'explicit admission remains available during pause'
     [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
-    $changedDuringRead={param($slot,$refresh,$budget)
-        $result=Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
-        Save 'automation-pause.json' @{until=$now.AddMinutes(5).ToString('o');reason='during-validation'}
-        return $result
-    }
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $changedDuringRead} 'routing_state_changed'
-    [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
-    # Same production margins as launch selection, measured on both sides before
-    # exhaustion. No separate rollover threshold or quota scheduler.
+    # What a fresh read finds decides, not what the collector last published.
     $ongoing=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';models=@('fixture-model');previousSlot='a';cwd=$dir}
     [IO.File]::WriteAllText((Join-Path $dir 'a/used-percent'),'94')
-    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'b') 'fresh native degraded quota yields to healthy work before the five percent floor'
-    $script:fallbackReads=@{a=0;b=0}
-    $unavailablePeer={param($slot,$refresh,$budget)
-        $script:fallbackReads[$slot.id]++
-        if($slot.id -eq 'b'){return [pscustomobject]@{status='authentication_required'}}
-        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
-    }
-    $fallback=Get-Hotpl8CodexRoute $request $dir $exe $unavailablePeer
-    Assert ($fallback.slot -eq 'a' -and $fallback.auth.accessToken -eq 'FAKE-a') 'validated degraded account remains a fallback when healthier peer fails'
-    Assert ($script:fallbackReads.a -eq 1 -and $script:fallbackReads.b -eq 1) 'fallback uses one native validation per candidate'
-    $changedBeforeFallback={param($slot,$refresh,$budget)
-        if($slot.id -eq 'b'){
-            Save 'automation-pause.json' @{until=$now.AddMinutes(5).ToString('o');reason='before-fallback'}
-            return [pscustomobject]@{status='authentication_required'}
-        }
-        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
-    }
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $changedBeforeFallback} 'routing_state_changed'
-    [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
-    $reboundBeforeFallback={param($slot,$refresh,$budget)
-        if($slot.id -eq 'b'){
-            $drift=Read-Hotpl8Json (Join-Path $dir 'codex-state.json');$drift.slots.a.identityKey='changed';Save 'codex-state.json' $drift
-            return [pscustomobject]@{status='authentication_required'}
-        }
-        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
-    }
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $reboundBeforeFallback} 'routing_binding_changed'
-    Save 'codex-state.json' @{slots=$bindings}
-    [IO.File]::WriteAllText((Join-Path $dir 'a/used-percent'),'96')
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $unavailablePeer} 'routing_unavailable'
-    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).slot -eq 'b') 'four percent rolls ongoing work before account exhaustion'
-    Save 'hold.json' @{until=$now.AddMinutes(5).ToString('o');reason='fixture'}
-    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_selection_held'
-    $heldExhausted=[pscustomobject]@{operation='select';intent='admit';model='fixture-model';previousSlot='a';cwd=$dir}
-    Reject {Get-Hotpl8CodexRoute $heldExhausted $dir $exe} 'routing_unavailable'
-    $ongoing.previousSlot='b'
-    Reject {Get-Hotpl8CodexRoute $ongoing $dir $exe} 'routing_selection_held'
-    $heldAdmission=[pscustomobject]@{operation='select';intent='admit';model='fixture-model';previousSlot='b';cwd=$dir}
-    Assert ((Get-Hotpl8CodexRoute $heldAdmission $dir $exe).slot -eq 'b') 'held admission preserves actual process account despite collector recommendation a'
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_binding_unknown'
-    [IO.File]::Delete((Join-Path $dir 'hold.json'))
+    Assert ((Ask $ongoing).slot -eq 'b') 'fresh native degraded quota yields to healthy work before the five percent floor'
     [IO.File]::Delete((Join-Path $dir 'a/used-percent'))
-    $policy.codex.modelMeters['other-model']='codex_bengalfox';Save 'policy.json' $policy
-    $ongoing.models=@('fixture-model','other-model')
-    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).meter -eq 'codex') 'legacy child model maps do not change account quota basis'
-    $ongoing.models=@('unmapped')
-    Assert ((Get-Hotpl8CodexRoute $ongoing $dir $exe).meter -eq 'codex') 'unfamiliar child model does not block account selection'
-    $policy.codex.modelMeters.Remove('other-model');Save 'policy.json' $policy
     [IO.File]::WriteAllText((Join-Path $dir 'a/exhausted'),'1')
-    $route=Get-Hotpl8CodexRoute $request $dir $exe
-    Assert ($route.slot -eq 'b') 'fresh native exhaustion falls back before inference'
-    $script:busyReads=0
-    $contended={param($slot,$refresh)
-        if($slot.id -eq 'b' -and ++$script:busyReads -le 2){return [pscustomobject]@{status='home_busy'}}
-        Read-CodexQuota $slot.home $exe 5000 $dir -IncludeAccessToken -RefreshToken:$refresh
-    }
-    $route=Get-Hotpl8CodexRoute $request $dir $exe $contended
-    Assert ($route.slot -eq 'b' -and $script:busyReads -eq 3) 'temporary account lock is retried before chat admission'
-    $script:busyReads=0
-    $execRequest=[pscustomobject]@{operation='exec';model='fixture-model';cwd=$dir}
-    $route=Get-Hotpl8CodexRoute $execRequest $dir $exe $contended
-    Assert ($route.slot -eq 'b' -and $script:busyReads -eq 3 -and -not $route.auth) 'exec shares contention recovery without exporting authentication'
-    $script:failedReads=0
-    $authFailure={param($slot,$refresh);$script:failedReads++;[pscustomobject]@{status='authentication_required'}}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe $authFailure} 'routing_unavailable'
-    Assert ($script:failedReads -eq 2) 'non-lock failures are not retried'
-    $busyPreferred={param($slot,$isRefresh)
-        if($slot.id -eq 'a'){return [pscustomobject]@{status='home_busy'}}
-        Read-CodexQuota $slot.home $exe 5000 $dir -IncludeAccessToken
-    }
-    Assert ((Get-Hotpl8CodexRoute $request $dir $exe $busyPreferred).slot -eq 'b') 'persistently busy candidate can fall back to another validated account'
-    # The only eligible account, its lock held by slow readers for longer than
-    # one wait. Nothing is wrong with the account: the admission keeps waiting
-    # for it inside its deadline instead of reporting contention.
-    $script:onlyReads=@{a=0;b=0};$onlyClock=[Diagnostics.Stopwatch]::StartNew()
-    $onlyBusy={param($slot,$isRefresh,$budget)
-        $script:onlyReads[$slot.id]++
-        if($slot.id -eq 'b' -and $onlyClock.ElapsedMilliseconds -lt 8000){return [pscustomobject]@{status='home_busy'}}
-        Read-CodexQuota $slot.home $exe $budget $dir -IncludeAccessToken
-    }
-    $route=Get-Hotpl8CodexRoute $request $dir $exe $onlyBusy
-    Assert ($route.slot -eq 'b' -and $route.auth.accessToken -eq 'FAKE-b' -and $onlyClock.ElapsedMilliseconds -ge 8000) 'the only eligible account is admitted once a long-held lock clears'
-    Assert ($script:onlyReads.a -eq 1) 'waiting for a busy account does not validate its peer again'
-    # Background validation has nobody waiting on it. Queueing for the lock would
-    # put it in front of an admission, so it gives up at once and is repeated by
-    # the next wakeup.
-    $script:backgroundReads=0;$backgroundClock=[Diagnostics.Stopwatch]::StartNew()
-    $backgroundBusy={param($slot,$isRefresh,$budget);$script:backgroundReads++;[pscustomobject]@{status='home_busy'}}
-    $backgroundRequest=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='b';cwd=$dir}
-    Reject {Get-Hotpl8CodexRoute $backgroundRequest $dir $exe $backgroundBusy} 'routing_account_busy'
-    Assert ($script:backgroundReads -eq 1 -and $backgroundClock.ElapsedMilliseconds -lt 3000) 'background validation does not queue for a held account lock'
+    $route=Ask $request
+    Assert ($route.slot -eq 'b' -and $route.auth.accessToken -eq 'FAKE-b') 'fresh native exhaustion rolls before send'
     $refresh=[pscustomobject]@{operation='refresh';previousSlot='a';accountId='a';model='fixture-model';cwd=$dir}
-    Assert ((Get-Hotpl8CodexRoute $refresh $dir $exe).slot -eq 'a') 'refresh remains pinned even when quota exhausted'
-    $script:refreshReads=0
-    $refreshContention={param($slot,$isRefresh)
-        Assert ($slot.id -eq 'a' -and $isRefresh) 'refresh lock retry retains the exact pinned account'
-        if(++$script:refreshReads -eq 1){return [pscustomobject]@{status='home_busy'}}
-        Read-CodexQuota $slot.home $exe 5000 $dir -IncludeAccessToken -RefreshToken
-    }
-    Assert ((Get-Hotpl8CodexRoute $refresh $dir $exe $refreshContention).slot -eq 'a') 'pinned refresh recovers from temporary contention'
-    $busy={param($slot,$isRefresh);[pscustomobject]@{status='home_busy'}}
-    $busyClock=[Diagnostics.Stopwatch]::StartNew()
-    Reject {Get-Hotpl8CodexRoute $refresh $dir $exe $busy} 'routing_account_busy'
-    Assert ($busyClock.ElapsedMilliseconds -lt 6500) 'persistent refresh contention has a bounded wait below the bridge deadline'
-    $refresh.accountId='b';Reject {Get-Hotpl8CodexRoute $refresh $dir $exe} 'routing_refresh_failed'
-    $policy.codex.disabled=@('b');Save 'policy.json' $policy
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_unavailable'
-    $policy.codex.disabled=@();Save 'policy.json' $policy
+    $route=Ask $refresh
+    Assert ($route.slot -eq 'a' -and $route.auth.accessToken -eq 'FAKE-a') 'refresh remains pinned even when quota exhausted'
+    $refresh.accountId='b';Reject {Ask $refresh} 'routing_refresh_failed'
     $status.observedAt=$now.AddHours(-1).ToString('o');Save 'status.json' @{providers=@{codex=$status}}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_stale'
+    Reject {Ask $request} 'routing_stale'
     $status.observedAt=$now.ToString('o');Save 'status.json' @{providers=@{codex=$status}}
-    $request.model='unmapped';Assert ((Get-Hotpl8CodexRoute $request $dir $exe).slot -eq 'b') 'unfamiliar model uses healthy account';$request.model='fixture-model'
-    $policy.codex.Remove('modelMeters');Save 'policy.json' $policy
+    $policy.codex.Remove('modelMeters');$policy.codex.disabled=@();Save 'policy.json' $policy
     $oldIdentity=$bindings.b.identityKey;$bindings.b.identityKey=$bindings.a.identityKey;Save 'codex-state.json' @{slots=$bindings}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_duplicate_identity'
+    Reject {Ask $request} 'routing_duplicate_identity'
     $bindings.b.identityKey=$oldIdentity;Save 'codex-state.json' @{slots=$bindings}
-    $oldBinding=$bindings.b.binding;$bindings.b.binding='changed';Save 'codex-state.json' @{slots=$bindings}
-    Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_unavailable'
-    $bindings.b.binding=$oldBinding;Save 'codex-state.json' @{slots=$bindings}
-    $env:OPENAI_API_KEY='fixture';Reject {Get-Hotpl8CodexRoute $request $dir $exe} 'routing_environment_conflict';$env:OPENAI_API_KEY=$null
+    # The caller's own environment is what the program is started with.
+    $env:OPENAI_API_KEY='fixture';Reject {Ask $request} 'routing_environment_conflict';$env:OPENAI_API_KEY=$null
+    Reject {Ask $null ('{"operation":"select","cwd":"'+('c'*16384)+'"}')} 'routing_invalid_request'
+    Reject {Ask $null 'select'} 'routing_failed'
+    $refused=@([IO.File]::ReadAllLines((Join-Path $dir 'events.jsonl'))|ForEach-Object{$_|ConvertFrom-Json})
+    Assert ((@($refused|ForEach-Object code) -join ' ') -ceq 'routing_monitor_only routing_automation_paused routing_refresh_failed routing_stale routing_duplicate_identity routing_environment_conflict routing_invalid_request routing_failed') 'each refusal leaves its code and an account that is given leaves nothing'
+    Assert (-not @($refused|Where-Object{@($_.PSObject.Properties).Count -ne 2 -or -not $_.at})) 'a refusal is recorded as its code and the time'
+    [IO.File]::Delete((Join-Path $dir 'events.jsonl'))
+    $backgroundRequest=[pscustomobject]@{operation='select';intent='rebind';model='fixture-model';previousSlot='b';cwd=$dir}
     $shared=Join-Path $dir 'shared home';[void][IO.Directory]::CreateDirectory($shared)
     [IO.File]::WriteAllText((Join-Path $shared 'auth.json'),'original-auth-sentinel')
     [IO.File]::WriteAllText((Join-Path $shared 'config.toml'),'original-config-sentinel')
@@ -259,25 +132,6 @@ try{
     Assert ($installed.textGenerationModelSelection.options[0].value -eq 'low') 'helper default uses low reasoning'
     $launcher=Join-Path $integration 'hotpl8-codex.exe'
     Assert ((& $launcher --version) -eq 'codex-cli fixture') 'native launcher version/stdio passthrough'
-    # Instrument only this disposable installed reader to signal actual lock
-    # contention. Delegation still calls the unchanged native reader; waiting on
-    # process startup alone can miss the race on a cold or loaded Windows runner.
-    $fixtureConfig=Read-Hotpl8Json (Join-Path $integration 'bridge-config.json')
-    $readerPath=Join-Path (Split-Path $fixtureConfig.script -Parent) 'providers/codex.ps1'
-    $readerProbe=@'
-
-$script:FixtureNativeReader=${function:Read-CodexQuota}
-function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutMs=5000,[string]$WorkingDirectory,[switch]$IncludeAccessToken,[switch]$RefreshToken){
-    # Only the synthetic gate owner waits for a second cold Windows process to
-    # start. Its artificial gate must not expire before the measured 3 s overlap;
-    # production readers and the contender's 6.5 s lock wait remain unchanged.
-    if(Test-Path (Join-Path $AccountHome 'quota-gate')){$PSBoundParameters['TimeoutMs']=15000}
-    $read=& $script:FixtureNativeReader @PSBoundParameters
-    if($read.status -eq 'home_busy'){[IO.File]::WriteAllText((Join-Path $AccountHome 'quota-contended'),'fixture')}
-    return $read
-}
-'@
-    [IO.File]::AppendAllText($readerPath,$readerProbe)
     # Hold the title helper's native quota read while a new app-server validates
     # the same healthy home. This is T3's concurrent first-message launch shape.
     $gate=Join-Path $dir 'b/quota-gate';[IO.File]::WriteAllText($gate,'fixture')
@@ -290,6 +144,9 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     $gateClock=[Diagnostics.Stopwatch]::StartNew()
     while(-not (Test-Path -LiteralPath (Join-Path $dir 'b/quota-entered')) -and $gateClock.ElapsedMilliseconds -lt 15000){Start-Sleep -Milliseconds 20}
     Assert (Test-Path -LiteralPath (Join-Path $dir 'b/quota-entered')) 'title broker owns the native home lock before chat startup'
+    # The chat's admission reads the spent account first and the held one next. The fixture
+    # Codex says when the first was read, which is when the second is asked for.
+    [IO.File]::Delete((Join-Path $dir 'a/quota-observed'))
     $psi=New-CodexProcessInfo $launcher $shared @('app-server') $dir
     $psi.RedirectStandardInput=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true;$psi.CreateNoWindow=$true
     $proc=Start-CodexQuotaProcess $psi
@@ -297,12 +154,13 @@ function Read-CodexQuota([string]$AccountHome,[string]$Executable,[int]$TimeoutM
     $proc.StandardInput.WriteLine('{"id":1,"method":"initialize","params":{"clientInfo":{"name":"fixture","version":"1"}}}');$proc.StandardInput.Flush()
     $initialization=$proc.StandardOutput.ReadLineAsync()
     $contentionClock=[Diagnostics.Stopwatch]::StartNew()
-    while(-not (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) -and -not $initialization.IsCompleted -and $contentionClock.ElapsedMilliseconds -lt 5000){Start-Sleep -Milliseconds 10}
+    while(-not (Test-Path -LiteralPath (Join-Path $dir 'a/quota-observed')) -and -not $initialization.IsCompleted -and $contentionClock.ElapsedMilliseconds -lt 8000){Start-Sleep -Milliseconds 10}
+    Assert (Test-Path -LiteralPath (Join-Path $dir 'a/quota-observed')) 'chat native validation reaches the account the title helper holds'
     # Healthy native readers can own the lock longer than the old 2.5 s retry
-    # cutoff. Hold it for 3 s AFTER verified contention, then finish normally.
+    # cutoff. Hold it for 3 s AFTER the chat has asked for it, then finish normally.
     Start-Sleep -Milliseconds 3000
+    Assert (-not $initialization.IsCompleted) 'chat native validation waits for the title helper lock'
     [IO.File]::Delete($gate)
-    Assert (Test-Path -LiteralPath (Join-Path $dir 'b/quota-contended')) 'chat native validation encounters the title helper lock'
     Assert ($initialization.Wait(15000)) 'concurrent chat startup responds within its deadline'
     $initialized=$initialization.Result|ConvertFrom-Json
     Assert ($initialized.id -eq 1 -and -not $initialized.error) 'chat startup survives concurrent title admission'

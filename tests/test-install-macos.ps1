@@ -97,6 +97,11 @@ try{
   $destination=Join-Path $lab 'restored install'
   InstallFixture $destination $source
   Assert (([IO.File]::GetUnixFileMode((Join-Path $destination ('app/'+$relative))) -band [IO.UnixFileMode]::UserExecute) -ne 0) 'installed reader is not executable'
+  # The same package over that installation: there is a policy to check now, and the reader
+  # that checks it is the installed one, since the package's own cannot start.
+  $hash=(Get-FileHash (Join-Path $destination 'state/policy.json')).Hash
+  InstallFixture $destination $source
+  Assert ((Get-FileHash (Join-Path $destination 'state/policy.json')).Hash -eq $hash -and (Test-Path (Join-Path $destination 'previous/hotpl8.ps1'))) 'a package whose reader lost its bit did not update an installation'
  }
  Check 'update and rollback retain policy and resumable operations' {
   $state=Join-Path $script:installed 'state'

@@ -201,8 +201,8 @@ fn warm_text(outcome: &str) -> R<String> {
     Ok(format!("warm {}", outcome.replace('_', " ")))
 }
 
-/// Format-Hotpl8ParkReason, from src/overview.ps1.
-fn park_reason(candidate: &V) -> R<String> {
+/// Why an account is advised to be parked, as a status prints it.
+pub(crate) fn park_reason(candidate: &V) -> R<String> {
     if candidate.g("reason")?.eq_s("canceled")? {
         return Ok(cat!("plan ended (now ", candidate.g("planType")?, ")"));
     }

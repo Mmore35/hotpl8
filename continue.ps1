@@ -14,7 +14,6 @@ if (-not $Conversation -and $env:CLAUDE_CODE_ENTRYPOINT -eq 'cli') { exit 0 }
 try {
     . (Join-Path $PSScriptRoot 'src/common.ps1')
     . (Join-Path $PSScriptRoot 'src/config.ps1')
-    . (Join-Path $PSScriptRoot 'src/diagnostics.ps1')
     $StateDirectory = Resolve-Hotpl8StateDirectory $StateDirectory $PSScriptRoot
     $statusPath = Join-Path $StateDirectory 'status.json'
     function Complete-Hotpl8Continue([bool]$Send) {
@@ -77,13 +76,16 @@ try {
         if ([datetime]::UtcNow -gt $deadline) { Complete-Hotpl8Continue $false }
         $stamp = (Get-Item -LiteralPath $statusPath).LastWriteTimeUtc
         if ($stamp -ne $written) { $written = $stamp; $state = Read-Hotpl8ContinueState }
-        # Ready: automation is not paused, an account is selected and (for Claude) already in
-        # use, and it is either a different account or the same one read again after the limit.
-        $ready = -not (Get-Hotpl8Pause $StateDirectory) -and $state.selected -and (-not $state.claude -or $state.selected -eq $state.active)
+        # Ready: an account is selected and (for Claude) already in use, it is either a
+        # different account or the same one read again after the limit, and automation is not
+        # paused. The pause is the compiled program's to answer, so it is asked last and only
+        # when everything else holds: a wait asks nothing.
+        $ready = $state.selected -and (-not $state.claude -or $state.selected -eq $state.active)
         if ($ready -and $state.selected -eq $Slot) {
             $observed = $state.observed[$Slot]
             $ready = $observed -and [datetimeoffset]::Parse([string]$observed) -gt $limited
         }
+        if ($ready) { $ready = -not (Get-Hotpl8Pause $StateDirectory) }
         if ($ready) {
             if (-not (Test-Hotpl8Continuing)) { Complete-Hotpl8Continue $false }
             [IO.File]::WriteAllText($marker, '')

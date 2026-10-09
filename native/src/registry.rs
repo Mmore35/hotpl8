@@ -1,4 +1,4 @@
-//! src/provider-registry.ps1: the provider definitions a release ships, and the policy and
+//! The provider definitions a release ships, and the policy and
 //! snapshot each provider's own rules are shown.
 
 use crate::json;
@@ -19,7 +19,7 @@ pub fn set_source(directory: PathBuf) {
     SOURCE.with(|cell| *cell.borrow_mut() = directory);
     CATALOG.with(|cell| *cell.borrow_mut() = None);
 }
-fn catalog() -> R<Vec<V>> {
+pub fn catalog() -> R<Vec<V>> {
     if let Some(known) = CATALOG.with(|cell| cell.borrow().clone()) {
         return Ok(known);
     }
@@ -113,7 +113,7 @@ fn provider_id(text: &str) -> bool {
 }
 
 /// Assert-Hotpl8ProviderDefinition
-fn assert_definition(definition: &V) -> R<()> {
+pub(crate) fn assert_definition(definition: &V) -> R<()> {
     const FIELDS: [&str; 12] = [
         "schemaVersion", "id", "name", "driver", "defaultMeter", "meters", "windows", "policyDefaults", "modelMeters", "capabilities",
         "integrations", "display",
@@ -429,7 +429,7 @@ pub fn configured_providers(policy: &V, include_unconfigured: bool) -> R<Vec<V>>
 }
 
 /// Get-Hotpl8ConfiguredProvider
-fn configured_provider(policy: &V, provider: &str, include_unconfigured: bool) -> R<V> {
+pub fn configured_provider(policy: &V, provider: &str, include_unconfigured: bool) -> R<V> {
     provider_definition(provider)?;
     let matches = filter(&configured_providers(policy, include_unconfigured)?, |r| r.g("id")?.ceq_s(provider))?;
     if matches.len() != 1 {
@@ -522,25 +522,54 @@ pub struct Account {
     pub label: V,
 }
 
-/// Get-Hotpl8ProviderAccounts: who each account is, in the order the policy gives them.
-pub fn provider_accounts(policy: &V) -> R<Vec<Account>> {
+/// One account as its provider's part of the policy names it.
+struct Named {
+    provider: V,
+    part: V,
+    id: V,
+    slot: String,
+    label: V,
+}
+
+/// The accounts of every configured provider, in the order the policy gives them.
+fn named_accounts(policy: &V) -> R<Vec<Named>> {
     let mut accounts = Vec::new();
     for registration in configured_providers(policy, false)? {
         let driver = provider_driver(&registration.g("driver")?)?;
-        let (provider, part) = (registration.g("id")?.s()?, registration.g("policy")?);
+        let (provider, part) = (registration.g("id")?, registration.g("policy")?);
         if driver.g("slotKind")?.eq_s("numeric")? {
             for id in part.g("prefer")?.arr() {
                 let slot = id.s()?;
                 let label = part.g("labels")?.gd(&slot)?;
-                accounts.push(Account { provider: provider.clone(), slot, label });
+                accounts.push(Named { provider: provider.clone(), part: part.clone(), id, slot, label });
             }
         } else {
-            for slot in filter(&part.g("slots")?.each(), |slot| slot.t())? {
-                accounts.push(Account { provider: provider.clone(), slot: slot.g("id")?.s()?, label: slot.g("label")? });
+            for row in filter(&part.g("slots")?.each(), |slot| slot.t())? {
+                accounts.push(Named { provider: provider.clone(), part: part.clone(), id: row.g("id")?, slot: row.g("id")?.s()?, label: row.g("label")? });
             }
         }
     }
     Ok(accounts)
+}
+
+/// Get-Hotpl8ProviderAccounts: who each account is, in the order the policy gives them.
+pub fn provider_accounts(policy: &V) -> R<Vec<Account>> {
+    named_accounts(policy)?.into_iter().map(|named| Ok(Account { provider: named.provider.s()?, slot: named.slot, label: named.label })).collect()
+}
+
+/// Get-Hotpl8ProviderAccounts, each account the row a PowerShell command is given.
+pub fn provider_account_rows(policy: &V) -> R<Vec<V>> {
+    let row = |named: &Named| {
+        Ok(obj! {
+            "provider" => &named.provider,
+            "slot" => named.slot.as_str(),
+            "label" => &named.label,
+            "capacity" => named.part.g("capacity")?.gd(&named.slot)?,
+            "disabled" => named.id.is_in(&named.part.g("disabled")?)?,
+            "reserve" => named.id.is_in(&named.part.g("reserve")?)?,
+        })
+    };
+    named_accounts(policy)?.iter().map(row).collect()
 }
 
 #[cfg(test)]
@@ -596,6 +625,67 @@ mod tests {
         }
         // Display order first, then the id; a directory and a file of another kind are no definitions.
         assert_eq!(ids(read_catalog(&directory)), Ok(["zeta", "codex", "codex-two", "fictional"].map(str::to_owned).to_vec()));
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// What each provider a policy configures is given, under the definitions of one copy:
+    /// the record without its definition and policy, then the policy. Or why none is.
+    fn configured(directory: &Path, policy: &str, all: bool) -> Result<Vec<(String, String)>, String> {
+        set_source(directory.to_path_buf());
+        let text = |value: &V| crate::json::compact(value, 8).ok().unwrap();
+        match configured_providers(&crate::json::parse(policy, "").ok().unwrap(), all) {
+            Ok(found) => Ok(found
+                .iter()
+                .map(|record| {
+                    let part = text(&record.g("policy").ok().unwrap());
+                    record.remove_member("definition").ok().unwrap();
+                    record.remove_member("policy").ok().unwrap();
+                    (text(record), part)
+                })
+                .collect()),
+            Err(stop) => Err(stop.message()),
+        }
+    }
+
+    /// Each answer is the one PowerShell gave for the same definitions and policy.
+    #[test]
+    fn a_definition_added_to_a_copy_configures_a_provider_of_its_own() {
+        let directory = crate::files::tests::scratch("catalog-own");
+        std::fs::write(directory.join("fictional.json"), renamed("fictional", "30").replace(r#""name": "Codex""#, r#""name": "Fictional""#)).unwrap();
+        let found = configured(&directory, r#"{"schemaVersion":3,"mode":"monitor","providers":{"fictional":{"slots":[],"margin7d":40}}}"#, false).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, r#"{"id":"fictional","name":"Fictional","driver":"codex-app-server","controls":{"schemaVersion":3,"mode":"monitor"},"configured":true,"isLegacy":false}"#);
+        assert_eq!(found[0].1, r#"{"order":"prefer","margin5h":25,"hysteresis":10,"resetLeadMin":10,"slots":[],"margin7d":40,"defaultMeter":"codex"}"#);
+        // A provider no policy configures is listed only when asked for, and has no policy.
+        let none = r#"{"schemaVersion":3,"mode":"monitor","providers":{}}"#;
+        assert_eq!(configured(&directory, none, false).unwrap().len(), 0);
+        let all = configured(&directory, none, true).unwrap();
+        assert!(all.len() == 1 && all[0].0.contains(r#""id":"fictional""#) && all[0].0.contains(r#""configured":false"#) && all[0].1 == "null", "{all:?}");
+        // The two providers a policy of the old shape names are not in this copy.
+        assert_eq!(configured(&directory, r#"{"prefer":[]}"#, false).unwrap_err(), "Configured legacy provider is missing from the catalog.");
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// Each answer is the one PowerShell gave for the same definitions and policy.
+    #[test]
+    fn a_definition_s_model_map_is_not_given_to_a_policy() {
+        let directory = crate::files::tests::scratch("catalog-models");
+        let narrow = renamed("fictional", "20").replace(r#""meters": ["codex", "codex_bengalfox"]"#, r#""meters": ["codex"], "modelMeters": {"fictional-default": "codex"}"#);
+        assert!(narrow.contains("fictional-default"));
+        std::fs::write(directory.join("fictional.json"), narrow).unwrap();
+        let asked = |part: &str| configured(&directory, &format!(r#"{{"schemaVersion":3,"providers":{{"fictional":{part}}}}}"#), false).map(|found| found[0].1.clone());
+        // The policy's own map is kept as it is, whatever it names, and the basis stays the definition's.
+        for meter in ["codex", "retired-meter"] {
+            assert_eq!(
+                asked(&format!(r#"{{"slots":[],"modelMeters":{{"fictional-explicit":"{meter}"}}}}"#)).unwrap(),
+                format!(r#"{{"order":"prefer","margin5h":25,"margin7d":20,"hysteresis":10,"resetLeadMin":10,"slots":[],"modelMeters":{{"fictional-explicit":"{meter}"}},"defaultMeter":"codex"}}"#)
+            );
+        }
+        let many: Vec<String> = (1..=301).map(|n| format!(r#""retired-{n}":"codex""#)).collect();
+        let kept = asked(&format!(r#"{{"slots":[],"modelMeters":{{{}}}}}"#, many.join(","))).unwrap();
+        assert!(kept.matches("retired-").count() == 301 && kept.ends_with(r#","defaultMeter":"codex"}"#), "{kept}");
+        assert_eq!(asked(r#"{"slots":[],"modelMeters":["malformed"]}"#).unwrap_err(), "Invalid provider model mappings.");
+        assert_eq!(asked(r#"{"slots":[],"modelMeters":{},"defaultMeter":"codex_bengalfox"}"#).unwrap_err(), "Configured meter is not supported by the provider definition.");
         std::fs::remove_dir_all(&directory).unwrap();
     }
 

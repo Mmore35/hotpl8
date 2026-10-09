@@ -28,8 +28,8 @@ of refresh credentials. Detailed behavior: [integration guide](../t3-integration
 
 | Component | Responsibility |
 |---|---|
-| `src/codex-routing.ps1` | Policy selection, identity/freshness validation, bounded native fallback and pinned refresh. |
-| `src/codex-route.ps1` | Internal token-bearing anonymous-pipe broker endpoint; not a public agent operation. |
+| `hotpl8-native route` (`native/src/route.rs`) | Policy selection, identity/freshness validation, bounded native fallback and pinned refresh, answered over a token-bearing anonymous pipe; not a public agent operation. |
+| `src/codex-route.ps1` | The path an installed entry looks for. It starts the program above and passes the request and the answer through. |
 | `src/t3-codex.mjs` | Stdio protocol lifecycle, per-turn admission, account pinning, refresh correlation, bounded framing and exec routing. |
 | `src/t3-launcher.cs` | Windows argv and streaming pipe transport without shell expansion. |
 | `setup-t3.ps1` | Add a separate provider, pin code, optional new-chat default, receipt, offline diagnostics and conflict-aware removal. |

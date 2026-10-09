@@ -1,4 +1,4 @@
-//! The part of src/providers/claude.ps1 that touches cswap, the program that holds the
+//! The part of HotPl8 that touches cswap, the program that holds the
 //! Claude accounts: where it is, how long it may take, and the one request HotPl8 ever
 //! sends through it. HotPl8 never presents a credential itself. It asks cswap to run, and
 //! cswap renews under its own per-account lock, taking up a newer credential where one

@@ -1,34 +1,38 @@
-# `hotpl8 status`, `hotpl8 explain`, the dashboard and what the tray shows are the compiled
-# reader's, but the rules behind them are still computed twice: by the reader for those, and
-# by PowerShell for the agent interface and account management. This suite holds the two to
-# each other and pins what the reader prints.
+# What the compiled program answers from a set of files: `hotpl8 status`, `hotpl8 explain`,
+# the dashboard, what the tray shows, and the values behind them. The program is the one
+# place these rules are calculated, so this suite pins what it says for each case.
 #
-#   data     What PowerShell's rules compute from a set of files (tests/parity/referee.ps1) is
-#            what the reader computes, value for value and type for type. Where PowerShell
-#            refuses the files the reader refuses them, in the same words when the words are
-#            HotPl8's own.
-#   text     PowerShell has no status text, no explanation, no dashboard and no tray view.
-#            What the reader prints for each case is compared with expected-status.txt,
+#   text     What the program prints for each case is compared with expected-status.txt,
 #            expected-explain.txt, expected-tray.txt and expected-watch.txt in tests/parity.
 #            The last is the dashboard as `hotpl8 watch` gives it to a pipe: one frame, 100
-#            columns wide and as tall as it needs. After a change that is meant, run this
-#            suite with -Update and review the difference like any other change.
+#            columns wide and as tall as it needs.
+#   values   What `status -AsJson` and `explain -AsJson` hold for each case, value by value
+#            and type by type, under Windows PowerShell's numbers and PowerShell 7's: a line
+#            of digests to a case in expected-values.txt. They were recorded while PowerShell
+#            still calculated the same rules and agreed with every one of them. A digest says
+#            that a value changed, not which; -Only NAME -Values prints the values.
+#   variations  Seeded changes to the cases (tests/parity/fuzz.ps1). The program answers or
+#            refuses each in words of its own, and for the first seed what it says is
+#            compared with expected-variations.txt, in the same form.
 #
-# Starting a program costs more than any answer, so the reader answers all the questions of a
-# check in one start (its batch command), and PowerShell reads each case's files once.
+# After a change that is meant, run this suite with -Update and review the difference like
+# any other change.
 #
-# The reader computes as the PowerShell that collects on its platform does: Windows
-# PowerShell 5.1 on Windows, PowerShell 7 elsewhere. The data is compared under the rules of
-# the PowerShell this suite runs in, so scripts/test.ps1 covers the first and the Mac suite
-# the second; run it in the other PowerShell to compare those rules on this machine. The
-# expected text holds both. Offline; every name, label and reading in the cases is fictional.
+# Starting a program costs more than any answer, so the program answers all the questions of
+# a check in one start (its batch command).
+#
+# The program computes as the PowerShell that reads its answers on a platform does: Windows
+# PowerShell 5.1 on Windows, PowerShell 7 elsewhere. Both sets of number rules are asked for
+# on every machine, and the expected text holds both. Offline; every name, label and reading
+# in the cases is fictional.
 #
 #   -Only NAME   run the cases whose name matches the wildcard, and nothing else. A variation
 #                is named by its seed and number: -Only 'fuzz 7-203*' makes that one again
-#   -Fuzz N      how many seeded variations to add (0 for none); -Seed chooses which
+#   -Fuzz N      how many seeded variations to ask (0 for none); -Seed chooses which
 #   -Deep        at least 1,500 variations
-#   -Update      write what the reader prints now to the expected text, then check as usual
-param([string]$Only,[int]$Fuzz=150,[int]$Seed=1,[switch]$Deep,[switch]$Update)
+#   -Values      with -Only, print the typed values the program holds for each case chosen
+#   -Update      write what the program says now to the expected text, then check as usual
+param([string]$Only,[int]$Fuzz=500,[int]$Seed=1,[switch]$Deep,[switch]$Values,[switch]$Update)
 $ErrorActionPreference='Stop'
 if($Deep){$Fuzz=[Math]::Max($Fuzz,1500)}
 if($Update -and $Only){throw 'The expected text is written for every case; leave out -Only.'}
@@ -36,12 +40,7 @@ $variation=$Only -match '^fuzz (\d+)-(\d+)'
 if($variation){$Seed=[int]$Matches[1];$Fuzz=[int]$Matches[2]}
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
-. (Join-Path $root 'src/config.ps1')
-. (Join-Path $root 'src/providers/claude.ps1')
-. (Join-Path $root 'src/providers/codex.ps1')
-. (Join-Path $root 'src/insights.ps1')
 . (Join-Path $root 'src/native.ps1')
-. (Join-Path $PSScriptRoot 'parity/referee.ps1')
 . (Join-Path $PSScriptRoot 'parity/cases.ps1')
 . (Join-Path $PSScriptRoot 'parity/fuzz.ps1')
 $windows=$env:OS -eq 'Windows_NT'
@@ -56,19 +55,11 @@ $commands='status','explain','tray','watch'
 $lab=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-parity-test-'+[guid]::NewGuid().ToString('N'))
 $priorState=$env:HOTPL8_STATE_DIRECTORY
 $script:passed=0;$script:failed=0;$script:labs=0;$script:batches=0
-# PowerShell's rules read the provider definitions of the copy they are part of. A case may
-# bring definitions of its own; this names the directory that holds them while that case is
-# computed, and the product's own function reads it.
-$script:definitions=''
-$packagedCatalog=${function:Get-Hotpl8ProviderCatalog}
-function Get-Hotpl8ProviderCatalog([string]$Directory=$script:definitions) {
-    if($Directory){& $packagedCatalog $Directory}else{& $packagedCatalog}
-}
 function Assert($Value,$Message='assertion failed'){if(-not $Value){throw $Message}}
 function Check($Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
 # A case's files in a directory of their own, with every time written relative to $At. A case
-# with provider definitions gets a copy of the product's data to hold them: the reader is
-# asked as the reader of that copy, and PowerShell's rules are pointed at its definitions.
+# with provider definitions gets a copy of the product's data to hold them, and the program
+# is asked as the program of that copy.
 function New-Lab($Case,[datetimeoffset]$At) {
     $script:labs++
     $directory=Join-Path $lab ([string]$script:labs)
@@ -79,7 +70,7 @@ function New-Lab($Case,[datetimeoffset]$At) {
     foreach($name in $files.Keys){Write-Hotpl8Text (Join-Path $state $name) (Expand-Hotpl8ParityText $files[$name] $At) -NoBom:([bool]$Case.noBom)}
     $preview=''
     if($Case.ContainsKey('preview')){$preview=Join-Path $directory 'preview-policy.json';Write-Hotpl8Text $preview (Expand-Hotpl8ParityText $Case.preview $At)}
-    $copy=$root;$definitions=''
+    $copy=$root
     if($Case.ContainsKey('catalog')){
         $copy=Join-Path $directory 'root'
         $definitions=Join-Path $copy 'data/providers'
@@ -87,19 +78,7 @@ function New-Lab($Case,[datetimeoffset]$At) {
         Copy-Item -LiteralPath (Join-Path $root 'data/capacity-profiles.json') -Destination (Join-Path $copy 'data')
         foreach($name in $Case.catalog.Keys){[IO.File]::WriteAllText((Join-Path $definitions $name),$Case.catalog[$name],[Text.UTF8Encoding]::new($false))}
     }
-    [pscustomobject]@{state=$state;preview=$preview;root=$copy;definitions=$definitions}
-}
-# What PowerShell's rules give for a case's files, read from the definitions the case brings.
-function Get-Answers($Place) {
-    $script:definitions=$Place.definitions
-    try{Get-Hotpl8ParityAnswers $Place.state $Place.preview $now}finally{$script:definitions=''}
-}
-function Get-Expectation($Case,[string]$Form) {
-    if(-not $Case.ContainsKey('expect')){return 'answer'}
-    if($Case.expect -isnot [Collections.IDictionary]){return [string]$Case.expect}
-    if($Case.expect.ContainsKey($Form)){return [string]$Case.expect[$Form]}
-    if($Case.expect.ContainsKey('default')){return [string]$Case.expect['default']}
-    'answer'
+    [pscustomobject]@{state=$state;preview=$preview;root=$copy}
 }
 # The reader's own command line for a form: status, explain, tray, status-json or explain-json.
 # -Dump asks for the typed form of the -AsJson value, which shows a number's type and exact
@@ -154,7 +133,7 @@ function Invoke-ReaderBatch([object[]]$Requests) {
     }
     ,$results.ToArray()
 }
-function Get-FirstDifference([string]$Expected,[string]$Actual,[string]$Left='PowerShell',[string]$Right='reader') {
+function Get-FirstDifference([string]$Expected,[string]$Actual,[string]$Left='expected',[string]$Right='reader') {
     $a=$Expected.Split("`n");$b=$Actual.Split("`n")
     for($index=0;$index -lt [Math]::Max($a.Count,$b.Count);$index++){
         $one=if($index -lt $a.Count){$a[$index]}else{'<nothing>'}
@@ -165,103 +144,6 @@ function Get-FirstDifference([string]$Expected,[string]$Actual,[string]$Left='Po
         }
     }
     'no difference'
-}
-# 'same'; 'refused' when neither answers; 'stricter' when the reader refuses files that
-# PowerShell's rules take, which a case has to allow. Anything else says what is wrong.
-function Compare-Answer($Answer,$Result,[string]$Expectation) {
-    if(-not $Result){return 'the reader gave no answer'}
-    if($Result.kind -cnotin 'answer','ruled','stopped'){return ('the reader took the question as '+$Result.kind+': '+$Result.output)}
-    $refuses=$Result.kind -cne 'answer'
-    if($Answer.kind -eq 'error'){
-        if(-not $refuses){return ('the reader answers where PowerShell refuses with: '+$Answer.message)}
-        if($Result.kind -ceq 'ruled' -and $Result.output -cne $Answer.message){return ('the reader refuses with <'+$Result.output+'> where PowerShell says <'+$Answer.message+'>')}
-        return 'refused'
-    }
-    if($refuses){
-        if($Expectation -eq 'answer'){return ('the reader refuses an answer it must give: '+$Result.output)}
-        return 'stricter'
-    }
-    $expected=if($Answer.kind -eq 'value'){$Answer.dump}else{$Answer.text}
-    if($Result.output -cne $expected){return ('the answers differ at '+(Get-FirstDifference $expected $Result.output))}
-    if($Expectation -eq 'refuse'){return 'the reader answers a case marked as one it refuses; if that is meant, change the case'}
-    'same'
-}
-# A parsed JSON text as one line, with its numbers set aside in the order they appear.
-function ConvertTo-PlainTree($Value,[Collections.ArrayList]$Numbers) {
-    if($null -eq $Value){return 'null'}
-    if($Value -is [string]){return ('s:'+$Value.Length+':'+$Value)}
-    if($Value -is [bool]){return ('b:'+$Value)}
-    if($Value -is [datetime]){return ('t:'+$Value.ToUniversalTime().ToString('o',[Globalization.CultureInfo]::InvariantCulture))}
-    if($Value -is [ValueType]){
-        # Windows PowerShell reads a fraction as a decimal, and its conversion from decimal to
-        # double can land one step away. Reading the decimal's text does not.
-        $number=if($Value -is [decimal]){[double]::Parse($Value.ToString([Globalization.CultureInfo]::InvariantCulture),[Globalization.CultureInfo]::InvariantCulture)}else{[double]$Value}
-        [void]$Numbers.Add($number)
-        return 'n'
-    }
-    $parts=New-Object Collections.ArrayList
-    if($Value -is [Array]){
-        foreach($item in $Value){[void]$parts.Add((ConvertTo-PlainTree $item $Numbers))}
-        return ('['+($parts -join ',')+']')
-    }
-    foreach($property in $Value.PSObject.Properties){
-        [void]$parts.Add(($property.Name.Length.ToString()+':'+$property.Name+'='+(ConvertTo-PlainTree $property.Value $Numbers)))
-    }
-    '{'+($parts -join ',')+'}'
-}
-# Whether two JSON texts read back as the same value: $null, or what differs. The typed form
-# compares a number's type and every digit. This is about the text a caller parses, where
-# 6 and 6.0 are one number (Windows PowerShell writes the first, the reader the second), and
-# where the same double is written with seventeen digits by one and the shortest by the other.
-function Compare-JsonText([string]$Left,[string]$Right) {
-    $leftNumbers=New-Object Collections.ArrayList;$rightNumbers=New-Object Collections.ArrayList
-    $leftTree=ConvertTo-PlainTree (ConvertFrom-Json -InputObject $Left) $leftNumbers
-    $rightTree=ConvertTo-PlainTree (ConvertFrom-Json -InputObject $Right) $rightNumbers
-    if($leftTree -cne $rightTree){return 'members or text differ'}
-    for($index=0;$index -lt $leftNumbers.Count;$index++){
-        $a=$leftNumbers[$index];$b=$rightNumbers[$index]
-        if([Math]::Abs($a-$b) -gt 1e-12*[Math]::Max([double]1,[Math]::Max([Math]::Abs($a),[Math]::Abs($b)))){
-            return ('number '+($index+1)+' is '+$a.ToString('R',[Globalization.CultureInfo]::InvariantCulture)+' and '+$b.ToString('R',[Globalization.CultureInfo]::InvariantCulture))
-        }
-    }
-}
-# Every form of every case at the pinned instant. Returns the tally and the failures.
-function Test-Cases([object[]]$Cases,[switch]$Layout) {
-    $tally=@{same=0;stricter=0;refused=0}
-    $wrong=New-Object Collections.ArrayList
-    # Every question first, so that one start of the reader answers them all.
-    $places=New-Object Collections.ArrayList;$questions=New-Object Collections.ArrayList
-    foreach($case in $Cases){
-        $place=New-Lab $case $now
-        [void]$places.Add($place)
-        foreach($form in $forms){
-            [void]$questions.Add((Get-ReaderArguments $form $place -Dump))
-            if($Layout -and $form.EndsWith('json')){[void]$questions.Add((Get-ReaderArguments $form $place))}
-        }
-    }
-    $results=Invoke-ReaderBatch $questions.ToArray()
-    $next=0
-    for($index=0;$index -lt $Cases.Count;$index++){
-        $case=$Cases[$index];$place=$places[$index]
-        $answers=Get-Answers $place
-        foreach($form in $forms){
-            $answer=$answers[$form];$result=$results[$next++]
-            $printed=if($Layout -and $form.EndsWith('json')){$results[$next++]}
-            $verdict=Compare-Answer $answer $result (Get-Expectation $case $form)
-            if($tally.ContainsKey($verdict)){$tally[$verdict]++}else{[void]$wrong.Add($case.name+' ['+$form+']: '+$verdict);continue}
-            if(-not $Layout -or $verdict -ne 'same' -or $answer.kind -ne 'value'){continue}
-            # The JSON text a caller receives: plain ASCII, ended once, and the same tree as
-            # PowerShell's own text for the value when each is read back.
-            $problem=if(-not $printed -or $printed.kind -cne 'answer'){'the reader gives the typed form but not the JSON text'}
-                elseif($printed.output -cnotmatch '\A[\x20-\x7e\n]*[^\n]\n\z'){'the JSON text is not plain ASCII ended by one line feed'}
-                else{
-                    $differs=Compare-JsonText $answer.json $printed.output
-                    if($differs){'the JSON text reads back as another value than PowerShell''s: '+$differs}
-                }
-            if($problem){[void]$wrong.Add($case.name+' ['+$form+']: '+$problem)}
-        }
-    }
-    [pscustomobject]@{tally=$tally;wrong=$wrong.ToArray()}
 }
 function Get-WrongText([object[]]$Wrong) {
     $shown=@($Wrong|Select-Object -First 12)
@@ -277,10 +159,12 @@ function ConvertTo-TrayText([string]$Json) {
     $lines+=@(([string]$model.details) -split "`r?`n"|ForEach-Object{('  '+$_).TrimEnd()})
     ($lines -join "`n")+"`n"
 }
-# What the reader prints for one command on each case, as the text of its expected file:
-# a heading per case, then the output or the refusal. The instant and the time zone are
-# pinned, and both sets of number rules are asked for, so the text is the same on every
-# machine. Where the two sets print differently the case has a section for each.
+# A refusal names the line of the program's source that made it, which moves with every edit.
+function Get-RefusalText([string]$Said) { [regex]::Replace($Said,'\(((?:[a-z_]+/)*[a-z_]+\.rs):\d+\)','($1)') }
+# What the program prints for one command on each case, as the text of its expected file: a
+# heading per case, then the output or the refusal. The instant and the time zone are pinned,
+# and both sets of number rules are asked for, so the text is the same on every machine.
+# Where the two sets answer differently the case has a section for each.
 function Get-PrintedText([object[]]$Cases,[string]$Command) {
     # A case whose files differ on a Mac would need a text of its own there.
     $shown=@($Cases|Where-Object{-not $_.ContainsKey('macFiles')})
@@ -296,8 +180,7 @@ function Get-PrintedText([object[]]$Cases,[string]$Command) {
         $texts=foreach($offset in 0,1){
             $result=$results[2*$index+$offset]
             if($result.kind -cnotin 'answer','ruled','stopped'){throw ($shown[$index].name+': the reader took the question as '+$result.kind)}
-            # A refusal names the line of the reader's source that made it, which moves with every edit.
-            $text=if($result.kind -cne 'answer'){'refused: '+[regex]::Replace($result.output,'\(((?:[a-z_]+/)*[a-z_]+\.rs):\d+\)','($1)')+"`n"}
+            $text=if($result.kind -cne 'answer'){'refused: '+(Get-RefusalText $result.output)+"`n"}
                 elseif($Command -eq 'tray'){ConvertTo-TrayText $result.output}else{$result.output}
             if($text -cmatch '(?m)^== ' -or $text -cnotmatch '\A[^\r]*\n\z'){throw ($shown[$index].name+': the output cannot be kept in the expected text')}
             $text
@@ -306,6 +189,41 @@ function Get-PrintedText([object[]]$Cases,[string]$Command) {
         else{$sections[$shown[$index].name+' [Windows PowerShell numbers]']=$texts[0];$sections[$shown[$index].name+' [PowerShell 7 numbers]']=$texts[1]}
     }
     ,$sections
+}
+# What the program holds for each case or variation, as one line: its name, then for each form
+# (status -AsJson, explain -AsJson) and each set of number rules whether it answered and a
+# digest of its typed values, which show a number's type and every digit where JSON text
+# would not, or of its refusal. A case with files of its own on a Mac is marked.
+function Get-VariationLines([object[]]$Varied) {
+    $questions=New-Object Collections.ArrayList
+    foreach($case in $Varied){
+        $place=New-Lab $case $now
+        foreach($form in $forms){foreach($shell in 'desktop','core'){[void]$questions.Add((Get-ReaderArguments $form $place -Dump -Shell $shell -Zone '0'))}}
+    }
+    $results=Invoke-ReaderBatch $questions.ToArray()
+    $sha=[Security.Cryptography.SHA256]::Create();$utf8=[Text.UTF8Encoding]::new($false)
+    try{
+        for($index=0;$index -lt $Varied.Count;$index++){
+            $said=foreach($offset in 0..3){
+                $result=$results[4*$index+$offset]
+                if($result.kind -cnotin 'answer','ruled','stopped'){throw ($Varied[$index].name+': the reader took the question as '+$result.kind)}
+                $text=if($result.kind -ceq 'answer'){$result.output}else{Get-RefusalText $result.output}
+                $result.kind+' '+(-join($sha.ComputeHash($utf8.GetBytes($text))[0..7]|ForEach-Object{$_.ToString('x2')}))
+            }
+            if($Varied[$index].name.Contains(' | ')){throw ($Varied[$index].name+': a name cannot be kept in a line of digests')}
+            [pscustomobject]@{name=$Varied[$index].name;platform=$Varied[$index].ContainsKey('macFiles');line=($Varied[$index].name+' | '+($said -join ' | '))}
+        }
+    }finally{$sha.Dispose()}
+}
+# The lines of digests a file holds, and the file written from the lines the program gives now.
+function Read-DigestLines([string]$File) {
+    Assert ([IO.File]::Exists((Join-Path $root $File))) ($File+' is missing; write it with -Update')
+    ,@([IO.File]::ReadAllText((Join-Path $root $File)).Replace("`r`n","`n").Split("`n")|Where-Object{$_ -and -not $_.StartsWith('#')})
+}
+function Write-DigestLines([string]$File,[string]$Of,[object[]]$Lines) {
+    $head='# What the compiled program holds for each '+$Of+": for status -AsJson and explain -AsJson, under`n# Windows PowerShell's numbers and PowerShell 7's, whether it answered and a digest of its typed`n# values or of its refusal.`n# Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.`n"
+    [IO.File]::WriteAllText((Join-Path $root $File),$head+(($Lines|ForEach-Object{$_.line}) -join "`n")+"`n",[Text.UTF8Encoding]::new($false))
+    'WROTE '+$File|Out-Host
 }
 function ConvertTo-ExpectedText($Sections,[string]$Command) {
     $what=if($Command -eq 'tray'){'the tray shows'}elseif($Command -eq 'watch'){'`hotpl8 watch` gives a pipe'}else{'`hotpl8 '+$Command+'` prints'}
@@ -344,7 +262,7 @@ try{
     # The state directory comes from each case, never from the machine the suite runs on.
     $env:HOTPL8_STATE_DIRECTORY=''
     $cases=@(Get-Hotpl8ParityCases)
-    $from=if($variation){Get-Hotpl8ParityFuzzCases $cases $Fuzz $Seed -Mac:(-not $windows)}else{$cases}
+    $from=if($variation){Get-Hotpl8ParityFuzzCases $cases $Fuzz $Seed}else{$cases}
     $chosen=@($from|Where-Object{-not $Only -or $_.name -like $Only})
     $plain=@($cases|Where-Object{$_.name -ceq 'plain'})[0]
     Check 'the cases have unique names' {
@@ -353,46 +271,31 @@ try{
         Assert $plain 'no parity case is named plain'
     }
     Check 'a wrong answer is noticed' {
-        # The reader is shown other readings than PowerShell: a comparison that cannot fail proves nothing.
+        # The program is shown other readings: a comparison that cannot fail proves nothing.
         $other=@{name='plain, edited';files=@{}}
         foreach($name in $plain.files.Keys){$other.files[$name]=$plain.files[$name]}
         $other.files['status.json']=Edit-Hotpl8ParityText $other.files['status.json'] '"used5h":38' '"used5h":39'
-        $place=New-Lab $plain $now;$edited=New-Lab $other $now
-        $answers=Get-Answers $place
-        $results=Invoke-ReaderBatch @(foreach($form in $forms){,(Get-ReaderArguments $form $place -Dump);,(Get-ReaderArguments $form $edited -Dump)})
-        $stopped=[pscustomobject]@{kind='stopped';output='This state cannot be shown.'}
-        $failed=@{kind='error';message='failed'}
-        for($index=0;$index -lt $forms.Count;$index++){
-            $form=$forms[$index];$answer=$answers[$form];$result=$results[2*$index]
-            Assert ((Compare-Answer $answer $result 'answer') -ceq 'same') ($form+': the unedited case must match')
-            Assert ((Compare-Answer $answer $results[2*$index+1] 'answer') -like 'the answers differ at row *') ($form+': an edited reading went unnoticed')
-            Assert ((Compare-Answer $answer $stopped 'answer') -like 'the reader refuses an answer it must give*')
-            Assert ((Compare-Answer $answer $stopped 'either') -ceq 'stricter')
-            Assert ((Compare-Answer $answer $stopped 'refuse') -ceq 'stricter')
-            Assert ((Compare-Answer $answer $result 'refuse') -like 'the reader answers a case marked*')
-            Assert ((Compare-Answer $failed $result 'either') -like 'the reader answers where PowerShell refuses*')
-            Assert ((Compare-Answer $failed $stopped 'answer') -ceq 'refused')
-            Assert ((Compare-Answer $failed ([pscustomobject]@{kind='ruled';output='failed'}) 'answer') -ceq 'refused')
-            Assert ((Compare-Answer $failed ([pscustomobject]@{kind='ruled';output='Failed'}) 'either') -like 'the reader refuses with <Failed> where PowerShell says <failed>')
-            Assert ((Compare-Answer $answer ([pscustomobject]@{kind='misspelled';output='words'}) 'either') -ceq 'the reader took the question as misspelled: words')
+        foreach($form in $commands){
+            $said=Get-PrintedText @($plain,$other) $form
+            $first=[ordered]@{};$second=[ordered]@{}
+            foreach($name in $said.Keys){if($name.StartsWith('plain, edited')){$second[$name.Replace('plain, edited','plain')]=$said[$name]}else{$first[$name]=$said[$name]}}
+            Assert (@($first.Keys).Count -gt 0 -and (Compare-PrintedText $first $first).Count -eq 0) ($form+': the unedited case must match itself')
+            $seen=@(Compare-PrintedText $first $second)
+            Assert ($seen.Count -gt 0 -and $seen[0] -like 'plain*: row *: expected <*> reader <*>') ($form+': an edited reading went unnoticed')
         }
-        $text='{"a":[6,"6",null,{"b":true}],"c":7.7999999999999989}'
-        foreach($same in $text,'{ "a": [6.0, "6", null, {"b": true}], "c": 7.799999999999999 }'){
-            Assert ($null -eq (Compare-JsonText $text $same)) $same
-        }
-        foreach($changed in '{"a":[6,6,null,{"b":true}],"c":7.7999999999999989}','{"a":[6.5,"6",null,{"b":true}],"c":7.7999999999999989}','{"a":[6,"6",null,{"B":true}],"c":7.7999999999999989}','{"a":[6,"6",{"b":true},null],"c":7.7999999999999989}','{"a":[6,"6",null,{"b":true}],"c":7.7999999999999989,"d":null}','{"a":[6,"6",null,{"b":true}],"c":7.79999999999}','{"a":[6,"6",null,{"b":true}],"c":"7.7999999999999989"}'){
-            Assert (Compare-JsonText $text $changed) $changed
-        }
-        Assert ($null -eq (Compare-JsonText '{"a":4294967296}' '{"a":4294967296.0}'))
-        Assert (Compare-JsonText '{"a":4294967296}' '{"a":4294967297}')
+        $lines=@(Get-VariationLines @($plain,$other))
+        Assert ($lines.Count -eq 2 -and $lines[0].line -cmatch '^plain( \| answer [0-9a-f]{16}){4}$') $lines[0].line
+        Assert ($lines[0].line.Substring(5) -cne $lines[1].line.Substring(13)) 'an edited reading has the digests of the unedited one'
+        Assert ($lines[0].line -cnotmatch 'e3b0c44298fc1c14') 'a digest is of nothing'
         # The expected text: what is written is what is read back, and each kind of difference is seen.
         $sections=[ordered]@{'one'="first line`n`nthird line`n";'two [PowerShell 7 numbers]'="refused: words`n"}
         $read=ConvertFrom-ExpectedText (ConvertTo-ExpectedText $sections 'status').Replace("`n","`r`n")
         Assert (@($read.Keys).Count -eq 2 -and $read['one'] -ceq $sections['one'] -and (Compare-PrintedText $read $sections).Count -eq 0)
         $changed=[ordered]@{'one'="first line`n`nthird line.`n";'three'="new`n"}
         $seen=Compare-PrintedText $read $changed
-        Assert ($seen.Count -eq 3 -and $seen[0] -ceq 'one: row 3: expected <third line> reader <third line.>' -and $seen[1] -ceq 'three: not in the expected text' -and $seen[2] -like 'two *: in the expected text, but no case prints it') ($seen -join '; ')
+        Assert ($seen.Count -eq 3 -and $seen[0] -ceq 'one: row 3: expected <third line> reader <third line.>' -and $seen[1] -ceq 'three: not in the expected text' -and $seen[2] -like 'two *: in the expected text, but no case prints it')
         Assert ((Compare-PrintedText $read ([ordered]@{'one'=$sections['one']}) -Partial).Count -eq 0)
+        Assert ((Get-RefusalText 'One of its values is not one HotPl8 writes (src/contract.rs:16).') -ceq 'One of its values is not one HotPl8 writes (src/contract.rs).')
     }
     Check 'one start for many questions changes no answer' {
         $refusing=@{name='refusing';files=@{'policy.json'='{"mode":"sideways"}'}}
@@ -411,16 +314,58 @@ try{
         }
         Assert (@($together|Where-Object{$_.kind -ceq 'answer'}).Count -eq 18 -and @($together|Where-Object{$_.kind -ceq 'ruled'}).Count -eq 6)
     }
-    $script:curated=$null
-    Check ('PowerShell''s rules and the reader''s agree on '+$chosen.Count+' cases') {
-        $script:curated=Test-Cases $chosen -Layout
-        $tally=$script:curated.tally
-        Assert ($script:curated.wrong.Count -eq 0) (''+$script:curated.wrong.Count+" of "+($chosen.Count*$forms.Count)+" comparisons:`n     "+(Get-WrongText $script:curated.wrong))
-        Assert (($tally.same+$tally.stricter+$tally.refused) -eq ($chosen.Count*$forms.Count))
+    Check 'each JSON answer is plain text a caller can read, and a case that must be refused is' {
+        $asked=New-Object Collections.ArrayList
+        foreach($case in $chosen){
+            $place=New-Lab $case $now
+            foreach($form in $forms){[void]$asked.Add((Get-ReaderArguments $form $place))}
+        }
+        $results=Invoke-ReaderBatch $asked.ToArray()
+        $wrong=New-Object Collections.ArrayList;$answered=0
+        for($index=0;$index -lt $results.Count;$index++){
+            $case=$chosen[[Math]::Floor($index/$forms.Count)];$result=$results[$index];$which=$case.name+' ['+$forms[$index%$forms.Count]+']'
+            if($result.kind -cnotin 'answer','ruled','stopped'){[void]$wrong.Add($which+': the reader took the question as '+$result.kind);continue}
+            if($case.ContainsKey('expect') -and $case.expect -eq 'refuse' -and $result.kind -ceq 'answer'){[void]$wrong.Add($which+': the reader answers a case marked as one it refuses; if that is meant, change the case')}
+            if($result.kind -cne 'answer'){continue}
+            $answered++
+            # A state with no snapshot has no values, and the command says so.
+            if($result.output -ceq "No cached status. Run hotpl8 refresh.`n"){continue}
+            if($result.output -cnotmatch '\A[\x20-\x7e\n]*[^\n]\n\z'){[void]$wrong.Add($which+': the JSON text is not plain ASCII ended by one line feed');continue}
+            try{$null=ConvertFrom-Json -InputObject $result.output}catch{[void]$wrong.Add($which+': the JSON text cannot be read back')}
+        }
+        Assert ($wrong.Count -eq 0) (''+$wrong.Count+" answers:`n     "+(Get-WrongText $wrong.ToArray()))
+        # A reader that refused everything would pass every line above.
+        Assert ($Only -or $answered -ge 0.6*$results.Count) ('the reader answered only '+$answered+' of '+$results.Count)
     }
-    if($script:curated){'     '+$script:curated.tally.same+' the same, '+$script:curated.tally.refused+' refused by both, '+$script:curated.tally.stricter+' refused by the reader alone, as their cases say'}
-    # A variation has no section in the expected text.
-    foreach($command in @(if(-not $variation){$commands})){
+    if($Values){
+        foreach($case in $chosen){
+            $place=New-Lab $case $now
+            $asked=@(foreach($form in $forms){foreach($shell in 'desktop','core'){,(Get-ReaderArguments $form $place -Dump -Shell $shell -Zone '0')}})
+            $results=Invoke-ReaderBatch $asked
+            for($index=0;$index -lt 4;$index++){'== '+$case.name+' ['+$forms[[Math]::Floor($index/2)]+', '+('Windows PowerShell','PowerShell 7')[$index%2]+' numbers] '+$results[$index].kind;$results[$index].output.TrimEnd("`n")}
+        }
+    }
+    # A variation is recorded by its number, not here.
+    if($variation){Get-VariationLines $chosen|ForEach-Object{'     '+$_.line}}
+    else{
+    $script:held=$null
+    Check 'status -AsJson and explain -AsJson hold the expected values' {
+        $expected='tests/parity/expected-values.txt'
+        $script:held=@(Get-VariationLines $chosen)
+        if($Update){Write-DigestLines $expected 'parity case' $script:held}
+        $recorded=@{};foreach($line in (Read-DigestLines $expected)){$recorded[$line.Substring(0,$line.IndexOf(' | '))]=$line}
+        $wrong=New-Object Collections.ArrayList
+        foreach($one in $script:held){
+            # A case with files of its own on a Mac is recorded from the ones it has on Windows.
+            if($one.platform -and -not $windows){continue}
+            if(-not $recorded.ContainsKey($one.name)){[void]$wrong.Add($one.name+': not recorded')}
+            elseif($recorded[$one.name] -cne $one.line){[void]$wrong.Add('expected <'+$recorded[$one.name]+'> reader <'+$one.line+'>')}
+        }
+        if(-not $Only){foreach($name in $recorded.Keys){if(-not @($script:held|Where-Object{$_.name -ceq $name}).Count){[void]$wrong.Add($name+': recorded, but no case is named so')}}}
+        Assert ($wrong.Count -eq 0) (''+$wrong.Count+" cases; see one's values with -Only NAME -Values, and if the change is meant, run this suite with -Update and review it:`n     "+(Get-WrongText $wrong.ToArray()))
+    }
+    if($script:held){'     '+$script:held.Count+' cases'}
+    foreach($command in $commands){
     $script:printed=$null
     Check $(if($command -eq 'tray'){'the tray shows the expected text'}else{$command+' prints the expected text'}) {
         $expected='tests/parity/expected-'+$command+'.txt';$expectedFile=Join-Path $root $expected
@@ -434,6 +379,7 @@ try{
         Assert ($wrong.Count -eq 0) (''+$wrong.Count+" sections; if the change is meant, run this suite with -Update and review it:`n     "+(Get-WrongText $wrong))
     }
     if($script:printed){'     '+@($script:printed.Keys).Count+' sections'}
+    }
     }
     if(-not $Only){
     Check 'reset times follow this machine''s own time zone' {
@@ -450,16 +396,29 @@ try{
         }
     }
     if($Fuzz -gt 0){
-        $script:fuzzed=$null
-        Check ('PowerShell''s rules and the reader''s agree on '+$Fuzz+' seeded variations (seed '+$Seed+')') {
-            $script:fuzzed=Test-Cases (Get-Hotpl8ParityFuzzCases $cases $Fuzz $Seed -Mac:(-not $windows))
-            $tally=$script:fuzzed.tally
-            Assert ($script:fuzzed.wrong.Count -eq 0) (''+$script:fuzzed.wrong.Count+" comparisons:`n     "+(Get-WrongText $script:fuzzed.wrong))
-            # A reader that refused everything would agree with everything.
-            $answerable=$tally.same+$tally.stricter
-            Assert ($answerable -ge $Fuzz -and $tally.same -ge 0.6*$answerable) ('the reader answered only '+$tally.same+' of the '+$answerable+' variations PowerShell answers')
+        $script:varied=$null
+        Check ('the reader answers or refuses '+$Fuzz+' seeded variations (seed '+$Seed+') as recorded') {
+            $script:varied=@(Get-VariationLines (Get-Hotpl8ParityFuzzCases $cases $Fuzz $Seed))
+            Assert ($script:varied.Count -eq $Fuzz)
+            # A reader that refused everything would be as steady as one that answers.
+            $answered=@($script:varied|Where-Object{$_.line -cmatch ' \| answer '}).Count
+            Assert ($answered -ge 0.3*$Fuzz) ('the reader answered only '+$answered+' of '+$Fuzz+' variations')
+            # The first seed's are recorded. A variation made from a case with files of its
+            # own on a Mac holds a Windows path, and what is said of it is compared on Windows.
+            if($Seed -ne 1){return}
+            $expected='tests/parity/expected-variations.txt'
+            if($Update){Write-DigestLines $expected 'seeded variation of the parity cases (seed 1)' $script:varied}
+            $recorded=Read-DigestLines $expected
+            Assert ($recorded.Count -ge 100) ('only '+$recorded.Count+' variations are recorded')
+            $wrong=New-Object Collections.ArrayList
+            for($index=0;$index -lt [Math]::Min($recorded.Count,$script:varied.Count);$index++){
+                $one=$script:varied[$index]
+                if($one.platform -and -not $windows){continue}
+                if($one.line -cne $recorded[$index]){[void]$wrong.Add('expected <'+$recorded[$index]+'> reader <'+$one.line+'>')}
+            }
+            Assert ($wrong.Count -eq 0) (''+$wrong.Count+" variations; make one again with -Only 'fuzz 1-N*', and if the change is meant, run this suite with -Update and review it:`n     "+(Get-WrongText $wrong.ToArray()))
         }
-        if($script:fuzzed){'     '+$script:fuzzed.tally.same+' the same, '+$script:fuzzed.tally.refused+' refused by both, '+$script:fuzzed.tally.stricter+' refused by the reader alone'}
+        if($script:varied){'     '+@($script:varied|Where-Object{$_.line -cmatch ' \| answer '}).Count+' answered in some form, '+@($script:varied|Where-Object{$_.line -cnotmatch ' \| answer '}).Count+' refused in every form'}
     }
     }
 }finally{

@@ -13,6 +13,10 @@ use std::rc::Rc;
 
 const MAX_BYTES: usize = 1_000_000;
 const MAX_DEPTH: usize = 20;
+/// A question's object and the list an argument may be.
+const ASKED_DEPTH: usize = 2;
+/// The frames of a replay are the largest question: the file of a day's status, one a line.
+pub const MAX_ASKED_BYTES: usize = 16_000_000;
 /// How deep Windows PowerShell follows a message from another program.
 const MAX_FOREIGN_DEPTH: usize = 100;
 const FORBIDDEN_NAMES: [&str; 6] = ["psobject", "psbase", "psadapted", "psextended", "pstypenames", "__type"];
@@ -45,7 +49,7 @@ pub fn parse_bytes(bytes: &[u8], name: &str) -> R<V> {
 
 /// A JSON document whose top level is an object.
 pub fn parse(text: &str, name: &str) -> R<V> {
-    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: false };
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: false, asked: false };
     parser.document().map_err(|stop| {
         stop.described(|| {
             let before = &text[..parser.at.min(text.len())];
@@ -56,13 +60,30 @@ pub fn parse(text: &str, name: &str) -> R<V> {
     })
 }
 
+/// A question PowerShell asks: one object whose members are the question's arguments. An
+/// argument is a document HotPl8 wrote or a list of them, so it lies that much deeper than
+/// a document read from its file, and several together can be larger than any one file.
+pub fn parse_asked(bytes: &[u8]) -> R<V> {
+    const WHAT: &str = "The question";
+    if bytes.len() > MAX_ASKED_BYTES {
+        return unreadable_as(format!("{WHAT} is larger than any HotPl8 asks."));
+    }
+    // Windows PowerShell opens the pipe it writes a question into with the mark.
+    let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return unreadable_as(format!("{WHAT} is not UTF-8 text."));
+    };
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: false, asked: true };
+    parser.document().map_err(|stop| stop.described(|| format!("{WHAT} is not JSON as HotPl8 writes it.")))
+}
+
 /// One message from another program, or a file another program keeps: any JSON value.
 /// HotPl8 asks such a value only for members it names, so a member it has no name for
 /// (none at all, one outside printable ASCII, one PowerShell keeps for itself) is passed
 /// over with everything under it, and a number HotPl8 would not write is read as the
 /// double nearest it. Two members of one name are refused, as PowerShell refuses them.
 pub fn parse_foreign(text: &str) -> R<V> {
-    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: true };
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: true, asked: false };
     parser.blank();
     let value = parser.value(0)?;
     parser.blank();
@@ -74,7 +95,7 @@ pub fn parse_foreign(text: &str) -> R<V> {
 
 /// A line holding one JSON array of strings: how the parity suite spells a request.
 pub fn strings(line: &str) -> Option<Vec<String>> {
-    let mut parser = Parser { bytes: line.as_bytes(), at: 0, foreign: false };
+    let mut parser = Parser { bytes: line.as_bytes(), at: 0, foreign: false, asked: false };
     parser.blank();
     if parser.peek() != Some(b'[') {
         return None;
@@ -92,6 +113,8 @@ struct Parser<'a> {
     at: usize,
     /// The text is another program's, not a file HotPl8 wrote.
     foreign: bool,
+    /// The text is a question: documents HotPl8 wrote, inside the object that names them.
+    asked: bool,
 }
 
 impl Parser<'_> {
@@ -126,7 +149,7 @@ impl Parser<'_> {
     }
 
     fn value(&mut self, depth: usize) -> R<V> {
-        if depth > if self.foreign { MAX_FOREIGN_DEPTH } else { MAX_DEPTH } {
+        if depth > if self.foreign { MAX_FOREIGN_DEPTH } else if self.asked { MAX_DEPTH + ASKED_DEPTH } else { MAX_DEPTH } {
             return unreadable();
         }
         match self.peek() {
@@ -319,7 +342,11 @@ impl Parser<'_> {
         }
         let token = std::str::from_utf8(&self.bytes[start..self.at]).unwrap();
         let all_zero = whole.iter().chain(fraction).all(|b| *b == b'0');
-        let unwritten = whole.len() + fraction.len() > 28 || (negative && all_zero);
+        // A decimal holds 96 bits of digits and at most 28 of them after the point. Windows
+        // PowerShell writes one that full when a division did not come out even.
+        let digits: String = whole.iter().chain(fraction).map(|b| *b as char).collect();
+        let mantissa = digits.parse::<u128>().ok().filter(|mant| *mant >> 96 == 0);
+        let unwritten = fraction.len() > 28 || mantissa.is_none() || (negative && all_zero);
         if self.foreign && !exponent && (unwritten || (fraction.is_empty() && token.parse::<i64>().is_err())) {
             let Ok(value) = token.parse::<f64>() else { return unreadable() };
             return crate::ps::dbl(if all_zero { 0.0 } else { value });
@@ -345,8 +372,7 @@ impl Parser<'_> {
             });
         }
         if desktop() {
-            let digits: String = whole.iter().chain(fraction).map(|b| *b as char).collect();
-            let Ok(mant) = digits.parse::<u128>() else { return unreadable() };
+            let Some(mant) = mantissa else { return unreadable() };
             return Ok(V::Dec(Dec { neg: negative, mant, scale: fraction.len() as u8 }));
         }
         let Ok(value) = token.parse::<f64>() else { return unreadable() };
@@ -356,7 +382,7 @@ impl Parser<'_> {
 
 /// A number as this edition reads its text.
 pub fn number(text: &str) -> R<V> {
-    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: false };
+    let mut parser = Parser { bytes: text.as_bytes(), at: 0, foreign: false, asked: false };
     let value = parser.number()?;
     if parser.at == text.len() {
         Ok(value)
@@ -416,7 +442,7 @@ fn dump_node(value: &V, indent: usize, label: &str, out: &mut String) -> R<()> {
     Ok(())
 }
 
-/// The typed dump tests/parity/referee.ps1 writes for the same value.
+/// The typed dump: each value beside the type PowerShell gives it.
 pub fn dump(value: &V) -> R<String> {
     let mut out = String::new();
     dump_node(value, 0, "", &mut out)?;
@@ -618,6 +644,26 @@ mod tests {
     }
 
     #[test]
+    fn a_decimal_as_full_as_one_can_be_is_read_back() {
+        // What Windows PowerShell writes of a division the program answered with.
+        set_core(false);
+        for (text, shown) in [
+            (r#"{"a":1.0000000000000000000000000000}"#, "m:1.0000000000000000000000000000"),
+            (r#"{"a":0.0000000000000000000000000001}"#, "m:0.0000000000000000000000000001"),
+            (r#"{"a":7.9228162514264337593543950335}"#, "m:7.9228162514264337593543950335"),
+            (r#"{"a":-5.0000000000000000000000000000}"#, "m:-5.0000000000000000000000000000"),
+        ] {
+            let value = parse(text, "test").ok().unwrap();
+            assert_eq!(dump(&value).ok().unwrap(), format!("{{
+ a: {shown}
+}}
+"), "{text}");
+            assert_eq!(compact(&value, MAX_DEPTH).ok().unwrap(), text);
+            assert!(parse_asked(text.as_bytes()).is_ok(), "{text}");
+        }
+    }
+
+    #[test]
     fn anything_but_strict_json_is_refused_by_name_and_place() {
         for text in [
             "",
@@ -644,6 +690,7 @@ mod tests {
             r#"{"a":-0.0}"#,
             r#"{"a":9223372036854775808}"#,
             r#"{"a":0.12345678901234567890123456789}"#,
+            r#"{"a":7.9228162514264337593543950336}"#,
             r#"{"a":01}"#,
             r#"{"a":'x'}"#,
             r#"{"a":1 /* c */}"#,
@@ -695,5 +742,31 @@ mod tests {
         assert!(write(&value, 1).is_err());
         assert_eq!(compact(&value, 24).ok().unwrap(), r#"{"a":[1,2.5,"x\"y",{"b":null}],"c":{},"d":[]}"#);
         assert!(compact(&value, 1).is_err());
+    }
+
+    #[test]
+    fn a_question_is_one_object_two_levels_deeper_than_a_file_and_no_larger_than_any_asked() {
+        set_core(false);
+        let said = |written: &[u8]| parse_asked(written).err().map(|stop| stop.message());
+        assert_eq!(said(br#"{"policy":{"mode":"monitor"},"now":null}"#), None);
+        // Windows PowerShell opens the pipe it writes into with the mark.
+        let marked = parse_asked(b"\xef\xbb\xbf{\"a\":1}").ok().unwrap();
+        assert!(marked.g("a").ok().unwrap().eq_i(1).ok().unwrap());
+        for written in ["", " ", "{", "[]", "7", "null", "{} x", "\u{feff}\u{feff}{}"] {
+            assert_eq!(said(written.as_bytes()).as_deref(), Some("The question is not JSON as HotPl8 writes it."), "{written:?}");
+        }
+        assert_eq!(said(b"{\"a\":\"\xff\"}").as_deref(), Some("The question is not UTF-8 text."));
+        // An argument is a document or a list of them: that much deeper than a file.
+        let nested = |levels: usize| format!("{}1{}", r#"{"a":"#.repeat(levels), "}".repeat(levels));
+        let deepest = |read: &dyn Fn(&str) -> bool| (1..64).take_while(|levels| read(&nested(*levels))).last().unwrap();
+        let file = deepest(&|text| parse(text, "test").is_ok());
+        assert!(file >= MAX_DEPTH);
+        assert_eq!(deepest(&|text| parse_asked(text.as_bytes()).is_ok()), file + ASKED_DEPTH);
+        assert_eq!(said(nested(file + ASKED_DEPTH + 1).as_bytes()).as_deref(), Some("The question is not JSON as HotPl8 writes it."));
+        // The size is looked at before anything is read.
+        let mut large = vec![b'x'; MAX_ASKED_BYTES];
+        assert_eq!(said(&large).as_deref(), Some("The question is not JSON as HotPl8 writes it."));
+        large.push(b'x');
+        assert_eq!(said(&large).as_deref(), Some("The question is larger than any HotPl8 asks."));
     }
 }

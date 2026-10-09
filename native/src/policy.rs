@@ -1,6 +1,5 @@
-//! The policy checks of src/config.ps1, src/automation.ps1 and src/providers/codex.ps1.
-//! Each refusal is said in the words HotPl8 has always used for it: the collector, which is
-//! still PowerShell, refuses the same policy with the same sentence.
+//! The checks a policy must pass. Each refusal is said in the words HotPl8 has always used
+//! for it; PowerShell asks here and passes the sentence on.
 
 use crate::capacity::assert_capacity_policy;
 use crate::critical::assert_critical_policy;
@@ -212,7 +211,7 @@ pub fn assert_policy(policy: &V) -> R<()> {
 }
 
 /// Assert-Hotpl8AutomationPolicy
-fn assert_automation_policy(policy: &V) -> R<()> {
+pub(crate) fn assert_automation_policy(policy: &V) -> R<()> {
     let a = policy.g("automation")?;
     for name in ["disabled", "claudeModels"] {
         unique_array(&policy.g(name)?, &format!("Invalid array: {name}"), &format!("Null array entry: {name}"))?;
@@ -561,5 +560,24 @@ mod tests {
             assert_eq!(home_path(&format!(r"{above}\NOSUCH~1\home")).ok().unwrap(), format!(r"{lab}\a long directory name\NOSUCH~1\home"));
         }
         std::fs::remove_dir_all(&lab).unwrap();
+    }
+
+    #[test]
+    fn the_policies_given_as_examples_are_ones_hotpl8_accepts() {
+        set_core(false);
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        crate::display::packaged_data(&root);
+        let mut files = vec![root.join("policy.example.json")];
+        let examples = std::fs::read_dir(root.join("examples")).unwrap().map(|entry| entry.unwrap().path());
+        files.extend(examples.filter(|path| path.extension().is_some_and(|kind| kind == "json")));
+        assert!(files.len() >= 4, "{files:?}");
+        for file in files {
+            let policy = crate::json::read_file(&file).ok().unwrap().unwrap();
+            assert_eq!(assert_policy(&policy).err().map(|stop| stop.message()), None, "{}", file.display());
+            let codex = policy.g("codex").ok().unwrap();
+            if !codex.is_null() {
+                assert_eq!(assert_codex_policy(&codex).err().map(|stop| stop.message()), None, "{}", file.display());
+            }
+        }
     }
 }

@@ -1,67 +1,28 @@
-# Real file/lock boundaries with fictional state; no native account operations.
+# The control boundary PowerShell's writers share with the compiled program, on real files
+# and locks with fictional state. What an action is authorized under is tested in the program.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
 . (Join-Path $root 'src/config.ps1')
-. (Join-Path $root 'src/providers/claude.ps1')
+. (Join-Path $root 'src/provider-actions.ps1')
 $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-actions-'+[guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($dir)
 $passed=0
 function Assert($Value,[string]$Message){if(-not $Value){throw $Message};$script:passed++}
-function Save($Name,$Value){Write-Hotpl8Text (Join-Path $dir $Name) ($Value|ConvertTo-Json -Depth 12)}
 function Reject([scriptblock]$Action,[string]$Code){try{& $Action;throw 'unexpected success'}catch{Assert ($_.Exception.Message -eq $Code) ('expected '+$Code+', got '+$_.Exception.Message)}}
 try {
     Reject {Invoke-Hotpl8ControlWrite (Join-Path $dir 'missing/parent') {'should not run'} -TimeoutMs 20} 'action_state_unavailable'
-    Save 'policy.json' @{schemaVersion=2;mode='automate';prefer=@(1);switchEnabled=$true;warm=$true;probeEnabled=$true}
-    $generation=Get-Hotpl8ControlGeneration $dir
-    $script:admitted=$false
-    Invoke-Hotpl8ControlWrite $dir {Save 'automation-pause.json' @{until=[datetimeoffset]::UtcNow.AddMinutes(2).ToString('o')}}
-    Reject {Invoke-Hotpl8ActionAuthorization $dir $generation {$script:admitted=$true}} 'action_state_changed'
-    Assert (-not $script:admitted) 'control change before authorization must prevent admission'
-    [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
-    $generation=Get-Hotpl8ControlGeneration $dir
-    $result=Invoke-Hotpl8ActionAuthorization $dir $generation {
-        Reject {Invoke-Hotpl8ControlWrite $dir {$script:admitted=$true} -TimeoutMs 20} 'action_control_busy'
-        'admitted'
+    $script:ran=$false
+    $result=Invoke-Hotpl8ControlWrite $dir {
+        Reject {Invoke-Hotpl8ControlWrite $dir {$script:ran=$true} -TimeoutMs 20} 'action_control_busy'
+        'written'
     }
-    Assert ($result -eq 'admitted' -and -not $script:admitted) 'authorization excludes concurrent control writers'
-    Invoke-Hotpl8ControlWrite $dir {Save 'hold.json' @{until=[datetimeoffset]::UtcNow.AddMinutes(2).ToString('o')}}
-    Assert ($result -eq 'admitted') 'later hold cannot retract an already admitted native operation'
-    Reject {Invoke-Hotpl8ActionAuthorization $dir $generation {'should not run'}} 'action_state_changed'
-    Assert ((Get-Hotpl8ControlGeneration $dir) -cne $generation) 'later hold invalidates next operation generation'
-    $policy=Read-Hotpl8Json (Join-Path $dir 'policy.json')
-    $base=[pscustomobject]@{intent='warm';actionSlot='1';actionEligible=$true;bindingKnown=$true;previousId='1'}
-    $context=Get-Hotpl8ProviderActionContext $policy $dir $base
-    Assert ($context.hold -and $context.actionEnabled -and -not $context.paused) 'rotation hold leaves separately enabled warming available'
-    Save 'automation-pause.json' @{until=[datetimeoffset]::UtcNow.AddMinutes(2).ToString('o')}
-    $context=Get-Hotpl8ProviderActionContext $policy $dir $base
-    Assert ($context.paused -and $context.hold) 'common context combines pause and hold without conflating them'
-    Write-Hotpl8Text (Join-Path $dir 'automation-pause.json') '{broken'
-    Assert ((Get-Hotpl8ProviderActionContext $policy $dir $base).safetyInvalid) 'malformed pause fails closed for actions'
-    $refresh=[pscustomobject]@{intent='refresh';bindingKnown=$true;identityKnown=$true;previousId='1'}
-    Assert (-not (Get-Hotpl8ProviderActionContext $policy $dir $refresh).safetyInvalid) 'same-account refresh is independent of rotation control corruption'
-    [IO.File]::Delete((Join-Path $dir 'automation-pause.json'))
-    $before=@(Get-ChildItem -LiteralPath $dir -File|ForEach-Object { $_.Name+':'+(Get-FileHash -LiteralPath $_.FullName).Hash }) -join '|'
-    $null=Get-Hotpl8ProviderActionContext $policy $dir $base
-    $after=@(Get-ChildItem -LiteralPath $dir -File|ForEach-Object { $_.Name+':'+(Get-FileHash -LiteralPath $_.FullName).Hash }) -join '|'
-    Assert ($before -ceq $after) 'building decision context is read-only'
-    # The generation must stay byte-for-byte what Get-Item + Get-FileHash produced.
-    function ReferenceGeneration([string]$Directory){
-        $parts=@(foreach($name in @('policy.json','hold.json','automation-pause.json','automation-leases.json')){
-            $path=Join-Path $Directory $name
-            if(Test-Path -LiteralPath $path -PathType Leaf){$name+':'+(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}else{$name+':absent'}
-        })
-        return (Get-Hotpl8Hash ($parts -join '|'))
-    }
-    Assert ((Get-Hotpl8ControlGeneration $dir) -ceq (ReferenceGeneration $dir)) 'generation matches the reference digest for present and absent control files'
-    [IO.File]::WriteAllBytes((Join-Path $dir 'automation-leases.json'),[byte[]]@())
-    [IO.File]::WriteAllBytes((Join-Path $dir 'automation-pause.json'),[byte[]]@(0xEF,0xBB,0xBF,0x7B,0x7D))
-    Assert ((Get-Hotpl8ControlGeneration $dir) -ceq (ReferenceGeneration $dir)) 'empty and byte-order-marked control files are hashed by exact bytes'
-    $absent=Join-Path $dir 'no-such-state'
-    Assert ((Get-Hotpl8ControlGeneration $absent) -ceq (ReferenceGeneration $absent)) 'a missing state directory reads as every control file absent'
-    [IO.File]::Delete((Join-Path $dir 'automation-leases.json'))
-    [void][IO.Directory]::CreateDirectory((Join-Path $dir 'automation-leases.json'))
-    Reject {Get-Hotpl8ControlGeneration $dir} 'action_state_unavailable'
+    Assert ($result -eq 'written' -and -not $script:ran) 'a control write keeps every other writer out while it runs'
+    Invoke-Hotpl8ControlWrite $dir {$script:ran=$true}
+    Assert $script:ran 'the boundary is free once a write has ended'
+    # The compiled program keeps writers out by holding the same file.
+    $held=[IO.File]::Open((Join-Path $dir 'action-control.lock'),'OpenOrCreate','ReadWrite','None')
+    try{Reject {Invoke-Hotpl8ControlWrite $dir {'should not run'} -TimeoutMs 20} 'action_control_busy'}finally{$held.Dispose()}
     'passed='+$passed+' failed=0'
 } finally {
     $resolved=[IO.Path]::GetFullPath($dir)

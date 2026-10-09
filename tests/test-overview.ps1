@@ -1,7 +1,6 @@
 ﻿$ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/common.ps1')
-. (Join-Path $root 'src/insights.ps1')
 . (Join-Path $root 'src/native.ps1')
 . (Join-Path $PSScriptRoot 'fixtures/frame.ps1')
 $now=[datetimeoffset]::Parse('2026-09-13T12:00:00Z')
@@ -11,118 +10,12 @@ $script:passed=0;$script:failed=0
 function Assert($Value){if(-not $Value){throw 'assertion failed'}}
 function Check($Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
 function Copy-Value($Value){$Value|ConvertTo-Json -Depth 24|ConvertFrom-Json}
-Check 'fixed membership averages full, half and exhausted accounts' {
-    $o=Get-Hotpl8ProviderOverview $s $p $now
-    Assert ($o.claude.accounts -eq 3 -and $o.claude.remainingPercent -eq 50 -and $o.claude.includesReserve)
-    Assert ($o.codex.remainingPercent -eq 80 -and $o.codex.availability -eq 'Ready for next launch')
-}
-Check 'all full and all empty are distinct from unknown' {
-    $c=Copy-Value $s;foreach($a in $c.slots){$a.used7d=0}
-    Assert ((Get-Hotpl8ProviderOverview $c $p $now).claude.remainingPercent -eq 100)
-    foreach($a in $c.slots){$a.used7d=100}
-    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-    Assert ($o.remainingPercent -eq 0 -and $o.availability -like 'Unavailable*' -and $o.unknownPercent -eq 0)
-}
-Check 'failed readings retain membership and unknown share' {
-    $c=Copy-Value $s;$c.slots[1].status='authentication_required'
-    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-    Assert ($o.accounts -eq 3 -and $o.measured -eq 2 -and $null -eq $o.remainingPercent)
-    Assert ([Math]::Abs($o.unknownPercent-100/3) -lt 0.001 -and [Math]::Abs($o.knownRemainingPercent-100/3) -lt 0.001)
-}
-Check 'stale and elapsed windows never refill or imply readiness' {
-    $o=Get-Hotpl8ProviderOverview $s $p $now.AddHours(4)
-    Assert ($o.claude.unknownPercent -eq 100 -and $o.codex.unknownPercent -eq 100)
-    $c=Copy-Value $s;foreach($a in $c.slots){$a.reset7d=$now.AddSeconds(-1).ToString('o')}
-    Assert ((Get-Hotpl8ProviderOverview $c $p $now).claude.measured -eq 0)
-    $c.providers.codex.slots[0].buckets.codex.windows.'10080'.anchorState='unconfirmed'
-    Assert ((Get-Hotpl8ProviderOverview $c $p $now).codex.measured -eq 1)
-}
-Check 'a reset that elapsed after the reading refills the window and keeps it measured' {
-    $c=Copy-Value $s
-    foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.used5h=90;$a.reset5h=$now.AddSeconds(-1).ToString('o')}
-    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-    Assert ($o.measured -eq 3 -and $o.unknownPercent -eq 0 -and $o.availability -notlike 'Unavailable*')
-    $c=Copy-Value $s
-    foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.reset7d=$now.AddSeconds(-1).ToString('o')}
-    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-    Assert ($o.measured -eq 3 -and $o.remainingPercent -eq 100)
-    $c=Copy-Value $s;$slot=$c.providers.codex.slots[0]
-    $slot.observedAt=$now.AddMinutes(-5).ToString('o')
-    $slot.buckets.codex.windows.'10080'|Add-Member NoteProperty observedAt $now.AddMinutes(-5).ToString('o') -Force
-    $slot.buckets.codex.windows.'10080'.resetsAt=$now.AddSeconds(-1).ToUnixTimeSeconds()
-    Assert ((Get-Hotpl8ProviderOverview $c $p $now).codex.remainingPercent -eq 100)
-}
-Check 'an elapsed reset cannot refill a reading that never arrived' {
-    # The rollover is the provider's own reported outcome arriving early, not
-    # a licence to publish a percentage nothing measured.
-    foreach($used in @($null,101)){
-        $c=Copy-Value $s
-        foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.used7d=$used;$a.reset7d=$now.AddSeconds(-1).ToString('o')}
-        $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-        Assert ($o.measured -eq 0 -and $o.unknownPercent -gt 0 -and $null -eq $o.remainingPercent)
-        $c=Copy-Value $s
-        foreach($a in $c.slots){$a.observedAt=$now.AddMinutes(-5).ToString('o');$a.used5h=$used;$a.reset5h=$now.AddSeconds(-1).ToString('o')}
-        $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-        Assert (@($o.members|Where-Object reason -EQ 'window_unmeasured').Count -eq 3 -and -not @($o.members|Where-Object eligible).Count)
-    }
-}
-Check 'all missing, malformed percentages and unconfigured accounts are unknown' {
-    $o=Get-Hotpl8ProviderOverview $null $p $now
-    Assert ($o.claude.accounts -eq 3 -and $o.claude.measured -eq 0)
-    $c=Copy-Value $s;$c.slots[0].used7d=-1;$c.slots[1].used7d='bad';$c.slots[2].used7d=101
-    Assert ((Get-Hotpl8ProviderOverview $c $p $now).claude.measured -eq 0)
-    Assert ((Get-Hotpl8ProviderOverview $null $null $now).codex.availability -eq 'No accounts enabled')
-}
-Check 'disabled policy changes immediately change membership without collecting' {
-    $policy=Copy-Value $p;$policy|Add-Member NoteProperty disabled @(1)
-    $o=(Get-Hotpl8ProviderOverview $s $policy $now).claude
-    Assert ($o.accounts -eq 2 -and $o.remainingPercent -eq 25 -and $o.disabled -eq 1)
-}
-Check 'known duplicate identity cannot inflate headroom' {
-    $c=Copy-Value $s;$c.slots[1].streamKey=$c.slots[0].streamKey;$c.slots[1].used7d=0
-    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-    Assert ($o.accounts -eq 2 -and $o.duplicates -eq 1 -and $o.remainingPercent -eq 50)
-}
-Check 'short-window exhaustion preserves weekly inventory but blocks readiness' {
-    $c=Copy-Value $s;foreach($a in $c.slots){$a.used5h=100;$a.used7d=10}
-    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-    Assert ($o.remainingPercent -eq 90 -and $o.availability -like 'Unavailable*')
-}
-Check 'new model constraints re-evaluate cached scope observations' {
-    $policy=Copy-Value $p;$policy|Add-Member NoteProperty claudeModels @('opus')
-    $o=(Get-Hotpl8ProviderOverview $s $policy $now).claude
-    Assert ($o.availability -like 'Unavailable*' -and $o.members[0].reason -eq 'model_quota_unknown')
-    $c=Copy-Value $s;$c.slots[0]|Add-Member NoteProperty scoped @(@{name='opus';pct=5;resetsAt=$now.AddDays(1).ToString('o')})
-    Assert ((Get-Hotpl8ProviderOverview $c $policy $now).claude.availability -eq 'Ready')
-}
-Check 'pause and monitor status never claim automatic routing' {
+Check 'a paused frame never claims automatic routing' {
     $c=Copy-Value $s;$c|Add-Member NoteProperty automationPause @{until=$now.AddHours(1).ToString('o')}
-    Assert ((Get-Hotpl8ProviderOverview $c $p $now).claude.automation -eq 'automation paused')
     Assert ((@(Get-Hotpl8TestFrame $c $p $now 50 18 -Files @{'automation-pause.json'=$c.automationPause}) -join '') -cmatch 'auto-switch paused')
-    $policy=Copy-Value $p;$policy.mode='monitor'
-    Assert ((Get-Hotpl8ProviderOverview $s $policy $now).claude.automation -eq 'monitor only')
-}
-Check 'held unavailable current account does not claim usable automatic selection' {
-    $c=Copy-Value $s;$c.slots[0].used5h=100;$c|Add-Member NoteProperty hold @{until=$now.AddHours(1).ToString('o')}
-    $o=(Get-Hotpl8ProviderOverview $c $p $now).claude
-    Assert ($o.availability -like '*manual selection needed' -and $o.automation -eq 'rotation held')
-}
-Check 'main graph ignores Spark even when the launch policy selects Spark' {
-    $policy=Copy-Value $p;$policy.codex.defaultMeter='codex_bengalfox'
-    $o=(Get-Hotpl8ProviderOverview $s $policy $now).codex
-    $main=(Get-Hotpl8ProviderOverview $s $p $now).codex
-    Assert ($o.scope -eq 'codex' -and $o.measured -eq $main.measured -and $o.remainingPercent -eq $main.remainingPercent)
-}
-Check 'collector and sign-in failures remain visible in the overview' {
-    $c=Copy-Value $s;$c|Add-Member NoteProperty collector @{startedAt=$now.AddMinutes(-8).ToString('o')}
-    $c.slots[1].status='authentication_required'
-    $o=Get-Hotpl8ProviderOverview $c $p $now
-    Assert ($o.claude.availability -like '*sign-in needed*' -and $o.claude.availability -like '*collector stalled*')
-    Assert ($o.codex.availability -like '*collector stalled*')
 }
 Check 'summary and view are pure and pinned when scrolling' {
     $before=$s|ConvertTo-Json -Depth 24 -Compress
-    $overview=Get-Hotpl8ProviderOverview $s $p $now
     $first=@(Get-Hotpl8TestFrame $s $p $now 79 23)
     $last=@(Get-Hotpl8TestFrame $s $p $now 79 23 -As @('--offset','999'))
     Assert (($first[2..7] -join '') -ceq ($last[2..7] -join '') -and ($first -join '') -cne ($last -join ''))

@@ -1,4 +1,4 @@
-//! src/automation.ps1 and Get-Hold: what stops an action the policy would otherwise allow.
+//! What stops an action the policy would otherwise allow: a pause, a hold, the hours of work.
 //! A caller that changes the files here holds tick.lock.
 
 use crate::files;

@@ -1,4 +1,4 @@
-//! src/overview.ps1: the cached, normalized weekly inventory printed above a status. It is
+//! The cached, normalized weekly inventory printed above a status. It is
 //! not a token or work-hour budget.
 
 use crate::capacity::{fresh_timestamp, provider_capacity};
@@ -25,7 +25,7 @@ pub fn future_reset(reset: &V, now: Dto, unix: bool) -> R<bool> {
     Ok(future.unwrap_or(false))
 }
 /// Test-Hotpl8OverviewPercent
-fn overview_percent(value: &V) -> R<bool> {
+pub(crate) fn overview_percent(value: &V) -> R<bool> {
     Ok(value.is_number() && value.ge_i(0)? && value.le_i(100)?)
 }
 /// `$list.Count` as PowerShell holds it.
@@ -493,6 +493,7 @@ mod tests {
         assert_eq!(estimate(""), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(estimate(r#"{"name":"300","remaining":10},{"name":"10080","remaining":25}"#), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(estimate(r#"{"name":"10080","remaining":0}"#), "41.7% available now (estimate) / 90% weekly left");
+        assert_eq!(estimate(r#"{"name":"10080","remaining":20.5}"#), "41.7% available now (estimate) / 90% weekly left");
         // A weekly limit nearly reached, and no way to say what it is worth in the estimate.
         assert_eq!(estimate(r#"{"name":"10080","remaining":20}"#), "41.7% available now (weekly cap uncertain) / 90% weekly left");
         assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":0},"totalUnits":6}}"#), "No account readable now");

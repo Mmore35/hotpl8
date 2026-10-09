@@ -53,7 +53,9 @@ try{
     if(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'build-info.json')){[IO.File]::Copy((Join-Path $PSScriptRoot 'build-info.json'),(Join-Path $stage 'build-info.json'))}
     Write-Hotpl8Text (Join-Path $stage 'install-state.json') (@{stateDirectory=$state}|ConvertTo-Json) -NoBom
     $policy=Join-Path $state 'policy.json'
-    if(Test-Path $policy){Assert-Hotpl8Policy (Read-Hotpl8Json $policy)}else{[IO.File]::Copy((Join-Path $stage 'policy.example.json'),$policy)}
+    # A policy already there is checked by the release being installed. Its program was
+    # made startable above; the one in the package this script was unpacked with may not be.
+    if(Test-Path $policy){. (Join-Path $stage 'src/rules.ps1');Assert-Hotpl8Policy (Read-Hotpl8Json $policy)}else{[IO.File]::Copy((Join-Path $stage 'policy.example.json'),$policy)}
     if(Test-Path $previous){Remove-Hotpl8App $previous}
     if(Test-Path $app){Remove-Hotpl8App $app -ValidateOnly;Move-Item $app $previous;$moved=$true}
     Move-Item $stage $app;$promoted=$true

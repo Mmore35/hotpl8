@@ -2,8 +2,7 @@
 # Fictional accounts only; native readers are replaced, so no account is contacted.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-foreach($file in @('common','config','diagnostics','insights','management','native')){. (Join-Path $root ('src/'+$file+'.ps1'))}
-. (Join-Path $root 'src/providers/claude.ps1')
+foreach($file in @('common','config','diagnostics','management','native')){. (Join-Path $root ('src/'+$file+'.ps1'))}
 . (Join-Path $root 'src/providers/codex.ps1')
 . (Join-Path $PSScriptRoot 'fixtures/frame.ps1')
 $script:passed=0;$script:failed=0
@@ -41,11 +40,6 @@ $script:dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-parking-'+[guid]::NewG
 $now=[datetimeoffset]::UtcNow
 $claudePolicy=@{schemaVersion=2;mode='monitor';prefer=@(2,1,3);reserve=@(2);pattern='even';weights=@{'2'=2;'1'=1};labels=@{'1'='Everyday';'2'='Old plan';'3'='Spare'};capacity=@{'2'=@{weekly=1;evidence='user-supplied relative capacity estimate'}};automation=@{warmExcluded=@('claude:2')}}
 try{
-    Check 'Codex plan names pass through when well formed and stay unknown otherwise' {
-        Assert ((ConvertTo-Hotpl8CodexPlanType 'prolite') -ceq 'prolite')
-        Assert ((ConvertTo-Hotpl8CodexPlanType 'free') -ceq 'free')
-        foreach($bad in @($null,'','Pro Plus',('x'*30),'<script>',7)){Assert ((ConvertTo-Hotpl8CodexPlanType $bad) -eq 'unknown') ('accepted '+$bad)}
-    }
     Check 'detector names week-long sign-in failures and ended plans, and nothing else' {
         $policy=Clone @{schemaVersion=2;mode='monitor';prefer=@(1,2,3,4,5);disabled=@(5);labels=@{'2'='Old plan'};codex=@{slots=@(@{id='a';home='/fixture/a';label='Ended'},@{id='b';home='/fixture/b';label='Paid'},@{id='c';home='/fixture/c';label='Signed out'},@{id='d';home='/fixture/d';label='Recent'});prefer=@('a','b','c','d')}}
         $old=$now.AddDays(-36).ToString('o');$recent=$now.AddDays(-2).ToString('o')

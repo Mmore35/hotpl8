@@ -26,7 +26,7 @@ pub fn answer(request: &Request) -> R<String> {
     })
 }
 
-fn version(root: &Path) -> R<String> {
+pub(crate) fn version(root: &Path) -> R<String> {
     let Ok(bytes) = std::fs::read(root.join("VERSION")) else {
         return unreadable_as("This copy of HotPl8 has no VERSION file.");
     };

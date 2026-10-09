@@ -1,4 +1,4 @@
-//! src/capacity.ps1: capacity is expressed in relative weekly units within one
+//! Capacity is expressed in relative weekly units within one
 //! provider/meter only. Unknown conversions are not inferred from monthly prices or
 //! selection weights.
 
@@ -66,7 +66,7 @@ pub fn assert_capacity_policy(part: &V) -> R<()> {
     Ok(())
 }
 
-/// Test-Hotpl8DetectedPlan, from src/providers/claude-plans.ps1.
+/// Whether a plan was detected, and recently enough to be shown.
 pub(crate) fn detected_plan(plan: &V, now: Dto) -> R<bool> {
     if !plan.t()? || !plan.g("status")?.in_s(&["detected", "partial"])? {
         return Ok(false);

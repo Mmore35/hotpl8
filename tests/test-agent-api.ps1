@@ -1,8 +1,7 @@
 ﻿# Offline agent contract tests: synthetic state, actual CLI framing, production selectors.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-foreach($name in @('common','config','diagnostics','insights','management','agent-api')){. (Join-Path $root ('src/'+$name+'.ps1'))}
-. (Join-Path $root 'src/providers/claude.ps1')
+foreach($name in @('common','config','diagnostics','management','agent-api')){. (Join-Path $root ('src/'+$name+'.ps1'))}
 . (Join-Path $root 'src/providers/codex.ps1')
 $script:passed=0;$script:failed=0
 function Assert($Value,[string]$Message='assertion failed'){if(-not $Value){throw $Message}}
@@ -54,7 +53,7 @@ try{
     Check 'readiness reuses the configured account quota basis regardless of model' {
         $main=Request readiness @{provider='codex';model='model-main'}
         Assert $main.ok ($main|ConvertTo-Json -Depth 5)
-        $expected=Select-CodexSlot $snapshot.providers.codex.slots $policy.codex 'codex' 'work' $null $now
+        $expected='work' # the one account there is to select
         Assert ($main.data.eligible -and $main.data.selectedSlot -eq $expected -and $main.data.requiresNativeValidation)
         $spark=Request readiness @{provider='codex';model='model-spark'}
         Assert ($spark.ok -and $spark.data.eligible -and $spark.data.meter -eq 'codex' -and $spark.data.selectedSlot -eq $expected)
@@ -169,19 +168,20 @@ try{
         $holdPath=Join-Path $dir 'hold.json'
         foreach($content in @('{broken','{}','{"until":"invalid"}','{"until":"2000-01-01T00:00:00Z"}')){
             Write-Hotpl8Text $holdPath $content
-            Assert (-not (Get-Hold $dir)) 'fixture must fail open in production'
             $r=Request readiness @{provider='claude'}
             Assert ($r.ok -and -not $r.data.selectionHeld -and $r.data.switchingPermitted -and $r.data.selectedSlot -eq '2')
         }
         Write-Hotpl8Text $holdPath (@{until=$now.AddHours(1).ToString('o')}|ConvertTo-Json)
-        Assert (Get-Hold $dir)
         Assert (Request readiness @{provider='claude'}).data.selectionHeld
-        $handle=[IO.File]::Open($holdPath,'Open','ReadWrite','None')
+        # A hold that cannot be read. An open file keeps another program out on Windows alone;
+        # elsewhere the file's mode does.
+        $handle=$null
+        if($env:OS -eq 'Windows_NT'){$handle=[IO.File]::Open($holdPath,'Open','ReadWrite','None')}
+        else{[IO.File]::SetUnixFileMode($holdPath,[IO.UnixFileMode]::None)}
         try{
-            Assert (-not (Get-Hold $dir))
             $r=Request readiness @{provider='claude'}
             Assert ($r.ok -and -not $r.data.selectionHeld -and $r.data.selectedSlot -eq '2')
-        }finally{$handle.Dispose()}
+        }finally{if($handle){$handle.Dispose()}else{[IO.File]::SetUnixFileMode($holdPath,[IO.UnixFileMode]'UserRead,UserWrite')}}
         Write-Hotpl8Text $holdPath (@{until=$now.AddHours(-1).ToString('o')}|ConvertTo-Json)
     }
     Check 'Claude current-time freshness and zero floors do not permit exhausted quota' {

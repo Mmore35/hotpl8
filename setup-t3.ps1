@@ -200,6 +200,11 @@ if($transition -and $MakeDefault){
     Set-T3OrdinaryDefaults $settings $policy $defaultReceipt $plan $TextGenerationModel
     $changedDefault=$defaultReceipt.changedDefault;$originalDefault=$defaultReceipt.originalDefault;$helperChanges=$defaultReceipt.helperChanges
 }
+# The snapshot holds the compiled program the bridge asks for an account. A checkout has
+# one only once it is built.
+$manifest=Read-Hotpl8Json (Join-Path $PSScriptRoot 'release-files.json')
+$snapshot=@($manifest.files)+@($manifest.platformFiles.windows)
+foreach($relative in $snapshot){if(-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $relative) -PathType Leaf)){throw ('Missing release file: '+$relative+'. In a checkout, run scripts/build-native.ps1 first.')}}
 [void][IO.Directory]::CreateDirectory($IntegrationDirectory)
 $parent=Split-Path $IntegrationDirectory -Parent
 $managedRoot=Split-Path $parent -Parent
@@ -229,10 +234,9 @@ try{
         Write-Hotpl8Text $receiptPath ($staging|ConvertTo-Json -Depth 40) -NoBom
     }
     # Pin a complete source snapshot, independent of working tree edits and app updates.
-    $manifest=Read-Hotpl8Json (Join-Path $PSScriptRoot 'release-files.json')
     $code=Join-Path $IntegrationDirectory ('code-'+[guid]::NewGuid().ToString('N'))
     $inventory=@()
-    foreach($relative in $manifest.files){
+    foreach($relative in $snapshot){
         $source=Join-Path $PSScriptRoot $relative
         $target=Join-Path $code $relative
         [void][IO.Directory]::CreateDirectory((Split-Path $target -Parent))
