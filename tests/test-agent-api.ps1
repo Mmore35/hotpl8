@@ -173,11 +173,15 @@ try{
         }
         Write-Hotpl8Text $holdPath (@{until=$now.AddHours(1).ToString('o')}|ConvertTo-Json)
         Assert (Request readiness @{provider='claude'}).data.selectionHeld
-        $handle=[IO.File]::Open($holdPath,'Open','ReadWrite','None')
+        # A hold that cannot be read. An open file keeps another program out on Windows alone;
+        # elsewhere the file's mode does.
+        $handle=$null
+        if($env:OS -eq 'Windows_NT'){$handle=[IO.File]::Open($holdPath,'Open','ReadWrite','None')}
+        else{[IO.File]::SetUnixFileMode($holdPath,[IO.UnixFileMode]::None)}
         try{
             $r=Request readiness @{provider='claude'}
             Assert ($r.ok -and -not $r.data.selectionHeld -and $r.data.selectedSlot -eq '2')
-        }finally{$handle.Dispose()}
+        }finally{if($handle){$handle.Dispose()}else{[IO.File]::SetUnixFileMode($holdPath,[IO.UnixFileMode]'UserRead,UserWrite')}}
         Write-Hotpl8Text $holdPath (@{until=$now.AddHours(-1).ToString('o')}|ConvertTo-Json)
     }
     Check 'Claude current-time freshness and zero floors do not permit exhausted quota' {
