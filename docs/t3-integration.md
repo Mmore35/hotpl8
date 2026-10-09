@@ -132,10 +132,13 @@ move its thread selections back before removal.
 5. New turns validate and select again. Active follow-ups with unchanged model
    and working directory pass directly to native Codex, retaining its turn ID.
    Collector publications and native quota notifications also trigger validation
-   during ongoing work. Native Codex sends a quota notification after every model
-   response; a session validates for them at most once a minute. A background
-   validation never waits for a busy account lock, and one still running or queued
-   when a new admission arrives in the same session is abandoned for it.
+   during ongoing work. A state file is published by replacing it, and the
+   notification arrives as the replacement begins, so a publication is validated
+   once, a quarter of a second after its last notification. Native Codex sends a
+   quota notification after every model response; a session validates for them at
+   most once a minute. A background validation never waits for a busy account
+   lock, and one still running or queued when a new admission arrives in the same
+   session is abandoned for it.
    Account changes are deferred while any parent, child or
    pending admission is active. Native external-token login can revoke network
    permission for existing work, so a validated alternative is adopted only

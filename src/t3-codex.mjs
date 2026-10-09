@@ -146,14 +146,14 @@ export function createWaiter(config) {
 
 // The dispatcher is transport-independent so tests drive the exact production state machine.
 export class CodexBridge {
-  constructor({ broker, waiter = null, toNative, toClient, cwd, onFatal = () => {}, onRoutingError = () => {}, timeoutMs = 30000, quotaIntervalMs = 60000 }) {
-    Object.assign(this, { broker, waiter, toNative, toClient, cwd, onFatal, onRoutingError, timeoutMs, quotaIntervalMs });
+  constructor({ broker, waiter = null, toNative, toClient, cwd, onFatal = () => {}, onRoutingError = () => {}, timeoutMs = 30000, quotaIntervalMs = 60000, settleMs = 250 }) {
+    Object.assign(this, { broker, waiter, toNative, toClient, cwd, onFatal, onRoutingError, timeoutMs, quotaIntervalMs, settleMs });
     this.internal = new Map(); this.pending = new Map(); this.threads = new Map(); this.waiters = new Map();
     this.active = new Map(); this.reservations = new Map(); this.route = null; this.initialized = false; this.closed = false;
     this.counter = 0; this.serial = Promise.resolve();
     this.routing = Promise.resolve(); this.observing = null; this.observationPending = false;
     this.rebinding = null;
-    this.brokers = new Set(); this.background = null; this.admissions = 0; this.validatedAt = 0; this.quotaTimer = null;
+    this.brokers = new Set(); this.background = null; this.admissions = 0; this.validatedAt = 0; this.quotaTimer = null; this.settling = null;
   }
   async ask(request, background = false) {
     const control = new AbortController();
@@ -254,6 +254,16 @@ export class CodexBridge {
       }
     })().finally(() => { this.observing = null; });
     return this.observing;
+  }
+  // A state file is published by replacing it, and the notification arrives as the
+  // replacement begins: for an instant the file cannot be opened, and a validation
+  // begun then reads it as missing. The validation waits until the notifications
+  // have stopped, so the several of one publication also ask once.
+  published() {
+    if (this.closed) return;
+    clearTimeout(this.settling);
+    this.settling = setTimeout(() => { this.settling = null; void this.observe(); }, this.settleMs);
+    this.settling.unref?.();
   }
   // Native Codex reports quota after every model response. Each validation starts
   // a broker and a native read under the account lock that admissions need, and
@@ -462,6 +472,7 @@ export class CodexBridge {
     // A broker left running would keep its native read and the account lock.
     for (const control of this.brokers) control.abort();
     clearTimeout(this.quotaTimer); this.quotaTimer = null;
+    clearTimeout(this.settling); this.settling = null;
     for (const pending of this.internal.values()) { clearTimeout(pending.timer); pending.reject(error('routing_closed')); }
     this.internal.clear(); this.route = null; this.rebinding = null;
     this.active.clear(); this.reservations.clear(); this.observationPending = false;
@@ -510,7 +521,7 @@ export async function main(config, args) {
   // Subscribe to the existing collector's atomic publications, including rename.
   // No second quota collector or periodic account-switch scheduler is introduced.
   watcher = watch(config.stateDirectory, (_event, filename) => {
-    if (!filename || ['status.json', 'policy.json', 'hold.json', 'codex-state.json', 'automation-pause.json', 'automation-leases.json'].includes(String(filename))) void bridge.observe();
+    if (!filename || ['status.json', 'policy.json', 'hold.json', 'codex-state.json', 'automation-pause.json', 'automation-leases.json'].includes(String(filename))) bridge.published();
   });
   watcher.on('error', () => diagnostic('routing_observation_failed'));
   child.on('error', () => stop(true));
