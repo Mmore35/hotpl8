@@ -42,6 +42,8 @@ function Invoke-Hotpl8Rule([string]$Question,$Asked=@{},[switch]$Remembered) {
 }
 function Get-Hotpl8RuleClock($Bound) {
     # The caller's clock when it brought one; otherwise the program reads the machine's.
+    # The type is given here and not in an asker's parameter list: PowerShell 7 refuses a
+    # date parameter that is left out and has no default, and Windows PowerShell does not.
     if($Bound.ContainsKey('Now')){return @{now=([datetimeoffset]$Bound['Now']).ToString('o')}}
     return @{}
 }
@@ -58,11 +60,11 @@ function Get-Hotpl8Actions($Policy, [bool]$ObserveOnly) {
     $allowed=Invoke-Hotpl8Rule 'policy.actions' @{policy=$Policy;observeOnly=$ObserveOnly}
     return @{switching=[bool]$allowed.switching;warming=[bool]$allowed.warming;probing=[bool]$allowed.probing;continuing=[bool]$allowed.continuing}
 }
-function Get-Hotpl8Pause([string]$Directory, [datetimeoffset]$Now) {
+function Get-Hotpl8Pause([string]$Directory, $Now) {
     Invoke-Hotpl8Rule 'pause' (@{directory=$Directory}+(Get-Hotpl8RuleClock $PSBoundParameters))
 }
 # What the agents' pause leases come to. Writing one is src/leases.ps1.
-function Get-Hotpl8LeasePause([string]$Directory, [datetimeoffset]$Now) {
+function Get-Hotpl8LeasePause([string]$Directory, $Now) {
     Invoke-Hotpl8Rule 'lease.pause' (@{directory=$Directory}+(Get-Hotpl8RuleClock $PSBoundParameters))
 }
 
@@ -97,11 +99,11 @@ function Get-Hotpl8CapacityCatalog {
     return (Invoke-Hotpl8Rule 'capacity.catalog' -Remembered)
 }
 
-function Test-Hotpl8FreshTimestamp($Timestamp,[datetimeoffset]$Now) {
+function Test-Hotpl8FreshTimestamp($Timestamp,$Now) {
     return [bool](Invoke-Hotpl8Rule 'fresh' (@{timestamp=$Timestamp}+(Get-Hotpl8RuleClock $PSBoundParameters)))
 }
 # The snapshot as every reader lays it out, or nothing when there is none to read.
-function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[datetimeoffset]$Now) {
+function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,$Now) {
     # Whether a policy was brought is PowerShell's to say: an empty list is none, and written
     # as JSON it is not always a list.
     $brought=if($PolicyOverride){$PolicyOverride}else{$null}
@@ -110,7 +112,7 @@ function Read-Hotpl8Snapshot([string]$Directory,$PolicyOverride=$null,[datetimeo
 function Get-Hotpl8HistoryStores($Policy,[string]$Directory) {
     Invoke-Hotpl8Rule 'history' @{policy=$Policy;directory=$Directory}
 }
-function Get-Hotpl8ParkCandidates($Snapshot,$Policy,[datetimeoffset]$Now) {
+function Get-Hotpl8ParkCandidates($Snapshot,$Policy,$Now) {
     Invoke-Hotpl8Rule 'park.candidates' (@{snapshot=$Snapshot;policy=$Policy}+(Get-Hotpl8RuleClock $PSBoundParameters))
 }
 function Format-Hotpl8ParkReason($Candidate) {

@@ -1,5 +1,6 @@
-# Offline checks for parse errors, JSON that cannot be read, private paths, and broken local
-# Markdown links. Nothing here is run: the example policies are checked by the program's tests.
+# Offline checks for parse errors, a parameter one PowerShell cannot leave out, JSON that
+# cannot be read, private paths, and broken local Markdown links. Nothing here is run: the
+# example policies are checked by the program's tests.
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $files=@(Get-ChildItem -LiteralPath $root -Recurse -File|Where-Object{$_.FullName -notmatch '[\\/](dist|artifacts|\.git|native[\\/]target)[\\/]'})
@@ -7,8 +8,18 @@ $failures=@()
 foreach($file in $files){
     if($file.Extension -eq '.ps1'){
         $tokens=$null;$errors=$null
-        $null=[Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
+        $parsed=[Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
         if($errors){$failures+=('PowerShell parse: '+$file.Name)}
+        # PowerShell 7 refuses to leave out a parameter of one of these types when it is in a
+        # function's own list and has no default. Windows PowerShell leaves it empty, so
+        # nothing run on Windows says so. A test's helper is always given its own.
+        elseif($file.FullName -notmatch '[\\/]tests[\\/]'){
+            foreach($parameter in $parsed.FindAll({param($node) $node -is [Management.Automation.Language.ParameterAst]},$true)){
+                if($parameter.Parent -is [Management.Automation.Language.FunctionDefinitionAst] -and -not $parameter.DefaultValue -and $parameter.StaticType -in @([datetimeoffset],[datetime],[timespan],[guid])){
+                    $failures+=('Parameter PowerShell 7 cannot leave out: '+$file.Name+' '+$parameter.Parent.Name+' '+$parameter.Name.Extent.Text)
+                }
+            }
+        }
     }
     if($file.Extension -eq '.json'){
         try{$null=Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8|ConvertFrom-Json}catch{$failures+=('Invalid JSON: '+$file.Name)}
