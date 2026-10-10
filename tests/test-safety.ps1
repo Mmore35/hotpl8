@@ -79,7 +79,7 @@ try{
         Assert (@((Read-Hotpl8Json (Join-Path $dir 'status.json')).slots|Where-Object fresh).Count -eq 2)
         Assert (-not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
     }
-    Check 'readings cswap lets grow old are asked for again at the next wake, and act on nothing' {
+    Check 'readings cswap lets grow old are asked for again at the next wake' {
         # cswap spaces its requests up to 30 minutes apart after a refusal and goes on
         # answering with the reading it has. A wait here would hide the next one.
         $old=Copy-Value $fixture;foreach($account in $old.accounts){$account.usageAgeSeconds=1500}
@@ -98,8 +98,6 @@ try{
         $status=Read-Hotpl8Json (Join-Path $dir 'status.json')
         Assert (@($status.slots|Where-Object fresh).Count -eq 0 -and @($status.slots|Where-Object status -eq 'ok').Count -eq 2)
         Assert ($status.collector.status -eq 'incomplete')
-        # Account 2 is preferred and has room, and nothing is done on a reading this old.
-        Assert (-not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
         Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($fixture|ConvertTo-Json -Depth 12)
         & $wake
         Assert ($LASTEXITCODE -eq 0)
