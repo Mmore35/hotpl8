@@ -74,6 +74,16 @@ Enrolled scheduled collector and updater tasks report `current` when they launch
 the configured host and are turned on, `disabled` when turned off (for example,
 paused for recovery) and `error` when missing or pointing elsewhere.
 
+The updater row also carries `lastCheck` and `lastCheckAgeSeconds`: when
+`delivery.py update` last ran, whoever started it, and how many seconds ago. An
+updater task that is turned off reports `external` instead of `disabled` while a
+check stamped after that task's own last run is at most an hour old: something
+other than the task is making the checks, such as another scheduler calling the
+same command, or `hotpl8 update` typed by hand. After an hour without a check the
+row reads `disabled` again, so an outside schedule that stops shows as a changed
+state and a growing age. One that checks less often than hourly reads `disabled`
+between its checks; read the age.
+
 Updates prepare immutable `releases/<sha>` directories and change `current.json`
 only after preflight and writer drain. Existing short commands finish first. The
 collector's existing lock is also held during activation. Dashboards and native

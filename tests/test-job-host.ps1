@@ -72,6 +72,45 @@ public static class TreeFixture {
     $other=Join-Path $lab 'other-host.exe'
     $state=Get-FixtureComponentState @{'Fixture collector'=(New-FixtureTask $other $true);'LocalDelivery-fixture'=(New-FixtureTask $other $false)}
     Assert ($state['scheduled-collector'] -eq 'error' -and $state['scheduled-updater'] -eq 'error') 'a mismatched task reports error even when turned off'
+    # Every check is stamped in delivery-status.json, whoever started it; a run of the
+    # installation's own task also leaves a receipt. Times are seconds before a fixed noon;
+    # a string is written as it stands.
+    $noon=[datetimeoffset]'2030-01-01T12:00:00Z'
+    function Get-FixtureUpdater([bool]$Enabled,$Check,$Started,$Completed,[string]$Execute=$hostExe){
+        Remove-Item -LiteralPath (Join-Path $install 'delivery-status.json'),(Join-Path $install 'job-runs') -Recurse -Force -ErrorAction SilentlyContinue
+        if($Check -is [string]){@{state='current';lastCheck=$Check}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $install 'delivery-status.json')}
+        elseif($null -ne $Check){@{state='current';lastCheck=($noon.AddSeconds(-$Check).ToString('yyyy-MM-ddTHH:mm:ss.ffffff')+'+00:00')}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $install 'delivery-status.json')}
+        if($Started -is [string]){$run=Join-Path $install 'job-runs/updater/fixture-run';$null=New-Item -ItemType Directory -Path $run -Force;$Started|Set-Content -LiteralPath (Join-Path $run 'run.json')}
+        elseif($null -ne $Started){
+            $run=Join-Path $install 'job-runs/updater/fixture-run';$null=New-Item -ItemType Directory -Path $run -Force
+            $receipt=@{schemaVersion=1;host=$hostExe;status='running';startedAt=$noon.AddSeconds(-$Started).UtcDateTime.ToString('o')}
+            if($null -ne $Completed){$receipt.status='complete';$receipt.completedAt=$noon.AddSeconds(-$Completed).UtcDateTime.ToString('o')}
+            $receipt|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $run 'run.json')
+        }
+        $tasks=@{'Fixture collector'=(New-FixtureTask $hostExe $true);'LocalDelivery-fixture'=(New-FixtureTask $Execute $Enabled)}
+        function Get-ScheduledTask{[CmdletBinding()]param([string]$TaskName) $tasks[$TaskName]}
+        @(Get-Hotpl8JobComponentStatus $install $noon)
+    }
+    $rows=Get-FixtureUpdater $false
+    Assert ($rows[1].state -eq 'disabled' -and $rows[1].PSObject.Properties['lastCheckAgeSeconds'] -and $null -eq $rows[1].lastCheckAgeSeconds) 'a turned-off updater with no check on record reports disabled and no age'
+    Assert (-not $rows[0].PSObject.Properties['lastCheck'] -and -not $rows[0].PSObject.Properties['lastCheckAgeSeconds']) 'the collector row carries no updater check'
+    $updater=(Get-FixtureUpdater $false 120)[1]
+    Assert ($updater.state -eq 'external' -and $updater.lastCheckAgeSeconds -eq 120 -and $updater.lastCheck -eq '2030-01-01T11:58:00.000000+00:00') 'a turned-off updater that never ran, checked two minutes ago, reports external and the age'
+    Assert ((Get-FixtureUpdater $false 120 125 110)[1].state -eq 'disabled') 'a check made by the task''s own last run does not report external'
+    Assert ((Get-FixtureUpdater $false 120 610 600)[1].state -eq 'external') 'a check stamped after the task''s own last run ended reports external'
+    $updater=(Get-FixtureUpdater $false 7200)[1]
+    Assert ($updater.state -eq 'disabled' -and $updater.lastCheckAgeSeconds -eq 7200) 'two hours without a check reports disabled again, with the age'
+    Assert ((Get-FixtureUpdater $false 3600)[1].state -eq 'external' -and (Get-FixtureUpdater $false 3601)[1].state -eq 'disabled') 'the last check counts for one hour'
+    Assert ((Get-FixtureUpdater $false 120 300)[1].state -eq 'disabled') 'a check inside the time allowed to a run that left no completion is that run''s own'
+    Assert ((Get-FixtureUpdater $false 120 900)[1].state -eq 'external') 'a check after the time allowed to a run that left no completion is from outside'
+    Assert ((Get-FixtureUpdater $false 120 '{')[1].state -eq 'disabled' -and (Get-FixtureUpdater $false 120 '{"status":"running"}')[1].state -eq 'disabled') 'a receipt that cannot be read, or holds no time, does not report external'
+    $updater=(Get-FixtureUpdater $false (-60))[1]
+    Assert ($updater.state -eq 'disabled' -and $updater.lastCheckAgeSeconds -eq -60) 'a check stamped in the future does not report external'
+    $updater=(Get-FixtureUpdater $false 'soon')[1]
+    Assert ($updater.state -eq 'disabled' -and $updater.lastCheck -eq 'soon' -and $null -eq $updater.lastCheckAgeSeconds) 'a check time that cannot be read reports disabled and no age'
+    $updater=(Get-FixtureUpdater $true 120)[1]
+    Assert ($updater.state -eq 'current' -and $updater.lastCheckAgeSeconds -eq 120) 'a turned-on updater reports current and the age of its last check'
+    Assert ((Get-FixtureUpdater $false 120 -Execute $other)[1].state -eq 'error') 'a mismatched task reports error whatever was checked'
     if($Native){
         'Start-Sleep -Seconds 8; Set-Content (Join-Path $PSScriptRoot "finished.txt") "done"; exit 0'|Set-Content -LiteralPath $worker
         $argv=@('20',(Join-Path $lab 'runs'),$lab,(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'),'-NoProfile','-NonInteractive','-File',$worker)
