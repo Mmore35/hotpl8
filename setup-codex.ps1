@@ -63,9 +63,12 @@ if ($InstallHook) {
     if ((Test-Path -LiteralPath $hookPath) -and -not $hooks) { throw 'Existing hooks.json is invalid; it was not overwritten.' }
     if (-not $hooks) { $hooks=[pscustomobject]@{hooks=[pscustomobject]@{}} }
     if (-not $hooks.hooks) { $hooks|Add-Member NoteProperty hooks ([pscustomobject]@{}) -Force }
-    $hostExe=if($env:OS -eq 'Windows_NT'){'powershell'}else{'pwsh'}
-    $command=$hostExe+' -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $PSScriptRoot 'status-print.ps1')+'" -Provider codex -StateDirectory "'+$StateDirectory+'"'
+    $hookScript=Join-Path $PSScriptRoot 'status-print.ps1'
+    $command=Get-Hotpl8CodexHookCommand $hookScript 'codex' $StateDirectory
     $entries=@($hooks.hooks.SessionStart|Where-Object{$null -ne $_})
+    # A hook registered by a release of before named PowerShell barely. It is given today's
+    # text where it stands, and Codex asks for it to be trusted again.
+    foreach($hook in @($entries|ForEach-Object{$_.hooks}|Where-Object{$_ -and $_.command -cne $command -and (Test-Hotpl8CodexHookCommand ([string]$_.command) $hookScript 'codex' $StateDirectory)})){$hook.command=$command}
     $found=@($entries|ForEach-Object{$_.hooks}|Where-Object{$_.command -eq $command})
     if (-not $found.Count) {
         $entries+=@([pscustomobject]@{matcher='startup|resume|compact|clear';hooks=@([pscustomobject]@{type='command';command=$command;timeout=2})})

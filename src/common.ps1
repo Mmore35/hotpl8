@@ -169,6 +169,40 @@ function Stop-Hotpl8Process($Process) {
     finally { $Process.Dispose() }
 }
 
+# Windows PowerShell by its whole path. cmd, and whatever starts a program the way cmd does,
+# looks for a bare name in the current directory before anywhere else, so text that another
+# program will run later (a hook, a launcher) never names PowerShell barely.
+function Get-Hotpl8DesktopPowerShell {
+    if([string]$env:SystemRoot -notmatch '^[A-Za-z]:\\'){throw 'SystemRoot is not set, so Windows PowerShell cannot be found.'}
+    return [IO.Path]::GetFullPath((Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'))
+}
+# The words of HotPl8's Codex SessionStart hook after the program's name.
+function Get-Hotpl8CodexHookWords([string]$Script,[string]$Provider,[string]$StateDirectory) {
+    ' -NoProfile -ExecutionPolicy Bypass -File "'+$Script+'" -Provider '+$Provider+' -StateDirectory "'+$StateDirectory+'"'
+}
+# The text registered as that hook. Codex hands it to a shell, which may be cmd, PowerShell or
+# sh, so a path is refused when it holds a character one of them would act on between double
+# quotes. On Windows the program is PowerShell's whole path, and it is not quoted: PowerShell
+# reads a quoted first word as text, not as a program to start.
+function Get-Hotpl8CodexHookCommand([string]$Script,[string]$Provider,[string]$StateDirectory) {
+    foreach($path in $Script,$StateDirectory){
+        if($path -match '["`$%\x00-\x1f\x7f]' -or ($env:OS -ne 'Windows_NT' -and $path.Contains('\'))){throw ('The hook cannot name this folder safely: '+(ConvertTo-Hotpl8SafeText $path)+' Use a folder without a double quote, backquote, dollar or percent sign in its name.')}
+    }
+    $words=Get-Hotpl8CodexHookWords $Script $Provider $StateDirectory
+    if($env:OS -ne 'Windows_NT'){return 'pwsh'+$words}
+    $exe=Get-Hotpl8DesktopPowerShell
+    if($exe -notmatch '^[A-Za-z0-9_.:\\-]+$'){throw 'The hook cannot name Windows PowerShell safely: the Windows folder has a space or a symbol in its name.'}
+    return $exe+$words
+}
+# Whether a hook's text is one HotPl8 registered for this script, provider and state
+# directory, today or in a release of before, when the program was a bare name. The words
+# after the program prove whose it is; they are compared exactly.
+function Test-Hotpl8CodexHookCommand([string]$Command,[string]$Script,[string]$Provider,[string]$StateDirectory) {
+    $words=Get-Hotpl8CodexHookWords $Script $Provider $StateDirectory
+    if(-not $Command -or -not $Command.EndsWith($words,[StringComparison]::Ordinal)){return $false}
+    $program=$Command.Substring(0,$Command.Length-$words.Length)
+    return ($program -cin @('powershell','pwsh')) -or ($program -match '^[A-Za-z]:\\([A-Za-z0-9_.-]+\\)*System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$')
+}
 # Child PowerShell for tests and launchers: Windows PowerShell 5.1 where it exists, else pwsh.
 # pwsh puts its own $PSHOME first on PATH. Under Homebrew that copy is a bare apphost that
 # needs the DOTNET_ROOT its bin/ wrapper supplies and fails under launchd, so prefer any pwsh

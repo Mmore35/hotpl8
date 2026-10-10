@@ -21,8 +21,9 @@ try{
         $driver=Get-Hotpl8ProviderDriver $provider.driver
         if($driver.slotKind -ne 'native-home'){continue}
         # Exact installation path, state path and registered ID prove ownership.
-        # The canonical command is unchanged by a v2-to-v3 policy migration.
-        $command='powershell -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $root 'app/status-print.ps1')+'" -Provider '+$provider.id+' -StateDirectory "'+$state+'"'
+        # The canonical words are unchanged by a v2-to-v3 policy migration; the program before
+        # them is PowerShell by its whole path, or its bare name in a hook of before.
+        $hookScript=Join-Path $root 'app/status-print.ps1'
         foreach($slot in @($provider.policy.slots)){
             if(-not $slot){continue}
             $hookPath=Join-Path $slot.home 'hooks.json'
@@ -32,7 +33,7 @@ try{
             $entries=@();$changed=$false
             foreach($entry in @($hook.hooks.SessionStart)){
                 if(-not $entry){continue}
-                $kept=@($entry.hooks|Where-Object{$_.command -cne $command})
+                $kept=@($entry.hooks|Where-Object{-not (Test-Hotpl8CodexHookCommand ([string]$_.command) $hookScript $provider.id $state)})
                 if($kept.Count -ne @($entry.hooks).Count){
                     $changed=$true
                     if($kept.Count){$entry.hooks=$kept;$entries+=@($entry)}

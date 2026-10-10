@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import zipfile
 
-from runner import DeliveryError, Deferred, GitHub, SHA, preview_revision, read, safe_root, write
+from runner import DeliveryError, Deferred, GitHub, SHA, preview_revision, program, read, safe_root, write
 
 
 def extract_source(archive, destination):
@@ -145,7 +145,7 @@ def launch(root, number, trusted_sha, gh=None):
     config = read(root / "delivery.json")
     if not SHA.fullmatch(trusted_sha):
         raise DeliveryError("Live preview requires a full trusted PR revision")
-    gh = gh or GitHub(config["repository"], config.get("gh", "gh"))
+    gh = gh or GitHub(config["repository"], program(config.get("gh"), "gh"))
     pr = gh.api("pulls/" + str(number))
     if pr.get("head", {}).get("sha") != trusted_sha:
         raise Deferred("PR changed: review its new revision and use a new preview command")

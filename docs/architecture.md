@@ -68,7 +68,8 @@ For example, an elapsed reset is read against the observation that reported it. 
 
 ```text
 hotpl8.cmd / hotpl8.ps1       User commands
-hotpl8-launch.cmd           Windows launcher: asks the compiled reader, then PowerShell
+hotpl8-launch2.cmd          Windows launcher: asks the compiled reader, then PowerShell
+hotpl8-launch.cmd           The launcher before it, unchanged for sessions started from it
 native/                     Compiled program: version, status, explain, the tray's
                             view, the dashboard, the collector, the choice of an
                             account for T3, the Codex launch, and every rule the

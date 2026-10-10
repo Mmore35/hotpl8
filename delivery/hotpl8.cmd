@@ -1,1 +1,1 @@
-@"%~dp0launch.cmd" %*
+@"%~dp0launch2.cmd" %*

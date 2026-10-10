@@ -26,8 +26,11 @@ $fixtureSha='a'*40
 $line=[Environment]::NewLine
 $noReader='HotPl8: This copy has no compiled reader it can start, and this command is answered by it. A release ships one; in a checkout, build it with scripts/build-native.ps1.'+$line
 $noPolicy='HotPl8: No valid policy.json. Run hotpl8 setup or see docs/install.md.'+$line
-# The launchers start the Windows PowerShell on PATH by name; a stand-in is put before it.
+# The launchers start Windows PowerShell by its whole path under SystemRoot, so a stand-in
+# for it is a Windows directory that holds one. The launchers of before started the
+# PowerShell on PATH by name; for those a stand-in is put before it.
 $stub=Join-Path $lab 'stub'
+$stubRoot=Join-Path $lab 'windows'
 $desktop=if($windows){Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'}
 $names=@('HOTPL8_TEST_NATIVE_LOG','HOTPL8_TEST_NATIVE_OUTPUT','HOTPL8_TEST_NATIVE_EXIT')
 # What install.ps1 writes beside an ordinary installation's app directory.
@@ -75,14 +78,17 @@ function Use-Fake([hashtable]$Settings=@{}) {
 }
 function Get-Calls {@([IO.File]::ReadAllLines($log))}
 # What cmd makes of a line typed at it: the status it ends with and the bytes each stream was
-# given, a character for a byte. The line reaches cmd as it is written here.
-function Invoke-Typed([string]$Typed,[hashtable]$Environment=@{}) {
+# given, a character for a byte. The line reaches cmd as it is written here. It can be typed
+# from a directory of the case's, and without variables this process has.
+function Invoke-Typed([string]$Typed,[hashtable]$Environment=@{},[string]$From,[string[]]$Without=@()) {
     $out=Join-Path $lab 'typed.out';$err=Join-Path $lab 'typed.err'
     $info=[Diagnostics.ProcessStartInfo]::new()
     $info.FileName=$env:ComSpec
     $info.Arguments='/d /s /c "'+$Typed+' < NUL > "'+$out+'" 2> "'+$err+'""'
     $info.UseShellExecute=$false;$info.CreateNoWindow=$true
+    if($From){$info.WorkingDirectory=$From}
     foreach($key in $Environment.Keys){$info.EnvironmentVariables[$key]=$Environment[$key]}
+    foreach($key in $Without){$info.EnvironmentVariables.Remove($key)}
     $process=[Diagnostics.Process]::Start($info)
     try{$process.WaitForExit();$code=$process.ExitCode}finally{$process.Dispose()}
     $bytes=[Text.Encoding]::GetEncoding(28591)
@@ -127,6 +133,8 @@ try{
         }else{Add-Type -TypeDefinition ([IO.File]::ReadAllText($source)) -OutputAssembly $fake -OutputType ConsoleApplication}
         if(-not [IO.File]::Exists($fake)){throw 'Could not build the stand-in program.'}
         [void][IO.Directory]::CreateDirectory($stub);[IO.File]::Copy($fake,(Join-Path $stub 'powershell.exe'))
+        $stubShell=Join-Path $stubRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        [void][IO.Directory]::CreateDirectory((Split-Path $stubShell -Parent));[IO.File]::Copy($fake,$stubShell)
     }else{
         $script=@('#!/bin/sh','if [ -n "$HOTPL8_TEST_NATIVE_LOG" ]; then (IFS="|"; printf ''%s\n'' "$*" >> "$HOTPL8_TEST_NATIVE_LOG"); fi','printf ''%s'' "$HOTPL8_TEST_NATIVE_OUTPUT"; printf ''fixture diagnostic'' >&2; exit "${HOTPL8_TEST_NATIVE_EXIT:-0}"','')
         [IO.File]::WriteAllText($fake,($script -join "`n"))
@@ -324,8 +332,13 @@ try{
         # installed where sessions run from is never changed. A launcher that has to change
         # ships under a new name, and the one-line hand-off names it: docs/install.md, "The
         # launcher". A new digest here is that mistake, not an update to make.
-        $pins=@{'hotpl8.cmd'='79F68986A2102B54F45ABE0B1B222FA0B18C007B642BB50C4AB00060A9A1A20D';'hotpl8-launch.cmd'='43F0883120321A3486CD6679BADFDEAD9863028FA7665B046D2A5D2F8D476013';'delivery/launch.cmd'='AF6CA4572B7E09C3889F262C2E9503850439138CCCD4FCB0C937ADBB01F4E356';'delivery/hotpl8.cmd'='9D66AA8EC9DA41F7B41C0180ADBE5FDCF5DE73ED2DA02566D8E66F5655C080A9'}
+        # hotpl8-launch.cmd and delivery/launch.cmd start PowerShell by a bare name, which cmd
+        # looks for in the current directory before PATH. They stay as they shipped, for the
+        # sessions still running from them; hotpl8-launch2.cmd and delivery/launch2.cmd took
+        # their place, and the two hand-offs name those.
+        $pins=@{'hotpl8.cmd'='0CD8E941FE5ACD7E9EF292D2E771F37C213E684D5FB0BADA5EE9B84E12D74B65';'hotpl8-launch.cmd'='43F0883120321A3486CD6679BADFDEAD9863028FA7665B046D2A5D2F8D476013';'hotpl8-launch2.cmd'='E0D2C4C7ADDE38A5EFF49BB209CEE972CB896C7E1EA20B8335F9F6205E51875B';'delivery/launch.cmd'='AF6CA4572B7E09C3889F262C2E9503850439138CCCD4FCB0C937ADBB01F4E356';'delivery/launch2.cmd'='ADA232BC22158ADC5ACC5C87E07FCC0F744E92F712989C7B5B8DEF0AC6493074';'delivery/hotpl8.cmd'='532D7D69CDA55171937ACF4400251926B46941598EDB6D5EC60489888788D80B'}
         foreach($name in $pins.Keys){Assert ((Get-FileHash -LiteralPath (Join-Path $root $name) -Algorithm SHA256).Hash -eq $pins[$name]) ($name+' is not the text that shipped')}
+        Assert ([IO.File]::ReadAllText((Join-Path $root 'hotpl8.cmd')) -ceq ('@"%~dp0hotpl8-launch2.cmd" %*'+"`r`n") -and [IO.File]::ReadAllText((Join-Path $root 'delivery/hotpl8.cmd')) -ceq ('@"%~dp0launch2.cmd" %*'+"`r`n")) 'a hand-off names a launcher of before'
         # A hand-off is shorter than the place cmd comes back to in the launchers installed before it.
         foreach($name in 'hotpl8.cmd','delivery/hotpl8.cmd'){Assert ([IO.File]::ReadAllBytes((Join-Path $root $name)).Length -lt 80) ($name+' is too long')}
         Assert ($shim.Length -lt 80 -and [IO.File]::ReadAllText((Join-Path $root 'install.ps1')).Contains("`$shim='"+$shim.TrimEnd()+"'+[Environment]::NewLine")) 'install.ps1 writes another hand-off'
@@ -364,6 +377,31 @@ try{
                 $clean=($code -eq 7 -and $calls.Count -eq 1 -and $calls[0].EndsWith('|watch|-ReducedMotion') -and $errors -ceq 'fixture diagnostic')
                 Assert ($clean -eq $change[2]) ('change '+$number+': exit '+$code+', '+$calls.Count+' starts, <'+$errors+'>')
             }
+            # A session started through a hand-off of before is running from the launcher that
+            # hand-off named, which keeps its text. The hand-off is given its new line while
+            # that session runs, and the session ends once, as it would have.
+            foreach($before in @(@('hotpl8.cmd','hotpl8-launch.cmd','hotpl8.ps1|watch|-ReducedMotion'),@('delivery/hotpl8.cmd','delivery/launch.cmd','launch.ps1|-Entry|hotpl8|watch|-ReducedMotion'))){
+                $number++;$session=Join-Path $lab ('session'+$number);[void][IO.Directory]::CreateDirectory($session)
+                $launcher=Join-Path $session 'hotpl8.cmd';$go=Join-Path $session 'go';$err=Join-Path $session 'err'
+                $named=Split-Path $before[1] -Leaf
+                [IO.File]::WriteAllText($launcher,('@"%~dp0'+$named+'" %*'+"`r`n"));[IO.File]::WriteAllText($log,'')
+                [IO.File]::Copy((Join-Path $root $before[1]),(Join-Path $session $named))
+                $info=[Diagnostics.ProcessStartInfo]::new()
+                $info.FileName=$env:ComSpec
+                $info.Arguments='/d /s /c ""'+$launcher+'" watch -ReducedMotion < NUL > NUL 2> "'+$err+'""'
+                $info.UseShellExecute=$false;$info.CreateNoWindow=$true
+                $settings=@{PATH=$stub+';'+$env:PATH;HOTPL8_TEST_NATIVE_LOG=$log;HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='7';HOTPL8_TEST_NATIVE_UNTIL=$go}
+                foreach($key in $settings.Keys){$info.EnvironmentVariables[$key]=$settings[$key]}
+                $process=[Diagnostics.Process]::Start($info)
+                try{
+                    for($wait=0;$wait -lt 2000 -and -not [IO.FileInfo]::new($log).Length;$wait++){Start-Sleep -Milliseconds 10}
+                    [IO.File]::WriteAllBytes($launcher,[IO.File]::ReadAllBytes((Join-Path $root $before[0])));[IO.File]::WriteAllText($go,'')
+                    if(-not $process.WaitForExit(60000)){$process.Kill();throw 'the session did not end'}
+                    $code=$process.ExitCode
+                }finally{$process.Dispose()}
+                $calls=@(Get-Calls);$errors=[IO.File]::ReadAllText($err)
+                Assert ($code -eq 7 -and $calls.Count -eq 1 -and $calls[0].EndsWith($before[2]) -and $errors -ceq 'fixture diagnostic') ($before[0]+': exit '+$code+', '+$calls.Count+' starts, <'+$errors+'>')
+            }
             # rollback.ps1 puts an older release under app and leaves the hand-off beside it:
             # that release's hotpl8.cmd is the first of these texts, and it is what answers.
             $back=Join-Path $lab 'rolled back';[void][IO.Directory]::CreateDirectory((Join-Path $back 'app'))
@@ -397,7 +435,7 @@ try{
         }
         Check 'the launcher starts PowerShell with the words the reader leaves to it, and only then' {
             $launcher='"'+(Join-Path $release 'hotpl8.cmd')+'"';$started='-NoProfile|-ExecutionPolicy|Bypass|-File|'+$entry
-            $path=@{PATH=$stub+';'+$env:PATH}
+            $path=@{SystemRoot=$stubRoot}
             Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='99'};Set-Reader $real
             foreach($words in @('version',('status -StateDirectory "'+$state+'"'),('Explain -asjson -statedirectory "'+$state+'"'))){
                 $result=Invoke-Typed ($launcher+' '+$words) $path
@@ -426,19 +464,47 @@ try{
             foreach($name in $names){[Environment]::SetEnvironmentVariable($name,'')}
             Set-Reader $real
         }
+        Check 'a file called powershell in the current folder is not what a launcher starts' {
+            # cmd, like everything that starts programs its way, looks for a bare name in the
+            # current directory before PATH. A repository or a download can hold a file of that
+            # name, and hotpl8 is typed in such folders all day.
+            $folder=Join-Path $lab 'someone elses folder';[void][IO.Directory]::CreateDirectory($folder)
+            $taken=Join-Path $folder 'taken'
+            foreach($name in 'powershell.cmd','powershell.bat'){[IO.File]::WriteAllText((Join-Path $folder $name),"@echo taken> `"%~dp0taken`"`r`n@exit /b 66`r`n")}
+            # The variable that turns that search off is a setting of the user's, not ours.
+            $without=@('NoDefaultCurrentDirectoryInExePath')
+            # The file is one cmd would start: a bare name typed in that folder starts it.
+            $result=Invoke-Typed 'powershell -NoProfile' @{} $folder $without
+            Assert ($result.exitCode -eq 66 -and [IO.File]::Exists($taken)) ('the file in the current folder was not started: '+$result.exitCode)
+            [IO.File]::Delete($taken)
+            $doors=Join-Path $lab 'managed doors';[void][IO.Directory]::CreateDirectory($doors)
+            foreach($pair in @(@('delivery/hotpl8.cmd','hotpl8.cmd'),@('delivery/launch2.cmd','launch2.cmd'))){[IO.File]::Copy((Join-Path $root $pair[0]),(Join-Path $doors $pair[1]))}
+            Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='99'};Set-Reader ''
+            foreach($door in @(@((Join-Path $release 'hotpl8.cmd'),('-NoProfile|-ExecutionPolicy|Bypass|-File|'+$entry+'|refresh|-Slot|main')),@((Join-Path $doors 'hotpl8.cmd'),('-NoProfile|-ExecutionPolicy|Bypass|-File|'+(Join-Path $doors 'launch.ps1')+'|-Entry|hotpl8|refresh|-Slot|main')))){
+                [IO.File]::WriteAllText($log,'')
+                $result=Invoke-Typed ('"'+$door[0]+'" refresh -Slot main') @{SystemRoot=$stubRoot} $folder $without
+                Assert ($result.exitCode -eq 99 -and -not [IO.File]::Exists($taken) -and ((Get-Calls) -join ';') -ceq $door[1]) ($door[0]+': exit '+$result.exitCode+', taken '+[IO.File]::Exists($taken)+', '+((Get-Calls) -join ';'))
+                # With no SystemRoot the path would begin at the current drive: nothing is started.
+                [IO.File]::WriteAllText($log,'')
+                $result=Invoke-Typed ('"'+$door[0]+'" refresh -Slot main') @{} $folder ($without+@('SystemRoot'))
+                Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -ceq ("HotPl8: SystemRoot is not set, so Windows PowerShell cannot be found.`r`n") -and -not [IO.File]::Exists($taken) -and -not (Get-Calls).Count) ($door[0]+' without SystemRoot: exit '+$result.exitCode+' <'+$result.errors+'>')
+            }
+            foreach($name in $names){[Environment]::SetEnvironmentVariable($name,'')}
+            Set-Reader $real
+        }
         Check 'an installation that updates itself answers from the release in force' {
             # As delivery/setup.py lays one out: the launcher, the reader beside it, and releases.
             $managed=Join-Path $lab 'managed';$inForce=Join-Path $managed ('releases\'+$fixtureSha)
             [void][IO.Directory]::CreateDirectory((Join-Path $managed 'releases'))
             Copy-Item -LiteralPath $release -Destination $inForce -Recurse
-            foreach($pair in @(@('delivery/hotpl8.cmd','hotpl8.cmd'),@('delivery/launch.cmd','launch.cmd'),@('delivery/launch.ps1','launch.ps1'),@($relative,'hotpl8-native.exe'))){[IO.File]::Copy((Join-Path $release $pair[0]),(Join-Path $managed $pair[1]))}
+            foreach($pair in @(@('delivery/hotpl8.cmd','hotpl8.cmd'),@('delivery/launch2.cmd','launch2.cmd'),@('delivery/launch.ps1','launch.ps1'),@($relative,'hotpl8-native.exe'))){[IO.File]::Copy((Join-Path $release $pair[0]),(Join-Path $managed $pair[1]))}
             Write-Hotpl8Text (Join-Path $managed 'delivery.json') (@{stateDirectory=$state}|ConvertTo-Json) -NoBom
             $point={param($Release) Write-Hotpl8Text (Join-Path $managed 'current.json') ([ordered]@{protocol=1;sha=$fixtureSha;release=$Release}|ConvertTo-Json) -NoBom}
             & $point ('releases/'+$fixtureSha)
             $script=Join-Path $managed 'launch.ps1'
             $launcher='"'+(Join-Path $managed 'hotpl8.cmd')+'"';$slow='"'+$desktop+'" -NoProfile -ExecutionPolicy Bypass -File "'+$script+'" -Entry hotpl8'
             # The state directory is the installation's, whatever the caller's environment names.
-            $path=@{PATH=$stub+';'+$env:PATH;HOTPL8_STATE_DIRECTORY=$emptyState}
+            $path=@{SystemRoot=$stubRoot;HOTPL8_STATE_DIRECTORY=$emptyState}
             Use-Fake @{HOTPL8_TEST_NATIVE_OUTPUT='';HOTPL8_TEST_NATIVE_EXIT='99'};Set-Reader $real
             $result=Invoke-Typed ($launcher+' version') $path
             Assert ($result.exitCode -eq 0 -and $result.errors -eq '' -and $result.output -ceq ($version+' main '+$fixtureSha.Substring(0,12)+$line) -and -not (Get-Calls).Count) ([string]$result.exitCode+' '+$result.output+$result.errors)
