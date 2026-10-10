@@ -152,6 +152,39 @@ def run(args, timeout=120):
     return result.stdout
 
 
+def find_program(name):
+    """Where PATH has a program, as a whole path, or None.
+
+    On Windows shutil.which and the system's own search try the current directory before
+    PATH, so a file called gh in a folder someone works in would be the one found. This
+    search never looks there, and it passes over PATH entries that are not whole paths.
+    """
+    extensions = [e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if e] if os.name == "nt" else [""]
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        folder = folder.strip('"')
+        if not folder or not Path(folder).is_absolute():
+            continue
+        for extension in extensions:
+            candidate = Path(folder) / (name + extension)
+            if candidate.is_file() and (os.name == "nt" or os.access(candidate, os.X_OK)):
+                return str(candidate)
+    return None
+
+
+def program(value, name):
+    """A program the registration names, as a whole path.
+
+    A registration written before this check may hold a bare or relative name. That is
+    looked up again by its name, never started as it stands.
+    """
+    if value and Path(value).is_absolute():
+        return str(value)
+    found = find_program(name)
+    if not found:
+        raise DeliveryError("Registered program was not found: " + name)
+    return found
+
+
 class GitHub:
     def __init__(self, repo, executable="gh"):
         if not REPO.fullmatch(repo):
@@ -303,7 +336,7 @@ def update(root, github=None, adapter=invoke_adapter):
         raise DeliveryError("Installation is not registered for main delivery")
     if not re.fullmatch(r"[a-z][a-z0-9-]*", config.get("product", "")):
         raise DeliveryError("Invalid product")
-    github = github or GitHub(config["repository"], config.get("gh", "gh"))
+    github = github or GitHub(config["repository"], program(config.get("gh"), "gh"))
     with lock(root / "update.lock"):
         status = read(root / "delivery-status.json", {})
         status.update(lastCheck=now(), channel="main")
@@ -423,7 +456,7 @@ def preview_revision(config, number, gh, pr=None):
 def preview(root, number, gh=None):
     root = safe_root(root)
     config = read(root / "delivery.json")
-    gh = gh or GitHub(config["repository"], config.get("gh", "gh"))
+    gh = gh or GitHub(config["repository"], program(config.get("gh"), "gh"))
     sha, workflow = preview_revision(config, number, gh)
     target = root / "previews" / ("pr-" + str(number)) / sha
     artifacts = gh.api("actions/runs/" + str(workflow["id"]) + "/artifacts")

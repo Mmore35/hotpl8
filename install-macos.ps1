@@ -65,7 +65,7 @@ try{
     $fileQuote="'"+(Join-Path $app 'hotpl8.ps1').Replace("'",("'"+'"'+"'"+'"'+"'"))+"'"
     $readerQuote="'"+(Join-Path $app 'bin/macos/hotpl8-native').Replace("'",("'"+'"'+"'"+'"'+"'"))+"'"
     $shim=Join-Path $destination 'hotpl8'
-    # The compiled reader is asked first, as hotpl8-launch.cmd asks it on Windows: 0 and 1 are
+    # The compiled reader is asked first, as hotpl8-launch2.cmd asks it on Windows: 0 and 1 are
     # its own endings, and anything else leaves the words to PowerShell. The braces have sh
     # read all of this before it runs any: a dashboard stays open across an update.
     $asks=@('#!/bin/sh','{',('if [ -x '+$readerQuote+' ]; then'),('  '+$readerQuote+' user "$@"'),'  status=$?','  if [ "$status" -lt 2 ]; then exit "$status"; fi','fi',

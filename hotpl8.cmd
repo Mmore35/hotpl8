@@ -1,1 +1,1 @@
-@"%~dp0hotpl8-launch.cmd" %*
+@"%~dp0hotpl8-launch2.cmd" %*

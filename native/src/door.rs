@@ -98,7 +98,7 @@ fn value(word: &OsString) -> Option<&std::ffi::OsStr> {
 }
 
 /// The exit status of the release in force, asked the same words, when this program is the
-/// copy an installation that updates itself keeps beside its launcher (delivery/launch.cmd).
+/// copy an installation that updates itself keeps beside its launcher (delivery/launch2.cmd).
 /// That copy answers nothing itself, so it is never stale: it is `None` everywhere else.
 #[cfg(windows)]
 pub fn relayed(said: &[OsString]) -> Option<u8> {
