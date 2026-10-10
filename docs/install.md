@@ -64,20 +64,22 @@ On Windows, `hotpl8` is a command file that asks HotPl8's compiled reader first.
 
 | Copy | What `hotpl8` runs |
 |---|---|
-| Source checkout or extracted package | `hotpl8.cmd` hands over to `hotpl8-launch.cmd`, which asks `bin\windows\hotpl8-native.exe` |
+| Source checkout or extracted package | `hotpl8.cmd` hands over to `hotpl8-launch2.cmd`, which asks `bin\windows\hotpl8-native.exe` |
 | Ordinary installation | `hotpl8.cmd` in the installation directory hands over to `app\hotpl8.cmd`, and from there as above |
-| [Main delivery installation](delivery.md) | `hotpl8.cmd` hands over to `launch.cmd` beside it, which asks the `hotpl8-native.exe` beside it. That copy answers nothing itself: it reads which release is in force and has that release's own reader answer |
+| [Main delivery installation](delivery.md) | `hotpl8.cmd` hands over to `launch2.cmd` beside it, which asks the `hotpl8-native.exe` beside it. That copy answers nothing itself: it reads which release is in force and has that release's own reader answer |
 
 The reader ends with 0 for an answer and 1 for a refusal. Any other status, a crash included, means the words were not its to answer, and the launcher starts PowerShell.
 
+The launcher names Windows PowerShell by its whole path under `%SystemRoot%`. `cmd` looks for a bare program name in the current directory before `PATH`, so a launcher that said only `powershell` would start a file of that name in whatever folder `hotpl8` was typed in, and that folder is often a repository or a download someone else wrote. When `SystemRoot` is not set the launcher starts nothing, says so, and ends with status 1. The same holds for everything HotPl8 registers to be started later from a folder it does not choose: the Codex session hook, the Claude continue hook and the `gh` an updating installation records are whole paths.
+
 The files are split this way because `cmd` reads a command file again after every line and carries on from a position in it. A dashboard started from a launcher comes back to that file when it ends, perhaps days later. If the file holds other text by then, `cmd` carries on in the middle of it. Three rules follow:
 
-- A launcher that sessions run from keeps its text for good. `hotpl8-launch.cmd` and `delivery/launch.cmd` are such files, and `tests/test-native.ps1` holds their bytes.
+- A launcher that sessions run from keeps its text for good. `hotpl8-launch2.cmd` and `delivery/launch2.cmd` are such files. So are `hotpl8-launch.cmd` and `delivery/launch.cmd`, which they took over from: those two start PowerShell by its bare name, nothing hands over to them any more, and they ship unchanged only for the sessions that were started from them. `tests/test-native.ps1` holds the bytes of all four.
 - `hotpl8.cmd` is one line that hands over and is not returned to. It is shorter than the place the earlier three-line launchers come back to, so a session started from one of those ends cleanly at the end of it.
 - A launcher that has to change ships under a new file name, and the one line names it.
 
 An ordinary installation gets its one line when the installer is rerun. `rollback.ps1` puts the previous release back under `app` and leaves the line as it is; `app\hotpl8.cmd` exists in every release, and in a release from before this arrangement it starts PowerShell.
 
-A main delivery installation enrolled earlier gets `launch.cmd`, the reader beside it, and the one line at the first activation of a release that ships them. Its `hotpl8.cmd` is replaced only when it is exactly the text enrollment wrote; an edited one is left alone and keeps starting PowerShell for every command. Every activation after that refreshes the reader beside the launcher. A reader that is answering cannot be written over, so the one in use is moved aside as `hotpl8-native.<id>.old` and removed at the next activation.
+A main delivery installation enrolled earlier gets `launch2.cmd`, the reader beside it, and the one line at the first activation of a release that ships them. Its `hotpl8.cmd` is replaced only when it is exactly a text enrollment or an earlier activation wrote; an edited one is left alone and keeps doing what it did. A `launch.cmd` from an earlier activation stays where it is, with the text it has. Every activation after that refreshes the reader beside the launcher. A reader that is answering cannot be written over, so the one in use is moved aside as `hotpl8-native.<id>.old` and removed at the next activation.
 
-One case ends untidily. A session still running from `app\hotpl8-launch.cmd` when that file is taken away under it (a rollback or downgrade to a release from before this arrangement, or enrollment in main delivery) prints `The batch file cannot be found.` when it ends, with status 1 in place of its own. Nothing else is affected.
+One case ends untidily. A session still running from a launcher under `app` when that file is taken away under it (a rollback or downgrade to a release that does not ship that launcher, or enrollment in main delivery) prints `The batch file cannot be found.` when it ends, with status 1 in place of its own. Nothing else is affected.

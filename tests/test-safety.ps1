@@ -215,6 +215,29 @@ public static class Hotpl8ReaderFixture {
         Assert ((Get-Item (Join-Path $dir 'events.jsonl')).Length -lt 1000)
         Assert (Test-Path -LiteralPath (Join-Path $dir 'events.jsonl.1'))
     }
+    Check 'a command file that ships starts programs by their whole path' {
+        # cmd looks for a bare name in the current directory before PATH, and hotpl8 is typed
+        # in folders that hold other people's files. A line of a command file is therefore one
+        # of the few shapes below: cmd's own words, or a program named from this file's
+        # directory or from SystemRoot. The two launchers of before start PowerShell by its
+        # bare name; they ship unchanged for the sessions still running from them (docs/install.md,
+        # "The launcher"), and nothing that ships hands over to them.
+        $before=@('hotpl8-launch.cmd','delivery/launch.cmd')
+        $shape='^(@echo off|rem( .*)?|:[a-z]+|if (not )?(exist "%~dp0[^"%]+"|errorlevel \d+|defined [A-Za-z]+) goto [a-z]+|exit /b (%errorlevel%|\d+)|echo [^&|<>%]*>&2|@?"%~dp0[^"%]+" .*|"%SystemRoot%\\System32\\[^"%]+" .*)$'
+        $files=@((Read-Hotpl8Json (Join-Path $root 'release-files.json')).files|Where-Object{$_ -match '\.(cmd|bat)$'})
+        foreach($name in $before+@('hotpl8.cmd','hotpl8-launch2.cmd','delivery/hotpl8.cmd','delivery/launch2.cmd')){Assert ($name -cin $files)}
+        foreach($name in $files){
+            $other=@([IO.File]::ReadAllLines((Join-Path $root $name))|Where-Object{$_ -and $_ -cnotmatch $shape})
+            if($name -cin $before){Assert ($other.Count -eq 1 -and $other[0].StartsWith('powershell -NoProfile '))}
+            elseif($other.Count){throw ($name+' starts something by a bare name: '+$other[0])}
+        }
+        foreach($name in 'hotpl8.cmd','delivery/hotpl8.cmd'){
+            $line=[IO.File]::ReadAllText((Join-Path $root $name))
+            Assert ($line -cmatch '\A@"%~dp0[a-z0-9-]+2\.cmd" %\*\r\n\z')
+        }
+        # The hand-off install.ps1 writes beside an ordinary installation names the release's own.
+        Assert ([IO.File]::ReadAllText((Join-Path $root 'install.ps1')).Contains('$shim=''@"%~dp0app\hotpl8.cmd" %*''+[Environment]::NewLine'))
+    }
 }finally{
     $env:HOTPL8_SAFE_FIXTURE=$savedFixture;$env:HOTPL8_SAFE_CALLS=$savedCalls;$env:HOTPL8_STATE_DIRECTORY=$savedState
     $full=[IO.Path]::GetFullPath($dir)

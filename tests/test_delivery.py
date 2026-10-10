@@ -513,13 +513,17 @@ export async function main(config, args) {
         (self.root / "app").mkdir()
         (self.root / "app" / "original.txt").write_text("retained")
         (self.root / "delivery.json").unlink()
-        with patch.object(setup, "update", return_value={"state": "current"}), patch.object(setup.shutil, "which", return_value="gh"):
+        found = str(self.root / "tools" / "gh.exe")
+        with patch.object(setup, "update", return_value={"state": "current"}), patch.object(setup, "find_program", return_value=found):
             setup.setup(self.root, register=False)
             setup.setup(self.root, register=False)
-        # hotpl8 is one line that hands over to launch.cmd, which asks the reader beside it
+        # The updater starts gh from wherever it runs, so the registration names it whole.
+        self.assertEqual(d.read(self.root / "delivery.json")["gh"], found)
+        # hotpl8 is one line that hands over to launch2.cmd, which asks the reader beside it
         # and starts PowerShell with whatever the reader leaves to it.
-        for name, shipped in (("hotpl8.cmd", "delivery/hotpl8.cmd"), ("launch.cmd", "delivery/launch.cmd"), ("hotpl8-native.exe", "bin/windows/hotpl8-native.exe")):
+        for name, shipped in (("hotpl8.cmd", "delivery/hotpl8.cmd"), ("launch2.cmd", "delivery/launch2.cmd"), ("hotpl8-native.exe", "bin/windows/hotpl8-native.exe")):
             self.assertEqual((self.root / name).read_bytes(), (release / shipped).read_bytes(), name)
+        self.assertFalse((self.root / "launch.cmd").exists())
         result = launch([os.environ["ComSpec"], "/d", "/c", str(self.root / "hotpl8.cmd"), "refresh", "-AsJson"])
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         self.assertEqual(json.loads(result.stdout), {"command": "refresh", "json": True, "state": str(self.state)})
@@ -703,12 +707,13 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         (self.root / "hotpl8.cmd").write_bytes(
             b'@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch.ps1" -Entry hotpl8 %*\r\nexit /b %errorlevel%\r\n')
         (self.root / "hotpl8-native.exe").write_bytes(b"an older reader")
-        # A stand-in before the PowerShell on PATH: an answer that arrives with it in place
-        # came from a reader alone.
+        # A stand-in before the PowerShell on PATH, which the launcher of before started, and
+        # a Windows directory that holds none, which is where today's looks: an answer that
+        # arrives with both in place came from a reader alone.
         stub = self.root / "stub"
         stub.mkdir()
         (stub / "powershell.cmd").write_bytes(b"@exit /b 99\r\n")
-        alone = dict(os.environ, PATH=str(stub) + os.pathsep + os.environ["PATH"])
+        alone = dict(os.environ, PATH=str(stub) + os.pathsep + os.environ["PATH"], SYSTEMROOT=str(stub))
 
         def ask(*arguments, environment=None):
             # What a user types.
@@ -743,7 +748,8 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         # Activation gives the installation the launcher that asks a reader first, and the
         # reader of the release it activated. The one in use is moved aside, not written over.
         self.assertEqual((self.root / "hotpl8.cmd").read_bytes(), (source / "delivery/hotpl8.cmd").read_bytes())
-        self.assertEqual((self.root / "launch.cmd").read_bytes(), (source / "delivery/launch.cmd").read_bytes())
+        self.assertEqual((self.root / "launch2.cmd").read_bytes(), (source / "delivery/launch2.cmd").read_bytes())
+        self.assertFalse((self.root / "launch.cmd").exists())
         self.assertEqual(d.digest(self.root / "hotpl8-native.exe"), d.digest(native))
         self.assertEqual([path.read_bytes() for path in self.root.glob("hotpl8-native.*.old")], [b"an older reader"])
         # It reads the registration and the pointer as the runner and the adapter wrote them.
@@ -755,10 +761,19 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
         result = ask()
         self.assertEqual((result.returncode, result.stdout), (1, b""))
         self.assertIn(b"HotPl8: This copy has no compiled reader it can start", result.stderr)
+        # An installation enrolled since the reader has the hand-off to launch.cmd, which
+        # starts PowerShell by a bare name. The hand-off is given the line that names
+        # launch2.cmd; launch.cmd is left as it is for the sessions still running from it.
+        (self.root / "hotpl8.cmd").write_bytes(b'@"%~dp0launch.cmd" %*\r\n')
+        shutil.copyfile(source / "delivery/launch.cmd", self.root / "launch.cmd")
+        (self.root / "launch2.cmd").unlink()
         # Pointer rollback selects the previous release, and its own reader answers.
         d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": new}})
         self.assertEqual(d.update(self.root, self.github)["state"], "pending")
         self.assertEqual(d.read(self.root / "current.json")["sha"], A)
+        self.assertEqual((self.root / "hotpl8.cmd").read_bytes(), (source / "delivery/hotpl8.cmd").read_bytes())
+        self.assertEqual((self.root / "launch2.cmd").read_bytes(), (source / "delivery/launch2.cmd").read_bytes())
+        self.assertEqual((self.root / "launch.cmd").read_bytes(), (source / "delivery/launch.cmd").read_bytes())
         self.assertEqual(answer(environment=alone), version + " main " + A[:12] + "\n")
         self.assertEqual(list(self.root.glob("hotpl8-native.*.old")), [])
 
@@ -863,6 +878,49 @@ try{Save-Hotpl8Policy $State $policy;exit 0}catch{[Console]::Error.WriteLine($_.
                 workflow[key] = old
         release["assets"][0]["digest"] = None
         with self.assertRaises(d.DeliveryError): gh.candidate(B, self.config)
+
+    def test_a_program_is_started_by_its_whole_path_never_from_the_current_directory(self):
+        # Windows looks for a bare name in the current directory before PATH, and so does
+        # shutil.which. The updater runs from whatever directory it was started in.
+        name = "hotpl8-fixture-tool"
+        file = name + (".cmd" if os.name == "nt" else "")
+        here, tools = self.root / "here", self.root / "tools"
+        for folder in (here, tools):
+            folder.mkdir()
+        (here / file).write_text("@exit /b 66\r\n" if os.name == "nt" else "#!/bin/sh\nexit 66\n")
+        (here / file).chmod(0o755)
+        before = Path.cwd()
+        os.chdir(here)
+        try:
+            removed = {key: os.environ.pop(key) for key in list(os.environ) if key.upper() == "NODEFAULTCURRENTDIRECTORYINEXEPATH"}
+            try:
+                # Not on PATH at all, as a relative entry of PATH, and as an empty one.
+                for path in (str(self.root / "elsewhere"), ".", "", os.pathsep.join(["", ".", "here", str(self.root / "elsewhere")])):
+                    with self.subTest(path=path), patch.dict(os.environ, {"PATH": path}):
+                        self.assertIsNone(d.find_program(name))
+                        with self.assertRaises(d.DeliveryError):
+                            d.program(None, name)
+                        # A registration written before this check holds the bare name.
+                        with self.assertRaises(d.DeliveryError):
+                            d.program(name, name)
+                        with self.assertRaises(d.DeliveryError):
+                            d.program(os.path.join(".", file), name)
+                if os.name == "nt":
+                    # What was asked before: the file in the current directory.
+                    with patch.dict(os.environ, {"PATH": str(self.root / "elsewhere")}):
+                        self.assertEqual(Path(shutil.which(name)).resolve(), (here / file).resolve())
+                shutil.copyfile(here / file, tools / file)
+                (tools / file).chmod(0o755)
+                with patch.dict(os.environ, {"PATH": os.pathsep.join([".", str(self.root / "elsewhere"), '"' + str(tools) + '"'])}):
+                    self.assertEqual(Path(d.find_program(name)), tools / file)
+                    self.assertEqual(Path(d.program(name, name)), tools / file)
+                    self.assertEqual(Path(d.program(None, name)), tools / file)
+                # A whole path in the registration is used as it stands.
+                self.assertEqual(d.program(str(tools / "other.exe"), name), str(tools / "other.exe"))
+            finally:
+                os.environ.update(removed)
+        finally:
+            os.chdir(before)
 
 
 if __name__ == "__main__":

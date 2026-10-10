@@ -49,7 +49,7 @@ if($Operation -in @('activate','recover')){
     try{
         . (Join-Path $ReleaseDirectory 'src/native.ps1')
         $shipped=Get-Hotpl8NativePath $ReleaseDirectory
-        $launcher=Join-Path $ReleaseDirectory 'delivery/launch.cmd'
+        $launcher=Join-Path $ReleaseDirectory 'delivery/launch2.cmd'
         $handOff=Join-Path $ReleaseDirectory 'delivery/hotpl8.cmd'
         if((Test-Path -LiteralPath $shipped -PathType Leaf) -and (Test-Path -LiteralPath $launcher -PathType Leaf) -and (Test-Path -LiteralPath $handOff -PathType Leaf)){
             $beside=Join-Path $InstallDirectory 'hotpl8-native.exe'
@@ -59,14 +59,22 @@ if($Operation -in @('activate','recover')){
                 if(Test-Path -LiteralPath $beside -PathType Leaf){Move-Item -LiteralPath $beside -Destination (Join-Path $InstallDirectory ('hotpl8-native.'+[guid]::NewGuid().ToString('N')+'.old'))}
                 Copy-Item -LiteralPath $shipped -Destination $beside
             }
-            $installed=Join-Path $InstallDirectory 'launch.cmd'
+            # launch.cmd, which an installation of before keeps, starts PowerShell by its bare
+            # name, and cmd looks for that in the current directory first. It is left as it is
+            # for the sessions still running from it; launch2.cmd names PowerShell whole.
+            $installed=Join-Path $InstallDirectory 'launch2.cmd'
             if(-not (Test-Path -LiteralPath $installed -PathType Leaf)){Copy-Item -LiteralPath $launcher -Destination $installed}
             # An installation enrolled before the reader has a launcher that starts PowerShell
             # for every command. Sessions started from it come back to it by position; the
-            # hand-off is one line and shorter, so they end at the end of it.
+            # hand-off is one line and shorter, so they end at the end of it. One enrolled
+            # since has the hand-off to launch.cmd, which is not come back to at all.
             $door=Join-Path $InstallDirectory 'hotpl8.cmd'
             $enrolled="@echo off`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0launch.ps1`" -Entry hotpl8 %*`nexit /b %errorlevel%`n"
-            if((Test-Path -LiteralPath $door -PathType Leaf) -and [IO.File]::ReadAllText($door).Replace("`r`n","`n") -ceq $enrolled){Copy-Item -LiteralPath $handOff -Destination $door -Force}
+            $handedOver="@`"%~dp0launch.cmd`" %*`n"
+            if(Test-Path -LiteralPath $door -PathType Leaf){
+                $text=[IO.File]::ReadAllText($door).Replace("`r`n","`n")
+                if($text -ceq $enrolled -or $text -ceq $handedOver){Copy-Item -LiteralPath $handOff -Destination $door -Force}
+            }
         }
     }catch{}
     $registration=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')

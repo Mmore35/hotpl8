@@ -260,7 +260,8 @@ try{
         Assert ($after.hooks.StopFailure.Count -eq 3 -and $after.hooks.StopFailure[0].hooks[0].command -ceq 'echo foreign' -and $after.hooks.StopFailure[1].hooks.Count -eq 0)
         $entry=$after.hooks.StopFailure[2];$hook=$entry.hooks[0]
         Assert ($entry.matcher -ceq 'rate_limit' -and $entry.hooks.Count -eq 1 -and $hook.type -ceq 'command' -and $hook.asyncRewake -eq $true -and $hook.timeout -eq 21700)
-        Assert ($hook.command -ceq 'powershell.exe' -and ($hook.args -join '|') -ceq $ownHook)
+        # Claude Code starts the hook from the folder a session is in: the program is named whole.
+        Assert ($hook.command -ceq (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -and ($hook.args -join '|') -ceq $ownHook)
         Assert (Test-Hotpl8ContinueHook $state)
         $hash=(Get-FileHash -LiteralPath $settings).Hash
         Set-Hotpl8ContinueHook $app $state
@@ -288,7 +289,7 @@ try{
         $env:HOTPL8_INSTALL_DIRECTORY=$managed
         try{
             $hook=Get-Hotpl8ContinueHookCommand $release $managedState
-            Assert ($hook.command -ceq 'powershell.exe' -and $hook.args[3] -ceq '-Command' -and $hook.args.Count -eq 5)
+            Assert ($hook.command -ceq (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -and $hook.args[3] -ceq '-Command' -and $hook.args.Count -eq 5)
             # Run exactly what Claude would run: it must reach the release named by current.json.
             $shellArgs=@($hook.args)
             & $hook.command $shellArgs|Out-Null
@@ -476,7 +477,12 @@ try{
         $p=[pscustomobject]@{schemaVersion=3;mode='monitor';providers=[pscustomobject]@{codex=[pscustomobject]@{slots=@([pscustomobject]@{id='main';home=$native})};fictional=[pscustomobject]@{slots=@([pscustomobject]@{id='alias';home=$aliasHome})}}}
         Write-Hotpl8Text (Join-Path $state 'policy.json') ($p|ConvertTo-Json -Depth 12)
         $command='powershell -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path (Join-Path $install 'app') 'status-print.ps1')+'" -Provider codex -StateDirectory "'+$state+'"'
-        $hooks=@{hooks=@{SessionStart=@(@{matcher='startup';hooks=@(@{type='command';command=$command},@{type='command';command='echo unrelated'})});OtherEvent=@(@{command='keep'})}}
+        # A hook is this installation's whether it names PowerShell whole, as setup writes it
+        # today, or barely, as it did before. The same words after anything else are not.
+        $whole=Get-Hotpl8CodexHookCommand (Join-Path (Join-Path $install 'app') 'status-print.ps1') 'codex' $state
+        Assert ($whole -ceq ((Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe')+$command.Substring('powershell'.Length))) $whole
+        $lookalike='echo '+$command
+        $hooks=@{hooks=@{SessionStart=@(@{matcher='startup';hooks=@(@{type='command';command=$command},@{type='command';command=$whole},@{type='command';command=$lookalike},@{type='command';command='echo unrelated'})});OtherEvent=@(@{command='keep'})}}
         Write-Hotpl8Text (Join-Path $native 'hooks.json') ($hooks|ConvertTo-Json -Depth 12) -NoBom
         $aliasCommand=$command.Replace('-Provider codex ','-Provider fictional ')
         $foreignCommand=$aliasCommand.Replace($install,(Join-Path $dir 'other installation'))
@@ -497,8 +503,8 @@ try{
         Assert ([Environment]::GetEnvironmentVariable('Path','User') -ceq $pathBefore)
         Assert ([IO.File]::ReadAllText((Join-Path $native 'auth.json')) -ceq 'NATIVE_AUTH_SENTINEL')
         $after=Read-Hotpl8Json (Join-Path $native 'hooks.json')
-        Assert (@($after.hooks.SessionStart[0].hooks).Count -eq 1)
-        Assert ($after.hooks.SessionStart[0].hooks[0].command -eq 'echo unrelated')
+        Assert (@($after.hooks.SessionStart[0].hooks).Count -eq 2)
+        Assert ($after.hooks.SessionStart[0].hooks[0].command -ceq $lookalike -and $after.hooks.SessionStart[0].hooks[1].command -eq 'echo unrelated')
         Assert ($after.hooks.OtherEvent[0].command -eq 'keep')
         Assert ([IO.File]::ReadAllText((Join-Path $aliasHome 'auth.json')) -ceq 'ALIAS_AUTH_SENTINEL')
         Assert ([IO.File]::ReadAllText((Join-Path $aliasHome 'conversation.json')) -ceq 'CONVERSATION_SENTINEL')

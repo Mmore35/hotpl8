@@ -162,7 +162,9 @@ function Get-Hotpl8ContinueHookCommand([string]$CodeDirectory,[string]$StateDire
     $install=$env:HOTPL8_INSTALL_DIRECTORY
     if($install -and (Test-Path -LiteralPath (Join-Path $install 'current.json'))){
         $delivery=Read-Hotpl8Json (Join-Path $install 'delivery.json')
-        $exe=if($env:OS -eq 'Windows_NT'){'powershell.exe'}else{[string]$delivery.powershell}
+        # Claude Code starts the hook from whatever folder the session is in, and a bare name
+        # is looked for there first.
+        $exe=if($env:OS -eq 'Windows_NT'){Get-Hotpl8DesktopPowerShell}else{[string]$delivery.powershell}
         if($exe -and $delivery.stateDirectory -and [IO.Path]::GetFullPath([string]$delivery.stateDirectory) -eq $state){
             # Finds the current release each time it runs, so an update never touches the hook.
             $quoted=@($install,(Join-Path $install 'current.json'),$state|ForEach-Object{"'"+([string]$_).Replace("'","''")+"'"})
@@ -174,7 +176,7 @@ function Get-Hotpl8ContinueHookCommand([string]$CodeDirectory,[string]$StateDire
     $installation=Read-Hotpl8Json (Join-Path $root 'installation.json')
     $installed=$installation.product -eq 'hotpl8' -and $installation.stateDirectory -and [IO.Path]::GetFullPath([string]$installation.stateDirectory) -eq $state
     if(-not $installed -and -not $Explicit){return $null}
-    $exe=if($env:OS -eq 'Windows_NT'){'powershell.exe'}else{Get-Hotpl8PowerShell}
+    $exe=if($env:OS -eq 'Windows_NT'){Get-Hotpl8DesktopPowerShell}else{Get-Hotpl8PowerShell}
     return [pscustomobject]@{command=$exe;args=$shell+@('-File',(Join-Path $CodeDirectory 'continue.ps1'),'-Provider','claude','-StateDirectory',$state)}
 }
 function Test-Hotpl8ContinueHook([string]$StateDirectory) {

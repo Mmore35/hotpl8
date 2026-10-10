@@ -6,7 +6,7 @@ import shutil
 import sys
 import time
 
-from runner import DeliveryError, lock, read, run, safe_root, update, write
+from runner import DeliveryError, find_program, lock, read, run, safe_root, update, write
 
 
 def setup(root, register=True):
@@ -14,7 +14,8 @@ def setup(root, register=True):
     owned = read(root / "installation.json")
     if not owned or owned.get("product") != "hotpl8":
         raise DeliveryError("First install HotPl8 normally, then enroll that owned installation")
-    gh = shutil.which("gh")
+    # Recorded as a whole path: the updater starts it every five minutes from wherever it runs.
+    gh = find_program("gh")
     if not gh:
         raise DeliveryError("GitHub CLI is required")
     state = safe_root(owned["stateDirectory"])
@@ -35,10 +36,10 @@ def setup(root, register=True):
         for src, dst in (("launch.ps1", "launch.ps1"), ("bootstrap.py", "delivery.py")):
             shutil.copyfile(release / "delivery" / src, root / dst)
         # hotpl8 asks the reader beside the launcher before it starts PowerShell
-        # (docs/install.md, "The launcher"). Activation keeps that reader current. launch.cmd
+        # (docs/install.md, "The launcher"). Activation keeps that reader current. launch2.cmd
         # is installed once: cmd comes back to a command file by position, so one that
         # sessions run from is never given other text.
-        for src, dst in (("bin/windows/hotpl8-native.exe", "hotpl8-native.exe"), ("delivery/launch.cmd", "launch.cmd")):
+        for src, dst in (("bin/windows/hotpl8-native.exe", "hotpl8-native.exe"), ("delivery/launch2.cmd", "launch2.cmd")):
             if not (root / dst).exists():
                 shutil.copyfile(release / src, root / dst)
         # Keep the entire pre-delivery app as a recovery copy. The app path then
@@ -52,7 +53,7 @@ def setup(root, register=True):
             (app / (entry + ".ps1")).write_text(
                 "& (Join-Path (Split-Path $PSScriptRoot -Parent) 'launch.ps1') -Entry " + entry + " @args\nexit $LASTEXITCODE\n", encoding="utf-8")
         marker.write_text("Local Delivery compatibility entrypoints\n", encoding="utf-8")
-        # One line that hands over to launch.cmd, and shorter than any text installed here before.
+        # One line that hands over to launch2.cmd, and shorter than any text installed here before.
         shutil.copyfile(release / "delivery/hotpl8.cmd", root / "hotpl8.cmd")
         owned.update(sourceSha=current["sha"], channel="main", managedBy="local-delivery")
         write(root / "installation.json", owned)

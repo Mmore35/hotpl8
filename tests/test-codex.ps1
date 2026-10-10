@@ -172,6 +172,49 @@ try {
         Assert (-not $p.codex.PSObject.Properties['modelMeters']) 'legacy setup -Model creates no model registry'
         Assert ($p.prefer.Count -eq 3);Assert $p.warm;Assert ($p.codex.slots.Count -eq 1);Assert ($h.hooks.Stop[0].hooks[0].command -eq 'echo existing');Assert ($h.hooks.SessionStart.Count -eq 1);Assert ([IO.File]::ReadAllBytes((Join-Path $homeA 'hooks.json'))[0] -eq 123)
     }
+    Check 'the session hook names PowerShell by its whole path, and a hook of before is given that text' {
+        $configDir=Join-Path $dir 'setup';$hookFile=Join-Path $homeA 'hooks.json'
+        $words=' -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $root 'status-print.ps1')+'" -Provider codex -StateDirectory "'+$configDir+'"'
+        $whole=(Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe')+$words
+        $own=@((Read-Hotpl8Json $hookFile).hooks.SessionStart[0].hooks)
+        Assert ($own.Count -eq 1 -and $own[0].command -ceq $whole) ('registered: '+$own[0].command)
+        # Codex starts the text as a command line, and a bare name in one is looked for in the
+        # current directory first. A hook of before is given today's text where it stands;
+        # one for another state directory is someone else's and is left.
+        $before='powershell'+$words;$other=$before.Replace($configDir,(Join-Path $dir 'another state'))
+        Write-Hotpl8Text $hookFile (@{hooks=@{SessionStart=@(@{matcher='startup';hooks=@(@{type='command';command='echo first'},@{type='command';command=$before;timeout=2},@{type='command';command=$other})})}}|ConvertTo-Json -Depth 8) -NoBom
+        $setupArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'setup-codex.ps1'),'-Slot','a','-AccountHome',$homeA,'-StateDirectory',$configDir,'-CodexExecutable',$fake,'-InstallHook')
+        foreach($time in 1,2){
+            & powershell @setupArgs | Out-Null;Assert ($LASTEXITCODE -eq 0)
+            $after=Read-Hotpl8Json $hookFile
+            Assert ($after.hooks.SessionStart.Count -eq 1 -and (@($after.hooks.SessionStart[0].hooks|ForEach-Object{$_.command}) -join "`n") -ceq (@('echo first',$whole,$other) -join "`n")) ('run '+$time+': '+(@($after.hooks.SessionStart[0].hooks|ForEach-Object{$_.command}) -join ' ; '))
+            Assert ($after.hooks.SessionStart[0].hooks[1].timeout -eq 2 -and $after.hooks.SessionStart[0].matcher -ceq 'startup')
+        }
+        # A folder whose name a command line reads as more than a name is refused before
+        # either file is written.
+        $odd=Join-Path $dir '100% state';New-Item -ItemType Directory $odd|Out-Null
+        Copy-Item -LiteralPath (Join-Path $configDir 'policy.json') -Destination (Join-Path $odd 'policy.json')
+        $hookHash=(Get-FileHash -LiteralPath $hookFile).Hash;$policyHash=(Get-FileHash -LiteralPath (Join-Path $odd 'policy.json')).Hash
+        $oddArgs=@($setupArgs|ForEach-Object{if($_ -ceq $configDir){$odd}else{$_}})
+        $ended=Invoke-Hotpl8NativeProcess 'powershell.exe' $oddArgs
+        Assert ($ended.exitCode -ne 0 -and $ended.errors.Contains('The hook cannot name this folder safely')) ([string]$ended.exitCode+' '+$ended.errors)
+        Assert ((Get-FileHash -LiteralPath $hookFile).Hash -eq $hookHash -and (Get-FileHash -LiteralPath (Join-Path $odd 'policy.json')).Hash -eq $policyHash -and -not (Test-Path -LiteralPath (Join-Path $odd 'policy.previous.json')))
+        foreach($name in 'a"b','a`b','a$b','a%b',("a`nb")){
+            $refused=$false;try{$null=Get-Hotpl8CodexHookCommand (Join-Path $root 'status-print.ps1') 'codex' (Join-Path $dir $name)}catch{$refused=$true}
+            Assert $refused ('named: '+$name)
+        }
+        # Names people do have are not refused.
+        foreach($name in ('Jos'+[char]0xe9),'Program Files (x86)','a&b^c',"it's"){$null=Get-Hotpl8CodexHookCommand (Join-Path $root 'status-print.ps1') 'codex' (Join-Path $dir $name)}
+        # The hook is not written from an environment that does not say where Windows is.
+        $keep=$env:SystemRoot
+        try{
+            foreach($value in '','Windows','\Windows','C:Windows'){
+                $env:SystemRoot=$value;$refused=$false
+                try{$null=Get-Hotpl8CodexHookCommand (Join-Path $root 'status-print.ps1') 'codex' $configDir}catch{$refused=$true}
+                Assert $refused ('SystemRoot: '+$value)
+            }
+        }finally{$env:SystemRoot=$keep}
+    }
     Check 'enroll command validates the native home and preserves monitoring on repeat' {
         $enrollment=Join-Path $dir 'cli enrollment';New-Item -ItemType Directory $enrollment|Out-Null
         $monitor=Read-Hotpl8Json (Join-Path $root 'policy.example.json');$monitor.mode='monitor'

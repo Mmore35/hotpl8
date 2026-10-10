@@ -95,10 +95,16 @@ Write the behavior into [the contract](docs/plans/rust-read-side.md) before the 
 or an expected result is never edited only to make a comparison pass. The reader depends on no crate, and adding one means recording it in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-`hotpl8-launch.cmd` and `delivery/launch.cmd` keep the text they were released with, because a
+`hotpl8-launch2.cmd` and `delivery/launch2.cmd`, and the `hotpl8-launch.cmd` and
+`delivery/launch.cmd` they took over from, keep the text they were released with, because a
 running session comes back to them by position. A launcher that has to change ships under a new
 file name; see [the launcher](docs/install.md#the-launcher). `tests/test-native.ps1` holds their
 bytes and fails on any other.
+
+Anything that is started later from a folder HotPl8 does not choose (a launcher, a hook, a
+scheduled task, a program recorded in a registration) names its program by a whole path.
+Windows looks for a bare name in the current directory before `PATH`.
+`tests/test-safety.ps1` reads every command file that ships for this.
 
 T3 integration changes require `node --test tests/test-t3-codex.mjs` and
 `tests/test-t3-routing.ps1`. Fixtures use synthetic credentials and a fake native
