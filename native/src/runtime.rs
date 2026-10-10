@@ -41,9 +41,11 @@ pub struct Collected {
     pub lines: Vec<String>,
     /// What to print when the collection did something to an account.
     pub action: Option<String>,
-    /// At least one account was read, or is switched off on purpose.
+    /// The provider answered, so it is read again on its healthy interval: cswap for at
+    /// least one of Claude's accounts, whatever it said of them; for Codex, at least one
+    /// account was read or is switched off on purpose.
     pub success: bool,
-    /// Some account was neither.
+    /// Some account has no fresh reading and is not switched off on purpose.
     pub incomplete: bool,
     /// How long a healthy provider is left before it is read again.
     pub healthy_seconds: i32,
@@ -96,8 +98,12 @@ pub fn registered_collection(registration: &V, reading: &Reading, old: &V) -> R<
             let Some(result) = claude_tick(&request)? else { return throw() };
             let slots = result.payload.g("slots")?;
             let healthy = filter(&slots.each(), |slot| Ok(slot.g("fresh")?.t()? || slot.g("status")?.eq_s("disabled")?))?.len();
+            // cswap spaces its own requests and makes one only while it is read. Once it
+            // has answered for an account, what it said is that account's state; a wait
+            // here could bring no reading and would hide the next one.
+            let answered = filter(&slots.each(), |slot| slot.g("registered")?.t())?.len();
             Ok(Collected {
-                success: healthy > 0,
+                success: answered > 0,
                 incomplete: healthy != slots.arr().len(),
                 healthy_seconds: driver.g("healthyPollSeconds")?.to_int()?,
                 payload: result.payload,

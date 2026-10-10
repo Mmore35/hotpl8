@@ -79,6 +79,31 @@ try{
         Assert (@((Read-Hotpl8Json (Join-Path $dir 'status.json')).slots|Where-Object fresh).Count -eq 2)
         Assert (-not (Test-Path -LiteralPath $env:HOTPL8_SAFE_CALLS))
     }
+    Check 'readings cswap lets grow old are asked for again at the next wake' {
+        # cswap spaces its requests up to 30 minutes apart after a refusal and goes on
+        # answering with the reading it has. A wait here would hide the next one.
+        $old=Copy-Value $fixture;foreach($account in $old.accounts){$account.usageAgeSeconds=1500}
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($old|ConvertTo-Json -Depth 12)
+        $wake={
+            $state=Read-Hotpl8Json (Join-Path $dir 'collector.json')
+            $state.providers.claude.nextAttemptAt=[datetimeoffset]::UtcNow.AddSeconds(-1).ToString('o')
+            Write-Hotpl8Text (Join-Path $dir 'collector.json') ($state|ConvertTo-Json -Depth 12)
+            & (Get-Hotpl8PowerShell) -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tick.ps1') -StateDirectory $dir -CswapExecutable $stub -Scheduled -Strict
+        }
+        & $wake
+        Assert ($LASTEXITCODE -eq 1)
+        $claude=(Read-Hotpl8Json (Join-Path $dir 'collector.json')).providers.claude
+        Assert ($claude.failures -eq 0 -and $claude.status -eq 'ok')
+        Assert (([datetimeoffset]::Parse($claude.nextAttemptAt)-[datetimeoffset]::Parse($claude.lastAttemptAt)).TotalSeconds -eq 60)
+        $status=Read-Hotpl8Json (Join-Path $dir 'status.json')
+        Assert (@($status.slots|Where-Object fresh).Count -eq 0 -and @($status.slots|Where-Object status -eq 'ok').Count -eq 2)
+        Assert ($status.collector.status -eq 'incomplete')
+        Write-Hotpl8Text $env:HOTPL8_SAFE_FIXTURE ($fixture|ConvertTo-Json -Depth 12)
+        & $wake
+        Assert ($LASTEXITCODE -eq 0)
+        $status=Read-Hotpl8Json (Join-Path $dir 'status.json')
+        Assert (@($status.slots|Where-Object fresh).Count -eq 2 -and $status.collector.status -eq 'ok')
+    }
     Check 'the account read outlasts cswap''s waits for a renewal reply' {
         # cswap: 10 s lock wait and 30 s reply wait, a 5 s usage request, then the
         # same two waits once more. Killing the read inside that span can discard a
