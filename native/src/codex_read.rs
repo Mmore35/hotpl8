@@ -7,7 +7,7 @@
 use crate::cswap::runnable;
 use crate::files;
 use crate::json;
-use crate::policy::home_path;
+use crate::policy::{home_fold, home_path};
 use crate::process::Running;
 use crate::ps::*;
 use crate::request::full_path;
@@ -436,7 +436,7 @@ fn command(program: &Path, home: &str, directory: Option<&str>) -> Command {
 /// Where the lock of a home is kept. Everything of HotPl8's that starts Codex in a home
 /// holds this file while it does, in whichever language it is written.
 fn lock_path(full_home: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("hotpl8-codex-{}.lock", sha256::hash(&full_home.to_ascii_lowercase())))
+    std::env::temp_dir().join(format!("hotpl8-codex-{}.lock", sha256::hash(&home_fold(full_home))))
 }
 
 /// Read-CodexQuota, as a collection uses it. `program` is what the search for a Codex

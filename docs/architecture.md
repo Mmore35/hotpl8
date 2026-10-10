@@ -88,7 +88,6 @@ src/
   common.ps1                Atomic files, quoting, bounded processes
   config.ps1                State resolution; the policy check is asked of the program
   diagnostics.ps1           Offline doctor and bounded event logs
-  dashboard.ps1             A comment: the dashboard is the compiled program's
   lifecycle.ps1             Install ownership, manifests, scheduler
   collection.ps1            The category a failure is recorded under
   lane.ps1                  What a wake still asks PowerShell for: the continue
