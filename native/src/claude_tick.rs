@@ -831,29 +831,29 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::files::tests::scratch;
     use std::cell::Cell;
     use std::path::PathBuf;
 
     /// Noon UTC, on a machine that keeps it as seven in the morning.
-    const NOON: &str = "2026-10-06T12:00:00.0000000+00:00";
+    pub(crate) const NOON: &str = "2026-10-06T12:00:00.0000000+00:00";
 
     /// A cswap that answers `list` from a file beside it, writes every other request down
     /// and fails the kind a marker file names; a state directory; and a home no one has.
-    struct Lab {
-        directory: PathBuf,
-        state: PathBuf,
-        home: PathBuf,
-        stub: String,
+    pub(crate) struct Lab {
+        pub(crate) directory: PathBuf,
+        pub(crate) state: PathBuf,
+        pub(crate) home: PathBuf,
+        pub(crate) stub: String,
         /// Seconds past noon.
-        later: Cell<i64>,
+        pub(crate) later: Cell<i64>,
         generation: Cell<Option<&'static str>>,
     }
 
     impl Lab {
-        fn new(name: &str) -> Lab {
+        pub(crate) fn new(name: &str) -> Lab {
             let directory = scratch(name);
             let (state, home) = (directory.join("state"), directory.join("home"));
             std::fs::create_dir_all(&state).unwrap();
@@ -876,7 +876,7 @@ mod tests {
             Lab { directory, state, home, stub: stub.to_string_lossy().into_owned(), later: Cell::new(0), generation: Cell::new(None) }
         }
         /// What cswap lists from now on.
-        fn list(&self, text: &str) {
+        pub(crate) fn list(&self, text: &str) {
             std::fs::write(self.directory.join("fixture.json"), text).unwrap();
         }
         /// Whether cswap refuses requests of this kind from now on.
@@ -902,7 +902,7 @@ mod tests {
             let clock = || Dto::parse(NOON)?.plus_seconds(self.later.get());
             claude_tick(&Request { policy, state, control, generation: self.generation.get(), provider, cswap: Some(&self.stub), observe_only, root: &self.directory, home: &self.home, clock: &clock })
         }
-        fn done(self) {
+        pub(crate) fn done(self) {
             crate::time::set_zone(None);
             set_core(false);
             std::fs::remove_dir_all(&self.directory).unwrap();

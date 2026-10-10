@@ -325,3 +325,131 @@ pub fn started(arguments: &[OsString]) -> Result<bool, String> {
     let _ = stdout.flush();
     Ok(!(started.strict && outcome.failed))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::claude_tick::tests::{Lab, NOON};
+    use crate::display::packaged_data;
+
+    /// One Claude account, looked at and never acted on.
+    const POLICY: &str = r#"{"prefer":[1],"reserve":[],"mode":"monitor","order":"prefer","margin5h":25,"margin7d":20,"hysteresis":10,"labels":{"1":"One"}}"#;
+
+    fn lab(name: &str) -> Lab {
+        let lab = Lab::new(name);
+        packaged_data(&Path::new(env!("CARGO_MANIFEST_DIR")).join(".."));
+        std::fs::write(lab.state.join("policy.json"), POLICY).unwrap();
+        lab
+    }
+    /// What cswap lists of one account.
+    fn listed(number: i32, said: &str) -> String {
+        format!(r#"{{"schemaVersion":1,"activeAccountNumber":{number},"accounts":[{{"number":{number},"email":"one@example.invalid",{said}}}]}}"#)
+    }
+    /// Account 1 with so much of its five hours used, read so many seconds ago.
+    fn read(used: i32, age: i32) -> String {
+        listed(1, &format!(r#""usageStatus":"ok","usageAgeSeconds":{age},"usage":{{"fiveHour":{{"pct":{used},"resetsAt":"2026-10-06T13:00:00.0000000+00:00"}},"sevenDay":{{"pct":20,"resetsAt":"2026-10-07T12:00:00.0000000+00:00"}}}}"#))
+    }
+    /// One scheduled wake so many seconds past noon, and what it left: whether it fell
+    /// short, the account's status, whether it is fresh, its five hours used, the reason
+    /// Claude could not be read, the failures counted and the seconds until the next read.
+    fn wake(lab: &Lab, later: i64) -> String {
+        lab.later.set(later);
+        let clock = || Dto::parse(NOON)?.plus_seconds(lab.later.get());
+        let outcome = collect(&Wake {
+            root: &lab.directory,
+            directory: &lab.state,
+            home: &lab.home,
+            cswap: Some(&lab.stub),
+            scheduled: true,
+            observe_only: true,
+            clock: &clock,
+            codex: &|_, _| HomeRead { elapsed_ms: 0, outcome: Err("no Codex account is enrolled") },
+            upkeep: &|_| Ok(()),
+        });
+        let said = |value: &V, name: &str| match value.g(name).ok().unwrap() {
+            V::Null => "-".to_string(),
+            V::Bool(held) => held.to_string(),
+            other => other.s().ok().unwrap(),
+        };
+        let status = json::read_or_null(&lab.state.join("status.json"));
+        let record = json::read_or_null(&lab.state.join("collector.json")).g("providers").and_then(|providers| providers.g("claude")).ok().unwrap();
+        let slot = status.g("slots").ok().unwrap().each().first().cloned().unwrap();
+        let at = |name: &str| Dto::parse_external(&said(&record, name)).ok().unwrap();
+        format!(
+            "failed={} status={} fresh={} used={} error={} failures={} wait={}",
+            outcome.failed,
+            said(&slot, "status"),
+            said(&slot, "fresh"),
+            said(&slot, "used5h"),
+            said(&status, "claudeError"),
+            said(&record, "failures"),
+            at("nextAttemptAt").since(at("lastAttemptAt")).total_seconds()
+        )
+    }
+
+    /// cswap spaces its own requests, up to half an hour apart after one is refused, and
+    /// goes on answering "ok" with the reading it has. That reading is too old to act on
+    /// and is shown as old; it is not a cswap that could not be read. Waiting would bring
+    /// no reading, since cswap asks only while it is read, and would hide the next one.
+    #[test]
+    fn an_old_reading_cswap_still_answers_with_is_read_again_at_the_next_wake() {
+        let lab = lab("wake-old-reading");
+        lab.list(&read(40, 120));
+        assert_eq!(wake(&lab, 0), "failed=false status=ok fresh=true used=40 error=- failures=0 wait=60");
+        // Twenty-five minutes old: past the fifteen a reading may be acted on.
+        lab.list(&read(40, 1500));
+        assert_eq!(wake(&lab, 60), "failed=true status=ok fresh=false used=40 error=- failures=0 wait=60");
+        lab.list(&read(40, 1560));
+        assert_eq!(wake(&lab, 120), "failed=true status=ok fresh=false used=40 error=- failures=0 wait=60");
+        // cswap has asked again, and the wake a minute later shows it.
+        lab.list(&read(55, 20));
+        assert_eq!(wake(&lab, 180), "failed=false status=ok fresh=true used=55 error=- failures=0 wait=60");
+        lab.done();
+    }
+
+    /// An account cswap could not read this time is that account's state, and cswap is
+    /// the one that tries again: it is asked at the next wake whether it has.
+    #[test]
+    fn an_account_cswap_could_not_read_is_asked_about_again_at_the_next_wake() {
+        let lab = lab("wake-unread-account");
+        lab.list(&read(40, 120));
+        assert_eq!(wake(&lab, 0), "failed=false status=ok fresh=true used=40 error=- failures=0 wait=60");
+        for (later, state) in [(60, "token_expired"), (120, "unavailable"), (180, "relogin_required")] {
+            lab.list(&listed(1, &format!(r#""usageStatus":"{state}","usage":null,"lastGoodAgeSeconds":400"#)));
+            assert_eq!(wake(&lab, later), format!("failed=true status={state} fresh=false used=- error=- failures=0 wait=60"));
+        }
+        lab.list(&read(41, 15));
+        assert_eq!(wake(&lab, 240), "failed=false status=ok fresh=true used=41 error=- failures=0 wait=60");
+        lab.done();
+    }
+
+    /// The wait is for a cswap that gave no answer: asking again at once is what it is
+    /// spared. Nothing is read until the wait is over, whatever cswap would say by then.
+    #[test]
+    fn a_cswap_that_gives_no_answer_is_left_alone_for_longer_each_time() {
+        let lab = lab("wake-no-answer");
+        lab.list(&read(40, 120));
+        assert_eq!(wake(&lab, 0), "failed=false status=ok fresh=true used=40 error=- failures=0 wait=60");
+        lab.list("");
+        assert_eq!(wake(&lab, 60), "failed=true status=claude_read_failed fresh=false used=40 error=claude_read_failed failures=1 wait=300");
+        lab.list(&read(55, 20));
+        assert_eq!(wake(&lab, 120), "failed=true status=backoff fresh=false used=40 error=backoff failures=1 wait=300");
+        assert_eq!(wake(&lab, 359), "failed=true status=backoff fresh=false used=40 error=backoff failures=1 wait=300");
+        lab.list("");
+        assert_eq!(wake(&lab, 360), "failed=true status=claude_read_failed fresh=false used=40 error=claude_read_failed failures=2 wait=600");
+        lab.list(&read(55, 20));
+        assert_eq!(wake(&lab, 959), "failed=true status=backoff fresh=false used=40 error=backoff failures=2 wait=600");
+        assert_eq!(wake(&lab, 960), "failed=false status=ok fresh=true used=55 error=- failures=0 wait=60");
+        lab.done();
+    }
+
+    /// A cswap that lists none of the accounts the policy names has said nothing of them.
+    #[test]
+    fn an_answer_about_none_of_the_accounts_is_no_answer() {
+        let lab = lab("wake-other-account");
+        lab.list(&listed(2, r#""usageStatus":"ok","usageAgeSeconds":0,"usage":null"#));
+        assert_eq!(wake(&lab, 0), "failed=true status=- fresh=- used=- error=- failures=1 wait=300");
+        assert_eq!(wake(&lab, 60), "failed=true status=backoff fresh=false used=- error=backoff failures=1 wait=300");
+        lab.done();
+    }
+}
