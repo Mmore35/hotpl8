@@ -29,7 +29,10 @@ function Install-Hotpl8JobHost([string]$InstallDirectory) {
     return $exe
 }
 
-function Get-Hotpl8JobComponentStatus([string]$InstallDirectory) {
+# A time as a run receipt or the updater's status holds it, or nothing when it cannot be read.
+function ConvertTo-Hotpl8JobTime($Value) {try{return [datetimeoffset]$Value}catch{return $null}}
+
+function Get-Hotpl8JobComponentStatus([string]$InstallDirectory,[datetimeoffset]$Now=[datetimeoffset]::UtcNow) {
     $config=Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery.json')
     if(-not $config.scheduledJobs){return}
     foreach($role in @('collector','updater')){
@@ -39,6 +42,25 @@ function Get-Hotpl8JobComponentStatus([string]$InstallDirectory) {
         $latest=Get-ChildItem -LiteralPath (Join-Path $InstallDirectory ('job-runs/'+$role)) -Filter run.json -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
         $receipt=if($latest){Read-Hotpl8Json $latest.FullName}else{$null}
         $valid=$task -and $task.Actions.Count -eq 1 -and $task.Actions[0].Execute -eq $config.scheduledJobs.host -and (Test-Path -LiteralPath $config.scheduledJobs.host)
-        [pscustomobject]@{component=('scheduled-'+$role);state=$(if(-not $valid){'error'}elseif(-not $task.Settings.Enabled){'disabled'}else{'current'});task=$name;nextLaunchHost=$config.scheduledJobs.host;observedHost=$receipt.host;execution=$receipt.status;observedAt=$receipt.completedAt;adoption='Next native wake; admitted work completes on its original host';outcomeAuthority=$(if($role -eq 'collector'){'collector.json; provider freshness remains separate'}else{'delivery-status.json'})}
+        $row=[pscustomobject]@{component=('scheduled-'+$role);state=$(if(-not $valid){'error'}elseif(-not $task.Settings.Enabled){'disabled'}else{'current'});task=$name;nextLaunchHost=$config.scheduledJobs.host;observedHost=$receipt.host;execution=$receipt.status;observedAt=$receipt.completedAt;adoption='Next native wake; admitted work completes on its original host';outcomeAuthority=$(if($role -eq 'collector'){'collector.json; provider freshness remains separate'}else{'delivery-status.json'})}
+        if($role -eq 'updater'){
+            # Every check is stamped in delivery-status.json, whoever started it. A task that is
+            # turned off while checks stamped after its own last run keep arriving is checked
+            # from outside that task. An hour without one and it reads disabled again, so the day
+            # the checks stop does not read like the days before it.
+            $stamp=(Read-Hotpl8Json (Join-Path $InstallDirectory 'delivery-status.json')).lastCheck
+            $check=ConvertTo-Hotpl8JobTime $stamp
+            $age=if($check){[long][Math]::Floor(($Now-$check).TotalSeconds)}else{$null}
+            if($row.state -eq 'disabled' -and $check -and $age -ge 0 -and $age -le 3600){
+                # A run that left no completion is given the 540 seconds register.ps1 allows it;
+                # a receipt that cannot be read shows nothing about where the check came from.
+                $started=ConvertTo-Hotpl8JobTime $receipt.startedAt
+                $ended=if(-not $latest){[datetimeoffset]::MinValue}elseif($receipt.completedAt){ConvertTo-Hotpl8JobTime $receipt.completedAt}elseif($started){$started.AddSeconds(540)}else{$null}
+                if($ended -and $check -gt $ended){$row.state='external'}
+            }
+            $row|Add-Member NoteProperty lastCheck $stamp
+            $row|Add-Member NoteProperty lastCheckAgeSeconds $age
+        }
+        $row
     }
 }
