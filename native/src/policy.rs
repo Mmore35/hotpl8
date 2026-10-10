@@ -5,6 +5,7 @@ use crate::capacity::assert_capacity_policy;
 use crate::critical::assert_critical_policy;
 use crate::ps::*;
 use crate::registry;
+use std::collections::BTreeSet;
 
 const ORDERS: [&str; 4] = ["prefer", "soonest-reset", "weekly-expiry", "balanced"];
 const LATER_ORDERS: [&str; 2] = ["weekly-expiry", "balanced"];
@@ -62,7 +63,7 @@ pub fn assert_policy(policy: &V) -> R<()> {
         control.remove_member("providers")?;
         control.set("schemaVersion", V::I32(2))?;
         assert_policy(&control)?;
-        let mut native_homes = Keys::new();
+        let mut native_homes = BTreeSet::new();
         let mut global_owners = 0;
         for r in registry::configured_providers(policy, false)? {
             let driver = registry::provider_driver(&r.g("driver")?)?;
@@ -86,10 +87,9 @@ pub fn assert_policy(policy: &V) -> R<()> {
                 assert_codex_policy(&part)?;
                 for slot in part.g("slots")?.arr() {
                     let home = home_key(&slot.g("home")?.s()?)?;
-                    if native_homes.contains(&home)? {
+                    if !native_homes.insert(home) {
                         return fail("Native account home is enrolled under more than one provider.");
                     }
-                    native_homes.insert(&home)?;
                 }
             }
             if !r.path(&["definition", "capabilities", "warming"])?.t()? && part.g("warm")?.t()? {
@@ -318,7 +318,7 @@ pub fn assert_codex_policy(policy: &V) -> R<()> {
         "invalid_codex_field",
     )?;
     let mut ids = Keys::new();
-    let mut homes = Keys::new();
+    let mut homes = BTreeSet::new();
     for slot in policy.g("slots")?.arr() {
         if !slot.t()? {
             return fail("invalid_slot");
@@ -328,11 +328,10 @@ pub fn assert_codex_policy(policy: &V) -> R<()> {
             return fail("invalid_slot");
         }
         let home = home_key(&slot.g("home")?.s()?)?;
-        if ids.contains(&id)? || homes.contains(&home)? {
+        if ids.contains(&id)? || !homes.insert(home) {
             return fail("duplicate_slot_or_home");
         }
         ids.insert(&id)?;
-        homes.insert(&home)?;
         let label = slot.g("label")?.s()?;
         if has_control(&label) || length(&label) > 80 {
             return fail("invalid_label");
@@ -379,9 +378,20 @@ pub fn assert_codex_policy(policy: &V) -> R<()> {
     Ok(())
 }
 
-/// A native account home as the checks compare it: its full path, lower-cased.
+/// A native account home as the checks compare it: its full path without the case of its
+/// letters.
 fn home_key(path: &str) -> R<String> {
-    Ok(home_path(path)?.to_ascii_lowercase())
+    Ok(home_fold(&home_path(path)?))
+}
+
+/// A full path without the case of its letters: for a path of ASCII, its lower case. Upper
+/// case is taken first because that is how Windows compares names, which makes a dotless i
+/// (U+0131) the letter `i` and a long s (U+017F) the letter `s`. Some names a volume keeps
+/// apart come out the same (U+00DF and `ss`), so two homes may be refused as one and never
+/// the other way about. How an accented letter is composed is not folded, although a Mac
+/// opens both spellings as one folder.
+pub fn home_fold(full: &str) -> String {
+    full.to_uppercase().to_lowercase()
 }
 
 /// `[IO.Path]::GetFullPath` of a native account home. Apart from the short names Windows
@@ -392,7 +402,9 @@ pub fn home_path(path: &str) -> R<String> {
         // A missing home is not rooted.
         return fail("invalid_home");
     }
-    if !printable(path) || path.len() > 200 {
+    // No home is written with a control character, and Windows PowerShell drops a no-break
+    // space from the end of a path.
+    if path.chars().any(char::is_control) || path.ends_with('\u{a0}') {
         return unreadable();
     }
     // [IO.Path]::IsPathRooted: a leading separator, or on Windows a drive.
@@ -424,7 +436,9 @@ pub fn home_path(path: &str) -> R<String> {
         let stem = segment.split('.').next().unwrap_or("").to_ascii_lowercase();
         let device = matches!(stem.as_str(), "con" | "prn" | "aux" | "nul" | "conin$" | "conout$")
             || ((stem.starts_with("com") || stem.starts_with("lpt")) && stem.len() == 4 && stem.as_bytes()[3].is_ascii_digit());
+        // No volume keeps a longer name, and Windows PowerShell refuses one.
         if segment.is_empty()
+            || length(segment) > 255
             || segment == "."
             || segment == ".."
             || segment.ends_with('.')
@@ -439,7 +453,7 @@ pub fn home_path(path: &str) -> R<String> {
     let head = if cfg!(windows) { path[..2].to_string() + "\\" } else { "/".to_string() };
     let full = long_names(head + &rest);
     // The names Windows gives back are compared and hashed as the rest are.
-    if !printable(&full) {
+    if full.chars().any(char::is_control) {
         return unreadable();
     }
     Ok(full)
@@ -528,6 +542,47 @@ mod tests {
         // Nothing is there to give a longer name: the path is as written.
         let absent = if cfg!(windows) { r"C:\fixture~1\no~such\home" } else { "/fixture~1/no~such/home" };
         assert_eq!(home_path(absent).ok().unwrap(), absent);
+    }
+
+    #[test]
+    fn a_home_is_written_in_any_letters_and_at_any_length() {
+        let root = if cfg!(windows) { "C:\\" } else { "/" };
+        let separator = if cfg!(windows) { "\\" } else { "/" };
+        let under = |name: &str| format!("{root}fixture{separator}{name}");
+        // GetFullPath leaves each of these as written: an accent, a letter and its combining
+        // mark, an ideograph, a character of two UTF-16 units, spaces that are not ASCII's.
+        for name in ["Jos\u{e9}", "Jose\u{301}", "\u{732b}", "\u{1f600}", "a\u{a0}b", "home\u{3000}", "\u{a0}home", "home\u{ff0e}"] {
+            assert_eq!(home_path(&under(name)).ok().unwrap(), under(name), "{name}");
+        }
+        let long = under(&["a long directory name"; 40].join(separator));
+        assert!(long.len() > 800);
+        assert_eq!(home_path(&long).ok().unwrap(), long);
+        assert_eq!(home_path(&under(&"x".repeat(255))).ok().unwrap(), under(&"x".repeat(255)));
+        // 255 UTF-16 units, as Windows counts a name.
+        assert_eq!(home_path(&under(&"\u{e9}".repeat(255))).ok().unwrap(), under(&"\u{e9}".repeat(255)));
+        for refused in [&"x".repeat(256)[..], &"\u{1f600}".repeat(128)[..], "a\u{85}b", "a\u{7f}b", "a\tb", "home\u{a0}"] {
+            assert!(!home_path(&under(refused)).err().unwrap().thrown(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn two_spellings_of_one_home_are_one_home() {
+        let root = if cfg!(windows) { "C:\\fixture\\" } else { "/fixture/" };
+        let key = |name: &str| home_key(&format!("{root}{name}")).ok().unwrap();
+        assert_eq!(key("Home A"), format!("{root}home a").to_ascii_lowercase());
+        assert_eq!(key("JOS\u{c9}"), key("jos\u{e9}"));
+        // Windows names a file by its upper case: a dotless i is an I there, a long s an S.
+        assert_eq!(key("d\u{131}r"), key("DIR"));
+        assert_eq!(key("\u{17f}et"), key("set"));
+        assert_ne!(key("jos\u{e9}"), key("jose"));
+        let policy = |first: &str, second: &str| {
+            let slots = format!(r#"[{{"id":"a","home":"{0}{first}"}},{{"id":"b","home":"{0}{second}"}}]"#, root.replace('\\', "/"));
+            let text = format!(r#"{{"prefer":["a","b"],"defaultMeter":"codex","order":"soonest-reset","modelMeters":{{"fixture-model":"codex"}},"slots":{slots}}}"#);
+            assert_codex_policy(&crate::json::parse(&text, "").ok().unwrap()).err().map(|stop| stop.message())
+        };
+        assert_eq!(policy("jos\u{e9}", "jose"), None);
+        assert_eq!(policy("Home A", "home a").as_deref(), Some("duplicate_slot_or_home"));
+        assert_eq!(policy("JOS\u{c9}", "jos\u{e9}").as_deref(), Some("duplicate_slot_or_home"));
     }
 
     /// Windows spells a temporary directory with a short name when the account's is long,
