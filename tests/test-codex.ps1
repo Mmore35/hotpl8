@@ -49,18 +49,22 @@ try {
         if($smoke.ExitCode -ne 0){throw ('Offline fixture startup failed ('+$smoke.ExitCode+'): '+$smokeError.Result)}
         Assert (($smokeOut.Result|ConvertFrom-Json).id -eq 1) 'Offline fixture produced no initialization response.'
     }finally{Stop-Hotpl8Process $smoke}
-    Check 'UTF-8 console cannot add a pipe BOM to a question, and a home outside ASCII is not read' {
+    Check 'UTF-8 console cannot add a pipe BOM to a question, and a home outside ASCII or longer than 200 characters is read' {
         $original=[Console]::InputEncoding
         $unicodeHome=Join-Path $dir ('home-'+[char]0x00e9)
-        [void][IO.Directory]::CreateDirectory($unicodeHome)
+        $longHome=Join-Path $dir ('h'*(239-$dir.Length))
+        [void][IO.Directory]::CreateDirectory($unicodeHome);[void][IO.Directory]::CreateDirectory($longHome)
         try{
             [Console]::InputEncoding=[Text.Encoding]::UTF8
             $env:HOTPL8_TEST_SCENARIO='ok'
             $r=Read-CodexQuota $homeA $fake 5000
             Assert ($r.status -eq 'ok') $r.status
-            # The program reads only a home written in printable ASCII
-            # (docs/plans/rust-read-side.md); the question itself arrives whole.
             $r=Read-CodexQuota $unicodeHome $fake 5000
+            Assert ($r.status -eq 'ok') $r.status
+            Assert ($longHome.Length -eq 240) $longHome.Length
+            $r=Read-CodexQuota $longHome $fake 5000
+            Assert ($r.status -eq 'ok') $r.status
+            $r=Read-CodexQuota ($unicodeHome+'-absent') $fake 5000
             Assert ($r.status -eq 'home_missing') $r.status
             Assert ([Console]::InputEncoding.GetPreamble().Length -eq 3) 'Console encoding was not restored.'
         }finally{[Console]::InputEncoding=$original}

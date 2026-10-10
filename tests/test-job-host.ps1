@@ -100,5 +100,12 @@ public static class TreeFixture {
     foreach($p in $owned){if(-not $p.HasExited){$p.Kill();$p.WaitForExit()};$p.Dispose()}
     $full=[IO.Path]::GetFullPath($lab)
     if((Split-Path $full -Parent) -ne [IO.Path]::GetTempPath().TrimEnd('\','/') -or (Split-Path $full -Leaf) -notmatch '^hotpl8-host-test-[a-f0-9]{32}$'){throw 'Unsafe fixture cleanup'}
-    Remove-Item -LiteralPath $full -Recurse -Force
+    # A host that was killed leaves its workers to the system, which ends them a moment later;
+    # until then they hold the run's output files open. The removal is tried again until they
+    # have gone, and a file still held after ten seconds fails the suite as before.
+    $deadline=[DateTime]::UtcNow.AddSeconds(10)
+    while($true){
+        try{Remove-Item -LiteralPath $full -Recurse -Force;break}
+        catch{if([DateTime]::UtcNow -ge $deadline){throw};Start-Sleep -Milliseconds 200}
+    }
 }
