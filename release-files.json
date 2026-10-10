@@ -20,7 +20,6 @@
     "src/config.ps1",
     "src/diagnostics.ps1",
     "src/lifecycle.ps1",
-    "src/dashboard.ps1",
     "setup-codex.ps1",
     "status-print.ps1",
     "audit-codex.ps1",
