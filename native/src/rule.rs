@@ -547,8 +547,14 @@ mod tests {
             assert_eq!(names(&failed), ["status", "elapsedMs"], "{missing}");
             assert_eq!(failed.g("status").ok().unwrap().s().ok().unwrap(), "home_missing", "{missing}");
         }
-        assert_eq!(read_line(&Stand::bare(), obj! {"home" => home.as_str()}), r#"{"value":{"status":"codex_missing","elapsedMs":0}}"#);
-        assert_eq!(read_line(&Stand::with(None, Err("native_codex_required")), obj! {"home" => home.as_str()}), r#"{"value":{"status":"native_codex_required","elapsedMs":0}}"#);
+        // A machine without the program says which it lacks. How long that took is the machine's
+        // to say: finding the home held by nobody is quick, and not always under a millisecond.
+        for (stand, lacking) in [(Stand::bare(), "codex_missing"), (Stand::with(None, Err("native_codex_required")), "native_codex_required")] {
+            let failed = value(read_line(&stand, obj! {"home" => home.as_str()}));
+            assert_eq!(names(&failed), ["status", "elapsedMs"], "{lacking}");
+            assert_eq!(failed.g("status").ok().unwrap().s().ok().unwrap(), lacking);
+            assert!(failed.g("elapsedMs").ok().unwrap().lt_i(20_000).ok().unwrap(), "{lacking}");
+        }
         // The time it is given is the time it has.
         let hurried = value(read_line(&stand, obj! {"home" => home.as_str(), "timeoutMs" => -5}));
         assert_eq!(hurried.g("status").ok().unwrap().s().ok().unwrap(), "timeout");

@@ -34,10 +34,10 @@ function Set-Codex($Selected,[int]$ReadA=-600){
     $s=@{schemaVersion=2;active=0;slots=@();providers=@{codex=@{slots=@(@{id='a';observedAt=(Stamp $ReadA)},@{id='b';observedAt=(Stamp -600)})}};providerOverview=@{codex=@{selected=$Selected}}}
     Write-Hotpl8Text (Join-Path $state 'status.json') ($s|ConvertTo-Json -Depth 8)
 }
-function Start-Waiter([string[]]$Arguments,[string]$InputText='',[string]$Entrypoint=''){
+function Start-Waiter([string[]]$Arguments,[string]$InputText='',[string]$Entrypoint='',[int]$PollSeconds=1){
     $info=New-Object Diagnostics.ProcessStartInfo
     $info.FileName=Get-Hotpl8PowerShell
-    $all=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'continue.ps1'),'-StateDirectory',$state,'-PollSeconds','1')+$Arguments
+    $all=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'continue.ps1'),'-StateDirectory',$state,'-PollSeconds',[string]$PollSeconds)+$Arguments
     $info.Arguments=($all|ForEach-Object {ConvertTo-NativeArgument $_}) -join ' '
     $info.UseShellExecute=$false;$info.CreateNoWindow=$true
     $info.RedirectStandardInput=$true;$info.RedirectStandardError=$true;$info.RedirectStandardOutput=$true
@@ -72,12 +72,17 @@ function New-Hook([string]$Session){
 # The hook reads which account is in use as it starts, so the fixture may only change
 # once it has: the waiter creates its record directory right after that read.
 function Start-HookWaiter($Hook){
-    $records=Join-Path $state 'continue'
-    if(Test-Path -LiteralPath $records){Remove-Item -LiteralPath $records -Recurse -Force}
+    Remove-Records
     $process=Start-Waiter @() $Hook.json 'sdk-ts'
-    for($i=0;$i -lt 1200 -and -not $process.HasExited -and -not (Test-Path -LiteralPath $records);$i++){Start-Sleep -Milliseconds 100}
-    if(-not (Test-Path -LiteralPath $records)){throw $(if($process.HasExited){'the waiter left with exit '+$process.ExitCode+' before making its record directory'}else{'the waiter made no record directory'})}
+    Wait-Records $process
     return $process
+}
+function Remove-Records{$records=Join-Path $state 'continue';if(Test-Path -LiteralPath $records){Remove-Item -LiteralPath $records -Recurse -Force}}
+# The record directory is the last thing a waiter makes before its first look.
+function Wait-Records($Process){
+    $records=Join-Path $state 'continue'
+    for($i=0;$i -lt 1200 -and -not $Process.HasExited -and -not (Test-Path -LiteralPath $records);$i++){Start-Sleep -Milliseconds 100}
+    if(-not (Test-Path -LiteralPath $records)){throw $(if($Process.HasExited){'the waiter left with exit '+$Process.ExitCode+' before making its record directory'}else{'the waiter made no record directory'})}
 }
 try{
     Set-Policy
@@ -197,15 +202,14 @@ try{
         Assert (Test-Path -LiteralPath (Join-Path $state 'continue/session-hook'))
     }
     Check 'a status that cannot be read for one look is waited through' {
-        Set-Claude 1 2
-        $p=Start-HookWaiter (New-Hook 'session-replaced')
-        Assert-Waiting $p
-        # As while the file is being replaced, only longer: away for more than one look and for fewer than three.
-        $status=Join-Path $state 'status.json'
-        [IO.File]::Move($status,$status+'.aside')
-        Start-Sleep -Milliseconds 1200
-        [IO.File]::Move($status+'.aside',$status)
-        Assert-Waiting $p
+        # As while the file is being replaced: not there at the waiter's first look, there again
+        # well before its third. The looks are five seconds apart, so no pause on a loaded
+        # machine can carry the file's absence to that third look.
+        Remove-Records
+        Remove-Item -LiteralPath (Join-Path $state 'status.json')
+        $p=Start-Waiter @('-Conversation','thread-replaced','-Slot','1','-After',(Stamp 0)) -PollSeconds 5
+        Wait-Records $p
+        Start-Sleep -Milliseconds 500
         Set-Claude 2 2
         $r=Complete-Waiter $p
         Assert ($r.code -eq 2 -and $r.text -ceq 'Automated message: continue.')
