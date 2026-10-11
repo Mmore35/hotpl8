@@ -203,8 +203,8 @@ try{
     }
     Check 'a status that cannot be read for one look is waited through' {
         # As while the file is being replaced: not there at the waiter's first look, there again
-        # well before its third. The looks are five seconds apart, so no pause on a loaded
-        # machine can carry the file's absence to that third look.
+        # well before its third. The looks are five seconds apart, so the file is back some
+        # nine seconds before that third look, which a pause on a loaded machine does not reach.
         Remove-Records
         Remove-Item -LiteralPath (Join-Path $state 'status.json')
         $p=Start-Waiter @('-Conversation','thread-replaced','-Slot','1','-After',(Stamp 0)) -PollSeconds 5
