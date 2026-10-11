@@ -68,14 +68,25 @@ try {
         if (-not $Held -and $old.Name -ceq $Conversation -and $old.LastWriteTimeUtc -gt [datetime]::UtcNow.AddMinutes(-10)) { Complete-Hotpl8Continue $false }
         if ($old.LastWriteTimeUtc -lt [datetime]::UtcNow.AddDays(-1)) { Remove-Item -LiteralPath $old.FullName -Force }
     }
-    $deadline = $limited.UtcDateTime.AddHours(6); $written = $null; $state = $null
+    $deadline = $limited.UtcDateTime.AddHours(6); $written = $null; $state = $null; $missed = 0
     while ($true) {
         # Nobody left to continue for: the host is gone, the conversation moved on, or it has been too long.
         foreach ($id in $watched) { if (-not (Get-Process -Id $id -ErrorAction SilentlyContinue)) { Complete-Hotpl8Continue $false } }
         if ($size -ge 0 -and (Get-Item -LiteralPath $transcript).Length -ne $size) { Complete-Hotpl8Continue $false }
         if ([datetime]::UtcNow -gt $deadline) { Complete-Hotpl8Continue $false }
-        $stamp = (Get-Item -LiteralPath $statusPath).LastWriteTimeUtc
-        if ($stamp -ne $written) { $written = $stamp; $state = Read-Hotpl8ContinueState }
+        # status.json is replaced whole, and for a moment in that it cannot be found or opened.
+        # One look that lands there says nothing, so nothing is decided on it and the next look
+        # is awaited. Three in a row are an unreadable status, which stands down.
+        try {
+            $stamp = (Get-Item -LiteralPath $statusPath).LastWriteTimeUtc
+            if ($stamp -ne $written) { $state = Read-Hotpl8ContinueState; $written = $stamp }
+            $missed = 0
+        } catch {
+            $missed++
+            if ($missed -ge 3) { throw }
+            Start-Sleep -Seconds $PollSeconds
+            continue
+        }
         # Ready: an account is selected and (for Claude) already in use, it is either a
         # different account or the same one read again after the limit, and automation is not
         # paused. The pause is the compiled program's to answer, so it is asked last and only

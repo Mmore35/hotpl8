@@ -5,7 +5,15 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'src/management.ps1')
 $script:passed=0;$script:failed=0
 function Assert($Value){if(-not $Value){throw 'assertion failed'}}
-function Check([string]$Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message}}
+# A failure names the line of the check that made it and how the last waiter it finished ended.
+function Check([string]$Name,[scriptblock]$Body){
+    $script:ended=''
+    try{& $Body;$script:passed++;'PASS '+$Name}catch{
+        $script:failed++
+        $line=if($_.ScriptStackTrace -match 'at <ScriptBlock>, .*: line (\d+)'){' at line '+$Matches[1]}
+        'FAIL '+$Name+': '+$_.Exception.Message+$line+$script:ended
+    }
+}
 $dir=Join-Path ([IO.Path]::GetTempPath()) ('hotpl8-continue-test-'+[guid]::NewGuid().ToString('N'))
 $state=Join-Path $dir 'state with spaces'
 [void][IO.Directory]::CreateDirectory($state)
@@ -47,10 +55,12 @@ function Start-Waiter([string[]]$Arguments,[string]$InputText='',[string]$Entryp
 # Generous limits: a loaded machine can take most of a minute to start one PowerShell.
 function Complete-Waiter($Process,[int]$Seconds=120){
     if(-not $Process.WaitForExit($Seconds*1000)){$Process.Kill();throw 'the waiter did not finish'}
-    return [pscustomobject]@{code=$Process.ExitCode;text=$Process.StandardError.ReadToEnd()}
+    $result=[pscustomobject]@{code=$Process.ExitCode;text=$Process.StandardError.ReadToEnd()}
+    $script:ended='; the last waiter ended with exit '+$result.code+$(if($result.text){', saying: '+$result.text})
+    return $result
 }
 function Invoke-Waiter([string[]]$Arguments,[string]$InputText='',[string]$Entrypoint=''){Complete-Waiter (Start-Waiter $Arguments $InputText $Entrypoint)}
-function Assert-Waiting($Process,[int]$Seconds=3){Assert (-not $Process.WaitForExit($Seconds*1000))}
+function Assert-Waiting($Process,[int]$Seconds=3){if($Process.WaitForExit($Seconds*1000)){throw 'the waiter left early with exit '+$Process.ExitCode}}
 function Get-Events{@(Get-Content -LiteralPath (Join-Path $state 'events.jsonl') -ErrorAction SilentlyContinue|ForEach-Object {($_|ConvertFrom-Json).code})}
 function New-Hook([string]$Session){
     # A folder name outside ASCII: the waiter must still find the transcript it was given.
@@ -65,8 +75,8 @@ function Start-HookWaiter($Hook){
     $records=Join-Path $state 'continue'
     if(Test-Path -LiteralPath $records){Remove-Item -LiteralPath $records -Recurse -Force}
     $process=Start-Waiter @() $Hook.json 'sdk-ts'
-    for($i=0;$i -lt 1200 -and -not (Test-Path -LiteralPath $records);$i++){Start-Sleep -Milliseconds 100}
-    Assert (Test-Path -LiteralPath $records)
+    for($i=0;$i -lt 1200 -and -not $process.HasExited -and -not (Test-Path -LiteralPath $records);$i++){Start-Sleep -Milliseconds 100}
+    if(-not (Test-Path -LiteralPath $records)){throw $(if($process.HasExited){'the waiter left with exit '+$process.ExitCode+' before making its record directory'}else{'the waiter made no record directory'})}
     return $process
 }
 try{
@@ -185,6 +195,20 @@ try{
         $r=Complete-Waiter $p
         Assert ($r.code -eq 2 -and $r.text -ceq 'Automated message: continue.')
         Assert (Test-Path -LiteralPath (Join-Path $state 'continue/session-hook'))
+    }
+    Check 'a status that cannot be read for one look is waited through' {
+        Set-Claude 1 2
+        $p=Start-HookWaiter (New-Hook 'session-replaced')
+        Assert-Waiting $p
+        # As while the file is being replaced, only longer: away for more than one look and for fewer than three.
+        $status=Join-Path $state 'status.json'
+        [IO.File]::Move($status,$status+'.aside')
+        Start-Sleep -Milliseconds 1200
+        [IO.File]::Move($status+'.aside',$status)
+        Assert-Waiting $p
+        Set-Claude 2 2
+        $r=Complete-Waiter $p
+        Assert ($r.code -eq 2 -and $r.text -ceq 'Automated message: continue.')
     }
     Check 'a conversation that moved on is left alone' {
         Set-Claude 1 2
