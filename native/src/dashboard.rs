@@ -1651,9 +1651,16 @@ pub mod tests {
     #[test]
     fn a_provider_whose_every_account_is_disabled_has_no_bar_either() {
         let claude_off = with(FLEET_POLICY, r#""reserve":[1],"#, r#""reserve":[1],"disabled":[1,2,3],"#);
-        assert_eq!(overview_titles(&fleet_drawn(FLEET, &claude_off, &terminal(100, 100))), ["CODEX"]);
+        let frame = fleet_drawn(FLEET, &claude_off, &terminal(100, 100));
+        assert_eq!(overview_titles(&frame), ["CODEX"]);
+        // The accounts are still listed, each marked as disabled; the list does not call them none.
+        let text = page(&frame);
+        assert!(text.contains("DISABLED") && !text.contains("CLAUDE  /  0 subscriptions"), "{text}");
         let codex_off = with(FLEET_POLICY, r#""defaultMeter":"codex","#, r#""defaultMeter":"codex","disabled":["main"],"#);
-        assert_eq!(overview_titles(&fleet_drawn(FLEET, &codex_off, &terminal(100, 100))), ["CLAUDE"]);
+        let frame = fleet_drawn(FLEET, &codex_off, &terminal(100, 100));
+        assert_eq!(overview_titles(&frame), ["CLAUDE"]);
+        let text = page(&frame);
+        assert!(text.contains("Main  [main]  ·  DISABLED") && !text.contains("CODEX  /  0 subscriptions"), "{text}");
         // Nothing left to measure: no overview, and no empty section ruled off for it.
         let all_off = with(&claude_off, r#""defaultMeter":"codex","#, r#""defaultMeter":"codex","disabled":["main"],"#);
         let frame = fleet_drawn(FLEET, &all_off, &terminal(100, 40));
