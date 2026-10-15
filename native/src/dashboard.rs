@@ -976,6 +976,12 @@ impl Pass<'_> {
         let overview = if cached.t()? { cached } else { provider_overview(self.status, self.policy, self.now)? };
         let mut out = Vec::new();
         for (id, p) in overview.props()? {
+            // A provider with no enabled account has nothing to measure: an all-dashed bar
+            // would say its capacity cannot be read. The account list names it instead.
+            let accounts = p.g("accounts")?;
+            if accounts.n().is_some() && accounts.eq_i(0)? {
+                continue;
+            }
             let Some(provider) = self.providers.iter().find(|provider| *provider.id == *id) else { return unreadable() };
             let name = p.g("name")?;
             let title = if name.t()? { upper(&name_text(&name)?)? } else { upper(&id)? };
@@ -1141,7 +1147,9 @@ pub fn frame(status: &V, policy: &V, now: Dto, view: &View, tweens: &mut Tweens)
             }
         }
     }
-    let available = (height as i64 - 7 - summary.len() as i64 - cat.len() as i64).max(1) as usize;
+    // Seven rows of borders, title and footer; six when there is no overview to rule off.
+    let chrome = if summary.is_empty() { 6 } else { 7 };
+    let available = (height as i64 - chrome - summary.len() as i64 - cat.len() as i64).max(1) as usize;
     let page_of = |count: usize, at: usize| if count > available { format!("[{}-{}/{count}]", at + 1, count.min(at + available)) } else { String::new() };
     let resolved = |count: usize| view.offset.min(count.saturating_sub(available));
     // A single recent event must appear somewhere: list it when the footer has no room.
@@ -1166,8 +1174,10 @@ pub fn frame(status: &V, policy: &V, now: Dto, view: &View, tweens: &mut Tweens)
     let mut lines = vec![rule('╭', '╮'), edged(title(status, now, inside, view, motion, automation.as_ref())?, border)];
     lines.extend(cat.into_iter().map(|line| edged(line, border)));
     lines.push(rule('├', '┤'));
-    lines.extend(summary.into_iter().map(|line| edged(line, border)));
-    lines.push(rule('├', '┤'));
+    if !summary.is_empty() {
+        lines.extend(summary.into_iter().map(|line| edged(line, border)));
+        lines.push(rule('├', '┤'));
+    }
     // A thumb in the right border shows where the details viewport sits.
     let count = rows.len();
     let (mut thumb, mut thumb_at) = (0, 0);
@@ -1606,6 +1616,75 @@ pub mod tests {
         frame.lines.iter().filter(flies).map(|line| paint::text(&line.spans)).collect()
     }
 
+    /// The provider named over each bar of the overview, in order.
+    fn overview_titles(frame: &Frame) -> Vec<String> {
+        let shown = rows(frame);
+        shown.windows(2).filter(|pair| pair[1].starts_with("  [")).map(|pair| pair[0].split_whitespace().next().unwrap_or("").to_owned()).collect()
+    }
+
+    /// Whether two rules follow each other anywhere in the frame.
+    fn doubled_rule(frame: &Frame) -> bool {
+        rows(frame).windows(2).any(|pair| pair[0] == "├┤" && pair[1] == "├┤")
+    }
+
+    #[test]
+    fn a_provider_without_an_account_has_no_bar_in_the_overview() {
+        // Claude enrolled, no Codex account: only Claude is measured at the top, and the
+        // account list still says Codex has none.
+        let main = FLEET.split_once(r#"{"codex":{"slots":["#).unwrap().1.split_once(r#"],"recommendedSlot""#).unwrap().0;
+        let no_codex = with(&with(FLEET, main, ""), r#""recommendedSlot":"main""#, r#""recommendedSlot":null"#);
+        let claude_only = fleet_drawn(&no_codex, &with(FLEET_POLICY, r#""slots":[{"id":"main","label":"Main"}]"#, r#""slots":[]"#), &terminal(100, 100));
+        assert_eq!(overview_titles(&claude_only), ["CLAUDE"]);
+        let text = page(&claude_only);
+        assert!(text.contains("CODEX  /  0 subscriptions") && text.contains("none enrolled yet"), "{text}");
+        assert!(!doubled_rule(&claude_only));
+        // The same for the other provider: Codex enrolled, no Claude account.
+        let no_claude = format!("{},\"slots\":[]}}", FLEET.split_once(r#","slots":[{"reset7d""#).unwrap().0);
+        let codex_only = fleet_drawn(&no_claude, r#"{"codex":{"defaultMeter":"codex","slots":[{"id":"main","label":"Main"}]}}"#, &terminal(100, 100));
+        assert_eq!(overview_titles(&codex_only), ["CODEX"]);
+        assert!(page(&codex_only).contains("CLAUDE  /  0 subscriptions"));
+        assert!(!doubled_rule(&codex_only));
+        // Both enrolled: both are measured, in their order.
+        assert_eq!(overview_titles(&fleet_drawn(FLEET, FLEET_POLICY, &terminal(100, 100))), ["CLAUDE", "CODEX"]);
+    }
+
+    #[test]
+    fn a_provider_whose_every_account_is_disabled_has_no_bar_either() {
+        let claude_off = with(FLEET_POLICY, r#""reserve":[1],"#, r#""reserve":[1],"disabled":[1,2,3],"#);
+        assert_eq!(overview_titles(&fleet_drawn(FLEET, &claude_off, &terminal(100, 100))), ["CODEX"]);
+        let codex_off = with(FLEET_POLICY, r#""defaultMeter":"codex","#, r#""defaultMeter":"codex","disabled":["main"],"#);
+        assert_eq!(overview_titles(&fleet_drawn(FLEET, &codex_off, &terminal(100, 100))), ["CLAUDE"]);
+        // Nothing left to measure: no overview, and no empty section ruled off for it.
+        let all_off = with(&claude_off, r#""defaultMeter":"codex","#, r#""defaultMeter":"codex","disabled":["main"],"#);
+        let frame = fleet_drawn(FLEET, &all_off, &terminal(100, 40));
+        assert!(overview_titles(&frame).is_empty(), "{}", page(&frame));
+        assert!(!doubled_rule(&frame), "{}", page(&frame));
+    }
+
+    #[test]
+    fn a_provider_whose_accounts_cannot_be_read_keeps_its_dashed_bar() {
+        // Accounts enrolled but never read: there is something to measure and it is unknown,
+        // which is what the dashed bar says. Only a provider with no account loses its bar.
+        let unread = r#"{"active":3,"generatedAt":"2026-09-10T12:00:00.0000000+00:00","slots":[],"providers":{"codex":{"slots":[]}}}"#;
+        let frame = fleet_drawn(unread, FLEET_POLICY, &terminal(100, 100));
+        assert_eq!(overview_titles(&frame), ["CLAUDE", "CODEX"], "{}", page(&frame));
+        let shown = rows(&frame);
+        let bars: Vec<&String> = shown.iter().filter(|row| row.starts_with("  [")).collect();
+        assert!(bars.len() == 2 && bars.iter().all(|bar| bar.contains('╌')), "{bars:?}");
+    }
+
+    #[test]
+    fn a_frame_without_an_overview_gives_its_row_to_the_accounts() {
+        let none = r#"{"codex":{"slots":[]},"prefer":[]}"#;
+        let empty = fleet_drawn(FLEET, none, &terminal(80, 24));
+        // Top rule, title, rule, then rows straight away; every row as wide as the frame.
+        let shown = rows(&empty);
+        assert_eq!(shown[2], "├┤");
+        assert_ne!(shown[3], "├┤");
+        assert!(empty.lines.iter().all(|line| cells(&paint::text(&line.spans)) == 80), "{}", page(&empty));
+        assert!(empty.lines.len() <= 24, "{}", page(&empty));
+    }
+
     #[test]
     fn a_policy_with_no_account_is_shown_how_to_connect_the_first() {
         let first = fleet_drawn("", r#"{"mode":"monitor","prefer":[],"codex":{"slots":[]}}"#, &terminal(80, 24));
@@ -1613,8 +1692,10 @@ pub mod tests {
         // No collector is implied to be running, and with no account there is nothing to
         // switch between: the title stays quiet.
         assert_eq!(shown[1], across(80, "  (=^.^=)  hotpl8", "no reading"));
+        // No provider has an account, so no overview is drawn above the accounts.
+        assert!(overview_titles(&first).is_empty(), "{:?}", overview_titles(&first));
         assert_eq!(
-            shown[8..13],
+            shown[3..8],
             [
                 "  No accounts yet.",
                 "  Connect your first account: hotpl8 setup",
