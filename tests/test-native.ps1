@@ -60,7 +60,14 @@ function ConvertTo-EntryOutput([string]$Text) { $Text.Replace("`n",$line) }
 # Two starts read the clock twice. The instant an answer was computed at always differs and
 # is left out; anything else that changed between them is asked again, and a difference
 # that is still there on the third try is a difference.
-function Hide-Clock([string]$Text) { [regex]::Replace($Text,'(?<="computedAt": ")[^"]+','') }
+# So is an age in seconds, as a frame's `read 50s ago`: the readings here are a moment old,
+# and in a Mac job the entry's start alone can take a second, so the two starts of every try
+# drew `50s` and `51s`. The number is left out, and that line's padding with it, which
+# moves when the number gains a digit; the same line in minutes is still compared.
+function Hide-Clock([string]$Text) {
+    $Text=[regex]::Replace($Text,'(?<="computedAt": ")[^"]+','')
+    [regex]::Replace($Text,'(?m)^.*\b\d+s ago.*$',{param($m)[regex]::Replace([regex]::Replace($m.Value,'\b\d+s ago','?s ago'),' {2,}',' ')})
+}
 function Assert-SameAnswer([string]$Label,[scriptblock]$Through,[scriptblock]$Direct) {
     for($try=1;;$try++){
         $got=& $Through;$wanted=& $Direct
