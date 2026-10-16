@@ -734,13 +734,22 @@ impl Pass<'_> {
         let (status, policy, now) = (&provider.snapshot, &provider.policy, self.now);
         let mut slots = filter(&status.g("slots")?.each(), |slot| Ok(!slot.is_null()))?;
         let labels = policy.g("labels")?;
-        if slots.is_empty() && labels.t()? {
-            slots = labels.props()?.into_iter().map(|(name, label)| obj! {"slot" => &*name, "label" => label, "status" => "no observation"}).collect();
-        }
-        // An account enrolled and not yet read is still an account: it is listed, not left out.
+        // Before the first reading, every account labelled or enrolled is listed: one enrolled
+        // without a label is still an account, so it is not left out beside a labelled one.
         if slots.is_empty() {
+            let mut listed = Vec::new();
+            if labels.t()? {
+                for (name, label) in labels.props()? {
+                    listed.push(name.to_string());
+                    slots.push(obj! {"slot" => &*name, "label" => label, "status" => "no observation"});
+                }
+            }
             for id in policy.g("prefer")?.each() {
-                slots.push(obj! {"slot" => &id, "label" => labels.g(&id.s()?)?, "status" => "no observation"});
+                let key = id.s()?;
+                if !id.is_null() && !listed.contains(&key) {
+                    slots.push(obj! {"slot" => &id, "label" => labels.g(&key)?, "status" => "no observation"});
+                    listed.push(key);
+                }
             }
         }
         out.push(row(Self::heading(provider, "CLAUDE", slots.len())?, Tone::Peach));
@@ -1757,6 +1766,10 @@ pub mod tests {
         let text = page(&fleet_drawn(unread, r#"{"prefer":[1,2],"codex":{"slots":[]}}"#, &terminal(100, 100)));
         assert!(text.contains("CLAUDE  /  2 subscriptions") && text.contains("Slot 1  [1]") && text.contains("Slot 2  [2]"), "{text}");
         assert!(!text.contains("CODEX") && !text.contains("No accounts yet."), "{text}");
+        // A label on one enrolled account does not hide the other.
+        let text = page(&fleet_drawn(unread, r#"{"prefer":[1,2],"labels":{"1":"Work"},"codex":{"slots":[]}}"#, &terminal(100, 100)));
+        assert!(text.contains("CLAUDE  /  2 subscriptions") && text.contains("Work  [1]") && text.contains("Slot 2  [2]"), "{text}");
+        assert_eq!(text.matches("[1]").count(), 1, "{text}");
     }
 
     #[test]
