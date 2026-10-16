@@ -3,7 +3,9 @@
 Provider definitions live in `data/providers/`. They select a reviewed native
 driver; they are not executable plugins. Adding a compatible definition and
 enrolling its accounts does not require changing collector, selection, dashboard,
-CLI, agent API or MCP provider lists.
+CLI, agent API or MCP provider lists. The dashboard shows a registered provider
+only once it has an account: until then it has neither a bar in the overview nor
+a section in the account list.
 
 Copy the [Codex definition](../data/providers/codex.json), assign a unique lowercase
 `id` and filename, set its display `name` and `display.order`, and retain only
