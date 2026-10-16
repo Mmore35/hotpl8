@@ -38,6 +38,11 @@ to continue, whether to continue and the loop bound, read from the collector's
 published `status.json`, the policy and the pause state. It exits 2 to say
 "continue now" and 0 to stand down.
 
+The collector replaces `status.json` whole, and for a moment in that the file
+cannot be found or opened. A look that fails is therefore repeated at the next
+one and decides nothing. Three failed looks in a row are an unreadable status,
+and the waiter stands down.
+
 Only delivery differs, because the two clients offer different ways in:
 
 - **Claude.** Claude Code runs the waiter itself, as a `StopFailure` hook with
