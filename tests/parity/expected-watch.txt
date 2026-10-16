@@ -1791,8 +1791,6 @@ refused: automation-leases.json is not JSON as HotPl8 writes it (line 1, column 
 │    5h  ██████████████████▍·   92%   reset 4h 00m  ·  Sat 16:00                                   │
 │    7d  ████████████████▌···   83%   reset 5d 00h  ·  Thu 12:00                                   │
 │                                                                                                  │
-│  CLAUDE  /  0 subscriptions                                                                      │
-│    none in this snapshot                                                                         │
 │  CODEX  /  2 subscriptions                                                                       │
 │  ● Work  [work]  ·  NEXT LAUNCH                                                                  │
 │    5h  ██████████████▊·····   74%   reset 2h 00m  ·  Sat 14:00                                   │
@@ -1801,8 +1799,6 @@ refused: automation-leases.json is not JSON as HotPl8 writes it (line 1, column 
 │  ○ Personal  [personal]  ·  AVAILABLE                                                            │
 │    7d  ██▏·················   11%   reset 18h 00m  ·  Sun 06:00                                  │
 │                                                                                                  │
-│  CODEX  /  0 subscriptions                                                                       │
-│    none enrolled yet                                                                             │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
 │  q quit  ·  space freeze  ·  ↑↓ scroll                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
