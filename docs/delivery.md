@@ -90,6 +90,17 @@ collector's existing lock is also held during activation. Dashboards and native
 client sessions use their original immutable code; native sessions are never
 killed by an application update. State and credentials remain outside releases.
 
+After each successful activation the updater removes the releases nothing needs.
+It keeps the current, previous and rejected releases, the three newest others, and
+any release a running process names or a T3 bridge reports it loaded. The product
+adapter's `inuse` operation answers that; when it cannot read the process list, a
+HotPl8 program's command line or a bridge's release, nothing is removed. A release
+is renamed to `releases/.prune-*` before it is deleted, so it is either whole or
+gone; on Windows the rename fails while a file in it is open, and that release is
+tried again at the next activation. Previews under `previews/pr-NUMBER/SHA` older
+than 14 days go the same way. A removal that fails never fails the update: the
+error name is recorded as `pruneError` in `delivery-status.json`.
+
 The normal semantic-version installer and rollback commands must not be run over
 an enrolled installation. Use its delivery status and retained release pointers
 for recovery, or a separately coordinated unenrollment. Channel enrollment is an
@@ -181,8 +192,10 @@ recovery because no previous managed release exists yet. The original app remain
 available until successful enrollment installs its compatibility launchers.
 
 Inspect `delivery-status.json`, `transaction.json`, `current.json`, `previous.json`
-and `rejected.json` in the owned installation. Do not delete or restore subscription
-history to roll code back. An operator recovery must hold the same update/runtime
+and `rejected.json` in the owned installation. Releases other than the current,
+previous, rejected and three newest are removed after each activation, and job
+receipts after 7 or 30 days, so look at a failure before then. Do not delete or
+restore subscription history to roll code back. An operator recovery must hold the same update/runtime
 and application writer locks before changing the pointer. Retained immutable code
 does not make incompatible data/schema migrations reversible.
 
@@ -231,6 +244,14 @@ budgets are 225 and 540 seconds respectively. There is no additional retry loop.
 Collector `incomplete`/provider backoff remains in `collector.json`; a zero process
 exit is not evidence that every provider is fresh. Updater results remain in
 `delivery-status.json`. Per-attempt execution evidence lives in `job-runs`.
+
+Each attempt leaves `job-runs/<role>/<run id>/` with its receipt (`run.json`) and
+output, and the host copies its newest receipt to `job-runs/<role>/latest.json`,
+which `hotpl8 delivery` reads instead of searching the folders. After its worker
+ends, the host removes older folders of its role, at most 500 per attempt: a
+`complete` run after 7 days, any other after 30, judged by the time in its own
+receipt. A folder whose receipt cannot be read is kept. Removal never changes the
+attempt's exit code.
 
 The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
 against that repository/revision and replace the import plus normalized LF SHA256

@@ -224,10 +224,29 @@ def reader_starts(release):
         raise DeliveryError("Candidate has no compiled reader that starts on this Mac") from None
 
 
+def in_use(root):
+    # The runner removes old releases and previews only from this answer: folders any
+    # process names, and releases a T3 bridge reports it loaded. A bridge whose release is
+    # unknown means nothing is removed.
+    output = run(["/bin/ps", "-axo", "pid=,command="], 10).decode("utf-8", "replace")
+    paths = set()
+    for match in re.finditer(r"/releases/([a-f0-9]{40})(?![a-f0-9])", output):
+        paths.add(str(root / "releases" / match[1]))
+    for match in re.finditer(r"/previews/(pr-[0-9]+)/([a-f0-9]{40})(?![a-f0-9])", output):
+        paths.add(str(root / "previews" / match[1] / match[2]))
+    refuse = False
+    for bridge in t3_module().components(root):
+        refuse = refuse or bool(bridge.get("unknownRunningProcesses"))
+        paths.update(str(root / "releases" / sha) for sha in bridge.get("runningShas", []) if re.fullmatch(r"[a-f0-9]{40}", sha))
+    return dict(refuse=refuse, paths=sorted(paths))
+
+
 def adapter(root, release, operation, backend=None):
     owned, config = owned_config(root)
     if operation == "components":
         return components(root, backend)
+    if operation == "inuse":
+        return in_use(root)
     build = read(release / "build-info.json", {})
     if not re.fullmatch(r"[a-f0-9]{40}", build.get("sha", "")):
         raise DeliveryError("Candidate has no exact source identity")
@@ -474,7 +493,7 @@ def dispatch(root, command, arguments):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("setup", "uninstall", "preflight", "drain", "activate", "health", "recover", "components"))
+    parser.add_argument("operation", choices=("setup", "uninstall", "preflight", "drain", "activate", "health", "recover", "components", "inuse"))
     parser.add_argument("--install", required=True)
     parser.add_argument("--release")
     parser.add_argument("--state")
