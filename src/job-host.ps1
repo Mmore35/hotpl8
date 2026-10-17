@@ -56,7 +56,11 @@ function Get-Hotpl8JobComponentStatus([string]$InstallDirectory,[datetimeoffset]
         $name=if($role -eq 'collector'){$config.scheduledJobs.collectorTask}else{'LocalDelivery-'+$config.product}
         if(-not $name){continue}
         $task=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-        $latest=Get-ChildItem -LiteralPath (Join-Path $InstallDirectory ('job-runs/'+$role)) -Filter run.json -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
+        # Hosts publish their newest receipt as latest.json. Searching every run folder is
+        # only for runs left by a host from before it, and takes seconds once they pile up.
+        $runs=Join-Path $InstallDirectory ('job-runs/'+$role)
+        $latest=Get-Item -LiteralPath (Join-Path $runs 'latest.json') -ErrorAction SilentlyContinue
+        if(-not $latest){$latest=Get-ChildItem -LiteralPath $runs -Filter run.json -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1}
         $receipt=if($latest){Read-Hotpl8Json $latest.FullName}else{$null}
         $valid=$task -and $task.Actions.Count -eq 1 -and $task.Actions[0].Execute -eq $config.scheduledJobs.host -and (Test-Path -LiteralPath $config.scheduledJobs.host)
         $row=[pscustomobject]@{component=('scheduled-'+$role);state=$(if(-not $valid){'error'}elseif(-not $task.Settings.Enabled){'disabled'}else{'current'});task=$name;nextLaunchHost=$config.scheduledJobs.host;observedHost=$receipt.host;execution=$receipt.status;observedAt=$receipt.completedAt;adoption='Next native wake; admitted work completes on its original host';outcomeAuthority=$(if($role -eq 'collector'){'collector.json; provider freshness remains separate'}else{'delivery-status.json'})}
