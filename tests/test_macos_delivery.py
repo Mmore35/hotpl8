@@ -117,9 +117,9 @@ class EnrollmentContract(unittest.TestCase):
             self.assertFalse(root.exists())
 
     def test_in_use_names_releases_and_previews_and_refuses_unknown_bridges(self):
-        root = Path('/Users/fixture/hotpl8')
-        listing = ('  1 /usr/bin/pwsh -File /Users/fixture/hotpl8/releases/' + A + '/hotpl8.ps1 watch\n'
-                   '  2 /usr/bin/open /Users/fixture/hotpl8/previews/pr-7/' + B + '/overview.png\n'
+        root = Path('/opt/fixture/hotpl8')
+        listing = ('  1 /usr/bin/pwsh -File /opt/fixture/hotpl8/releases/' + A + '/hotpl8.ps1 watch\n'
+                   '  2 /usr/bin/open /opt/fixture/hotpl8/previews/pr-7/' + B + '/overview.png\n'
                    '  3 /usr/bin/true /x/releases/' + 'd' * 41 + '\n').encode()
         bridges = [dict(runningShas=[C], unknownRunningProcesses=0)]
         fake = type('T3', (), {'components': staticmethod(lambda root: bridges)})
