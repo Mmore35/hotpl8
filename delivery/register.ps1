@@ -36,19 +36,20 @@ foreach($task in @($existing,$collector)){
 }
 $action=New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory $InstallDirectory
 if($existing){
-    # Set only Actions: logon+interval, identity, battery and enabled state survive.
-    Set-ScheduledTask -TaskName $name -Action $action|Out-Null
+    # Actions and a priority below normal change: logon+interval, identity, battery and enabled
+    # state survive (src/job-host.ps1, Set-Hotpl8TaskAction).
+    Set-Hotpl8TaskAction $name $action
 }else{
     $user=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     $periodic=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $logon=New-ScheduledTaskTrigger -AtLogOn -User $user
-    $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Priority 5
     $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName $name -InputObject (New-ScheduledTask -Action $action -Trigger @($periodic,$logon) -Settings $settings -Principal $principal -Description $description)|Out-Null
 }
 if($collector){
     $ca=New-ScheduledTaskAction -Execute $collectorDefinition.execute -Argument $collectorDefinition.arguments -WorkingDirectory $InstallDirectory
-    Set-ScheduledTask -TaskName $CollectorTaskName -Action $ca|Out-Null
+    Set-Hotpl8TaskAction $CollectorTaskName $ca
 }
 $actual=Get-ScheduledTask -TaskName $name
 if($actual.Actions.Count -ne 1 -or $actual.Actions[0].Execute -ne $exe -or $actual.Actions[0].Arguments -ne $arguments){throw 'Updater action verification failed.'}

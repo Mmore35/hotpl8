@@ -151,6 +151,19 @@ public static class TreeFixture {
     $updater=(Get-FixtureUpdater $true 120)[1]
     Assert ($updater.state -eq 'current' -and $updater.lastCheckAgeSeconds -eq 120) 'a turned-on updater reports current and the age of its last check'
     Assert ((Get-FixtureUpdater $false 120 -Execute $other)[1].state -eq 'error') 'a mismatched task reports error whatever was checked'
+    # Pointing a task at its next action raises a priority below normal and passes nothing else on.
+    function Set-FixtureTaskAction([int]$Priority){
+        $settings=[pscustomobject]@{Priority=$Priority;Enabled=$false;ExecutionTimeLimit='PT10M'}
+        $script:calls=@()
+        function Get-ScheduledTask{[CmdletBinding()]param([string]$TaskName) [pscustomobject]@{TaskName=$TaskName;Settings=$settings}}
+        function Set-ScheduledTask{[CmdletBinding()]param([string]$TaskName,$Action,$Settings) $script:calls+=@([pscustomobject]@{TaskName=$TaskName;Action=$Action;Settings=$Settings})}
+        Set-Hotpl8TaskAction 'Fixture collector' 'next action'
+        $script:calls
+    }
+    $calls=@(Set-FixtureTaskAction 7)
+    Assert ($calls.Count -eq 1 -and $calls[0].TaskName -eq 'Fixture collector' -and $calls[0].Action -eq 'next action' -and $calls[0].Settings.Priority -eq 5 -and $calls[0].Settings.Enabled -eq $false -and $calls[0].Settings.ExecutionTimeLimit -eq 'PT10M') 'a task below normal priority is raised to 5 with its other settings kept'
+    $calls=@(Set-FixtureTaskAction 4)
+    Assert ($calls.Count -eq 1 -and $calls[0].Action -eq 'next action' -and $null -eq $calls[0].Settings) 'a task at or above normal priority keeps its settings untouched'
     if($Native){
         'Start-Sleep -Seconds 8; Set-Content (Join-Path $PSScriptRoot "finished.txt") "done"; exit 0'|Set-Content -LiteralPath $worker
         $argv=@('20',(Join-Path $lab 'runs'),$lab,(Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'),'-NoProfile','-NonInteractive','-File',$worker)
@@ -166,9 +179,12 @@ public static class TreeFixture {
         $nextArguments=$action.Arguments.Replace($worker,$nextWorker)
         $nextAction=New-ScheduledTaskAction -Execute $hostExe -Argument $nextArguments -WorkingDirectory $lab
         [xml]$before=Export-ScheduledTask -TaskName $taskName
-        Set-ScheduledTask -TaskName $taskName -Action $nextAction|Out-Null
+        Set-Hotpl8TaskAction $taskName $nextAction
         [xml]$after=Export-ScheduledTask -TaskName $taskName
-        Assert ($after.Task.Actions.Exec.Arguments -eq $nextArguments -and $before.Task.Settings.OuterXml -eq $after.Task.Settings.OuterXml -and $before.Task.Principals.OuterXml -eq $after.Task.Principals.OuterXml) 'next action changes while native policy stays intact'
+        # The exported XML leaves out a priority of 7, the default.
+        Assert (-not $before.Task.Settings['Priority'] -and $after.Task.Settings['Priority'].InnerText -eq '5') 'the task''s default priority 7 is raised to 5'
+        foreach($x in @($before,$after)){$p=$x.Task.Settings['Priority'];if($p){$null=$x.Task.Settings.RemoveChild($p)}}
+        Assert ($after.Task.Actions.Exec.Arguments -eq $nextArguments -and $before.Task.Settings.OuterXml -eq $after.Task.Settings.OuterXml -and $before.Task.Principals.OuterXml -eq $after.Task.Principals.OuterXml -and $before.Task.Triggers.OuterXml -eq $after.Task.Triggers.OuterXml) 'next action changes while native policy stays intact'
         Start-Sleep -Seconds 10
         Assert (Test-Path (Join-Path $lab 'finished.txt')) 'replacing next-wake action lets admitted work complete'
         Assert ((Get-ScheduledTaskInfo -TaskName $taskName).LastTaskResult -eq 0) 'native result records admitted completion'

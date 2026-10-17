@@ -261,6 +261,20 @@ and source refresh need no private repository access. The retained source namesp
 records its origin; the vendored implementation has no runtime dependency on that
 project or its checkout.
 
+Both tasks run at Task Scheduler priority 5. At 7, the default, Windows starts a
+task's program below normal on the processor and at low priority on the disk, and
+every program it starts inherits both. With all 16 logical processors of a test
+machine kept busy, 30 collector wakes were started 10 s apart against a fictional
+account at each priority. At 7, two of them started and one finished, after
+110.7 s; the scheduler skipped the rest because the earlier wake was still
+running. At 5, all 30 finished, in a median of 1.2 s and at most 3.5 s. On an idle
+machine both took about half a second to a second. Raising the priority from
+inside the host is not enough, because the .NET host is already running below
+normal before its own code can change that. A wake is short, so normal priority
+costs a busy machine about a second of processor time. A task registered before
+this change is raised to 5 the next time the registrar points it at a new host,
+and its other settings are kept. A Mac's collector job is unchanged.
+
 Ordinary installations receive the collector host through `install.ps1 -Schedule`.
 For an already-enrolled installation, explicitly migrate the native components
 from its verified current release:
@@ -274,7 +288,8 @@ installation ownership. `-PlanOnly` stages the immutable host without changing a
 task. Migration preserves existing XML trigger, principal, enabled and battery
 settings, exports recovery XML, and records `scheduledJobs` in the delivery
 registration. Subsequent verified activation/recovery reconciles these enrolled
-components through the same registrar. Only Actions change: admitted updater work
+components through the same registrar. Only Actions and a priority below normal
+change: admitted updater work
 continues on its original immutable host. No loaded executable or stable dispatch
 file is overwritten. Next launches use the normal release-pointer dispatch, also
 compatible with the predecessor release. T3 sessions are untouched.
