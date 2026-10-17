@@ -232,6 +232,14 @@ Collector `incomplete`/provider backoff remains in `collector.json`; a zero proc
 exit is not evidence that every provider is fresh. Updater results remain in
 `delivery-status.json`. Per-attempt execution evidence lives in `job-runs`.
 
+The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
+against that repository/revision and replace the import plus normalized LF SHA256
+together; the installer rejects a mismatched import. Product host source is beside
+it. Provenance points to the byte-identical public HotPl8 snapshot, so verification
+and source refresh need no private repository access. The retained source namespace
+records its origin; the vendored implementation has no runtime dependency on that
+project or its checkout.
+
 Both tasks run at Task Scheduler priority 5. At 7, the default, Windows starts a
 task's program below normal on the processor and at low priority on the disk, and
 every program it starts inherits both. With all 16 logical processors of a test
@@ -245,14 +253,6 @@ normal before its own code can change that. A wake is short, so normal priority
 costs a busy machine about a second of processor time. A task registered before
 this change is raised to 5 the next time the registrar points it at a new host,
 and its other settings are kept. A Mac's collector job is unchanged.
-
-The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
-against that repository/revision and replace the import plus normalized LF SHA256
-together; the installer rejects a mismatched import. Product host source is beside
-it. Provenance points to the byte-identical public HotPl8 snapshot, so verification
-and source refresh need no private repository access. The retained source namespace
-records its origin; the vendored implementation has no runtime dependency on that
-project or its checkout.
 
 Ordinary installations receive the collector host through `install.ps1 -Schedule`.
 For an already-enrolled installation, explicitly migrate the native components
