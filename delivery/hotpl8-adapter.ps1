@@ -13,7 +13,7 @@ $ErrorActionPreference='Stop'
 trap{
     [Console]::Error.WriteLine(($_|Out-String).TrimEnd())
     $refusal=$_.Exception
-    if($refusal.GetType() -eq [Management.Automation.RuntimeException] -and $refusal.WasThrownFromThrowStatement -and $refusal.Message -notmatch '[\:]'){
+    if($refusal.GetType() -eq [Management.Automation.RuntimeException] -and $refusal.WasThrownFromThrowStatement -and $refusal.Message -notmatch '[\\:]'){
         [Console]::Error.WriteLine('delivery-error: '+$refusal.Message)
     }
     exit 1

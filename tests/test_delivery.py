@@ -379,8 +379,18 @@ export async function main(config, args) {
             d.invoke_adapter(config, release, "preflight", self.root)
         self.assertTrue(str(caught.exception).startswith("This copy has no compiled reader it can start"))
         # An error PowerShell raises itself names the private path, so it stays generic.
+        missing = self.root / "releases" / C
+        shutil.copytree(release, missing)
+        (missing / "src" / "common.ps1").unlink()
         with self.assertRaises(d.DeliveryError) as caught:
-            d.invoke_adapter(config, self.root / "releases" / C, "preflight", self.root)
+            d.invoke_adapter(config, missing, "preflight", self.root)
+        self.assertEqual(str(caught.exception), "Command failed: powershell.exe")
+        # So does a literal throw whose text holds a path, even one without a drive.
+        planted = self.root / "releases" / ("d" * 40)
+        shutil.copytree(release, planted)
+        (planted / "src" / "config.ps1").write_text("throw 'Cannot read private\\policy.json'\n", encoding="utf-8")
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(config, planted, "preflight", self.root)
         self.assertEqual(str(caught.exception), "Command failed: powershell.exe")
         macos = dict(config, platform="macos", adapter="delivery/macos.py", python=sys.executable)
         with self.assertRaises(d.DeliveryError) as caught:
