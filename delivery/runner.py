@@ -139,13 +139,25 @@ def lock(path, wait=0):
                 fcntl.flock(stream, fcntl.LOCK_UN)
 
 
-def run(args, timeout=120):
+# The one line of adapter output allowed into the status feed: the adapter's own
+# refusal, as its last stderr line. Without it a refusal read only "Command failed:
+# powershell.exe" (an Anigent update stalled three days on that, 2026-10). Bounded
+# printable ASCII with a known kind; any other line still never leaves the child.
+ADAPTER_REASON = re.compile(r"delivery-(deferred|error): ([ -~]{1,240})")
+
+
+def run(args, timeout=120, reasons=False):
     try:
         result = subprocess.run([str(x) for x in args], capture_output=True, timeout=timeout,
                                 creationflags=NO_WINDOW)
     except subprocess.TimeoutExpired:
         raise Deferred("Command timed out; update will retry") from None
     if result.returncode:
+        if reasons:
+            lines = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            match = ADAPTER_REASON.fullmatch(lines[-1].strip()) if lines else None
+            if match:
+                raise (Deferred if match[1] == "deferred" else DeliveryError)(match[2])
         # Subprocess output may include private paths/account data. Keep it out of
         # the status feed. Operators can run their own diagnostics explicitly.
         raise DeliveryError("Command failed: " + Path(str(args[0])).name)
@@ -292,12 +304,12 @@ def unpack(archive, destination, config, sha):
 def invoke_adapter(config, release, operation, root):
     if config.get("platform") == "macos" and config["adapter"].endswith(".py"):
         return run([config["python"], Path(release) / config["adapter"], operation,
-                    "--install", root, "--release", release], config.get("adapterTimeout", 120))
+                    "--install", root, "--release", release], config.get("adapterTimeout", 120), reasons=True)
     ps = config.get("powershell") or str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
     return run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
          Path(release) / config["adapter"], "-Operation", operation,
          "-InstallDirectory", root, "-ReleaseDirectory", release,
-         "-StateDirectory", config["stateDirectory"]], config.get("adapterTimeout", 120))
+         "-StateDirectory", config["stateDirectory"]], config.get("adapterTimeout", 120), reasons=True)
 
 
 @contextlib.contextmanager
