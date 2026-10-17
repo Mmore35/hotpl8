@@ -124,6 +124,25 @@ fn decision(route: &Route, rows: &[V], part: &V, policy: &V, meter: &str, reques
     provider_decision(&accounts.into(), part, &context, now)
 }
 
+/// A receipt is never a new observation and contains no credentials. Exact auth bytes,
+/// the current home binding, policy freshness, and the final control boundary all apply.
+fn connected(home: &str, prior: &V, part: &V, now: Dto) -> Option<Account> {
+    let receipt = prior.g("connection").ok()?;
+    let age = age_seconds(&receipt.g("observedAt").ok()?, now).ok()??;
+    if age < -5.0 || dbl(age).ok()?.gt(&setting(part, "maxUsageAgeS", V::I32(900)).ok()?).ok()? { return None; }
+    let identity = receipt.g("identity").ok()?.s().ok()?;
+    if identity.len() != 64 || !identity.bytes().all(|b| b.is_ascii_hexdigit()) { return None; }
+    let (digest, tokens) = crate::codex_read::credential_snapshot(home)?;
+    if receipt.g("authDigest").ok()?.cne(&V::s_of(&digest)).ok()? { return None; }
+    let access_token = tokens.g("access_token").ok()?.as_str()?.to_string();
+    let account_id = tokens.g("account_id").ok()?.as_str()?.to_string();
+    if access_token.is_empty() || account_id.is_empty() { return None; }
+    Some(Account { connection: receipt, quota: V::Null, identity_key: prior.g("identityKey").ok()?.s().ok()?,
+        plan_type: "unknown".into(), model: String::new(), model_provider: "openai".into(),
+        standard_transport: true, identity_verified: false,
+        auth: Some(crate::codex_read::Auth { access_token, account_id }) })
+}
+
 /// Get-Hotpl8CodexRoute: the account this request is given, with its sign-in.
 pub fn chosen(route: &Route, request: &V) -> R<V> {
     let began = (route.elapsed)();
@@ -133,9 +152,10 @@ pub fn chosen(route: &Route, request: &V) -> R<V> {
     }
     let (operation, intent) = (request.g("operation")?, request.g("intent")?);
     let refresh = operation.eq_s("refresh")?;
+    let connect = operation.eq_s("connect")?;
     let background = intent.eq_s("rebind")?;
     let budget = if refresh { REFRESH_BUDGET_MS } else { SELECT_BUDGET_MS };
-    if !operation.in_s(&["select", "refresh", "exec"])? || (intent.t()? && !intent.in_s(&["admit", "rebind"])?) || (operation.ne_s("select")? && background) {
+    if !operation.in_s(&["select", "refresh", "exec", "connect"])? || (intent.t()? && !intent.in_s(&["admit", "rebind"])?) || (operation.ne_s("select")? && background) {
         return fail("routing_invalid_request");
     }
     if route.conflicted {
@@ -236,8 +256,13 @@ pub fn chosen(route: &Route, request: &V) -> R<V> {
             return fail("routing_binding_changed");
         }
         let cached = validated.iter().find(|(id, _)| same(id, &selected)).map(|(_, account)| account.clone());
+        // Connection is metadata only. It can reuse a recent full observation without
+        // contending with the next collector. Admission/refresh/exec never use it.
+        let connection = if connect { connected(&slot.g("home")?.s()?, &prior, &part, (route.clock)()?) } else { None };
+        let reused_connection = connection.is_some();
         let read: Reading = match &cached {
             Some(account) => Ok(account.clone()),
+            None if connection.is_some() => Ok(Rc::new(connection.unwrap())),
             None => {
                 let waited = (route.elapsed)();
                 let home = slot.g("home")?.s()?;
@@ -298,7 +323,7 @@ pub fn chosen(route: &Route, request: &V) -> R<V> {
             if !valid || signed.cne(&request.g("accountId")?)? {
                 return fail("routing_refresh_failed");
             }
-        } else if let (true, Some(account)) = (valid, &account) {
+        } else if let (true, Some(account)) = (valid && !reused_connection, &account) {
             let read_now = (route.clock)()?;
             if cached.is_none() {
                 validated.push((selected.clone(), account.clone()));
@@ -328,6 +353,13 @@ pub fn chosen(route: &Route, request: &V) -> R<V> {
                 if latest.g("identityKey")?.cne(&prior.g("identityKey")?)? || latest.g("binding")?.cne(&prior.g("binding")?)? {
                     return fail("routing_binding_changed");
                 }
+                if reused_connection {
+                    let receipt = account.as_ref().unwrap().connection.clone();
+                    let Some(current) = connected(&slot.g("home")?.s()?, &latest, &part, (route.clock)()?) else { return fail("routing_binding_changed") };
+                    if current.connection.g("authDigest")?.cne(&receipt.g("authDigest")?)? || current.connection.g("identity")?.cne(&receipt.g("identity")?)? {
+                        return fail("routing_binding_changed");
+                    }
+                }
                 decision(route, &rows, &part, &policy, &meter, request, (route.clock)()?)
             });
             let authorized = match authorized {
@@ -342,14 +374,16 @@ pub fn chosen(route: &Route, request: &V) -> R<V> {
             let since = request.g("criticalState")?.g("selectedAt")?;
             let moved = V::s_of(&selected).cne(&request.g("previousSlot")?)? || !since.t()?;
             critical.set("selectedAt", if moved { (route.clock)()?.o().into() } else { since })?;
-            return Ok(obj! {
+            let result = obj! {
                 "slot" => selected.as_str(),
                 "home" => slot.g("home")?.s()?,
                 "meter" => meter.as_str(),
                 "criticalState" => critical,
                 "authorizationGeneration" => generation.as_str(),
                 "auth" => if operation.ne_s("exec")? { obj! {"accessToken" => auth.access_token.as_str(), "chatgptAccountId" => auth.account_id.as_str()} } else { V::Null },
-            });
+            };
+            if connect { result.add_member("connectionIdentity", account.as_ref().map_or(V::Null, |a| a.connection.g("identity").unwrap_or(V::Null)), true)?; }
+            return Ok(result);
         }
         rows = named(&rows, &selected, false)?;
         if refresh {
@@ -619,6 +653,7 @@ pub mod tests {
             HomeRead {
                 elapsed_ms: 40,
                 outcome: Ok(Account {
+                    connection: V::Null,
                     quota: limits(used),
                     identity_key: format!("identity-{id}"),
                     plan_type: "plus".into(),
@@ -677,6 +712,99 @@ pub mod tests {
             std::fs::read_to_string(self.directory.join("events.jsonl")).unwrap_or_default().lines().map(str::to_string).collect()
         }
     }
+
+    fn connection_receipts(lab: &Lab) {
+        let state = json::read_or_null(&lab.directory.join("codex-state.json"));
+        for id in ["a", "b"] {
+            let home = lab.home(id);
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::write(Path::new(&home).join("auth.json"), format!(r#"{{"tokens":{{"access_token":"fictional-{id}","account_id":"{id}"}}}}"#)).unwrap();
+            let (digest, _) = crate::codex_read::credential_snapshot(&home).unwrap();
+            let receipt = obj! {"authDigest" => digest, "identity" => sha256::hash(&format!("fixture@example.invalid|{id}")), "observedAt" => noon().o()};
+            state.path(&["slots", id]).ok().unwrap().add_member("connection", receipt, true).ok().unwrap();
+        }
+        lab.save("codex-state.json", &state);
+    }
+
+    #[test]
+    fn connection_skips_busy_home_but_admission_refresh_and_exec_still_read() {
+        let lab = Lab::new();
+        connection_receipts(&lab);
+        let before = std::fs::read(lab.directory.join("codex-state.json")).unwrap();
+        let reply = lab.tried(&lab.asks(r#""operation":"connect""#), &|_, _, _| panic!("metadata must not start another reader")).ok().unwrap();
+        assert_eq!(reply.g("slot").ok().unwrap().s().ok().unwrap(), "a");
+        assert_eq!(reply.g("connectionIdentity").ok().unwrap().s().ok().unwrap(), sha256::hash("fixture@example.invalid|a"));
+        assert_eq!(before, std::fs::read(lab.directory.join("codex-state.json")).unwrap());
+        for operation in ["select", "exec", "refresh"] {
+            let asked = lab.asks(&format!(r#""operation":"{operation}","previousSlot":"a","accountId":"a""#));
+            assert_eq!(code(lab.tried(&asked, &|_, _, _| failed("home_busy"))), "routing_account_busy");
+            assert!(!lab.reads.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn changed_missing_stale_and_future_receipts_require_full_validation() {
+        for change in ["missing", "stale", "future", "auth", "malformed", "identity"] {
+            let lab = Lab::new();
+            connection_receipts(&lab);
+            let state = json::read_or_null(&lab.directory.join("codex-state.json"));
+            for id in ["a", "b"] {
+                let record = state.path(&["slots", id]).ok().unwrap();
+                let receipt = record.g("connection").ok().unwrap();
+                match change {
+                    "missing" => record.set("connection", V::Null).ok().unwrap(),
+                    "stale" => receipt.set("observedAt", noon().plus_seconds(-901).ok().unwrap().o().into()).ok().unwrap(),
+                    "future" => receipt.set("observedAt", noon().plus_seconds(6).ok().unwrap().o().into()).ok().unwrap(),
+                    "identity" => receipt.set("identity", "invalid".into()).ok().unwrap(),
+                    "malformed" => std::fs::write(Path::new(&lab.home(id)).join("auth.json"), b"{").unwrap(),
+                    _ => std::fs::write(Path::new(&lab.home(id)).join("auth.json"), r#"{"tokens":{"account_id":"changed","access_token":"fictional-changed"}}"#).unwrap(),
+                }
+            }
+            lab.save("codex-state.json", &state);
+            assert_eq!(code(lab.tried(&lab.asks(r#""operation":"connect""#), &|_, _, _| failed("authentication_required"))), "routing_unavailable", "{change}");
+            assert!(!lab.reads.borrow().is_empty(), "{change}");
+        }
+    }
+
+    #[test]
+    fn connection_rechecks_controls_and_auth_at_its_final_boundary() {
+        for change in ["policy", "auth"] {
+            let lab = Lab::new();
+            connection_receipts(&lab);
+            let calls = Cell::new(0);
+            let clock = || {
+                calls.set(calls.get() + 1);
+                if change == "policy" && calls.get() == 3 {
+                    lab.accounts("disabled", vec![V::s_of("a"), V::s_of("b")].into());
+                }
+                if change == "auth" && calls.get() == 4 {
+                    std::fs::write(Path::new(&lab.home("a")).join("auth.json"), "{}").unwrap();
+                }
+                Ok(noon())
+            };
+            let result = lab.route(&|_, _, _| panic!("must use receipt"), |route| chosen(&Route { clock: &clock, ..*route }, &lab.asks(r#""operation":"connect""#)));
+            assert_eq!(code(result), if change == "policy" { "routing_state_changed" } else { "routing_binding_changed" }, "{change}");
+        }
+    }
+
+    #[test]
+    fn connection_keeps_policy_freshness_duplicate_and_binding_checks() {
+        let lab = Lab::new();
+        connection_receipts(&lab);
+        let request = lab.asks(r#""operation":"connect""#);
+        lab.accounts("disabled", vec![V::s_of("a"), V::s_of("b")].into());
+        assert_eq!(code(lab.given(&request)), "routing_unavailable");
+        assert!(lab.reads.borrow().is_empty());
+        lab.accounts("disabled", Vec::<V>::new().into());
+        lab.collected("ok", 901, 901);
+        assert_eq!(code(lab.given(&request)), "routing_stale");
+        lab.collected("ok", 0, 0);
+        lab.recorded(&[("b", "identityKey", "identity-a")]);
+        assert_eq!(code(lab.given(&request)), "routing_duplicate_identity");
+        lab.recorded(&[("a", "binding", "changed"), ("b", "binding", "changed")]);
+        assert_eq!(code(lab.given(&request)), "routing_unavailable");
+    }
+
 
     #[test]
     fn an_admission_is_given_the_preferred_account_and_its_sign_in() {

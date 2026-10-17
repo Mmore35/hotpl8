@@ -31,6 +31,48 @@ async function opened(h) {
   h.bridge.native({ id: 2, result: { thread: { id: 't' } } });
 }
 
+test('metadata connection uses connect, but turn and compaction still use full selection', async () => {
+  const h = harness();
+  try {
+    await opened(h);
+    assert.equal(h.requests[0].operation, 'connect');
+    await h.bridge.client({id:70,method:'account/read',params:{}});
+    await h.bridge.client({id:71,method:'model/list',params:{}});
+    assert.equal(h.requests.length, 1);
+    await h.bridge.client({id:72,method:'turn/start',params:{threadId:'t'}});
+    assert.equal(h.requests.at(-1).operation, 'select');
+    h.bridge.native({id:72,error:{message:'fixture refusal'}});
+    await h.bridge.client({id:73,method:'thread/compact/start',params:{threadId:'t'}});
+    assert.equal(h.requests.at(-1).operation, 'select');
+  } finally { h.bridge.close(); }
+});
+
+test('metadata connection never turns a refused live admission into an inference request', async () => {
+  const h = harness(); const original=h.bridge.broker;
+  h.bridge.broker=async request => {
+    if (request.operation !== 'connect') throw Object.assign(new Error(), {code:'routing_account_busy'});
+    return original(request);
+  };
+  try {
+    await opened(h);
+    assert.equal(h.bridge.initialized, true);
+    await h.bridge.client({id:74,method:'turn/start',params:{threadId:'t'}});
+    assert.match(h.client.at(-1).error.message,/routing_account_busy/);
+    assert.equal(h.native.filter(x=>x.method==='turn/start').length,0);
+  } finally { h.bridge.close(); }
+});
+
+test('metadata connection itself refuses an unavailable bootstrap', async () => {
+  const h=harness(); h.reject();
+  try {
+    await h.bridge.client({id:75,method:'initialize',params:{clientInfo:{name:'fixture'}}});
+    assert.equal(h.requests[0].operation,'connect');
+    assert.equal(h.bridge.initialized,false);
+    assert.equal(h.native.filter(x=>x.method==='account/login/start').length,0);
+    assert.match(h.client.at(-1).error.message,/routing_unavailable/);
+  } finally { h.bridge.close(); }
+});
+
 test('explicit admission and background rollover carry distinct intents and process dwell', async () => {
   const h = harness();
   const broker = h.bridge.broker;

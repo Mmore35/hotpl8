@@ -32,6 +32,8 @@ const WITHHELD: [&str; 4] = ["CODEX_ACCESS_TOKEN", "CODEX_API_KEY", "OPENAI_API_
 
 /// What one account answered.
 pub struct Account {
+    /// Nonsecret proof tying a completed observation to unchanged credential bytes.
+    pub connection: V,
     /// The limits, as Codex words them.
     pub quota: V,
     /// A name for the subscription that says nothing about it. It changes when another
@@ -335,6 +337,17 @@ impl Wire {
 
 /// What Codex keeps beside the sign-in: the account id, which `account/read` leaves out,
 /// and the token. The rest of the file is let go unread.
+/// Bounded, exact bytes: a receipt never aliases malformed UTF-8 or a partial read.
+pub(crate) fn credential_snapshot(home: &str) -> Option<(String, V)> {
+    let file = std::fs::File::open(Path::new(home).join("auth.json")).ok()?;
+    let mut bytes = Vec::new();
+    file.take(1_048_577).read_to_end(&mut bytes).ok()?;
+    if bytes.len() > 1_048_576 { return None; }
+    let text = std::str::from_utf8(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes)).ok()?;
+    let tokens = member(&json::parse_foreign(text).ok()?, "tokens");
+    Some((sha256::hex(&sha256::digest(&bytes), false), tokens))
+}
+
 fn signed_in(home: &str) -> V {
     let Ok(bytes) = std::fs::read(Path::new(home).join("auth.json")) else { return V::Null };
     if bytes.len() > 16_000_000 {
@@ -381,6 +394,7 @@ fn named(account: &V, quota: V, config: &V, signed: &V, asked: &Asked, auth: Opt
         standard_transport = false;
     }
     Ok(Account {
+        connection: V::Null,
         quota,
         identity_key,
         plan_type: plan_name(&member(account, "planType")),
@@ -396,6 +410,7 @@ fn named(account: &V, quota: V, config: &V, signed: &V, asked: &Asked, auth: Opt
 fn conversation(wire: &mut Wire, home: &str, asked: &Asked) -> Result<Account, &'static str> {
     wire.ask(1, r#"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"hotpl8","version":"0.1"},"capabilities":{"experimentalApi":true}}}"#)?;
     wire.say(r#"{"method":"initialized"}"#)?;
+    let before = credential_snapshot(home).map(|(digest, _)| digest);
     let account = member(&wire.ask(2, &format!(r#"{{"id":2,"method":"account/read","params":{{"refreshToken":{}}}}}"#, asked.refresh))?, "account");
     // A key is not a subscription: its limits are not the ones HotPl8 measures.
     if !member(&account, "type").as_str().is_some_and(|kind| kind.eq_ignore_ascii_case("chatgpt")) {
@@ -407,7 +422,17 @@ fn conversation(wire: &mut Wire, home: &str, asked: &Asked) -> Result<Account, &
     };
     let place = json::text(asked.directory.unwrap_or(home));
     let config = member(&wire.ask(4, &format!(r#"{{"id":4,"method":"config/read","params":{{"includeLayers":false,"cwd":{place}}}}}"#))?, "config");
-    described(home, &account, quota, &config, asked)?.map_err(|_| "transport_failed")
+    let mut read = described(home, &account, quota, &config, asked)?.map_err(|_| "transport_failed")?;
+    if !asked.identity_only && read.standard_transport && (read.model_provider.is_empty() || read.model_provider.eq_ignore_ascii_case("openai")) {
+        if let Some((digest, tokens)) = credential_snapshot(home).filter(|(digest, _)| Some(digest) == before.as_ref()) {
+            let email = member(&account, "email").s().unwrap_or_default();
+            let id = member(&tokens, "account_id").s().unwrap_or_default();
+            if !email.trim().is_empty() && !id.is_empty() {
+                read.connection = crate::obj! {"authDigest" => digest, "identity" => sha256::hash(&format!("{}|{id}", email.trim().to_lowercase()))};
+            }
+        }
+    }
+    Ok(read)
 }
 
 /// The program as it is started for one home: in that home unless the caller works
