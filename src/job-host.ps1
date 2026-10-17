@@ -29,6 +29,23 @@ function Install-Hotpl8JobHost([string]$InstallDirectory) {
     return $exe
 }
 
+# Task Scheduler runs a task of priority 7, its default, below normal on the processor and low
+# on the disk, and every program the task starts inherits both. With every processor busy such
+# a wake waited minutes and its next starts were skipped; at 5 each one finished in about 2 s
+# (docs/delivery.md, "Native scheduled launchers"). A wake is short, so HotPl8's tasks run at 5.
+#
+# Points a task at its next action. Of its settings only a priority below normal changes; the
+# triggers, identity, battery, time limit and enabled state stay as they were.
+function Set-Hotpl8TaskAction([string]$TaskName,$Action) {
+    $settings=(Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop).Settings
+    if($settings.Priority -gt 6){
+        $settings.Priority=5
+        Set-ScheduledTask -TaskName $TaskName -Action $Action -Settings $settings|Out-Null
+    }else{
+        Set-ScheduledTask -TaskName $TaskName -Action $Action|Out-Null
+    }
+}
+
 # A time as a run receipt or the updater's status holds it, or nothing when it cannot be read.
 function ConvertTo-Hotpl8JobTime($Value) {try{return [datetimeoffset]$Value}catch{return $null}}
 
