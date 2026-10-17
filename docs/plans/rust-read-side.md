@@ -4,6 +4,12 @@ Status: all six stages implemented. `version`, `status`, `explain`, what the tra
 
 Baseline read for this plan: main `b5ebd83986fd4bddabf1f556d7481a98be707a74`. Stage 2 was measured against main `c94ab0da562c07cc9b4f7c8c8d13b953b2d400af`, stage 3 against main `2323e0a640b5dcf4fb2c75e537e0b51bea3eb3bd`, stage 4 against main `9bd58798f54d6e8ddd5559a6602ba766706e5be9`, stage 5 against main `88f2220ad0dea7a27edf8891cb2d6f0091a21627`, stage 6 against main `6df426716cbfb8233b55a2e0e5f8c3e71b87913d`.
 
+## Provider connection follow-up
+
+The compiled broker also owns the metadata-only connection decision. Its optional
+collector receipt, invalidation rules, inference boundary, and native qualification
+are specified in [the connection contract](t3-provider-connection.md).
+
 ## Behavior
 
 Commands that only print cached state move, one at a time, from PowerShell into one small program. A command that has moved has one implementation. PowerShell keeps no copy of it, and no setting brings one back.
