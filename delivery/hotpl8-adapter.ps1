@@ -5,6 +5,19 @@ param(
     [string]$InstallDirectory, [string]$ReleaseDirectory, [string]$StateDirectory
 )
 $ErrorActionPreference='Stop'
+# The runner admits only the last stderr line, "delivery-error: <reason>", into the
+# status feed. Only this product's own refusals qualify: a literal throw (exactly a
+# RuntimeException from a throw statement) whose text names no Windows path. A
+# .NET or cmdlet error may carry private paths and stays "Command failed". The
+# whole error record still precedes it for an operator running this by hand.
+trap{
+    [Console]::Error.WriteLine(($_|Out-String).TrimEnd())
+    $refusal=$_.Exception
+    if($refusal.GetType() -eq [Management.Automation.RuntimeException] -and $refusal.WasThrownFromThrowStatement -and $refusal.Message -notmatch '[\:]'){
+        [Console]::Error.WriteLine('delivery-error: '+$refusal.Message)
+    }
+    exit 1
+}
 . (Join-Path $ReleaseDirectory 'src/common.ps1')
 . (Join-Path $ReleaseDirectory 'src/config.ps1')
 . (Join-Path $ReleaseDirectory 'src/providers/codex.ps1')
