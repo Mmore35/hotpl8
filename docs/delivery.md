@@ -60,6 +60,11 @@ hotpl8 preview pr 12
 `delivery` distinguishes desired and installed SHA, previous release, last check,
 last update and a pending/error reason. `collector.json.runningSha` records the
 code used by a completed collector pass; it is separate from installed source.
+An adapter refusal names its reason: the adapter's last stderr line
+`delivery-error:` or `delivery-deferred:` (bounded printable ASCII) becomes that
+reason. The Windows adapter emits it only for its own literal refusals without a
+path; other output stays out of the feed, so `Command failed: powershell.exe`
+means the adapter failed without stating why. Run the operation by hand to see it.
 An interactive dashboard's window title identifies its loaded main SHA and update
 state. When production changes it hands off to the new release in the same console.
 

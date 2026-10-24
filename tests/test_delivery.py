@@ -333,6 +333,70 @@ export async function main(config, args) {
         self.assertEqual(d.read(self.settings_path)["providerInstances"]["codex"]["config"]["binaryPath"], "codex")
         self.assertEqual(self.t3_probe(), C)
 
+    def test_adapter_reason_reaches_status_but_other_child_output_never_does(self):
+        def child(*stderr):
+            code = "import sys\n" + "".join("print(%r, file=sys.stderr)\n" % line for line in stderr) + "raise SystemExit(1)\n"
+            return [sys.executable, "-c", code]
+        with self.assertRaises(d.Deferred) as caught:
+            d.run(child("D:/HotPl8 state/policy.json", "delivery-deferred: Collector is busy"), reasons=True)
+        self.assertEqual(str(caught.exception), "Collector is busy")
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.run(child("delivery-error: Candidate policy/readiness validation failed."), reasons=True)
+        self.assertNotIsInstance(caught.exception, d.Deferred)
+        self.assertEqual(str(caught.exception), "Candidate policy/readiness validation failed.")
+        # Only the adapter's own last line counts, and only when the caller opts in.
+        for stderr, reasons in ((("delivery-error: early", "token=secret"), True),
+                                (("delivery-error: ok",), False),
+                                (("delivery-error: caf\u00e9",), True),
+                                (("delivery-error: " + "x" * 241,), True),
+                                (("delivery-later: unknown kind",), True)):
+            with self.subTest(stderr=stderr, reasons=reasons):
+                with self.assertRaises(d.DeliveryError) as caught:
+                    d.run(child(*stderr), reasons=reasons)
+                self.assertNotIsInstance(caught.exception, d.Deferred)
+                self.assertTrue(str(caught.exception).startswith("Command failed: "))
+
+    def test_adapter_refusal_is_reported_with_its_reason(self):
+        def refuse(config, release, operation, root):
+            raise d.DeliveryError("Candidate policy/readiness validation failed.")
+        status = d.update(self.root, self.github, refuse)
+        self.assertEqual((status["state"], status["reason"]), ("error", "Candidate policy/readiness validation failed."))
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
+
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell adapter")
+    def test_real_adapters_name_their_own_refusal_and_nothing_else(self):
+        # Until 2026-10 every refusal read only "Command failed: powershell.exe".
+        source = Path(__file__).resolve().parents[1]
+        release = self.root / "releases" / B
+        release.mkdir(parents=True)
+        for name in ("src", "delivery"):
+            shutil.copytree(source / name, release / name, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(source / "hotpl8.ps1", release / "hotpl8.ps1")
+        shutil.copyfile(source / "policy.example.json", self.state / "policy.json")
+        config = dict(self.config, adapter="delivery/hotpl8-adapter.ps1")
+        # A release without its compiled reader is refused by a literal throw.
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(config, release, "preflight", self.root)
+        self.assertTrue(str(caught.exception).startswith("This copy has no compiled reader it can start"))
+        # An error PowerShell raises itself names the private path, so it stays generic.
+        missing = self.root / "releases" / C
+        shutil.copytree(release, missing)
+        (missing / "src" / "common.ps1").unlink()
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(config, missing, "preflight", self.root)
+        self.assertEqual(str(caught.exception), "Command failed: powershell.exe")
+        # So does a literal throw whose text holds a path, even one without a drive.
+        planted = self.root / "releases" / ("d" * 40)
+        shutil.copytree(release, planted)
+        (planted / "src" / "config.ps1").write_text("throw 'Cannot read private\\policy.json'\n", encoding="utf-8")
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(config, planted, "preflight", self.root)
+        self.assertEqual(str(caught.exception), "Command failed: powershell.exe")
+        macos = dict(config, platform="macos", adapter="delivery/macos.py", python=sys.executable)
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(macos, release, "preflight", self.root)
+        self.assertEqual(str(caught.exception), "This operation requires macOS")
+
     def test_failed_ci_never_changes_pointer(self):
         self.github.fail = True
         self.assertEqual(self.update()["state"], "pending")

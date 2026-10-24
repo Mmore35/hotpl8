@@ -498,7 +498,7 @@ pub fn started(arguments: &[OsString]) -> Result<bool, String> {
 pub mod tests {
     use super::*;
     use crate::codex_read::Auth;
-    use crate::files::tests::scratch;
+    use crate::files::tests::{let_go, scratch};
     use std::cell::{Cell, RefCell};
 
     const NOON: &str = "2026-10-07T12:00:00.0000000+00:00";
@@ -1206,7 +1206,7 @@ pub mod tests {
         assert_eq!(answer(Some(&lab.line(r#""operation":"select""#))), refused("routing_failed"));
         lab.save("policy.json", &lab.policy);
         // Someone else is inside the boundary every action is authorized in.
-        let held = files::lock(&lab.directory.join("action-control.lock")).ok().unwrap();
+        let held = let_go(|| files::lock(&lab.directory.join("action-control.lock")).ok());
         assert_eq!(answer(Some(&lab.line(r#""operation":"select""#))), refused("routing_control_unavailable"));
         drop(held);
         let events = lab.events();

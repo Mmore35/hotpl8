@@ -523,7 +523,10 @@ def main():
             result = adapter(root, safe_root(args.release) if args.release else selected(root), args.operation)
         print(json.dumps(result))
     except (DeliveryError, OSError, ValueError, subprocess.TimeoutExpired) as error:
-        raise SystemExit(str(error) if isinstance(error, DeliveryError) else type(error).__name__)
+        # This last stderr line is the one the runner admits into the status feed;
+        # only this module's own refusals name a reason, other errors their type.
+        kind = 'deferred' if isinstance(error, Deferred) else 'error'
+        raise SystemExit('delivery-%s: %s' % (kind, str(error) if isinstance(error, DeliveryError) else type(error).__name__))
 
 
 if __name__ == "__main__":
