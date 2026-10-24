@@ -341,6 +341,53 @@ def recover(root, config, adapter=invoke_adapter):
     (root / "transaction.json").unlink()
 
 
+KEEP_RELEASES = 3
+PREVIEW_DAYS = 14
+
+
+def prune(root, config, adapter=invoke_adapter):
+    """Remove releases and previews nothing needs. Returns an error name or None; never raises.
+
+    Kept: the current, previous and rejected releases and the newest others. The adapter
+    names every folder a running process still uses; when it cannot tell, nothing is
+    removed. A release is first renamed aside, so it is either whole or gone: on Windows the
+    rename fails while any file in it is open, and that release is kept for the next update.
+    """
+    try:
+        current = read(root / "current.json", {})
+        release = root / current["release"]
+        used = json.loads(adapter(config, release, "inuse", root) or b"{}")
+        if used.get("refuse") or not isinstance(used.get("paths"), list):
+            return "InUseUnknown"
+        used = {os.path.normcase(os.path.abspath(p)) for p in used["paths"] if isinstance(p, str)}
+        held = lambda path: os.path.normcase(os.path.abspath(path)) in used
+        releases = root / "releases"
+        for leftover in releases.glob(".prune-*"):
+            shutil.rmtree(leftover, ignore_errors=True)
+        keep = {current.get("sha"), read(root / "previous.json", {}).get("sha"), read(root / "rejected.json", {}).get("sha")}
+        others = sorted((d for d in releases.iterdir() if d.is_dir() and SHA.fullmatch(d.name) and d.name not in keep),
+                        key=lambda d: d.stat().st_mtime, reverse=True)
+        for old in others[KEEP_RELEASES:]:
+            if held(old):
+                continue
+            aside = releases / (".prune-" + old.name + "-" + os.urandom(8).hex())
+            try:
+                os.rename(old, aside)
+            except OSError:
+                continue
+            shutil.rmtree(aside, ignore_errors=True)
+        cutoff = time.time() - PREVIEW_DAYS * 86400
+        for pr in (root / "previews").glob("pr-*"):
+            for old in pr.iterdir():
+                if old.is_dir() and SHA.fullmatch(old.name) and old.stat().st_mtime < cutoff and not held(old):
+                    shutil.rmtree(old, ignore_errors=True)
+            with contextlib.suppress(OSError):
+                pr.rmdir()
+        return None
+    except Exception as error:
+        return type(error).__name__
+
+
 def update(root, github=None, adapter=invoke_adapter):
     root = safe_root(root)
     config = read(root / "delivery.json")
@@ -425,7 +472,8 @@ def update(root, github=None, adapter=invoke_adapter):
                 if current:
                     write(root / "previous.json", current)
                 (root / "transaction.json").unlink()
-            status.update(state="current", reason=None, installedSha=sha, lastUpdate=now())
+            status.update(state="current", reason=None, installedSha=sha, lastUpdate=now(),
+                          pruneError=prune(root, config, adapter))
             return status
         except Deferred as error:
             status.update(state="pending", reason=str(error))

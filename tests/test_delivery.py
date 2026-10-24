@@ -441,6 +441,81 @@ export async function main(config, args) {
         self.assertIn("recover", self.calls)
         self.assertEqual(self.calls[:2], ["preflight", "recover"])
 
+    def old_releases(self, count):
+        """Staged releases other than A, oldest first, each a minute older than the next."""
+        shas = [format(n, "x") * 40 for n in range(3, 3 + count)]
+        for age, sha in enumerate(reversed(shas)):
+            folder = self.root / "releases" / sha
+            folder.mkdir(parents=True)
+            (folder / "file.txt").write_text(sha)
+            stamp = time.time() - 3600 - 60 * age
+            os.utime(folder, (stamp, stamp))
+        (self.root / "releases" / A).mkdir(parents=True, exist_ok=True)
+        return shas
+
+    def pruning_adapter(self, answer):
+        def adapter(config, release, operation, root):
+            self.calls.append(operation)
+            if operation == "inuse":
+                if isinstance(answer, Exception):
+                    raise answer
+                return json.dumps(answer(root) if callable(answer) else answer).encode()
+        return adapter
+
+    def test_activation_prunes_releases_nothing_needs(self):
+        shas = self.old_releases(7)
+        rejected, held = shas[0], shas[1]
+        d.write(self.root / "rejected.json", {"sha": rejected})
+        (self.root / "releases" / (".prune-" + shas[2] + "-left")).mkdir()
+        adapter = self.pruning_adapter(lambda root: {"refuse": False, "paths": [str(root / "releases" / held)]})
+        result = d.update(self.root, self.github, adapter)
+        self.assertEqual(result["state"], "current")
+        self.assertIsNone(result["pruneError"])
+        left = sorted(p.name for p in (self.root / "releases").iterdir())
+        # Current, previous, rejected, the release a process holds and the three newest others.
+        self.assertEqual(left, sorted([B, A, rejected, held, *shas[-3:]]))
+        self.assertEqual(self.calls[-1], "inuse")
+
+    def test_unknown_use_removes_nothing(self):
+        shas = self.old_releases(6)
+        for answer, error in (({"refuse": True, "paths": []}, "InUseUnknown"), ({}, "InUseUnknown"),
+                              (d.DeliveryError("Command failed: powershell.exe"), "DeliveryError")):
+            result = d.update(self.root, self.github, self.pruning_adapter(answer))
+            self.assertEqual(result["state"], "current")
+            self.assertEqual(result["pruneError"], error)
+            self.assertEqual(len([p for p in (self.root / "releases").iterdir()]), len(shas) + 2)
+            d.write(self.root / "current.json", self.previous)
+
+    def test_a_release_that_cannot_be_moved_aside_is_kept_whole(self):
+        shas = self.old_releases(5)
+        real = os.rename
+        def rename(source, target):
+            if Path(source).name == shas[0]:
+                raise PermissionError("in use")
+            return real(source, target)
+        with patch.object(d.os, "rename", rename):
+            result = d.update(self.root, self.github, self.pruning_adapter({"refuse": False, "paths": []}))
+        self.assertIsNone(result["pruneError"])
+        self.assertEqual((self.root / "releases" / shas[0] / "file.txt").read_text(), shas[0])
+        self.assertFalse((self.root / "releases" / shas[1]).exists())
+        self.assertFalse([p for p in (self.root / "releases").iterdir() if p.name.startswith(".prune-")])
+
+    def test_activation_prunes_old_previews(self):
+        old = time.time() - 15 * 86400
+        folders = {name: self.root / "previews" / name for name in
+                   ("pr-1/" + A, "pr-2/" + A, "pr-2/" + B, "pr-3/" + C)}
+        for name, folder in folders.items():
+            folder.mkdir(parents=True)
+            (folder / "preview.json").write_text("{}")
+            if name != "pr-2/" + B:
+                os.utime(folder, (old, old))
+        held = str(folders["pr-3/" + C])
+        result = d.update(self.root, self.github, self.pruning_adapter({"refuse": False, "paths": [held]}))
+        self.assertIsNone(result["pruneError"])
+        self.assertFalse((self.root / "previews" / "pr-1").exists())
+        self.assertFalse(folders["pr-2/" + A].exists())
+        self.assertTrue(folders["pr-2/" + B].exists() and folders["pr-3/" + C].exists())
+
     def test_failed_activation_refuses_incompatible_rollback_before_pointer_or_recover(self):
         calls = []
         policy_path = self.state / "policy.json"

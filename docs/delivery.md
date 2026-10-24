@@ -95,6 +95,17 @@ collector's existing lock is also held during activation. Dashboards and native
 client sessions use their original immutable code; native sessions are never
 killed by an application update. State and credentials remain outside releases.
 
+After each successful activation the updater removes the releases nothing needs.
+It keeps the current, previous and rejected releases, the three newest others, and
+any release a running process names or a T3 bridge reports it loaded. The product
+adapter's `inuse` operation answers that; when it cannot read the process list, a
+HotPl8 program's command line or a bridge's release, nothing is removed. A release
+is renamed to `releases/.prune-*` before it is deleted, so it is either whole or
+gone; on Windows the rename fails while a file in it is open, and that release is
+tried again at the next activation. Previews under `previews/pr-NUMBER/SHA` older
+than 14 days go the same way. A removal that fails never fails the update: the
+error name is recorded as `pruneError` in `delivery-status.json`.
+
 The normal semantic-version installer and rollback commands must not be run over
 an enrolled installation. Use its delivery status and retained release pointers
 for recovery, or a separately coordinated unenrollment. Channel enrollment is an
@@ -186,8 +197,10 @@ recovery because no previous managed release exists yet. The original app remain
 available until successful enrollment installs its compatibility launchers.
 
 Inspect `delivery-status.json`, `transaction.json`, `current.json`, `previous.json`
-and `rejected.json` in the owned installation. Do not delete or restore subscription
-history to roll code back. An operator recovery must hold the same update/runtime
+and `rejected.json` in the owned installation. Releases other than the current,
+previous, rejected and three newest are removed after each activation, and job
+receipts after 7 or 30 days, so look at a failure before then. Do not delete or
+restore subscription history to roll code back. An operator recovery must hold the same update/runtime
 and application writer locks before changing the pointer. Retained immutable code
 does not make incompatible data/schema migrations reversible.
 
@@ -237,6 +250,14 @@ Collector `incomplete`/provider backoff remains in `collector.json`; a zero proc
 exit is not evidence that every provider is fresh. Updater results remain in
 `delivery-status.json`. Per-attempt execution evidence lives in `job-runs`.
 
+Each attempt leaves `job-runs/<role>/<run id>/` with its receipt (`run.json`) and
+output, and the host copies its newest receipt to `job-runs/<role>/latest.json`,
+which `hotpl8 delivery` reads instead of searching the folders. After its worker
+ends, the host removes older folders of its role, at most 500 per attempt: a
+`complete` run after 7 days, any other after 30, judged by the time in its own
+receipt. A folder whose receipt cannot be read is kept. Removal never changes the
+attempt's exit code.
+
 The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
 against that repository/revision and replace the import plus normalized LF SHA256
 together; the installer rejects a mismatched import. Product host source is beside
@@ -244,6 +265,20 @@ it. Provenance points to the byte-identical public HotPl8 snapshot, so verificat
 and source refresh need no private repository access. The retained source namespace
 records its origin; the vendored implementation has no runtime dependency on that
 project or its checkout.
+
+Both tasks run at Task Scheduler priority 5. At 7, the default, Windows starts a
+task's program below normal on the processor and at low priority on the disk, and
+every program it starts inherits both. With all 16 logical processors of a test
+machine kept busy, 30 collector wakes were started 10 s apart against a fictional
+account at each priority. At 7, two of them started and one finished, after
+110.7 s; the scheduler skipped the rest because the earlier wake was still
+running. At 5, all 30 finished, in a median of 1.2 s and at most 3.5 s. On an idle
+machine both took about half a second to a second. Raising the priority from
+inside the host is not enough, because the .NET host is already running below
+normal before its own code can change that. A wake is short, so normal priority
+costs a busy machine about a second of processor time. A task registered before
+this change is raised to 5 the next time the registrar points it at a new host,
+and its other settings are kept. A Mac's collector job is unchanged.
 
 Ordinary installations receive the collector host through `install.ps1 -Schedule`.
 For an already-enrolled installation, explicitly migrate the native components
@@ -258,7 +293,8 @@ installation ownership. `-PlanOnly` stages the immutable host without changing a
 task. Migration preserves existing XML trigger, principal, enabled and battery
 settings, exports recovery XML, and records `scheduledJobs` in the delivery
 registration. Subsequent verified activation/recovery reconciles these enrolled
-components through the same registrar. Only Actions change: admitted updater work
+components through the same registrar. Only Actions and a priority below normal
+change: admitted updater work
 continues on its original immutable host. No loaded executable or stable dispatch
 file is overwritten. Next launches use the normal release-pointer dispatch, also
 compatible with the predecessor release. T3 sessions are untouched.
