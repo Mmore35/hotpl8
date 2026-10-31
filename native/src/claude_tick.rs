@@ -43,6 +43,8 @@ pub struct Request<'a> {
     pub root: &'a Path,
     /// The user's home directory, where cswap keeps what it stores.
     pub home: &'a Path,
+    /// Claude Code's own folder, which holds the sign-in it is using.
+    pub claude_folder: &'a Path,
     pub clock: &'a dyn Fn() -> R<Dto>,
 }
 
@@ -283,12 +285,16 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         let last_good = a.g("lastGoodAgeSeconds")?;
         let last_good_at = if last_good.is_number() && last_good.ge_i(0)? && last_good.le_i(315_360_000)? { V::from(now.plus(-last_good.dbl()?)?.o()) } else { V::Null };
         entry.set("lastGoodAt", last_good_at)?;
-        // The active account's sign-in is the one Claude Code holds; cswap's stored copy of
-        // it can lag behind a sign-in made inside Claude Code.
-        let live = if data.g("activeAccountNumber")?.to_int()? == slot { cswap::sign_in_end(&cswap::live_credential(request.home), false) } else { None };
         let email = a.g("email")?.s()?;
+        let stored = cswap::stored_credential(request.home, slot, &email);
         // An account switched off on purpose is nobody's to sign in to, so it carries no date.
-        let sign_in_end = if off { None } else { live.or_else(|| cswap::sign_in_end(&cswap::stored_credential(request.home, slot, &email), true)) };
+        let sign_in_end = if off {
+            None
+        } else if data.g("activeAccountNumber")?.to_int()? == slot {
+            cswap::active_sign_in_end(request.claude_folder, &stored)
+        } else {
+            cswap::sign_in_end(&stored, true)
+        };
         entry.set("signInEndsAt", sign_in_end.map_or(V::Null, |end| V::from(end.o())))?;
         let observed_at = if valid && age.is_number() && age.ge_i(0)? { V::from(now.plus(-age.dbl()?)?.o()) } else { V::Null };
         entry.set("observedAt", observed_at.clone())?;
@@ -934,7 +940,7 @@ pub(crate) mod tests {
         fn tick_as(&self, provider: &str, state: &Path, control: &Path, policy: &V, observe_only: bool) -> R<Option<Collected>> {
             std::fs::create_dir_all(state).unwrap();
             let clock = || Dto::parse(NOON)?.plus_seconds(self.later.get());
-            claude_tick(&Request { policy, state, control, generation: self.generation.get(), provider, cswap: Some(&self.stub), observe_only, root: &self.directory, home: &self.home, clock: &clock })
+            claude_tick(&Request { policy, state, control, generation: self.generation.get(), provider, cswap: Some(&self.stub), observe_only, root: &self.directory, home: &self.home, claude_folder: &self.directory.join("claude folder"), clock: &clock })
         }
         pub(crate) fn done(self) {
             crate::time::set_zone(None);
@@ -1118,8 +1124,7 @@ pub(crate) mod tests {
             let text = format!(r#"{{"claudeAiOauth":{{"refreshToken":"fictional-{slot}","expiresAt":1791288000000,"refreshTokenExpiresAt":{}}}}}"#, end(days));
             std::fs::write(path, encoded(text.as_bytes())).unwrap();
         };
-        let live = |days: f64| {
-            let path = cswap::live_credential(&lab.home);
+        let plain = |path: PathBuf, days: f64| {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, format!(r#"{{"claudeAiOauth":{{"refreshToken":"fictional-live","refreshTokenExpiresAt":{}}}}}"#, end(days))).unwrap();
         };
@@ -1150,12 +1155,20 @@ pub(crate) mod tests {
         assert_eq!(text(&payload, "slots.0.signInEndsAt"), "null");
         lab.list(&pool(1, ONE, TWO));
 
-        // The active account reads the sign-in Claude Code holds, not cswap's older copy.
+        // The active account on a Mac has no date: nothing there can be trusted to carry it.
+        let mac = cfg!(target_os = "macos");
         store(1, one, 2.0);
-        live(25.0);
+        let (line, payload) = run("stored", WATCH);
+        assert_eq!(line.contains("slot 1 sign-in ends in 2d"), !mac, "{line}");
+        assert_eq!(text(&payload, "slots.1.signInEndsAt") == "null", mac);
+
+        // The active account reads the sign-in in the folder Claude Code uses, not cswap's
+        // older copy, and not a file left in the home's own folder.
+        plain(lab.directory.join("claude folder").join(".credentials.json"), 25.0);
+        plain(lab.home.join(".claude").join(".credentials.json"), -1.0);
         let (line, payload) = run("live", WATCH);
-        assert!(!line.contains("slot 1 sign-in"), "{line}");
-        assert_eq!(text(&payload, "slots.1.signInEndsAt"), r#""2026-10-31T12:00:00.0000000+00:00""#);
+        assert!(!line.contains("slot 1 sign-in") && !line.contains("slot 1 SIGN-IN"), "{line}");
+        assert_eq!(text(&payload, "slots.1.signInEndsAt"), if mac { "null" } else { r#""2026-10-31T12:00:00.0000000+00:00""# });
 
         // Past its end: a call for a person at once, without waiting for a verdict to
         // grow stale, and no request is spent on it.

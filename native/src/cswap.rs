@@ -212,9 +212,25 @@ pub fn credential_mark(path: &Path, encoded: bool) -> String {
     read().unwrap_or_else(|| "?".into())
 }
 
-/// The sign-in Claude Code itself is using, for the account that is active now.
-pub fn live_credential(home: &Path) -> PathBuf {
-    home.join(".claude").join(".credentials.json")
+/// Claude Code's own folder: `CLAUDE_CONFIG_DIR` when set, else `.claude` in the home.
+pub fn claude_folder(home: &Path) -> PathBuf {
+    folder_named(home, std::env::var_os("CLAUDE_CONFIG_DIR"))
+}
+
+fn folder_named(home: &Path, named: Option<OsString>) -> PathBuf {
+    named.filter(|value| !value.is_empty()).map_or_else(|| home.join(".claude"), PathBuf::from)
+}
+
+/// When the active account's sign-in ends: the date on what Claude Code itself holds, else
+/// on cswap's copy, which can lag behind a sign-in made inside Claude Code. A Mac gives no
+/// date: Claude Code renews there in the Keychain, which does not show one, and a file
+/// beside it can be out of date. A stale date would call for a sign-in nobody needs and
+/// stop the account's warm and recovery requests, so no warning is the safer answer.
+pub fn active_sign_in_end(folder: &Path, stored: &Path) -> Option<Dto> {
+    if cfg!(target_os = "macos") {
+        return None;
+    }
+    sign_in_end(&folder.join(".credentials.json"), false).or_else(|| sign_in_end(stored, true))
 }
 
 /// When a sign-in can no longer be renewed, by the provider's own date. Each renewal
@@ -370,6 +386,11 @@ mod tests {
         std::fs::write(&plain, "not json").unwrap();
         assert!(sign_in_end(&plain, false).is_none());
         assert!(sign_in_end(&directory.join("absent"), false).is_none());
+
+        let home = Path::new("home");
+        assert_eq!(folder_named(home, None), home.join(".claude"));
+        assert_eq!(folder_named(home, Some(OsString::new())), home.join(".claude"));
+        assert_eq!(folder_named(home, Some(OsString::from("elsewhere"))), PathBuf::from("elsewhere"));
         std::fs::remove_dir_all(directory).unwrap();
     }
 
