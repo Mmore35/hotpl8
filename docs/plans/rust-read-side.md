@@ -231,6 +231,31 @@ Further arguments exist for the tests, and no launcher or script sends them: `--
 | A hold whose `until` is a date with no time ends at the machine's own midnight in both | No difference, but not a shared case: the answer carries the machine's time zone, so each side checks it with the zone in hand |
 | A Claude collection in which cswap answered for at least one of the policy's accounts is not a failing one, whatever it said of them, and cswap is read again at the next wake. The wait of 5 to 30 minutes is kept for a cswap that is missing, runs out of its time, exits with an error, prints what cannot be read, or lists none of the policy's accounts | PowerShell also waited when no account had a reading younger than `maxUsageAgeS`. cswap makes a request only while it is being read and spaces its own requests, up to 30 minutes apart after a refusal, so the wait could bring no reading and hid the next one: every account read `RETRYING LATER` until the wait ran out, and an installation with one account did so each time its only reading passed 15 minutes. An account with a second one that was read never waited. A reading past `maxUsageAgeS` is as it was: not fresh, shown with its age, no ground for a switch, a window or a probe, and its wake is still incomplete. Pinned in `native/src/wake.rs` |
 
+## Contract: a Claude reading with no five-hour window
+
+A verified Ultra account has no five-hour limit, and an unverified one has a temporary limit until it is verified ([Anthropic](https://support.claude.com/en/articles/17728952-what-is-the-ultra-plan)). Pro and Max have the limit. A reading says none of this: for an account with no limit the row is simply left out, and nothing marks that as intended. So absence alone proves nothing, and only the plan can explain it.
+
+| Behavior | Notes |
+|---|---|
+| A slot has no five-hour limit only when cswap's `usageStatus` is `ok`, the reading has a `sevenDay` row and no `fiveHour` row, and the plan explains the absence | The plan explains it when it was detected as `claude-max-20x`, or when asking has since failed and the last answer for the same identity was `claude-max-20x` no more than 7 days ago. Seven days bounds how long a change of plan can go unseen while the plan cannot be asked. `lastDetected` decides this and nothing else: it is not displayed, not used for capacity, and the dashboard still says `plan unverified` |
+| A reading that has the row is measured as it always was, whatever the plan says | This is how an unverified Ultra account is warmed and ranked. The plan only ever explains an absence: it cannot change sign-in or grant quota |
+| The slot's `limit5h` says which case it is: `none`, or `unreported` for a fresh `ok` reading with no row that the plan does not explain | Written only in these two cases, so every other slot keeps its exact shape. Pro, Max, Team, Enterprise, a tier HotPl8 does not know and an unanswered plan past its 7 days are all `unreported` |
+| `none`: `fresh` is true while the reading is under `maxUsageAgeS`, and an older reading is stale as usual. `cold` is false: there is no window to open | The account counts as healthy, so `claude_observation_unavailable` and `incompleteRuns` stop by themselves |
+| `none`: never warmed and left out of the turns the stagger gives. An earlier warm outcome and block stay on file and are not shown | |
+| `none`: eligible on its weekly margin and scoped limits. `margin5h` does not apply, and soonest-reset ranks it by its weekly reset | The window is `not_applicable` and not required. The 300-minute window is left out of the agent API and of the capacity accounts |
+| `unreported`: `fresh` is false and the account is ineligible, with decision reason `five_hour_not_reported` | The wake stays incomplete, so the repeated tray alert still fires |
+| Probing is not affected | A probe needs a stuck sign-in, and `usageStatus: ok` is not one |
+| Stored IDs do not change: `claude-max-5x` and `claude-max-20x` stay in the schema, the catalogue and saved policies. People read `Max` and `Ultra`, and `Max or Ultra (tier unknown)` for the partial answer | A cached plan row is relabelled when it is read, and `Profiles:` prints the plan's name, not its ID |
+
+What each surface says:
+
+| State | Dashboard | Overview | `hotpl8 status` | Tray |
+|---|---|---|---|---|
+| `none` | `ACTIVE · Ultra`, `5h  no limit` | `50% available now (estimate) / 50% weekly left; Ready` | `5h no limit` | `Claude Solo: ok`, `no 5-hour limit; weekly used: 50%` |
+| `none`, plan unanswered | as above, no plan tag, `plan unverified` | as above, no `Profiles:` line | as above | as above |
+| `none`, reading too old | `STALE · Ultra`, `5h  no limit`, `last read 33m ago  ·  awaiting update` | `No account readable now / 1 expired; awaiting update; Readings stale - refresh` | `[stale 2000s]`, `usage STALE (>15m), holding` | `Claude Solo: ok / stale`, `no 5-hour limit; weekly used: 50%` |
+| `unreported` | `INCOMPLETE · Max`, `5h ···· ? no reading`, `5-hour limit not reported  ·  hotpl8 explain` | `No account readable now / 1 reported no 5-hour window; Unavailable now - see details` | `5h not reported`, `[incomplete]`, `slot 1 reported no 5-hour window, holding` | `Claude Solo: ok / incomplete`, `5h used: not reported; weekly used: 50%` |
+
 ## Contract: reading Codex accounts
 
 | Behavior | Label | Notes |

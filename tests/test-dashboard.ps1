@@ -55,6 +55,7 @@ try{
         foreach($view in @('watch','nyan')){
             foreach($colours in @('true','indexed')){
                 $printed=Get-Frame $state $fixture $view @('--colours',$colours)
+                if($view -eq 'watch'){Assert ((($printed -join "`n").Contains('5h  no limit')) -and -not ($printed -join "`n").Contains('no reading')) ($printed -join "`n")}
                 $sent=Get-Frame $state $fixture $view @('--colours',$colours,'--ansi')
                 $name=$view+' in '+$colours
                 Assert ($sent.Count -eq $printed.Count -and $printed.Count -le 40) ($name+': '+$sent.Count+' rows sent, '+$printed.Count+' printed')

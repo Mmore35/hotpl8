@@ -4,13 +4,16 @@
 # Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.
 plain | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
 operations | answer 97892d36465a5c67 | answer bc4526c933de9b11 | answer 01a60cd85c7e87af | answer 0cd779bc0b9e15da
-collector shape | answer 90a0e4e2b59b0d67 | answer 35f0a10e2c62f591 | answer fc3fc2de354c5fbf | answer f46278755dd8f970
-collector shape with Windows line ends and no byte order mark | answer 1cefa16e0a02ccc4 | answer 18fc1d4e4823d606 | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+collector shape | answer b197b41ddeae0733 | answer af931de8f4045c7d | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+collector shape with Windows line ends and no byte order mark | answer f35602a484b5f113 | answer 40e3fc0cd164cdd3 | answer fc3fc2de354c5fbf | answer f46278755dd8f970
 readings twenty minutes old | answer 581a3770fa7b887c | answer f641a04357f043c0 | answer 602eb8457dea01d1 | answer 8c015ef06636744d
 readings from the future | answer 927debb05cb65622 | answer 60a025ddd821d4a9 | answer 1bf2c48b63562233 | answer 81883a99a8eead89
 readings at the age limit | answer 056158bedcf76c99 | answer edf220a5c55a0eca | answer 7f88ed7af8dd2858 | answer 68d7444e51d41cfd
 readings one second past the age limit | answer b5eff98f11533b52 | answer 292ec93eaef0d731 | answer 0c620f8acba1de02 | answer 0d4910d5ad4eb60a
 one account stale | answer 2933cef7d7f94dbe | answer fbab80fb610ce6c4 | answer acb5f9aecee44a76 | answer 29e87a8fdd541402
+no 5-hour limit | answer aa86547431c2c193 | answer 95c49f7ba83432fb | answer d436df8c7e755250 | answer f1f778fcc5d581f5
+no 5-hour limit, the reading stale | answer c988543b9b5a798e | answer 3a608cd85ae43230 | answer f61c44c997091ef7 | answer e39d1b8b1153565a
+5-hour limit not reported | answer bb5b2a84cda54aea | answer a0b9242530e7744b | answer 0db2a049162979e7 | answer b65c534dec6883d9
 policy only | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer e86875de57f6245f | answer e86875de57f6245f
 policy and collector only | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer 368511db004795ee | answer adfc65a1b9aec09c
 policy and pause only | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer 85fcdd69a3f9137b | answer 5405609e71e225cb

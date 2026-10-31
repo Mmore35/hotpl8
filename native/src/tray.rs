@@ -105,8 +105,15 @@ fn account_lines(snapshot: &V, policy: &V, now: Dto) -> R<Vec<String>> {
             continue;
         }
         let fresh = s.g("fresh")?.t()? && fresh_timestamp(&s.g("observedAt")?, now)?;
-        lines.push(cat!("Claude ", s.g("label")?, ": ", s.g("status")?, if fresh { "" } else { " / stale" }));
-        lines.push(cat!("  5h used: ", used_text(&s.g("used5h")?)?, "; weekly used: ", used_text(&s.g("used7d")?)?));
+        let unreported = s.g("limit5h")?.eq_s("unreported")?;
+        lines.push(cat!("Claude ", s.g("label")?, ": ", s.g("status")?, if fresh { "" } else if unreported { " / incomplete" } else { " / stale" }));
+        if s.g("limit5h")?.eq_s("none")? {
+            lines.push(cat!("  no 5-hour limit; weekly used: ", used_text(&s.g("used7d")?)?));
+        } else if unreported {
+            lines.push(cat!("  5h used: not reported; weekly used: ", used_text(&s.g("used7d")?)?));
+        } else {
+            lines.push(cat!("  5h used: ", used_text(&s.g("used5h")?)?, "; weekly used: ", used_text(&s.g("used7d")?)?));
+        }
         if fresh && s.g("forecast")?.t()? {
             lines.push(cat!("  ", format_forecast(&s.g("forecast")?)?));
         }

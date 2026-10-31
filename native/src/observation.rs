@@ -11,6 +11,22 @@ pub fn claude_observation(slot: &V, policy: &V) -> R<V> {
     for shape in [["300", "short", "used5h", "reset5h"], ["10080", "weekly", "used7d", "reset7d"]] {
         let used = slot.g(shape[2])?;
         let reset = slot.g(shape[3])?;
+        // The collector found this account has no five-hour limit. Not a window to measure.
+        if shape[1] == "short" && slot.g("limit5h")?.eq_s("none")? {
+            windows.push(obj! {
+                "name" => shape[0],
+                "scope" => "",
+                "role" => shape[1],
+                "state" => "not_applicable",
+                "required" => false,
+                "usedPercent" => V::Null,
+                "resetAt" => V::Null,
+                "observedAt" => slot.g("observedAt")?,
+                "resetConfirmed" => false,
+                "resetRequired" => false,
+            });
+            continue;
+        }
         windows.push(obj! {
             "name" => shape[0],
             "scope" => "",
@@ -84,6 +100,7 @@ pub fn claude_entry_observation(id: &V, entry: &V, policy: &V, now: Dto, for_war
             "status" => if !entry.t()? { V::s_of("not_observed") } else if native_status.t()? { native_status } else { V::s_of("ok") },
             "fresh" => entry.g("fresh")?.t()?,
             "observedAt" => stamp,
+            "limit5h" => entry.g("limit5h")?,
             "used5h" => used("h5")?,
             "used7d" => used("h7")?,
             "reset5h" => usage.path(&["fiveHour", "resetsAt"])?,

@@ -224,7 +224,7 @@ function Get-Hotpl8ParityCases {
       "lastGoodAt": "@t-44s@",
       "modelBlock": null,
       "observedAt": "@t-44s@",
-      "plan": {"identityKey": "plan-one", "label": "Max 5x", "nextAttemptAt": "@t+6h@", "observedAt": "@t-10m@", "profile": "claude-max-5x", "sessionMultiplier": 5, "source": "native", "status": "detected"},
+      "plan": {"identityKey": "plan-one", "label": "Max", "nextAttemptAt": "@t+6h@", "observedAt": "@t-10m@", "profile": "claude-max-5x", "sessionMultiplier": 5, "source": "native", "status": "detected"},
       "registered": true,
       "reset5h": "@f+83m@",
       "reset7d": "@f+52h@",
@@ -300,6 +300,15 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='readings at the age limit';files=@{'policy.json'=$policy;'status.json'=$status.Replace('@t-42s@','@t-900s@')}})
     [void]$cases.Add(@{name='readings one second past the age limit';files=@{'policy.json'=$policy;'status.json'=$status.Replace('@t-42s@','@t-901s@')}})
     [void]$cases.Add(@{name='one account stale';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($one,$two.Replace('@t-42s@','@t-20m@')) @($work,$personal.Replace('@t-42s@','@t-20m@')))}})
+
+    # A good reading with no five-hour window, explained by the plan or not.
+    $noWindow=$one.Replace('"used5h":38','"used5h":null').Replace('"reset5h":"@t+83m@"','"reset5h":""')
+    $ultraPlan='"plan":{"status":"detected","profile":"claude-max-20x","label":"Ultra","sessionMultiplier":null,"observedAt":"@t-10m@"},'
+    $maxPlan='"plan":{"status":"detected","profile":"claude-max-5x","label":"Max","sessionMultiplier":5,"observedAt":"@t-10m@"},'
+    $noLimit=$noWindow.Replace('"slot":1,','"slot":1,"limit5h":"none",'+$ultraPlan)
+    [void]$cases.Add(@{name='no 5-hour limit';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($noLimit,$two) @($work,$personal))}})
+    [void]$cases.Add(@{name='no 5-hour limit, the reading stale';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($noLimit.Replace('@t-42s@','@t-20m@').Replace('"fresh":true','"fresh":false'),$two) @($work,$personal))}})
+    [void]$cases.Add(@{name='5-hour limit not reported';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($noWindow.Replace('"slot":1,','"slot":1,"limit5h":"unreported",'+$maxPlan).Replace('"fresh":true','"fresh":false'),$two) @($work,$personal))}})
 
     # Nothing collected yet.
     [void]$cases.Add(@{name='policy only';files=@{'policy.json'=$policy}})

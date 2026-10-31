@@ -41,14 +41,14 @@ def classify(profile, expected):
     table = {
         ("claude_pro", "default_claude_ai"): ("claude-pro", "Pro", 1),
         ("claude_pro", "default_claude_pro"): ("claude-pro", "Pro", 1),
-        ("claude_max", "default_claude_max_5x"): ("claude-max-5x", "Max 5x", 5),
-        ("claude_max", "default_claude_max_20x"): ("claude-max-20x", "Max 20x", 20),
+        ("claude_max", "default_claude_max_5x"): ("claude-max-5x", "Max", 5),
+        ("claude_max", "default_claude_max_20x"): ("claude-max-20x", "Ultra", None),
     }
     match = table.get((kind, tier))
     if match:
         return dict(status="detected", profile=match[0], label=match[1], sessionMultiplier=match[2])
     # Do not misclassify a Team organization with a Max-shaped rate tier.
-    labels = {"claude_team": "Team", "claude_enterprise": "Enterprise", "claude_pro": "Pro", "claude_max": "Max (tier unknown)"}
+    labels = {"claude_team": "Team", "claude_enterprise": "Enterprise", "claude_pro": "Pro", "claude_max": "Max or Ultra (tier unknown)"}
     if kind in labels:
         return dict(status="partial", profile=None, label=labels[kind], sessionMultiplier=None)
     return {"status": "unsupported"}

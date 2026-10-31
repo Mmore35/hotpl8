@@ -49,7 +49,7 @@ A subscription you stopped paying for keeps failing collection, leaves the provi
 ```text
 > hotpl8 park
   Old plan    no reading for 36 days (last: Aug 26)
-  Claude refuses sign-in without a Pro or Max plan, so an account you cannot sign back into is canceled.
+  Claude refuses sign-in without a Pro, Max or Ultra plan, so an account you cannot sign back into is canceled.
 Park 1 account? It disappears from HotPl8 until you unpark it. [Y/n]
 
 Parked Old plan. Still enrolled: Everyday, Spare.

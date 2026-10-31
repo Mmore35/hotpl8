@@ -108,6 +108,7 @@ fn native_replay(frames: &[V], policy: &V) -> R<Replayed> {
                         "h5" => if used5.is_null() { V::Null } else { V::I32(100).sub(&used5)? },
                         "h7" => if used7.is_null() { V::Null } else { V::I32(100).sub(&used7)? },
                         "fresh" => s.g("fresh")?.t()? && fresh_timestamp(&s.g("observedAt")?, now)? && !s.g("slot")?.is_in(&p.g("disabled")?)?,
+                        "limit5h" => s.g("limit5h")?,
                         "modelBlocked" => s.g("modelBlock")?.t()?,
                         "obj" => hash! {"usage" => hash! {
                             "fiveHour" => hash! {"resetsAt" => s.g("reset5h")?},

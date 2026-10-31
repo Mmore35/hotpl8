@@ -205,7 +205,9 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
             };
             let observed = s.g("observedAt")?;
             windows.push(capacity_window("10080", left(s.g("used7d")?)?, c.g("weekly")?, s.g("reset7d")?, now, true, &observed)?);
-            windows.push(capacity_window("300", left(s.g("used5h")?)?, c.g("fiveHour")?, s.g("reset5h")?, now, true, &observed)?);
+            if !s.g("limit5h")?.eq_s("none")? {
+                windows.push(capacity_window("300", left(s.g("used5h")?)?, c.g("fiveHour")?, s.g("reset5h")?, now, true, &observed)?);
+            }
             for model in part.g("claudeModels")?.arr() {
                 if !model.t()? {
                     continue;
@@ -253,8 +255,11 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
                 None => V::Null,
             };
             let calibrated = !primary_full.is_null();
-            let has_profile =
-                profile.t()? && profile.g("provider")?.eq_s(provider)? && (provider != "codex" || profile.g("meter")?.eq(&V::s_of(meter))?);
+            // A plan with no published multiplier gives no weight, and is not called one.
+            let has_profile = profile.t()?
+                && profile.g("provider")?.eq_s(provider)?
+                && (provider != "codex" || profile.g("meter")?.eq(&V::s_of(meter))?)
+                && !profile.g("sessionMultiplier")?.is_null();
             let weight = if has_profile {
                 profile.g("sessionMultiplier")?
             } else if calibrated {

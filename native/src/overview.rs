@@ -91,7 +91,9 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
                 remaining = V::Dbl(100.0 - w7.g("used")?.dbl()?);
                 weekly_reset = if w7.g("resetAt")?.t()? { Dto::of(&w7.g("resetAt")?)?.o().into() } else { V::Null };
             }
+            let no_limit = s.g("limit5h")?.eq_s("none")?;
             let short = fresh
+                && !no_limit
                 && overview_percent(&w5.g("used")?)?
                 && (w5.g("rolledOver")?.t()?
                     || future_reset(&w5.g("resetAt")?, now, false)?
@@ -100,7 +102,8 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
             let e = hash! {
                 "h5" => if short { V::Dbl(100.0 - w5.g("used")?.dbl()?) } else { V::Null },
                 "h7" => &remaining,
-                "fresh" => short && weekly,
+                "fresh" => (short || no_limit) && weekly,
+                "limit5h" => s.g("limit5h")?,
                 "modelBlocked" => model.t()?,
                 "obj" => hash! {"usage" => hash! {
                     "fiveHour" => hash! {"resetsAt" => w5.g("resetAt")?},
@@ -109,17 +112,19 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
             };
             e.set("observation", claude_observation(&s, policy)?)?;
             claude_accounts.put(id.to_int()?, e.clone());
-            eligible = test_ok(&e, V::Dbl(policy.g("margin5h")?.dbl()?), margin_7d_for(policy, id)?, now)?.t()? && e.g("h5")?.gt_i(0)? && remaining.gt_i(0)?;
+            eligible = test_ok(&e, V::Dbl(policy.g("margin5h")?.dbl()?), margin_7d_for(policy, id)?, now)?.t()? && (no_limit || e.g("h5")?.gt_i(0)?) && remaining.gt_i(0)?;
             if fresh {
                 reason = if model.t()? {
                     model
                 } else if eligible {
                     "eligible".into()
-                } else if !weekly || !short {
+                } else if !weekly || !(short || no_limit) {
                     "window_unmeasured".into()
                 } else {
                     "below_margin".into()
                 };
+            } else if s.g("limit5h")?.eq_s("unreported")? {
+                reason = "window_unmeasured".into();
             } else if s.t()? && s.g("status")?.eq_s("ok")? {
                 reason = "stale".into();
             }
@@ -143,14 +148,18 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
                 codex_accounts.push(s.clone());
             }
         }
-        members.push(obj! {
+        let member = obj! {
             "slot" => id.sv()?,
             "remainingPercent" => remaining,
             "weeklyResetAt" => weekly_reset,
             "eligible" => eligible,
             "reason" => reason,
             "reserve" => id.is_in(&part.g("reserve")?)?,
-        });
+        };
+        if s.g("limit5h")?.eq_s("unreported")? {
+            member.add_member("fiveHourUnreported", true.into(), true)?;
+        }
+        members.push(member);
     }
     let measured = count(filter(&members, |member| Ok(!member.g("remainingPercent")?.is_null()))?.len())?;
     let mut sum = 0.0;
@@ -336,6 +345,10 @@ fn capacity_display(p: &V) -> R<Display> {
     if stale > 0 {
         state = cat!(state, " / ", stale.to_string(), " expired; awaiting update");
     }
+    let unreported = filter(&p.g("members")?.arr(), |member| member.g("fiveHourUnreported")?.t())?.len();
+    if unreported > 0 {
+        state = cat!(state, " / ", unreported.to_string(), " reported no 5-hour window");
+    }
     Ok(Display { state, gain: c.g("projectedGainPercent")?, next_reset_at: c.g("nextResetAt")? })
 }
 
@@ -380,7 +393,9 @@ pub fn format_overview(overview: &V) -> R<Vec<String>> {
         if p.g("driver")?.eq_s("claude-cswap")? && capacity.t()? {
             let mut profiles = Vec::new();
             for account in where_truthy(&capacity.g("accounts")?.arr(), "profile")? {
-                profiles.push(account.g("slot")?.add(&V::s_of("="))?.add(&account.g("profile")?)?.s()?);
+                // The stored ID is for policies; a person reads the plan's current name.
+                let id = account.g("profile")?.s()?;
+                profiles.push(cat!(account.g("slot")?.s()?, "=", crate::plans::plan_name(&id).unwrap_or(&id)));
             }
             if !profiles.is_empty() {
                 lines.push(cat!("  Profiles: ", profiles.join(", ")));
@@ -523,7 +538,7 @@ mod tests {
                 "  Membership: 2 enabled; 1 disabled; 0 duplicate entries excluded.",
                 "  Next reset: +12.5% available at 2026-09-13T13:00:00.0000000+00:00; assumes no further consumption.",
                 "  Includes reserve allowance.",
-                "  Profiles: 1=claude-pro",
+                "  Profiles: 1=Pro",
                 "FICTIONAL: No accounts enabled; No accounts enabled; none",
                 "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.",
             ]
