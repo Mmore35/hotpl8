@@ -172,9 +172,11 @@ pub fn plans(accounts: &[V], directory: &Path, now: Dto, reader: impl FnOnce(&[S
             }
         }
         // Failing to ask is not an answer, and is not shown as the current plan either; what
-        // was last known of this same account stays beside it. Any answer replaces it.
+        // was last known of this same account stays beside it. Any answer replaces it. A
+        // refused or unreadable stored token is a failure too: the helper asks with the slot's
+        // backup, which can lag behind the sign-in that usage is being read through.
         let prior = cache.g("accounts")?.g(id)?;
-        let unanswered = status.in_s(&["unavailable", "rate_limited"])?;
+        let unanswered = status.in_s(&["unavailable", "rate_limited", "authentication_required", "no_credentials"])?;
         let last_detected = if !unanswered || !prior.g("identityKey")?.eq_s(binding)? {
             V::Null
         } else if prior.g("status")?.eq_s("detected")? {
@@ -351,17 +353,22 @@ mod tests {
         assert_eq!((text(&limited, "profile").as_str(), last(&limited, "profile").as_str(), last(&limited, "observedAt").as_str()), ("", "claude-max-20x", first));
         let failed = ask(&one, 2, r#","status":"surprising""#);
         assert_eq!((text(&failed, "status").as_str(), last(&failed, "profile").as_str(), last(&failed, "observedAt").as_str()), ("unavailable", "claude-max-20x", first));
+        // A token refused or unreadable says nothing of the plan either.
+        for (hours, failure) in [(3, "authentication_required"), (4, "no_credentials")] {
+            let refused = ask(&one, hours, &format!(r#","status":"{failure}""#));
+            assert_eq!((text(&refused, "status").as_str(), text(&refused, "profile").as_str(), last(&refused, "profile").as_str(), last(&refused, "observedAt").as_str()), (failure, "", "claude-max-20x", first));
+        }
         // Any answer ends it, whatever it says.
-        for answer in [r#","status":"partial","label":"Team""#, r#","status":"detected","profile":"claude-team""#, r#","status":"detected","profile":"claude-pro""#] {
-            ask(&one, 3, ultra);
-            ask(&one, 4, r#","status":"rate_limited""#);
-            let answered = ask(&one, 30, answer);
+        for answer in [r#","status":"partial","label":"Team""#, r#","status":"detected","profile":"claude-team""#, r#","status":"detected","profile":"claude-pro""#, r#","status":"unsupported""#, r#","status":"identity_mismatch""#] {
+            ask(&one, 5, ultra);
+            ask(&one, 6, r#","status":"rate_limited""#);
+            let answered = ask(&one, 40, answer);
             assert_eq!(last(&answered, "profile"), "", "{answer}");
         }
         // The same slot holding another account knows nothing of what the last one had.
-        ask(&one, 31, ultra);
+        ask(&one, 41, ultra);
         let replacement = account("replacement@example.invalid", Some("fictional-org"));
-        let other = plans(std::slice::from_ref(&replacement), &directory, now.plus_seconds(32 * 3600).ok().unwrap(), |_| None).ok().unwrap();
+        let other = plans(std::slice::from_ref(&replacement), &directory, now.plus_seconds(42 * 3600).ok().unwrap(), |_| None).ok().unwrap();
         assert_eq!((text(&other, "status").as_str(), last(&other, "profile").as_str()), ("unavailable", ""));
         std::fs::remove_dir_all(&directory).unwrap();
     }

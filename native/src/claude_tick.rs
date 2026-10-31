@@ -626,7 +626,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     let mut registered = 0;
     for n in &prefer {
         let e = acc.get(*n);
-        registered += i32::from(e.t()?);
+        registered += i32::from(e.t()? && !e.g("obj")?.g("usageStatus")?.eq_s("disabled")?);
         if e.g("limit5h")?.eq_s("unreported")? {
             unreported.push(*n);
         }
@@ -1767,10 +1767,22 @@ pub(crate) mod tests {
     /// Asking for the plan failing is not an answer that it changed.
     #[test]
     fn an_ultra_account_whose_plan_cannot_be_asked_stays_without_a_limit_for_a_week() {
-        let plan = plan_row(EMAIL_ONE, r#""status":"rate_limited","lastDetected":{"profile":"claude-max-20x","observedAt":"2026-10-05T12:00:00.0000000+00:00"}"#);
-        let seen = alone("no-row-unanswered", &plan);
-        assert_eq!(first_slot(&seen), r#""none" true false null null null"#);
-        assert_eq!(text(&seen.payload, "slots.0.plan.profile"), "null");
+        for failure in ["rate_limited", "unavailable", "authentication_required", "no_credentials"] {
+            let plan = plan_row(EMAIL_ONE, &format!(r#""status":"{failure}","lastDetected":{{"profile":"claude-max-20x","observedAt":"2026-10-05T12:00:00.0000000+00:00"}}"#));
+            let seen = alone(&format!("no-row-unanswered-{failure}"), &plan);
+            assert_eq!(first_slot(&seen), r#""none" true false null null null"#, "{failure}");
+            assert_eq!(text(&seen.payload, "slots.0.plan.profile"), "null", "{failure}");
+        }
+    }
+
+    /// An account switched off is not the reason the one in use is held.
+    #[test]
+    fn a_switched_off_account_does_not_change_why_the_other_is_held() {
+        let plans = format!(r#""1":{},"2":{}"#, detected(EMAIL_ONE, "claude-pro"), detected(EMAIL_TWO, "claude-pro"));
+        let off = with(&account_read(2, EMAIL_TWO, 30, WEEK), r#""number":2,"#, r#""number":2,"disabled":true,"#);
+        let seen = no_row("no-row-beside-off", DUO, &plans, &format!("{},{off}", account_read(1, EMAIL_ONE, 30, WEEK)));
+        assert_eq!(text(&seen.payload, "slots.0.limit5h"), r#""unreported""#);
+        assert!(seen.lines.contains("slot 1 reported no 5-hour window, holding") && !seen.lines.contains("STALE"), "{}", seen.lines);
     }
 
     /// With no limit the reading is still a reading, and it can still grow old.
