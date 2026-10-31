@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use crate::capacity::{detected_plan, fresh_timestamp};
 use crate::contract::resolve_window;
+use crate::cswap::sign_in_notice;
 use crate::insights::{health, name_text};
 use crate::nyan::{self, Scene, Sprite};
 use crate::overview::{future_reset, provider_overview, upper};
@@ -695,6 +696,13 @@ impl Pass<'_> {
         }
         if !ended.is_empty() {
             out.push(row(format!("  ! {}  ·  hotpl8 park", who(&ended, "accounts no longer have a paid plan")?), Tone::Amber));
+        }
+        for slot in filter(&slots, |slot| slot.t())? {
+            if let Some(notice) = sign_in_notice(&slot.g("signInEndsAt")?, now)? {
+                let label = slot.g("label")?;
+                let name = if label.t()? { label.s()? } else { cat!("Slot ", slot.g("slot")?) };
+                out.push(row(format!("  ! {name} {notice}  ·  hotpl8 add -Provider claude"), Tone::Amber));
+            }
         }
         for account in filter(&readable, |account| Ok(account.t()? && account.g("slot")?.t()?))? {
             let label = account.g("label")?;
@@ -1964,6 +1972,18 @@ pub mod tests {
         let narrow = page(&fleet_drawn(&one, FLEET_POLICY, &terminal(48, 100)));
         assert!(narrow.contains("RECENT") && narrow.contains("codex next"), "{narrow}");
         assert!(fleet(&and(FLEET, &format!(r#""recentActions":[{event},{event}]"#))).contains("RECENT"));
+    }
+
+    #[test]
+    fn a_sign_in_near_its_end_is_named_with_what_to_do() {
+        let ending = |date: &str| of_account(FLEET, 1, r#""label":"Claude 1""#, &format!(r#""label":"Claude 1","signInEndsAt":"{date}T12:00:00.0000000+00:00""#));
+        let shown = |status: &str| page(&fleet_drawn(status, FLEET_POLICY, &terminal(100, 100)));
+        assert!(!shown(FLEET).contains("sign-in"));
+        assert!(!shown(&ending("2026-09-20")).contains("sign-in"));
+        let near = fleet_drawn(&ending("2026-09-13"), FLEET_POLICY, &terminal(100, 100));
+        let warned = near.lines.iter().flat_map(|line| &line.spans).find(|span| span.text.contains("Claude 1 sign-in ends in 3d  ·  hotpl8 add -Provider claude"));
+        assert_eq!(warned.map(|span| span.tone), Some(Tone::Amber), "{}", page(&near));
+        assert!(shown(&ending("2026-09-09")).contains("Claude 1 sign-in ended  ·  hotpl8 add -Provider claude"));
     }
 
     #[test]

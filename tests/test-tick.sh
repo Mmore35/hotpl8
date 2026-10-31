@@ -699,6 +699,25 @@ import pathlib,sys,json
 p=pathlib.Path(sys.argv[1]);obj=json.loads(p.read_text());obj['codex']['slots'][0]['id']='invalid/slot';p.write_text(json.dumps(obj))
 PY
 runw "Codex invalid policy: Claude still warms" 1
+cp "$HERE/tests/legacy-policy.json" "$S/policy.json" || exit 2
+
+echo "== the active sign-in's date comes from the folder Claude Code was told to use =="
+# cswap's copy and a file left in the home's own folder are both past their end, and the
+# told folder's sign-in has three days left. A Mac gives the active account no date at all.
+"$PY_BIN" - "$(winpath "$S")" <<'PY'
+import base64,json,pathlib,sys,time
+root=pathlib.Path(sys.argv[1])
+def login(days):
+    return json.dumps({'claudeAiOauth':{'refreshToken':'fictional','refreshTokenExpiresAt':int((time.time()+days*86400)*1000)}})
+for path,text in ((root/'told'/'.credentials.json',login(3)),(root/'home'/'.claude'/'.credentials.json',login(-1)),(root/'home'/'.claude-swap-backup'/'credentials'/'.creds-1-a1@x.enc',base64.b64encode(login(-1).encode()).decode())):
+    path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
+PY
+CLAUDE_FOLDER_BEFORE="$CLAUDE_CONFIG_DIR"; export CLAUDE_CONFIG_DIR="$(winpath "$S/told")"
+mk 1 10 30 10 30 20 20
+grepstat "older copies raise no false alarm" "SIGN-IN ENDED" absent
+if [ "$(uname)" = Darwin ]; then told_date=absent; else told_date=present; fi
+grepstat "told folder's date is said" "slot 1 sign-in ends in" "$told_date"
+export CLAUDE_CONFIG_DIR="$CLAUDE_FOLDER_BEFORE"; rm -rf "$S/told" "$S/home/.claude/.credentials.json" "$S/home/.claude-swap-backup"
 
 echo
 echo "passed=$PASS failed=$FAIL"

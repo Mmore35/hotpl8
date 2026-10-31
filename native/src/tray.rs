@@ -4,6 +4,7 @@
 use crate::automation::work_time;
 use crate::capacity::fresh_timestamp;
 use crate::codex::codex_eligibility;
+use crate::cswap::sign_in_notice;
 use crate::insights::{format_explanation, format_forecast, health, name_text};
 use crate::overview::{format_overview, provider_overview, upper};
 use crate::ps::*;
@@ -169,6 +170,9 @@ fn view_alerts(snapshot: &V, policy: &V, now: Dto) -> R<Vec<Alert>> {
         if s.g("status")?.in_s(&["relogin_required", "no_credentials"])? {
             let text = cat!("Slot ", s.g("slot")?, " needs sign-in. Run: hotpl8 add -Provider claude");
             alerts.push(Alert::new(cat!("claude/", s.g("slot")?, "/auth"), "Claude sign-in needed", text));
+        } else if let Some(notice) = sign_in_notice(&s.g("signInEndsAt")?, now)? {
+            let text = cat!("Slot ", s.g("slot")?, " ", notice, ". Run: hotpl8 add -Provider claude");
+            alerts.push(Alert::new(cat!("claude/", s.g("slot")?, "/sign-in-end"), "Claude sign-in ending", text));
         }
         if s.g("fresh")?.t()? && fresh_timestamp(&s.g("observedAt")?, now)? && runs_out(&s.g("forecast")?)? {
             // Identity and window duration identify the stream; recovery rearms it.
@@ -402,6 +406,27 @@ mod tests {
         let monday = policy(r#","notificationsEnabled":true,"automation":{"schedule":{"days":[1],"start":"09:00","end":"17:00","timeZone":"UTC"}}"#);
         let shown = model(&snapshot(&accounts, &monday, now), &monday, now).ok().unwrap();
         assert!(keys(&shown).is_empty() && !shown.g("notify").ok().unwrap().t().ok().unwrap());
+    }
+
+    #[test]
+    fn a_sign_in_near_its_end_is_announced_once_and_a_lost_one_says_only_that() {
+        let now = noon();
+        let asked = policy(r#","notificationsEnabled":true"#);
+        let ending = |days: f64| {
+            let shown = snapshot(&[account("a", "ok", NOON, 10)], &asked, now);
+            for slot in shown.g("slots").ok().unwrap().arr() {
+                slot.add_member("signInEndsAt", now.plus(days * 86_400.0).ok().unwrap().o().into(), true).ok().unwrap();
+            }
+            model(&shown, &asked, now).ok().unwrap()
+        };
+        assert!(!keys(&ending(20.0)).iter().any(|key| key.ends_with("/sign-in-end")));
+        let near = ending(2.0);
+        let found = keys(&near);
+        assert_eq!(found.iter().filter(|key| key.ends_with("/sign-in-end")).collect::<Vec<_>>(), ["claude/1/sign-in-end"]);
+        // The account that has lost its sign-in already says so, and is not told twice.
+        assert_eq!(found.iter().filter(|key| *key == "claude/2/auth").count(), 1);
+        let said = near.g("alerts").ok().unwrap().arr().into_iter().find(|alert| alert.g("key").ok().unwrap().eq_s("claude/1/sign-in-end").ok().unwrap()).unwrap();
+        assert_eq!(said.g("text").ok().unwrap().s().ok().unwrap(), "Slot 1 sign-in ends in 2d. Run: hotpl8 add -Provider claude");
     }
 
     #[test]

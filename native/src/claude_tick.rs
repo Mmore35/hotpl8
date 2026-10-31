@@ -43,6 +43,8 @@ pub struct Request<'a> {
     pub root: &'a Path,
     /// The user's home directory, where cswap keeps what it stores.
     pub home: &'a Path,
+    /// Claude Code's own folder, which holds the sign-in it is using.
+    pub claude_folder: &'a Path,
     pub clock: &'a dyn Fn() -> R<Dto>,
 }
 
@@ -283,6 +285,17 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         let last_good = a.g("lastGoodAgeSeconds")?;
         let last_good_at = if last_good.is_number() && last_good.ge_i(0)? && last_good.le_i(315_360_000)? { V::from(now.plus(-last_good.dbl()?)?.o()) } else { V::Null };
         entry.set("lastGoodAt", last_good_at)?;
+        let email = a.g("email")?.s()?;
+        let stored = cswap::stored_credential(request.home, slot, &email);
+        // An account switched off on purpose is nobody's to sign in to, so it carries no date.
+        let sign_in_end = if off {
+            None
+        } else if data.g("activeAccountNumber")?.to_int()? == slot {
+            cswap::active_sign_in_end(request.claude_folder, &stored)
+        } else {
+            cswap::sign_in_end(&stored, true)
+        };
+        entry.set("signInEndsAt", sign_in_end.map_or(V::Null, |end| V::from(end.o())))?;
         let observed_at = if valid && age.is_number() && age.ge_i(0)? { V::from(now.plus(-age.dbl()?)?.o()) } else { V::Null };
         entry.set("observedAt", observed_at.clone())?;
         let reason = model_block(&usage.g("scoped")?, policy, slot, now, &observed_at)?;
@@ -397,6 +410,22 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         }
     }
     let mut really_broken: Vec<i32> = broken.iter().copied().filter(|n| !stuck.contains(n)).collect();
+    // A sign-in past its end cannot renew, however it reads now: only a person can replace
+    // it. A request through it would be refused, so it is neither tested nor warmed.
+    let (mut ended, mut ending) = (Vec::new(), Vec::new());
+    for n in &prefer {
+        let e = acc.get(*n);
+        if !e.t()? {
+            continue;
+        }
+        match cswap::sign_in_left(&e.g("signInEndsAt")?, now)? {
+            Some(left) if left <= 0.0 => ended.push(*n),
+            Some(left) => ending.push((*n, left)),
+            None => {}
+        }
+    }
+    stuck.retain(|n| !ended.contains(n));
+    really_broken.retain(|n| !ended.contains(n));
     let mut any_fresh = false;
     for n in &prefer {
         let e = acc.get(*n);
@@ -453,9 +482,13 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             if !e.t()? || !e.g("warmFresh")?.t()? || !e.g("cold")?.t()? {
                 continue;
             }
+            if ended.contains(&n) {
+                continue;
+            }
             // Every request spends a little of the week, so an account near its weekly
-            // limit is left alone. The active account is not excluded: a request through
-            // `cswap run` uses a sign-in of its own and cannot disturb the live session.
+            // limit is left alone. The active account is not excluded, and its request
+            // runs on the live sign-in, not on one of its own: `cswap run` has no separate
+            // session for the account already active.
             let h7 = e.g("h7")?;
             if !h7.is_null() && h7.lt(&V::Dbl(warm_min_7d_for(policy, n)?))? {
                 continue;
@@ -562,6 +595,9 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     if !really_broken.is_empty() {
         calls.push(format!("slot {} NEEDS RE-LOGIN -> hotpl8 add -Provider claude", joined(&really_broken)));
     }
+    if !ended.is_empty() {
+        calls.push(format!("slot {} SIGN-IN ENDED -> hotpl8 add -Provider claude", joined(&ended)));
+    }
     if !stuck.is_empty() {
         let hours = V::Dbl(stale_s / 3600.0).to_int()?;
         calls.push(format!("slot {} QUARANTINE STALE (>{hours}h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account", joined(&stuck)));
@@ -581,6 +617,9 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         if let Some(target) = target.filter(|_| held_switch) {
             verdict += &format!(" (suppressed -> slot {target})");
         }
+    }
+    for (n, left) in &ending {
+        verdict += &format!(" · slot {n} sign-in ends in {} -> sign in again first: hotpl8 add -Provider claude", cswap::sign_in_left_text(*left));
     }
     if switched {
         verdict += &format!(" · switched -> slot {active}");
@@ -751,6 +790,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             "fresh" => e.g("fresh")?.t()?,
             "observedAt" => e.g("observedAt")?,
             "lastGoodAt" => e.g("lastGoodAt")?,
+            "signInEndsAt" => e.g("signInEndsAt")?,
             "streamKey" => stream_key(state_text, &e.g("identity")?.s()?),
             "scoped" => usage.g("scoped")?.arr(),
             "warmOutcome" => warm_outcome,
@@ -900,7 +940,7 @@ pub(crate) mod tests {
         fn tick_as(&self, provider: &str, state: &Path, control: &Path, policy: &V, observe_only: bool) -> R<Option<Collected>> {
             std::fs::create_dir_all(state).unwrap();
             let clock = || Dto::parse(NOON)?.plus_seconds(self.later.get());
-            claude_tick(&Request { policy, state, control, generation: self.generation.get(), provider, cswap: Some(&self.stub), observe_only, root: &self.directory, home: &self.home, clock: &clock })
+            claude_tick(&Request { policy, state, control, generation: self.generation.get(), provider, cswap: Some(&self.stub), observe_only, root: &self.directory, home: &self.home, claude_folder: &self.directory.join("claude folder"), clock: &clock })
         }
         pub(crate) fn done(self) {
             crate::time::set_zone(None);
@@ -1016,7 +1056,7 @@ pub(crate) mod tests {
             );
             assert_eq!(
                 names(&dig(p, "slots.0")),
-                ["slot", "label", "registered", "plan", "active", "cold", "fresh", "observedAt", "lastGoodAt", "streamKey", "scoped", "warmOutcome", "actionBlock", "modelBlock", "status", "used5h", "reset5h", "used7d", "reset7d"]
+                ["slot", "label", "registered", "plan", "active", "cold", "fresh", "observedAt", "lastGoodAt", "signInEndsAt", "streamKey", "scoped", "warmOutcome", "actionBlock", "modelBlock", "status", "used5h", "reset5h", "used7d", "reset7d"]
             );
             let slot = |place: usize, members: &[&str]| members.iter().map(|member| text(p, &format!("slots.{place}.{member}"))).collect::<Vec<_>>().join(" ");
             assert_eq!(slot(0, &["slot", "label", "registered", "active", "cold", "fresh"]), r#"1 "One" true false false true"#);
@@ -1058,6 +1098,102 @@ pub(crate) mod tests {
             assert_eq!(kept(&lab.state), ["claude-plans.json", "critical-claude.json", "hold.json", "parked.json"]);
             lab.done();
         }
+    }
+
+    /// Base64, as cswap stores a sign-in.
+    fn encoded(bytes: &[u8]) -> String {
+        const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let bits = chunk.iter().fold(0_u32, |bits, byte| bits << 8 | u32::from(*byte)) << (8 * (3 - chunk.len()));
+            for place in 0..4 {
+                out.push(if place <= chunk.len() { LETTERS[(bits >> (18 - 6 * place) & 63) as usize] as char } else { '=' });
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_sign_in_near_its_end_is_said_and_one_past_it_is_left_alone() {
+        let lab = Lab::new("tick-sign-in-end");
+        // The lab's noon is 1791288000 seconds after the epoch.
+        let end = |days: f64| 1_791_288_000_000_i64 + (days * 86_400_000.0) as i64;
+        let store = |slot: i32, email: &str, days: f64| {
+            let path = cswap::stored_credential(&lab.home, slot, email);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let text = format!(r#"{{"claudeAiOauth":{{"refreshToken":"fictional-{slot}","expiresAt":1791288000000,"refreshTokenExpiresAt":{}}}}}"#, end(days));
+            std::fs::write(path, encoded(text.as_bytes())).unwrap();
+        };
+        let plain = |path: PathBuf, days: f64| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, format!(r#"{{"claudeAiOauth":{{"refreshToken":"fictional-live","refreshTokenExpiresAt":{}}}}}"#, end(days))).unwrap();
+        };
+        let run = |name: &str, policy_text: &str| {
+            let state = lab.directory.join(name);
+            let seen = lab.tick_in(&state, &policy(policy_text), false).ok().flatten().unwrap();
+            (seen.lines[0].clone(), seen.payload)
+        };
+        let (one, two) = ("one@example.invalid", "two@example.invalid");
+
+        // Far away: nothing is said, and the date is there for anyone who reads it.
+        lab.list(&pool(1, ONE, TWO));
+        store(2, two, 20.0);
+        let (line, payload) = run("far", WATCH);
+        assert!(!line.contains("sign-in"), "{line}");
+        assert_eq!(text(&payload, "slots.0.signInEndsAt"), r#""2026-10-26T12:00:00.0000000+00:00""#);
+        assert_eq!(text(&payload, "slots.1.signInEndsAt"), "null");
+
+        // Within the week: said, and nothing is held back on account of it.
+        store(2, two, 5.0);
+        let (line, _) = run("near", WATCH);
+        assert!(line.contains("slot 2 sign-in ends in 5d -> sign in again first: hotpl8 add -Provider claude"), "{line}");
+
+        // Switched off on purpose: not mentioned, however near the date.
+        lab.list(&pool(1, ONE, &with(TWO, r#""number":2,"#, r#""number":2,"disabled":true,"#)));
+        let (line, payload) = run("off", WATCH);
+        assert!(!line.contains("slot 2 sign-in"), "{line}");
+        assert_eq!(text(&payload, "slots.0.signInEndsAt"), "null");
+        lab.list(&pool(1, ONE, TWO));
+
+        // The active account on a Mac has no date: nothing there can be trusted to carry it.
+        let mac = cfg!(target_os = "macos");
+        store(1, one, 2.0);
+        let (line, payload) = run("stored", WATCH);
+        assert_eq!(line.contains("slot 1 sign-in ends in 2d"), !mac, "{line}");
+        assert_eq!(text(&payload, "slots.1.signInEndsAt") == "null", mac);
+
+        // The active account reads the sign-in in the folder Claude Code uses, not cswap's
+        // older copy, and not a file left in the home's own folder.
+        plain(lab.directory.join("claude folder").join(".credentials.json"), 25.0);
+        plain(lab.home.join(".claude").join(".credentials.json"), -1.0);
+        let (line, payload) = run("live", WATCH);
+        assert!(!line.contains("slot 1 sign-in") && !line.contains("slot 1 SIGN-IN"), "{line}");
+        assert_eq!(text(&payload, "slots.1.signInEndsAt"), if mac { "null" } else { r#""2026-10-31T12:00:00.0000000+00:00""# });
+
+        // Past its end: a call for a person at once, without waiting for a verdict to
+        // grow stale, and no request is spent on it.
+        lab.list(&pool(1, ONE, &cold(TWO)));
+        store(2, two, -1.0);
+        let (line, _) = run("ended-warm", WARM);
+        assert!(line.contains("slot 2 SIGN-IN ENDED -> hotpl8 add -Provider claude"), "{line}");
+        assert!(lab.calls().is_empty(), "{:?}", lab.calls());
+        lab.list(&pool(1, ONE, TWO_DEAD));
+        let (line, _) = run("ended-probe", PROBE);
+        assert!(line.contains("slot 2 SIGN-IN ENDED"), "{line}");
+        assert!(!line.contains("QUARANTINE") && !line.contains("NEEDS RE-LOGIN"), "{line}");
+        assert!(lab.calls().is_empty(), "{:?}", lab.calls());
+
+        // Signing in again sets a new date, and the account is warmed and tested as before.
+        store(2, two, 28.0);
+        lab.list(&pool(1, ONE, &cold(TWO)));
+        let (line, _) = run("signed-in-warm", WARM);
+        assert!(!line.contains("SIGN-IN ENDED"), "{line}");
+        assert_eq!(lab.calls().len(), 1, "{:?}", lab.calls());
+        lab.list(&pool(1, ONE, TWO_DEAD));
+        let (line, _) = run("signed-in-probe", PROBE);
+        assert!(!line.contains("SIGN-IN ENDED"), "{line}");
+        assert_eq!(lab.calls().len(), 2, "{:?}", lab.calls());
+        lab.done();
     }
 
     #[test]
