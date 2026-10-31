@@ -4,7 +4,7 @@ HotPl8 has no telemetry service. Quota collection invokes native provider tools,
 
 The state directory contains policy.json (account homes/labels and action choices), status snapshots, Codex observations and identity/binding hashes, warming timestamps, a lock file, and bounded event logs. Codex observation history is capped; event logs rotate. Hashes and quotas can still identify or describe a user and are not anonymous data. Do not upload the state folder.
 
-Native Codex owns sign-in and token refresh. HotPl8 reads native identity information, including the account identity field in auth.json when available, without persisting its tokens. Legacy Claude warming/recovery reads credential-generation markers and deletes a cswap session credential copy; this remains experimental. Monitoring mode bypasses that path. Credentials are never included in release archives.
+Native Codex owns sign-in and token refresh. HotPl8 reads native identity information, including the account identity field in auth.json when available, without persisting its tokens. Legacy Claude warming/recovery reads credential-generation markers and deletes a cswap session credential copy; this remains experimental. HotPl8 also reads the date a Claude sign-in ends from the same credential files and keeps only that date. Monitoring mode bypasses that path. Credentials are never included in release archives.
 
 `status -AsJson` is local operational output and can contain private labels. `doctor -AsJson` excludes labels, account IDs, paths, tokens, environment values, and native output. Error events contain fixed codes rather than raw exception/server messages.
 

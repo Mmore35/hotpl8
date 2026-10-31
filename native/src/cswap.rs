@@ -212,6 +212,59 @@ pub fn credential_mark(path: &Path, encoded: bool) -> String {
     read().unwrap_or_else(|| "?".into())
 }
 
+/// The sign-in Claude Code itself is using, for the account that is active now.
+pub fn live_credential(home: &Path) -> PathBuf {
+    home.join(".claude").join(".credentials.json")
+}
+
+/// When a sign-in can no longer be renewed, by the provider's own date. Each renewal
+/// replaces the token and leaves this date where it was, so a sign-in in daily use still
+/// ends and only a person signing in again sets a new one. `None` says the file does not
+/// tell: it is absent, unreadable, or written by a client that does not keep the date.
+pub fn sign_in_end(path: &Path, encoded: bool) -> Option<Dto> {
+    let bytes = std::fs::read(path).ok().filter(|bytes| bytes.len() <= 1_048_576)?;
+    let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes).to_vec();
+    let bytes = if encoded { base64(String::from_utf8_lossy(&bytes).trim())? } else { bytes };
+    let sign_in = json::parse(&String::from_utf8_lossy(&bytes), "").ok()?.g("claudeAiOauth").ok()?;
+    let end = sign_in.g("refreshTokenExpiresAt").ok()?;
+    if !end.is_number() {
+        return None;
+    }
+    Dto::from_unix_milliseconds(end.to_long().ok()?).ok()
+}
+
+/// How long before its end a sign-in is mentioned. The client's own notice comes three
+/// days before, and only inside its own screen.
+const SIGN_IN_WARN_SECONDS: f64 = 7.0 * 86_400.0;
+
+/// The seconds left of a sign-in that is near its end, not above zero once it has passed.
+/// `None` when the end is unknown or still far away.
+pub fn sign_in_left(ends_at: &V, now: Dto) -> R<Option<f64>> {
+    if !ends_at.t()? {
+        return Ok(None);
+    }
+    let Ok(end) = Dto::parse_external(&ends_at.s()?) else { return Ok(None) };
+    let left = end.since(now).total_seconds();
+    Ok((left <= SIGN_IN_WARN_SECONDS).then_some(left))
+}
+
+/// How much of a sign-in is left, in the largest unit that fits.
+pub fn sign_in_left_text(left: f64) -> String {
+    let seconds = left.max(0.0) as i64;
+    if seconds >= 86_400 {
+        format!("{}d", seconds / 86_400)
+    } else if seconds >= 3_600 {
+        format!("{}h", seconds / 3_600)
+    } else {
+        format!("{}m", seconds / 60)
+    }
+}
+
+/// What to tell a person about a sign-in near or past its end, once for any screen.
+pub fn sign_in_notice(ends_at: &V, now: Dto) -> R<Option<String>> {
+    Ok(sign_in_left(ends_at, now)?.map(|left| if left <= 0.0 { "sign-in ended".to_string() } else { format!("sign-in ends in {}", sign_in_left_text(left)) }))
+}
+
 /// A request that worked through a session of the account's own, yet
 /// left the stored sign-in exactly as it was. The session renewed its own copy, that copy
 /// is deleted afterwards, and the stored one was not replaced: the account will need a
@@ -297,6 +350,42 @@ mod tests {
     /// A sign-in no account has: `{"claudeAiOauth":{"refreshToken":"fictional-refresh-token","expiresAt":1791288000000}}`.
     const SESSION: &str = r#"{"claudeAiOauth":{"refreshToken":"fictional-refresh-token","expiresAt":1791288000000}}"#;
     const STORED: &str = "eyJjbGF1ZGVBaU9hdXRoIjp7InJlZnJlc2hUb2tlbiI6ImZpY3Rpb25hbC1yZWZyZXNoLXRva2VuIiwiZXhwaXJlc0F0IjoxNzkxMjg4MDAwMDAwfX0=";
+
+    #[test]
+    fn a_sign_in_says_when_it_ends_and_never_guesses() {
+        let directory = scratch("sign-in-end");
+        let plain = directory.join("plain.json");
+        let noon = Dto::parse("2026-10-06T12:00:00Z").ok().unwrap().o();
+        std::fs::write(&plain, r#"{"claudeAiOauth":{"refreshToken":"fictional","refreshTokenExpiresAt":1791288000000}}"#).unwrap();
+        assert_eq!(sign_in_end(&plain, false).unwrap().o(), noon);
+        // `{"claudeAiOauth":{"refreshToken":"fictional","refreshTokenExpiresAt":1791288000000}}`, as cswap stores it.
+        let stored = directory.join("stored.enc");
+        std::fs::write(&stored, "eyJjbGF1ZGVBaU9hdXRoIjp7InJlZnJlc2hUb2tlbiI6ImZpY3Rpb25hbCIsInJlZnJlc2hUb2tlbkV4cGlyZXNBdCI6MTc5MTI4ODAwMDAwMH19").unwrap();
+        assert_eq!(sign_in_end(&stored, true).unwrap().o(), noon);
+        // Nothing that does not state the date is taken to have one.
+        std::fs::write(&plain, SESSION).unwrap();
+        assert!(sign_in_end(&plain, false).is_none());
+        std::fs::write(&plain, r#"{"claudeAiOauth":{"refreshTokenExpiresAt":"soon"}}"#).unwrap();
+        assert!(sign_in_end(&plain, false).is_none());
+        std::fs::write(&plain, "not json").unwrap();
+        assert!(sign_in_end(&plain, false).is_none());
+        assert!(sign_in_end(&directory.join("absent"), false).is_none());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn a_sign_in_is_mentioned_only_near_its_end() {
+        let now = Dto::parse("2026-10-06T12:00:00Z").ok().unwrap();
+        let notice = |ends: &str| sign_in_notice(&V::from(ends), now).ok().unwrap();
+        assert_eq!(notice("2026-10-13T12:00:01Z"), None);
+        assert_eq!(notice("2026-10-13T12:00:00Z").as_deref(), Some("sign-in ends in 7d"));
+        assert_eq!(notice("2026-10-06T14:30:00Z").as_deref(), Some("sign-in ends in 2h"));
+        assert_eq!(notice("2026-10-06T12:10:00Z").as_deref(), Some("sign-in ends in 10m"));
+        assert_eq!(notice("2026-10-06T12:00:00Z").as_deref(), Some("sign-in ended"));
+        assert_eq!(notice("2026-09-06T12:00:00Z").as_deref(), Some("sign-in ended"));
+        assert_eq!(notice("not a time"), None);
+        assert_eq!(sign_in_notice(&V::Null, now).ok().unwrap(), None);
+    }
 
     #[test]
     fn base64_reads_what_dotnet_reads() {

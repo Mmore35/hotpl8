@@ -102,6 +102,7 @@ scoped model limits | answer 85e1c9571ab1033b | answer 3f5b020bb2c545bc | answer
 scoped model limits not observed | answer c176c0c5f2e4600a | answer 0db430974673321a | answer ab4493df4991f6a3 | answer 41c5d054a232afea
 scoped model limits with capacity | answer a1bdd87b7518867a | answer 0907da00e20b7fca | answer 0e75a064d64052e1 | answer 8648bc6b6229d389
 account needs sign-in | answer 2c6acb46a9506b7f | answer f4f837adbff21ed4 | answer f4dcab53ef983350 | answer 3f7e0459222243f1
+sign-in near and past its end | answer 458b18e85bd19597 | answer 14933e354794e656 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
 account signed out recently | answer a94137699fdd8b5e | answer cf7589f490c61c2a | answer 10fa0921ab542714 | answer 8e395179eafc4730
 Codex plan ended | answer c17fcfb7970a9bf3 | answer ca773a8cbd70475e | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
 same subscription enrolled twice | answer b0966e8130dde4b4 | answer f5fc2b80f7538ae3 | answer 24939750c04c072d | answer b58a18257c787d8f
