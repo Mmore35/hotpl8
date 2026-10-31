@@ -213,7 +213,7 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
 HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
 Claude: active slot 1 | 
-  Everyday [1] 5h no limit | 7d 46% remaining | ok
+  Everyday [1] 7d 46% remaining | ok
   Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
 Codex: next launch = work |  | observed 
   Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
@@ -235,7 +235,7 @@ CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; 
 Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
 HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
 Claude: active slot 1 | 
-  Everyday [1] 5h no limit | 7d 46% remaining | ok
+  Everyday [1] 7d 46% remaining | ok
   Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
 Codex: next launch = work |  | observed 
   Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00

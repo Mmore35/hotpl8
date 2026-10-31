@@ -384,7 +384,6 @@
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
 │  CLAUDE  /  2 subscriptions                                                                      │
 │  ● Everyday  [1]  ·  ACTIVE · Ultra                                                              │
-│    5h  no limit                                                                                  │
 │    7d  █████████▏··········   46%   reset 2d 04h  ·  Mon 16:00                                   │
 │                                                                                                  │
 │  ○ Reserve  [2]  ·  RESERVE                                                                      │
@@ -414,7 +413,6 @@
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
 │  CLAUDE  /  2 subscriptions                                                                      │
 │  ● Everyday  [1]  ·  STALE · Ultra                                                               │
-│    5h  no limit                                                                                  │
 │    7d  █████████▏··········   46%   reset 2d 04h  ·  Mon 16:00                                   │
 │    last read 20m ago  ·  awaiting update                                                         │
 │                                                                                                  │

@@ -48,14 +48,20 @@ try{
         }
     }
     Check 'the frame a terminal is sent is the frame that is printed, in colours the decoder reads' {
-        $fixture=Get-Hotpl8ScreenshotFixture -Operations
+        $fixture=Get-Hotpl8ScreenshotFixture -Operations -FixedClock
         $state=New-State 'fixed' $fixture
         $esc=[string][char]27
         $frames=@{}
         foreach($view in @('watch','nyan')){
             foreach($colours in @('true','indexed')){
                 $printed=Get-Frame $state $fixture $view @('--colours',$colours)
-                if($view -eq 'watch'){Assert ((($printed -join "`n").Contains('5h  no limit')) -and -not ($printed -join "`n").Contains('no reading')) ($printed -join "`n")}
+                if($view -eq 'watch'){
+                    $said=$printed -join "`n"
+                    Assert ($said -cmatch '\bPro\b' -and $said -cmatch '\bMax\b' -and $said -cmatch '\bUltra\b' -and -not $said.Contains('no limit') -and -not $said.Contains('no reading')) $said
+                    # The Ultra account's first row is its week: it has no five-hour row.
+                    $ultra=0..($printed.Count-1)|Where-Object{$printed[$_].Contains('Ultra')}|Select-Object -First 1
+                    Assert ($printed[$ultra+1] -match '\b7d\b') $said
+                }
                 $sent=Get-Frame $state $fixture $view @('--colours',$colours,'--ansi')
                 $name=$view+' in '+$colours
                 Assert ($sent.Count -eq $printed.Count -and $printed.Count -le 40) ($name+': '+$sent.Count+' rows sent, '+$printed.Count+' printed')
@@ -74,6 +80,13 @@ try{
             }
         }
         Assert (@($frames.Values|Select-Object -Unique).Count -eq 4) 'two of the four frames are one frame'
+    }
+    Check 'the preview names every Claude plan though an installed launcher leaves the plan time alone' {
+        # What that launcher does: the fixture as it comes, drawn at the real time.
+        $fixture=Get-Hotpl8ScreenshotFixture
+        $state=New-State 'preview' $fixture
+        $said=(Get-Frame $state @{now=[datetimeoffset]::UtcNow} 'watch' @('--colours','true')) -join "`n"
+        Assert ($said -cmatch '\bPro\b' -and $said -cmatch '\bMax\b' -and $said -cmatch '\bUltra\b' -and -not $said.Contains('plan unverified')) $said
     }
     if($windows){
         Check 'an open dashboard moves, freezes on what it had read, scrolls and leaves the console as it found it' {

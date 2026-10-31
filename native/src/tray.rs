@@ -108,7 +108,7 @@ fn account_lines(snapshot: &V, policy: &V, now: Dto) -> R<Vec<String>> {
         let unreported = s.g("limit5h")?.eq_s("unreported")?;
         lines.push(cat!("Claude ", s.g("label")?, ": ", s.g("status")?, if fresh { "" } else if unreported { " / incomplete" } else { " / stale" }));
         if s.g("limit5h")?.eq_s("none")? {
-            lines.push(cat!("  no 5-hour limit; weekly used: ", used_text(&s.g("used7d")?)?));
+            lines.push(cat!("  weekly used: ", used_text(&s.g("used7d")?)?));
         } else if unreported {
             lines.push(cat!("  5h used: not reported; weekly used: ", used_text(&s.g("used7d")?)?));
         } else {

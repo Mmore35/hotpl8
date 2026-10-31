@@ -694,7 +694,8 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         let (h5, h7) = (e.g("h5")?, e.g("h7")?);
         let no_limit = e.g("limit5h")?.eq_s("none")?;
         let unreported = e.g("limit5h")?.eq_s("unreported")?;
-        let five = if no_limit { "5h no limit".to_string() } else if unreported { "5h not reported".to_string() } else if h5.is_null() { "5h unknown".to_string() } else { format!("5h {}%", V::Dbl(100.0).sub(&h5)?.grouped(0)?) };
+        // An account with no five-hour limit has no five-hour part to its line.
+        let five = if no_limit { String::new() } else if unreported { "5h not reported  ".to_string() } else if h5.is_null() { "5h unknown  ".to_string() } else { format!("5h {}%  ", V::Dbl(100.0).sub(&h5)?.grouped(0)?) };
         let seven = if h7.is_null() {
             "7d not reported".to_string()
         } else {
@@ -743,7 +744,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             let note = if policy.g("claudeModels")?.t()? { format!("SCOPED CONSTRAINTS: {}", e.g("modelReason")?.s()?) } else { "SCOPED WINDOWS NOT RANKED ON".to_string() };
             lines.push(format!("  slot {n}  [{note}: {}]", shown.join(", ")));
         }
-        lines.push(format!("  slot {n}{}  {five}  {seven}{flag}", named(&label(n)?)));
+        lines.push(format!("  slot {n}{}  {five}{seven}{flag}", named(&label(n)?)));
     }
 
     // The pattern in force and whether the open windows keep to it, so a drift shows.
@@ -1711,7 +1712,7 @@ pub(crate) mod tests {
         let seen = alone("no-row-ultra", &detected(EMAIL_ONE, "claude-max-20x"));
         assert_eq!(first_slot(&seen), r#""none" true false null null null"#);
         assert_eq!(seen.calls, Vec::<String>::new());
-        assert!(seen.lines.contains("5h no limit") && !seen.lines.contains("incomplete") && !seen.lines.contains("STALE"), "{}", seen.lines);
+        assert!(!seen.lines.contains("5h") && seen.lines.contains("7d") && !seen.lines.contains("incomplete") && !seen.lines.contains("STALE"), "{}", seen.lines);
         assert!(!seen.lines.contains("warm"), "{}", seen.lines);
         assert_eq!(text(&seen.payload, "verdict"), r#""""#);
     }
@@ -1790,7 +1791,7 @@ pub(crate) mod tests {
     fn a_reading_too_old_is_stale_with_no_limit_too() {
         let seen = no_row("no-row-old", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_read(1, EMAIL_ONE, 2000, WEEK));
         assert_eq!(first_slot(&seen), r#""none" false false null null null"#);
-        assert!(seen.lines.contains("5h no limit") && seen.lines.contains("[stale 2000s]") && seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
+        assert!(!seen.lines.contains("5h") && seen.lines.contains("[stale 2000s]") && seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
         assert_eq!(seen.calls, Vec::<String>::new());
     }
 

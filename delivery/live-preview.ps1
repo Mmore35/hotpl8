@@ -20,8 +20,6 @@ foreach($slot in $fixture.status.slots){
     foreach($key in @('reset5h','reset7d')){
         $slot.$key = ([datetimeoffset]::Parse($slot.$key) + $delta).ToString('o')
     }
-    # A plan read long ago is not shown, and the fixture's clock is in the past.
-    if($slot.PSObject.Properties['plan']){$slot.plan.observedAt = ([datetimeoffset]::Parse($slot.plan.observedAt) + $delta).ToString('o')}
 }
 foreach($slot in $fixture.status.providers.codex.slots){
     $slot.label = 'Demo ' + $slot.label

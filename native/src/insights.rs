@@ -169,13 +169,14 @@ pub fn format_status(status: &V, policy: &V, state_directory: &Path, now: Dto) -
         if view.g("provider")?.eq_s("claude")? {
             lines.push(safe_text(&cat!(name, ": active slot ", snapshot.g("active")?, " | ", snapshot.g("verdict")?)));
             for account in snapshot.g("slots")?.arr() {
+                // An account with no five-hour limit has no five-hour part to its row.
                 let five_hour = match account.g("limit5h")?.s()?.as_str() {
-                    "none" => "no limit".to_string(),
-                    "unreported" => "not reported".to_string(),
-                    _ => remaining_text(&account.g("used5h")?)?,
+                    "none" => String::new(),
+                    "unreported" => "5h not reported | ".to_string(),
+                    _ => format!("5h {} | ", remaining_text(&account.g("used5h")?)?),
                 };
                 let weekly = remaining_text(&account.g("used7d")?)?;
-                lines.push(safe_text(&cat!("  ", account.g("label")?, " [", account.g("slot")?, "] 5h ", five_hour, " | 7d ", weekly, " | ", account.g("status")?)));
+                lines.push(safe_text(&cat!("  ", account.g("label")?, " [", account.g("slot")?, "] ", five_hour, "7d ", weekly, " | ", account.g("status")?)));
                 if account.g("warmOutcome")?.t()? {
                     lines.push(cat!("    warm: ", account.path(&["warmOutcome", "outcome"])?));
                 }

@@ -798,8 +798,8 @@ impl Pass<'_> {
             }
             for (label, used, reset) in [("5h", "used5h", "reset5h"), ("7d", "used7d", "reset7d")] {
                 let key = cat!(provider.id, "|", id, "|", label);
+                // No five-hour limit, so no row for one: the plan beside the name says why.
                 if label == "5h" && slot.g("limit5h")?.eq_s("none")? {
-                    out.push(row("    5h  no limit", Tone::Muted));
                     continue;
                 }
                 out.push(self.quota(Reading { label, used: &slot.g(used)?, reset: &slot.g(reset)?, observed: &observed, unix: false, unconfirmed: false, stale: is_stale, key })?);
@@ -1812,6 +1812,11 @@ pub mod tests {
         of_account(&status, 3, r#""fresh":true"#, &format!(r#""fresh":{fresh}"#))
     }
 
+    /// The row drawn under the one that says this.
+    fn row_after<'a>(text: &'a str, said: &str) -> &'a str {
+        text.lines().skip_while(|line| !line.contains(said)).nth(1).unwrap_or("")
+    }
+
     /// Every row as wide as the frame, in the full layout and the compact one.
     fn fits(status: &str) {
         for size in [(100, 100), (60, 24), (48, 17)] {
@@ -1823,10 +1828,11 @@ pub mod tests {
     }
 
     #[test]
-    fn an_account_with_no_five_hour_limit_says_so_where_the_bar_would_be() {
+    fn an_account_with_no_five_hour_limit_has_no_five_hour_row() {
         let status = no_five_hour("none", true, "12:00:00", "claude-max-20x");
         let text = fleet(&status);
-        assert!(text.contains("ACTIVE · Ultra") && text.contains("5h  no limit"), "{text}");
+        assert!(text.contains("ACTIVE · Ultra") && !text.contains("no limit"), "{text}");
+        assert!(row_after(&text, "ACTIVE · Ultra").contains("7d"), "{text}");
         assert!(!text.contains("no reading") && !text.contains("STALE"), "{text}");
         fits(&status);
     }
@@ -1835,7 +1841,8 @@ pub mod tests {
     fn a_reading_too_old_is_stale_though_there_is_no_limit() {
         let status = no_five_hour("none", false, "11:27:00", "claude-max-20x");
         let text = fleet(&status);
-        assert!(text.contains("STALE · Ultra") && text.contains("5h  no limit") && text.contains("last read 33m ago"), "{text}");
+        assert!(text.contains("STALE · Ultra") && !text.contains("no limit") && text.contains("last read 33m ago"), "{text}");
+        assert!(row_after(&text, "STALE · Ultra").contains("7d"), "{text}");
         fits(&status);
     }
 

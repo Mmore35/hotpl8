@@ -11,7 +11,7 @@ if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'docs/assets' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 [void][IO.Directory]::CreateDirectory($output)
 Add-Type -AssemblyName System.Drawing
-$fixture = Get-Hotpl8ScreenshotFixture
+$fixture = Get-Hotpl8ScreenshotFixture -FixedClock
 $reader = Get-Hotpl8NativePath $root
 if (-not [IO.File]::Exists($reader)) { throw 'Build the compiled reader first: scripts/build-native.ps1' }
 # The reader draws a state it reads from disk. Each image stages its fictional one here.

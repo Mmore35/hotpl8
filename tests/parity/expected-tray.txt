@@ -282,7 +282,7 @@ window:
   Observed: 2026-09-12T11:59:18.0000000+00:00
   Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
   Claude Everyday: ok
-    no 5-hour limit; weekly used: 54%
+    weekly used: 54%
   Claude Reserve: ok
     5h used: 8%; weekly used: 17%
   Codex Work [work]: NEXT LAUNCH
@@ -309,7 +309,7 @@ window:
   Observed: 2026-09-12T11:59:18.0000000+00:00
   Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
   Claude Everyday: ok / stale
-    no 5-hour limit; weekly used: 54%
+    weekly used: 54%
   Claude Reserve: ok
     5h used: 8%; weekly used: 17%
   Codex Work [work]: NEXT LAUNCH

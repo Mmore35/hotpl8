@@ -249,12 +249,14 @@ A verified Ultra account has no five-hour limit, and an unverified one has a tem
 
 What each surface says:
 
-| State | Dashboard | Overview | `hotpl8 status` | Tray |
-|---|---|---|---|---|
-| `none` | `ACTIVE · Ultra`, `5h  no limit` | `50% available now (estimate) / 50% weekly left; Ready` | `5h no limit` | `Claude Solo: ok`, `no 5-hour limit; weekly used: 50%` |
-| `none`, plan unanswered | as above, no plan tag, `plan unverified` | as above, no `Profiles:` line | as above | as above |
-| `none`, reading too old | `STALE · Ultra`, `5h  no limit`, `last read 33m ago  ·  awaiting update` | `No account readable now / 1 expired; awaiting update; Readings stale - refresh` | `[stale 2000s]`, `usage STALE (>15m), holding` | `Claude Solo: ok / stale`, `no 5-hour limit; weekly used: 50%` |
-| `unreported` | `INCOMPLETE · Max`, `5h ···· ? no reading`, `5-hour limit not reported  ·  hotpl8 explain` | `No account readable now / 1 reported no 5-hour window; Unavailable now - see details` | `5h not reported`, `[incomplete]`, `slot 1 reported no 5-hour window, holding` | `Claude Solo: ok / incomplete`, `5h used: not reported; weekly used: 50%` |
+`none` has no five-hour row or part on any surface. Only the week is shown, and the plan beside the name says why.
+
+| State | Dashboard | Overview | `hotpl8 status` | Session-start line (`status.txt`) | Tray |
+|---|---|---|---|---|---|
+| `none` | `ACTIVE · Ultra`, then `7d` | `50% available now (estimate) / 50% weekly left; Ready` | `Solo [1] 7d 50% remaining \| ok` | `slot 1  7d 50%` | `Claude Solo: ok`, `weekly used: 50%` |
+| `none`, plan unanswered | as above, no plan tag, `plan unverified` | as above, no `Profiles:` line | as above | as above | as above |
+| `none`, reading too old | `STALE · Ultra`, then `7d`, `last read 33m ago  ·  awaiting update` | `No account readable now / 1 expired; awaiting update; Readings stale - refresh` | as above, verdict `usage STALE (>15m), holding` | `[stale 2000s]`, `usage STALE (>15m), holding` | `Claude Solo: ok / stale`, `weekly used: 50%` |
+| `unreported` | `INCOMPLETE · Max`, `5h ···· ? no reading`, `5-hour limit not reported  ·  hotpl8 explain` | `No account readable now / 1 reported no 5-hour window; Unavailable now - see details` | `5h not reported`, verdict `slot 1 reported no 5-hour window, holding` | `5h not reported`, `[incomplete]`, `slot 1 reported no 5-hour window, holding` | `Claude Solo: ok / incomplete`, `5h used: not reported; weekly used: 50%` |
 
 ## Contract: reading Codex accounts
 
