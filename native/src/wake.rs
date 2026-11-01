@@ -407,6 +407,23 @@ mod tests {
         lab.done();
     }
 
+    /// The collector counts the accounts that are fresh, so an account with no five-hour
+    /// limit makes a whole wake, and one whose row is missing does not.
+    #[test]
+    fn a_wake_is_whole_with_no_five_hour_limit_and_short_with_the_row_missing() {
+        let lab = lab("wake-no-five-hour");
+        let plan = |profile: &str| {
+            let identity = crate::sha256::hash("one@example.invalid|");
+            std::fs::write(lab.state.join("claude-plans.json"), format!(r#"{{"schemaVersion":1,"accounts":{{"1":{{"status":"detected","identityKey":"{identity}","profile":"{profile}","observedAt":"2026-10-06T11:58:00.0000000+00:00","nextAttemptAt":"2026-10-06T12:30:00.0000000+00:00"}}}}}}"#)).unwrap();
+        };
+        lab.list(&listed(1, r#""usageStatus":"ok","usageAgeSeconds":30,"usage":{"sevenDay":{"pct":20,"resetsAt":"2026-10-07T12:00:00.0000000+00:00"}}"#));
+        plan("claude-max-20x");
+        assert_eq!(wake(&lab, 0), "failed=false status=ok fresh=true used=- error=- failures=0 wait=60");
+        plan("claude-max-5x");
+        assert_eq!(wake(&lab, 60), "failed=true status=ok fresh=false used=- error=- failures=0 wait=60");
+        lab.done();
+    }
+
     /// An account cswap could not read this time is that account's state, and cswap is
     /// the one that tries again: it is asked at the next wake whether it has.
     #[test]

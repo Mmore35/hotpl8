@@ -68,12 +68,13 @@ pub fn test_ok(e: &V, m: V, margin7d: V, now: Dto) -> R<V> {
     let mut windows = Vec::new();
     for shape in [["300", "short", "h5"], ["10080", "weekly", "h7"]] {
         let headroom = e.g(shape[2])?;
+        let absent = shape[1] == "short" && e.g("limit5h")?.eq_s("none")?;
         windows.push(obj! {
             "name" => shape[0],
             "scope" => "",
             "role" => shape[1],
-            "state" => "observed",
-            "required" => true,
+            "state" => if absent { "not_applicable" } else { "observed" },
+            "required" => !absent,
             "usedPercent" => if headroom.is_number() { V::Dbl(100.0 - headroom.dbl()?) } else { V::Null },
             "resetAt" => V::Null,
             "observedAt" => now.o(),
@@ -129,6 +130,7 @@ pub fn claude_provider_decision(policy: &V, prefer: &[i32], accounts: &Accounts,
             "status" => if e.g("fresh")?.t()? && !e.g("modelBlocked")?.t()? { "ok" } else { "unavailable" },
             "fresh" => e.g("fresh")?.t()?,
             "observedAt" => if e.g("observedAt")?.t()? { e.g("observedAt")? } else { now.o().into() },
+            "limit5h" => e.g("limit5h")?,
             "used5h" => if h5.is_number() { V::I32(100).sub(&h5)? } else { V::Null },
             "used7d" => if h7.is_number() { V::I32(100).sub(&h7)? } else { V::Null },
             "reset5h" => usage.path(&["fiveHour", "resetsAt"])?,

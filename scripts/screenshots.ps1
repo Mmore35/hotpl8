@@ -11,7 +11,7 @@ if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'docs/assets' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 [void][IO.Directory]::CreateDirectory($output)
 Add-Type -AssemblyName System.Drawing
-$fixture = Get-Hotpl8ScreenshotFixture
+$fixture = Get-Hotpl8ScreenshotFixture -FixedClock
 $reader = Get-Hotpl8NativePath $root
 if (-not [IO.File]::Exists($reader)) { throw 'Build the compiled reader first: scripts/build-native.ps1' }
 # The reader draws a state it reads from disk. Each image stages its fictional one here.
@@ -94,12 +94,12 @@ Write-DashboardImage 'dashboard.png' $fixture.status $fixture.policy 94 25
 Write-DashboardImage 'details.png' $fixture.status $fixture.policy 94 34 999
 $emptyPolicy = @{ mode = 'monitor'; prefer = @(); codex = @{ slots = @() } } | ConvertTo-Json -Depth 4 | ConvertFrom-Json
 Write-DashboardImage 'first-run.png' $null $emptyPolicy 80 24
-$operations=Get-Hotpl8ScreenshotFixture -Operations
+$operations=Get-Hotpl8ScreenshotFixture -Operations -TwoAccounts
 Write-DashboardImage 'operations.png' $operations.status $operations.policy 110 50
 
 Write-DashboardImage 'nyan.png' $fixture.status $fixture.policy 94 40 -Nyan
 
-$healthy=Get-Hotpl8ScreenshotFixture
+$healthy=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $healthy.policy.mode='automate'
 $healthy.status.slots[0].used7d=10
 $healthy.status.providers.codex.slots[0].buckets.codex.windows.'10080'.usedPercent=20
@@ -111,19 +111,19 @@ $healthy.policy.codex.capacity.work.fiveHour=4
 $healthy.policy.codex.capacity.personal.fiveHour=0.8
 Write-DashboardImage 'dashboard.png' $healthy.status $healthy.policy 94 25
 Write-DashboardImage 'nyan.png' $healthy.status $healthy.policy 94 40 -Nyan
-$critical=Get-Hotpl8ScreenshotFixture
+$critical=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $critical.policy.mode='automate'
 $critical.policy.reserve=@()
 $critical.policy|Add-Member NoteProperty critical @{enabled=$true}
 foreach($slot in $critical.status.slots){$slot.used5h=94;$slot.used7d=94}
 Write-DashboardImage 'critical.png' $critical.status $critical.policy 94 25
-$unknown=Get-Hotpl8ScreenshotFixture
+$unknown=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $unknown.policy.PSObject.Properties.Remove('capacity')
 Write-DashboardImage 'unknown.png' $unknown.status $unknown.policy 79 24
 Write-DashboardImage 'narrow.png' $healthy.status $healthy.policy 50 18
 
 # Plenty of weekly inventory, but none is usable before a short-window reset.
-$available=Get-Hotpl8ScreenshotFixture
+$available=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $available.policy.mode='automate';$available.policy.reserve=@()
 $available.policy.PSObject.Properties.Remove('capacity')
 foreach($slot in $available.status.slots){
@@ -133,7 +133,7 @@ foreach($slot in $available.status.slots){
 Write-DashboardImage 'available-now.png' $available.status $available.policy 94 25
 
 # Three equal session allowances; weekly percentages must not lower this bar.
-$session=Get-Hotpl8ScreenshotFixture
+$session=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $session.policy.mode='automate';$session.policy.reserve=@();$session.policy.prefer=@(1,2,3)
 $session.policy.PSObject.Properties.Remove('capacity')
 $third=$session.status.slots[0]|ConvertTo-Json -Depth 12|ConvertFrom-Json

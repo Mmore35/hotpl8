@@ -51,7 +51,7 @@ CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selec
   Capacity: 62% available now (estimate) / 64.5% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +38% available at 2026-09-12T13:23:00.2500000+00:00; assumes no further consumption.
-  Profiles: 1=claude-max-5x
+  Profiles: 1=Max
 CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
   Capacity: 87% available now (weekly cap uncertain) / 35% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -76,7 +76,7 @@ CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selec
   Capacity: 62% available now (estimate) / 64.5% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +38% available at 2026-09-12T13:23:00.2500000+00:00; assumes no further consumption.
-  Profiles: 1=claude-max-5x
+  Profiles: 1=Max
 CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
   Capacity: 87% available now (weekly cap uncertain) / 35% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
@@ -197,6 +197,72 @@ Codex: next launch = work |  | observed
   Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
     codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
   Personal [personal] stale | quota observed 2026-09-12T11:40:00.0000000+00:00
+    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+
+== no 5-hour limit
+CLAUDE: 73.6% available now (estimate) / 64.5% weekly left; Ready; monitor only
+  Capacity: 73.6% available now (estimate) / 64.5% weekly left; normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +4.8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+  Includes reserve allowance.
+  Profiles: 1=Ultra
+CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
+Claude: active slot 1 | 
+  Everyday [1] 7d 46% remaining | ok
+  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
+Codex: next launch = work |  | observed 
+  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
+    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
+  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
+    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+
+== no 5-hour limit, the reading stale
+CLAUDE: 92% available now (estimate) / 1 expired; awaiting update; Account available - manual selection needed; monitor only
+  Capacity: 92% available now (estimate) / 1 expired; awaiting update; normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+  Includes reserve allowance.
+  Profiles: 1=Ultra
+CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
+Claude: active slot 1 | 
+  Everyday [1] 7d 46% remaining | ok
+  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
+Codex: next launch = work |  | observed 
+  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
+    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
+  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
+    codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
+
+== 5-hour limit not reported
+CLAUDE: 92% available now (estimate) / 1 reported no 5-hour window; Account available - manual selection needed; monitor only
+  Capacity: 92% available now (estimate) / 1 reported no 5-hour window; normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
+  Includes reserve allowance.
+  Profiles: 1=Max
+CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+  Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
+  Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+HotPl8 | generated 2026-09-12T11:59:18.0000000+00:00
+Claude: active slot 1 | 
+  Everyday [1] 5h not reported | 7d 46% remaining | ok
+  Reserve [2] 5h 92% remaining | 7d 83% remaining | ok
+Codex: next launch = work |  | observed 
+  Work [work] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
+    codex: observed | 5h 74% remaining; reset 09-12 14:00 +00:00 (observed-active) | 7d 59% remaining; reset 09-15 12:00 +00:00 (observed-active) | warm: 
+  Personal [personal] eligible | quota observed 2026-09-12T11:59:18.0000000+00:00
     codex: observed | 7d 11% remaining; reset 09-13 06:00 +00:00 (observed-active) | warm: 
 
 == policy only
@@ -909,7 +975,7 @@ CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-  Profiles: 1=claude-pro, 2=claude-max-5x
+  Profiles: 1=Pro, 2=Max
 CODEX: 63.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
   Capacity: 63.5% available now (estimate) / 35% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.

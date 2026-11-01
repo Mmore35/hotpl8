@@ -240,6 +240,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
 
     let now = clock()?;
     let mut acc = Accounts::default();
+    let mut no_short_limit = Vec::new();
     for a in &listed {
         // Unsupported native data stays visible as its own state rather than an empty healthy row.
         let mut valid = true;
@@ -279,7 +280,24 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         // is unusable. Fail closed.
         let fresh = a.g("usageStatus")?.eq_s("ok")? && !age.is_null() && age.dbl()? <= max_age;
         let slot = number.to_int()?;
-        let entry = hash! {"n" => slot, "h5" => h5, "h7" => h7, "fresh" => fresh, "cold" => cold, "obj" => a};
+        // A reading with a weekly window and no five-hour one. The provider gives no sign
+        // of its own beyond the row being gone, so only the plan can say that is right; on
+        // any other plan the row is missing and the account stays out of the running.
+        // A reading that has the row is measured, whatever the plan says.
+        let row_absent = a.g("usageStatus")?.eq_s("ok")? && seven.t()? && !five.t()?;
+        let limit5h: V = if !row_absent {
+            V::Null
+        } else if plans::no_five_hour_limit(&plans.g(&slot.to_string())?, now)? {
+            "none".into()
+        } else if fresh {
+            "unreported".into()
+        } else {
+            V::Null
+        };
+        if limit5h.eq_s("none")? {
+            no_short_limit.push(slot);
+        }
+        let entry = hash! {"n" => slot, "h5" => h5, "h7" => h7, "fresh" => fresh, "cold" => cold, "limit5h" => limit5h, "obj" => a};
         acc.put(slot, entry.clone());
         entry.set("identity", sha256::hash(&a.g("email")?.s()?).into())?;
         let last_good = a.g("lastGoodAgeSeconds")?;
@@ -473,7 +491,9 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             V::Null => 20.0,
             set => set.dbl()?,
         };
-        offsets = phase::warm_offsets(policy, &prefer)?;
+        // A window that never opens has no place in the turns the others take.
+        let staggered: Vec<i32> = prefer.iter().copied().filter(|n| !no_short_limit.contains(n)).collect();
+        offsets = phase::warm_offsets(policy, &staggered)?;
         for n in &prefer {
             let (n, slot) = (*n, n.to_string());
             let e = acc.get(n);
@@ -602,8 +622,19 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         let hours = V::Dbl(stale_s / 3600.0).to_int()?;
         calls.push(format!("slot {} QUARANTINE STALE (>{hours}h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account", joined(&stuck)));
     }
+    let mut unreported = Vec::new();
+    let mut registered = 0;
+    for n in &prefer {
+        let e = acc.get(*n);
+        registered += i32::from(e.t()? && !e.g("obj")?.g("usageStatus")?.eq_s("disabled")?);
+        if e.g("limit5h")?.eq_s("unreported")? {
+            unreported.push(*n);
+        }
+    }
     let mut verdict = if !calls.is_empty() {
         format!(" · {}", calls.join(" · "))
+    } else if !any_fresh && !unreported.is_empty() && unreported.len() as i32 == registered {
+        format!(" · slot {} reported no 5-hour window, holding", joined(&unreported))
     } else if !any_fresh {
         format!(" · usage STALE (>{}m), holding", V::Dbl(max_age / 60.0).to_int()?)
     } else if !any_eligible {
@@ -661,7 +692,10 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         }
         let a = e.g("obj")?;
         let (h5, h7) = (e.g("h5")?, e.g("h7")?);
-        let five = if h5.is_null() { "5h unknown".to_string() } else { format!("5h {}%", V::Dbl(100.0).sub(&h5)?.grouped(0)?) };
+        let no_limit = e.g("limit5h")?.eq_s("none")?;
+        let unreported = e.g("limit5h")?.eq_s("unreported")?;
+        // An account with no five-hour limit has no five-hour part to its line.
+        let five = if no_limit { String::new() } else if unreported { "5h not reported  ".to_string() } else if h5.is_null() { "5h unknown  ".to_string() } else { format!("5h {}%  ", V::Dbl(100.0).sub(&h5)?.grouped(0)?) };
         let seven = if h7.is_null() {
             "7d not reported".to_string()
         } else {
@@ -681,6 +715,8 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             format!("  [{status} - re-login]")
         } else if !status.is_empty() && V::s_of(&status).ne_s("ok")? {
             format!("  [{status}]")
+        } else if unreported {
+            "  [incomplete]".to_string()
         } else if !e.g("fresh")?.t()? {
             format!("  [stale {}s]", a.g("usageAgeSeconds")?.to_int()?)
         } else if e.g("cold")?.t()? {
@@ -708,7 +744,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             let note = if policy.g("claudeModels")?.t()? { format!("SCOPED CONSTRAINTS: {}", e.g("modelReason")?.s()?) } else { "SCOPED WINDOWS NOT RANKED ON".to_string() };
             lines.push(format!("  slot {n}  [{note}: {}]", shown.join(", ")));
         }
-        lines.push(format!("  slot {n}{}  {five}  {seven}{flag}", named(&label(n)?)));
+        lines.push(format!("  slot {n}{}  {five}{seven}{flag}", named(&label(n)?)));
     }
 
     // The pattern in force and whether the open windows keep to it, so a drift shows.
@@ -771,7 +807,10 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             }
         };
         let outcome = outcomes.g(&format!("claude:{n}"))?;
-        let warm_outcome = if outcome.is_null() {
+        // Warming means nothing to an account with no window to open: what it did before is
+        // kept on file and not shown as if it still applied.
+        let no_limit = e.g("limit5h")?.eq_s("none")?;
+        let warm_outcome = if outcome.is_null() || no_limit {
             V::Null
         } else {
             let mut shown = Vec::new();
@@ -780,7 +819,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             }
             new_obj(shown)
         };
-        slots.push(obj! {
+        let slot = obj! {
             "slot" => n,
             "label" => label(n)?,
             "registered" => true,
@@ -794,14 +833,19 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             "streamKey" => stream_key(state_text, &e.g("identity")?.s()?),
             "scoped" => usage.g("scoped")?.arr(),
             "warmOutcome" => warm_outcome,
-            "actionBlock" => action_block(policy, state, provider, &n.to_string(), "warm", now)?.map(V::from),
+            "actionBlock" => if no_limit { None } else { action_block(policy, state, provider, &n.to_string(), "warm", now)?.map(V::from) },
             "modelBlock" => e.g("modelReason")?,
             "status" => a.g("usageStatus")?.s()?,
             "used5h" => used(&five)?,
             "reset5h" => reset(&five)?,
             "used7d" => used(&seven)?,
             "reset7d" => reset(&seven)?,
-        });
+        };
+        // Written only when it says something, so every other reading keeps its shape.
+        if e.g("limit5h")?.t()? {
+            slot.add_member("limit5h", e.g("limit5h")?, true)?;
+        }
+        slots.push(slot);
     }
     let said = verdict.trim_matches([' ', '·']);
     let proposed = target.map_or(V::Null, V::I32);
@@ -811,6 +855,8 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         let e = acc.get(*n);
         let reason: V = if !e.t()? {
             "not_observed".into()
+        } else if e.g("limit5h")?.eq_s("unreported")? {
+            "five_hour_not_reported".into()
         } else if !e.g("fresh")?.t()? {
             "stale_or_unavailable".into()
         } else if e.g("modelBlocked")?.t()? {
@@ -1617,5 +1663,143 @@ pub(crate) mod tests {
             }
         }
         lab.done();
+    }
+
+    /// What a wake made of one reading left without its five-hour window.
+    struct NoRow {
+        payload: V,
+        lines: String,
+        calls: Vec<String>,
+    }
+
+    const EMAIL_ONE: &str = "one@example.invalid";
+    const EMAIL_TWO: &str = "two@example.invalid";
+    const WEEK: &str = r#""sevenDay":{"pct":50,"resetsAt":"2026-10-09T12:00:00.0000000+00:00"},"scoped":[{"name":"Fable","pct":0,"resetsAt":null}]"#;
+    const SOLO: &str = r#"{"prefer":[1],"reserve":[],"mode":"automate","warm":true,"probeEnabled":true,"switchEnabled":true,"order":"soonest-reset","pattern":"even","margin5h":25,"margin7d":20,"margin7dWork":5,"hysteresis":10,"labels":{"1":"Solo"}}"#;
+    const DUO: &str = r#"{"prefer":[1,2],"reserve":[],"mode":"automate","warm":true,"probeEnabled":true,"switchEnabled":true,"order":"soonest-reset","pattern":"even","margin5h":25,"margin7d":20,"margin7dWork":5,"hysteresis":10,"labels":{"1":"Big","2":"Small"}}"#;
+
+    /// A plan row bound to the account, not due to be asked again.
+    fn plan_row(email: &str, members: &str) -> String {
+        format!(r#"{{"identityKey":"{}","observedAt":"2026-10-06T11:58:00.0000000+00:00","nextAttemptAt":"2026-10-06T12:10:00.0000000+00:00",{members}}}"#, crate::sha256::hash(&format!("{email}|")))
+    }
+    fn detected(email: &str, profile: &str) -> String {
+        plan_row(email, &format!(r#""status":"detected","profile":"{profile}""#))
+    }
+    fn account_read(number: i32, email: &str, age: i32, usage: &str) -> String {
+        format!(r#"{{"number":{number},"email":"{email}","usageStatus":"ok","usageAgeSeconds":{age},"usage":{{{usage}}}}}"#)
+    }
+    /// One wake, with an old warm request on file for account 1.
+    fn no_row(name: &str, policy_text: &str, plan_rows: &str, accounts: &str) -> NoRow {
+        let lab = Lab::new(name);
+        std::fs::write(lab.state.join("claude-plans.json"), format!(r#"{{"schemaVersion":1,"accounts":{{{plan_rows}}}}}"#)).unwrap();
+        std::fs::write(lab.state.join("warm-outcomes.json"), r#"{"schemaVersion":1,"claude:1":{"schemaVersion":1,"id":"x","provider":"claude","slot":"1","meter":"","sentAt":"2026-10-05T12:00:00.0000000+00:00","expiresAt":"2026-10-05T17:00:00.0000000+00:00","outcome":"expired","observedAt":null,"resetAt":null,"identity":"none"}}"#).unwrap();
+        lab.list(&format!(r#"{{"schemaVersion":1,"activeAccountNumber":1,"accounts":[{accounts}]}}"#));
+        let seen = lab.tick_in(&lab.state, &policy(policy_text), false).ok().unwrap().unwrap();
+        let shown = NoRow { lines: seen.lines.join("\n"), calls: lab.calls(), payload: seen.payload };
+        lab.done();
+        shown
+    }
+    /// The first account's window as `limit5h fresh cold used5h warmOutcome actionBlock`.
+    fn first_slot(seen: &NoRow) -> String {
+        ["limit5h", "fresh", "cold", "used5h", "warmOutcome", "actionBlock"].map(|name| text(&seen.payload, &format!("slots.0.{name}"))).join(" ")
+    }
+    fn alone(name: &str, plan: &str) -> NoRow {
+        no_row(name, SOLO, &format!(r#""1":{plan}"#), &account_read(1, EMAIL_ONE, 30, WEEK))
+    }
+
+    #[test]
+    fn an_ultra_account_with_no_five_hour_row_is_read_in_full_and_never_warmed_or_probed() {
+        let seen = alone("no-row-ultra", &detected(EMAIL_ONE, "claude-max-20x"));
+        assert_eq!(first_slot(&seen), r#""none" true false null null null"#);
+        assert_eq!(seen.calls, Vec::<String>::new());
+        assert!(!seen.lines.contains("5h") && seen.lines.contains("7d") && !seen.lines.contains("incomplete") && !seen.lines.contains("STALE"), "{}", seen.lines);
+        assert!(!seen.lines.contains("warm"), "{}", seen.lines);
+        assert_eq!(text(&seen.payload, "verdict"), r#""""#);
+    }
+
+    #[test]
+    fn an_ultra_account_stays_active_beside_a_pro_and_the_pro_is_warmed_as_usual() {
+        let plans = format!(r#""1":{},"2":{}"#, detected(EMAIL_ONE, "claude-max-20x"), detected(EMAIL_TWO, "claude-pro"));
+        let cold = format!(r#""fiveHour":{{"pct":0,"resetsAt":""}},{WEEK}"#);
+        let seen = no_row("no-row-beside-pro", DUO, &plans, &format!("{},{}", account_read(1, EMAIL_ONE, 30, WEEK), account_read(2, EMAIL_TWO, 30, &cold)));
+        assert_eq!(text(&seen.payload, "active"), "1");
+        assert_eq!(text(&seen.payload, "slots.1.limit5h"), "null");
+        assert_eq!(text(&seen.payload, "slots.1.cold"), "true");
+        assert!(seen.lines.contains("warm request sent to slot 2"), "{}", seen.lines);
+        assert!(!seen.calls.iter().any(|call| call.contains("switch")), "{:?}", seen.calls);
+    }
+
+    #[test]
+    fn an_ultra_account_that_reports_the_window_is_measured_like_any_other() {
+        let cold = format!(r#""fiveHour":{{"pct":0,"resetsAt":""}},{WEEK}"#);
+        let seen = no_row("no-row-unverified-cold", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_read(1, EMAIL_ONE, 30, &cold));
+        assert_eq!(text(&seen.payload, "slots.0.limit5h"), "null");
+        assert_eq!(text(&seen.payload, "slots.0.cold"), "true");
+        assert!(seen.lines.contains("warm request sent to slot 1"), "{}", seen.lines);
+        let open = format!(r#""fiveHour":{{"pct":30,"resetsAt":"2026-10-06T13:00:00.0000000+00:00"}},{WEEK}"#);
+        let seen = no_row("no-row-unverified-open", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_read(1, EMAIL_ONE, 30, &open));
+        assert_eq!(text(&seen.payload, "slots.0.limit5h"), "null");
+        assert_eq!(text(&seen.payload, "slots.0.used5h"), "30");
+        assert!(seen.lines.contains("5h 30%"), "{}", seen.lines);
+    }
+
+    /// The plan does not explain it, so it is a fault, whichever way the plan fails to.
+    #[test]
+    fn a_five_hour_row_missing_on_any_other_plan_holds_and_says_so() {
+        let plans = [
+            ("no-row-pro", detected(EMAIL_ONE, "claude-pro")),
+            ("no-row-max", detected(EMAIL_ONE, "claude-max-5x")),
+            ("no-row-tier-unknown", plan_row(EMAIL_ONE, r#""status":"partial","label":"Max or Ultra (tier unknown)""#)),
+            ("no-row-team", plan_row(EMAIL_ONE, r#""status":"partial","label":"Team""#)),
+            ("no-row-unsupported", plan_row(EMAIL_ONE, r#""status":"unsupported""#)),
+            ("no-row-never-answered", plan_row(EMAIL_ONE, r#""status":"unavailable""#)),
+            ("no-row-last-answer-old", plan_row(EMAIL_ONE, r#""status":"unavailable","lastDetected":{"profile":"claude-max-20x","observedAt":"2026-09-28T12:00:00.0000000+00:00"}"#)),
+        ];
+        for (name, plan) in plans {
+            let seen = alone(name, &plan);
+            assert!(first_slot(&seen).starts_with(r#""unreported" false false null"#), "{name}: {}", first_slot(&seen));
+            assert_eq!(seen.calls, Vec::<String>::new(), "{name}");
+            assert!(seen.lines.contains("5h not reported") && seen.lines.contains("[incomplete]") && seen.lines.contains("slot 1 reported no 5-hour window, holding"), "{name}: {}", seen.lines);
+            assert!(!seen.lines.contains("STALE"), "{name}: {}", seen.lines);
+            assert!(text(&seen.payload, "decisions").contains("five_hour_not_reported") || text(&seen.payload, "decision").contains("five_hour_not_reported"), "{name}: {}", text(&seen.payload, "decision"));
+        }
+    }
+
+    /// Asking for the plan failing is not an answer that it changed.
+    #[test]
+    fn an_ultra_account_whose_plan_cannot_be_asked_stays_without_a_limit_for_a_week() {
+        for failure in ["rate_limited", "unavailable", "authentication_required", "no_credentials"] {
+            let plan = plan_row(EMAIL_ONE, &format!(r#""status":"{failure}","lastDetected":{{"profile":"claude-max-20x","observedAt":"2026-10-05T12:00:00.0000000+00:00"}}"#));
+            let seen = alone(&format!("no-row-unanswered-{failure}"), &plan);
+            assert_eq!(first_slot(&seen), r#""none" true false null null null"#, "{failure}");
+            assert_eq!(text(&seen.payload, "slots.0.plan.profile"), "null", "{failure}");
+        }
+    }
+
+    /// An account switched off is not the reason the one in use is held.
+    #[test]
+    fn a_switched_off_account_does_not_change_why_the_other_is_held() {
+        let plans = format!(r#""1":{},"2":{}"#, detected(EMAIL_ONE, "claude-pro"), detected(EMAIL_TWO, "claude-pro"));
+        let off = with(&account_read(2, EMAIL_TWO, 30, WEEK), r#""number":2,"#, r#""number":2,"disabled":true,"#);
+        let seen = no_row("no-row-beside-off", DUO, &plans, &format!("{},{off}", account_read(1, EMAIL_ONE, 30, WEEK)));
+        assert_eq!(text(&seen.payload, "slots.0.limit5h"), r#""unreported""#);
+        assert!(seen.lines.contains("slot 1 reported no 5-hour window, holding") && !seen.lines.contains("STALE"), "{}", seen.lines);
+    }
+
+    /// With no limit the reading is still a reading, and it can still grow old.
+    #[test]
+    fn a_reading_too_old_is_stale_with_no_limit_too() {
+        let seen = no_row("no-row-old", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_read(1, EMAIL_ONE, 2000, WEEK));
+        assert_eq!(first_slot(&seen), r#""none" false false null null null"#);
+        assert!(!seen.lines.contains("5h") && seen.lines.contains("[stale 2000s]") && seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
+        assert_eq!(seen.calls, Vec::<String>::new());
+    }
+
+    /// A row that is missing on a reading already too old says only that it is old.
+    #[test]
+    fn a_reading_too_old_with_no_plan_to_explain_it_is_only_stale() {
+        let seen = no_row("no-row-old-pro", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-pro")), &account_read(1, EMAIL_ONE, 2000, WEEK));
+        assert_eq!(text(&seen.payload, "slots.0.limit5h"), "null");
+        assert!(seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
     }
 }

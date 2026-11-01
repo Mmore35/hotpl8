@@ -29,8 +29,10 @@ class PlanTests(unittest.TestCase):
             self.assertEqual(plan.classify(profile(tier=tier), EXPECTED)["profile"], "claude-pro")
 
     def test_max_tiers(self):
-        for multiplier in (5, 20):
-            self.assertEqual(plan.classify(profile("claude_max", f"default_claude_max_{multiplier}x"), EXPECTED)["sessionMultiplier"], multiplier)
+        # The tier strings and IDs are the older names; what a person reads is the current one.
+        for tier, stored, label, multiplier in (("5x", "claude-max-5x", "Max", 5), ("20x", "claude-max-20x", "Ultra", None)):
+            result = plan.classify(profile("claude_max", f"default_claude_max_{tier}"), EXPECTED)
+            self.assertEqual((result["profile"], result["label"], result["sessionMultiplier"]), (stored, label, multiplier))
 
     def test_team_with_max_tier_is_not_a_consumer_max_plan(self):
         result = plan.classify(profile("claude_team", "default_claude_max_5x"), EXPECTED)
@@ -52,6 +54,7 @@ class PlanTests(unittest.TestCase):
     def test_new_unknown_tier_does_not_get_an_invented_multiplier(self):
         result = plan.classify(profile("claude_max", "future-tier"), EXPECTED)
         self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["label"], "Max or Ultra (tier unknown)")
         self.assertIsNone(result["sessionMultiplier"])
 
     def test_transport_projects_only_safe_fields(self):

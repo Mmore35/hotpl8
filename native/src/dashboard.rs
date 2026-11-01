@@ -774,6 +774,8 @@ impl Pass<'_> {
             .to_string();
             if state.ne_s("ok")? {
                 badge = state_text(&state.s()?)?;
+            } else if slot.g("limit5h")?.eq_s("unreported")? && !stale {
+                badge = "INCOMPLETE".to_string();
             } else if is_stale {
                 badge = "STALE".to_string();
             } else if slot.g("cold")?.t()? {
@@ -796,12 +798,18 @@ impl Pass<'_> {
             }
             for (label, used, reset) in [("5h", "used5h", "reset5h"), ("7d", "used7d", "reset7d")] {
                 let key = cat!(provider.id, "|", id, "|", label);
+                // No five-hour limit, so no row for one: the plan beside the name says why.
+                if label == "5h" && slot.g("limit5h")?.eq_s("none")? {
+                    continue;
+                }
                 out.push(self.quota(Reading { label, used: &slot.g(used)?, reset: &slot.g(reset)?, observed: &observed, unix: false, unconfirmed: false, stale: is_stale, key })?);
             }
             if compact {
                 continue;
             }
-            if is_stale {
+            if slot.g("limit5h")?.eq_s("unreported")? && !stale {
+                out.push(row("    5-hour limit not reported  ·  hotpl8 explain", Tone::Amber));
+            } else if is_stale {
                 let text = match age(&observed, now)? {
                     Some(age) => format!("last read {} ago  ·  awaiting update", span_text(age)),
                     None => "no valid reading  ·  hotpl8 explain".to_string(),
@@ -1795,6 +1803,56 @@ pub mod tests {
     fn a_reading_gone_stale_and_an_account_signed_out_each_say_what_to_do() {
         let text = fleet(&of_account(&generated("11:00:00"), 1, r#""status":"ok""#, r#""status":"authentication_required""#));
         assert!(text.contains("hotpl8 refresh") && text.contains("SIGN-IN NEEDED") && !text.contains("account unavailable"), "{text}");
+    }
+
+    /// Claude account 3 of the fleet, the active one, with no five-hour reading.
+    fn no_five_hour(limit: &str, fresh: bool, observed: &str, plan: &str) -> String {
+        let said = format!(r#""used5h":null,"limit5h":"{limit}","observedAt":"{}","plan":{{"status":"detected","profile":"{plan}","label":"{}","observedAt":"{}"}}"#, clock(observed), if plan == "claude-max-20x" { "Ultra" } else { "Max" }, clock("11:58:00"));
+        let status = of_account(FLEET, 3, r#""used5h":25"#, &said);
+        of_account(&status, 3, r#""fresh":true"#, &format!(r#""fresh":{fresh}"#))
+    }
+
+    /// The row drawn under the one that says this.
+    fn row_after<'a>(text: &'a str, said: &str) -> &'a str {
+        text.lines().skip_while(|line| !line.contains(said)).nth(1).unwrap_or("")
+    }
+
+    /// Every row as wide as the frame, in the full layout and the compact one.
+    fn fits(status: &str) {
+        for size in [(100, 100), (60, 24), (48, 17)] {
+            let frame = fleet_drawn(status, FLEET_POLICY, &terminal(size.0, size.1));
+            for line in &frame.lines {
+                assert_eq!(paint::text(&line.spans).chars().count(), size.0, "{size:?}: {}", paint::text(&line.spans));
+            }
+        }
+    }
+
+    #[test]
+    fn an_account_with_no_five_hour_limit_has_no_five_hour_row() {
+        let status = no_five_hour("none", true, "12:00:00", "claude-max-20x");
+        let text = fleet(&status);
+        assert!(text.contains("ACTIVE · Ultra") && !text.contains("no limit"), "{text}");
+        assert!(row_after(&text, "ACTIVE · Ultra").contains("7d"), "{text}");
+        assert!(!text.contains("no reading") && !text.contains("STALE"), "{text}");
+        fits(&status);
+    }
+
+    #[test]
+    fn a_reading_too_old_is_stale_though_there_is_no_limit() {
+        let status = no_five_hour("none", false, "11:27:00", "claude-max-20x");
+        let text = fleet(&status);
+        assert!(text.contains("STALE · Ultra") && !text.contains("no limit") && text.contains("last read 33m ago"), "{text}");
+        assert!(row_after(&text, "STALE · Ultra").contains("7d"), "{text}");
+        fits(&status);
+    }
+
+    #[test]
+    fn a_five_hour_window_not_reported_is_incomplete_and_not_stale() {
+        let status = no_five_hour("unreported", false, "12:00:00", "claude-max-5x");
+        let text = fleet(&status);
+        assert!(text.contains("INCOMPLETE · Max") && text.contains("5-hour limit not reported  ·  hotpl8 explain") && text.contains("no reading"), "{text}");
+        assert!(!text.contains("STALE") && !text.contains("awaiting update"), "{text}");
+        fits(&status);
     }
 
     #[test]
