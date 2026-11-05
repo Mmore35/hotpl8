@@ -2053,6 +2053,9 @@ pub mod tests {
         assert!(!page(&alone).contains("probe failed") && !page(&alone).contains("RECENT"), "{}", page(&alone));
         let listed = fleet(&status(&[&old, &old, &day]));
         assert!(!listed.contains("probe failed") && listed.contains("probe sent ·") && !listed.contains("RECENT"), "{listed}");
+        // Too narrow for the footer to carry the one current event: it is listed alone, the old one left out.
+        let narrow = page(&fleet_drawn(&status(&[&old, &day]), FLEET_POLICY, &terminal(48, 100)));
+        assert!(narrow.contains("RECENT") && narrow.contains("probe sent") && !narrow.contains("probe failed"), "{narrow}");
         // Within the day it is shown as before, in the tone that asks for a look.
         let recent = fleet_drawn(&status(&[&event("failed", &clock("11:00:00"))]), FLEET_POLICY, &terminal(100, 24));
         let tone = recent.lines.iter().flat_map(|line| &line.spans).find(|span| span.text.contains("probe failed ·")).map(|span| span.tone);
