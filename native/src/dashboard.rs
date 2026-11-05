@@ -101,6 +101,17 @@ fn age(at: &V, now: Dto) -> R<Option<f64>> {
     catch(|| Ok(now.since(Dto::parse(&at.s()?)?).total_seconds()))
 }
 
+/// How long an automation event stays on the dashboard. An older one is history: each
+/// account's own row already says what state it is in now, so a failure the account has
+/// long since recovered from would only read as a live warning.
+const RECENT_S: f64 = 86_400.0;
+
+/// The recorded events recent enough to show, oldest first. One without a readable time
+/// is kept, since nothing says it is old.
+fn recent(status: &V, now: Dto) -> R<Vec<V>> {
+    filter(&status.g("recentActions")?.each(), |event| Ok(event.t()? && age(&event.g("at")?, now)?.is_none_or(|seconds| seconds <= RECENT_S)))
+}
+
 /// Format-DashboardAge: two units at most, seconds only under a minute.
 fn span_text(seconds: f64) -> String {
     let s = seconds.floor().max(0.0) as i64;
@@ -992,8 +1003,8 @@ impl Pass<'_> {
         }
         // The footer shows the latest event when it has room; list history when there is
         // more than that, or when the caller found no room for a single event.
-        let events = status.g("recentActions")?.each();
-        let recorded = filter(&events, |event| event.t())?.len();
+        let events = recent(status, now)?;
+        let recorded = events.len();
         if !compact && (recorded > 1 || (recorded == 1 && list_lone_event)) {
             out.push(row("  RECENT", Tone::Muted));
             for event in &events[events.len().saturating_sub(3)..] {
@@ -1136,7 +1147,7 @@ fn footer(status: &V, accounts: &[Account], now: Dto, inside: usize, page: &str)
     let keys = ["  q quit  ·  space freeze  ·  ↑↓ scroll", "  q quit  ·  ↑↓ scroll"].into_iter().find(|keys| cells(keys) + cells(page) + 4 <= inside).unwrap_or("  q  ·  ↑↓");
     let gap = (inside as i64 - 2 - cells(keys) as i64 - cells(page) as i64).max(2) as usize;
     let mut activity = None;
-    if let Some(event) = filter(&status.g("recentActions")?.each(), |event| event.t())?.last() {
+    if let Some(event) = recent(status, now)?.last() {
         let note = note(event, accounts, now)?;
         let text = if note.age.is_empty() { note.text } else { format!("{}  ·  {} ago", note.text, note.age) };
         if cells(&text) + 4 <= gap {
@@ -1188,7 +1199,7 @@ pub fn frame(status: &V, policy: &V, now: Dto, view: &View, tweens: &mut Tweens)
     let page_of = |count: usize, at: usize| if count > available { format!("[{}-{}/{count}]", at + 1, count.min(at + available)) } else { String::new() };
     let resolved = |count: usize| view.offset.min(count.saturating_sub(available));
     // A single recent event must appear somewhere: list it when the footer has no room.
-    if height >= 32 && filter(&status.g("recentActions")?.each(), |event| event.t())?.len() == 1 {
+    if height >= 32 && recent(status, now)?.len() == 1 {
         let page = page_of(rows.len(), resolved(rows.len()));
         if footer(status, &accounts, now, inside, &page)?.activity.is_none() {
             rows = pass.rows(false, true)?;
@@ -2030,6 +2041,22 @@ pub mod tests {
         let narrow = page(&fleet_drawn(&one, FLEET_POLICY, &terminal(48, 100)));
         assert!(narrow.contains("RECENT") && narrow.contains("codex next"), "{narrow}");
         assert!(fleet(&and(FLEET, &format!(r#""recentActions":[{event},{event}]"#))).contains("RECENT"));
+    }
+
+    #[test]
+    fn an_event_older_than_a_day_is_no_longer_shown() {
+        let event = |reason: &str, at: &str| format!(r#"{{"provider":"claude","slot":"1","kind":"recovery_probe","reason":"{reason}","at":"{at}"}}"#);
+        let (old, day) = (event("failed", "2026-09-09T11:59:00.0000000+00:00"), event("sent", "2026-09-09T12:01:00.0000000+00:00"));
+        let status = |events: &[&str]| and(FLEET, &format!(r#""recentActions":[{}]"#, events.join(",")));
+        // A failure from more than a day ago is in neither the footer nor the history.
+        let alone = fleet_drawn(&status(&[&old]), FLEET_POLICY, &terminal(100, 24));
+        assert!(!page(&alone).contains("probe failed") && !page(&alone).contains("RECENT"), "{}", page(&alone));
+        let listed = fleet(&status(&[&old, &old, &day]));
+        assert!(!listed.contains("probe failed") && listed.contains("probe sent ·") && !listed.contains("RECENT"), "{listed}");
+        // Within the day it is shown as before, in the tone that asks for a look.
+        let recent = fleet_drawn(&status(&[&event("failed", &clock("11:00:00"))]), FLEET_POLICY, &terminal(100, 24));
+        let tone = recent.lines.iter().flat_map(|line| &line.spans).find(|span| span.text.contains("probe failed ·")).map(|span| span.tone);
+        assert_eq!(tone, Some(Tone::Amber), "{}", page(&recent));
     }
 
     #[test]
