@@ -130,6 +130,43 @@ fn found_in(places: &Places) -> Option<PathBuf> {
     local.or_else(|| places.roaming.as_ref().and_then(|base| beside_python(base.join("Python"))))
 }
 
+/// How long past the moment cswap planned to read an account again a reading is still
+/// waited for: the collector lists cswap every minute, so two of its runs.
+pub const PACED_GRACE_S: f64 = 120.0;
+/// The longest wait between reads cswap plans on purpose: POST_429_MAX_INTERVAL_S (1800)
+/// with its JITTER_FRAC (0.1) on top (claude_swap/poll_policy.py). A plan for a longer
+/// one is not pacing HotPl8 vouches for.
+pub const PACED_MAX_S: f64 = 1800.0 * 1.1;
+
+/// Until when a reading older than HotPl8 would like is one cswap is deliberately not
+/// renewing yet: its own usage cache says this account's reading was taken when the age
+/// says it was and names the moment it will read again. Anything that does not say so
+/// exactly (no cache, another schema, another account, another reading, no plan, a plan
+/// longer than cswap ever makes, a planned read that is long gone) is not pacing: None,
+/// and the reading is stale as before.
+pub fn paced_until(home: &Path, slot: i32, email: &str, organization: &V, age: f64, now: Dto) -> Option<Dto> {
+    let text = std::fs::read_to_string(home.join(".claude-swap-backup").join("cache").join("usage.json")).ok()?;
+    let cache = json::parse_foreign(text.trim_start_matches('\u{feff}')).ok()?;
+    if !cache.g("schemaVersion").ok()?.eq_i(2).ok()? {
+        return None;
+    }
+    let row = cache.g("accounts").ok()?.g(&slot.to_string()).ok()?;
+    if !row.g("email").ok()?.is_str() || row.g("email").ok()?.s().ok()? != email {
+        return None;
+    }
+    if organization.is_str() && row.g("organizationUuid").ok()?.s().ok()? != organization.s().ok()? {
+        return None;
+    }
+    let number = |name: &str| row.g(name).ok().filter(V::is_number).and_then(|value| value.dbl().ok());
+    let (fetched, next) = (number("fetchedAt")?, number("nextPollAt")?);
+    let now = now.unix_seconds() as f64;
+    let consistent = (now - age - fetched).abs() <= 30.0;
+    if !consistent || next < fetched || next - fetched > PACED_MAX_S + 30.0 || now > next + PACED_GRACE_S {
+        return None;
+    }
+    Dto::from_unix_seconds((next + PACED_GRACE_S).ceil() as i64).ok()
+}
+
 /// The name cswap gives an account's own session directory.
 pub fn slug_email(email: &str) -> String {
     email.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '_' }).collect()
@@ -406,6 +443,55 @@ mod tests {
         assert_eq!(notice("2026-09-06T12:00:00Z").as_deref(), Some("sign-in ended"));
         assert_eq!(notice("not a time"), None);
         assert_eq!(sign_in_notice(&V::Null, now).ok().unwrap(), None);
+    }
+
+    /// cswap's cache vouches for an old reading only when it names this account, this very
+    /// reading and a next read cswap could have planned, not long gone.
+    #[test]
+    fn a_reading_is_paced_only_when_cswap_s_own_cache_says_exactly_so() {
+        let directory = scratch("paced-until");
+        let home = directory.join("home");
+        let cache = home.join(".claude-swap-backup").join("cache");
+        let now = Dto::parse("2026-10-06T12:00:00Z").ok().unwrap();
+        let noon = 1_791_288_000_i64;
+        let organization = V::from("org-1");
+        let until = |age: f64| paced_until(&home, 1, "one@example.invalid", &organization, age, now).map(|at| at.unix_seconds() - noon);
+        let row = |email: &str, org: &str, fetched: i64, next: i64| {
+            format!(r#"{{"schemaVersion":2,"accounts":{{"1":{{"email":"{email}","organizationUuid":"{org}","fetchedAt":{},"nextPollAt":{}}}}}}}"#, noon + fetched, noon + next)
+        };
+        let write = |text: &str| std::fs::write(cache.join("usage.json"), text).unwrap();
+        // No cache at all.
+        assert_eq!(until(1200.0), None);
+        std::fs::create_dir_all(&cache).unwrap();
+        // Read twenty minutes ago, next read planned in ten: paced until two minutes past it.
+        write(&row("one@example.invalid", "org-1", -1200, 600));
+        assert_eq!(until(1200.0), Some(720));
+        write(&format!("\u{feff}{}", row("one@example.invalid", "org-1", -1200, 600)));
+        assert_eq!(until(1200.0), Some(720));
+        // The planned read went by more than two minutes ago.
+        write(&row("one@example.invalid", "org-1", -1200, -300));
+        assert_eq!(until(1200.0), None);
+        // Another schema, account, organization or reading.
+        write(&row("one@example.invalid", "org-1", -1200, 600).replace(r#""schemaVersion":2"#, r#""schemaVersion":1"#));
+        assert_eq!(until(1200.0), None);
+        write(&row("someone@example.invalid", "org-1", -1200, 600));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-2", -1200, 600));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-1", -1260, 600));
+        assert_eq!(until(1200.0), None);
+        // No plan, and plans cswap never makes.
+        write(&row("one@example.invalid", "org-1", -1200, 600).replace(r#","nextPollAt""#, r#","plannedAt""#));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-1", -1200, 780));
+        assert_eq!(until(1200.0), Some(900));
+        write(&row("one@example.invalid", "org-1", -1200, 900));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-1", -60, -90));
+        assert_eq!(until(60.0), None);
+        write("not json");
+        assert_eq!(until(1200.0), None);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

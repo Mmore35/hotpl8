@@ -75,6 +75,13 @@ pub(crate) fn detected_plan(plan: &V, now: Dto) -> R<bool> {
     Ok(age.is_some_and(|age| (-5.0..=1200.0).contains(&age)))
 }
 
+/// A published Claude reading the owner need not be told about: fresh, or one cswap is
+/// pacing on purpose and will renew by `pacedUntil`. For what is shown only; whether a
+/// reading may ground a decision is still `fresh` alone.
+pub fn quiet(slot: &V, now: Dto) -> R<bool> {
+    Ok(slot.g("fresh")?.t()? || (slot.g("pacedUntil")?.t()? && Dto::of(&slot.g("pacedUntil")?)?.unix_seconds() >= now.unix_seconds()))
+}
+
 /// Test-Hotpl8FreshTimestamp, from src/common.ps1.
 pub fn fresh_timestamp(timestamp: &V, now: Dto) -> R<bool> {
     Ok(age_seconds(timestamp, now)?.is_some_and(|age| (-5.0..=900.0).contains(&age)))
@@ -195,7 +202,9 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
         let mut reason: V = "".into();
         let mut block_reason = V::Null;
         if claude {
-            fresh = fresh && s.g("fresh")?.t()?;
+            // The bar shows a reading cswap is pacing as read; overview eligibility stays fresh-only.
+            let paced = s.t()? && s.g("status")?.eq_s("ok")? && !s.g("fresh")?.t()? && quiet(&s, now)?;
+            fresh = (fresh && s.g("fresh")?.t()?) || paced;
             let left = |used: V| -> R<V> {
                 if used.is_number() {
                     V::I32(100).sub(&used)

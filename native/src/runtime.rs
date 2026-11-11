@@ -100,7 +100,8 @@ pub fn registered_collection(registration: &V, reading: &Reading, old: &V) -> R<
             // A provider without accounts is never read: the collector skips it first.
             let Some(result) = claude_tick(&request)? else { return throw() };
             let slots = result.payload.g("slots")?;
-            let healthy = filter(&slots.each(), |slot| Ok(slot.g("fresh")?.t()? || slot.g("status")?.eq_s("disabled")?))?.len();
+            // A reading cswap is pacing on purpose is a check that completed: it will be renewed.
+            let healthy = filter(&slots.each(), |slot| Ok(slot.g("fresh")?.t()? || slot.g("pacedUntil")?.t()? || slot.g("status")?.eq_s("disabled")?))?.len();
             // cswap spaces its own requests and makes one only while it is read. Once it
             // has answered for an account, what it said is that account's state; a wait
             // here could bring no reading and would hide the next one.

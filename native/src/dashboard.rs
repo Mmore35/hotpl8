@@ -5,7 +5,7 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use crate::capacity::{detected_plan, fresh_timestamp};
+use crate::capacity::{detected_plan, fresh_timestamp, quiet};
 use crate::contract::resolve_window;
 use crate::cswap::sign_in_notice;
 use crate::insights::{health, name_text};
@@ -774,7 +774,8 @@ impl Pass<'_> {
         out.push(row(Self::heading(provider, "CLAUDE", slots.len())?, Tone::Peach));
         for slot in &slots {
             let (observed, id, state) = (slot.g("observedAt")?, slot.g("slot")?, slot.g("status")?);
-            let is_stale = stale || !slot.g("fresh")?.t()? || (observed.t()? && !fresh_timestamp(&observed, now)?);
+            let paced = !slot.g("fresh")?.t()? && quiet(slot, now)?;
+            let is_stale = stale || !quiet(slot, now)? || (!paced && observed.t()? && !fresh_timestamp(&observed, now)?);
             let mut badge = if slot.g("active")?.t()? {
                 "ACTIVE"
             } else if id.is_in(&policy.g("reserve")?)? {
@@ -2174,6 +2175,16 @@ pub mod tests {
     fn an_account_last_read_long_ago_is_stale_though_the_collector_just_ran() {
         let text = fleet(&of_account(FLEET, 1, r#""status":"ok""#, &format!(r#""observedAt":"{}","status":"ok""#, clock("11:00:00"))));
         assert!(text.contains("Claude 1  [1]  ·  STALE"), "{text}");
+    }
+
+    /// A reading cswap is pacing is drawn as read until two minutes past its planned read.
+    #[test]
+    fn a_reading_cswap_is_pacing_is_drawn_as_read_until_its_planned_read_passes() {
+        let paced = |until: &str| fleet(&of_account(FLEET, 1, r#""fresh":true"#, &format!(r#""fresh":false,"observedAt":"{}","pacedUntil":"{}""#, clock("11:40:00"), clock(until))));
+        let quiet = paced("12:10:00");
+        assert!(quiet.contains("Claude 1  [1]") && !quiet.contains("STALE"), "{quiet}");
+        let gone = paced("11:58:00");
+        assert!(gone.contains("Claude 1  [1]  ·  STALE"), "{gone}");
     }
 
     #[test]

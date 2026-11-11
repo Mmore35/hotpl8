@@ -407,6 +407,22 @@ mod tests {
         lab.done();
     }
 
+    /// A reading cswap's own cache says it will renew is a check that completed: the wake
+    /// is whole, though the reading is still too old to act on.
+    #[test]
+    fn a_wake_is_whole_while_cswap_paces_its_reads() {
+        let lab = lab("wake-paced");
+        let cache = lab.home.join(".claude-swap-backup").join("cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join("usage.json"), r#"{"schemaVersion":2,"accounts":{"1":{"email":"one@example.invalid","fetchedAt":1791286500,"nextPollAt":1791288300}}}"#).unwrap();
+        lab.list(&read(40, 1500));
+        assert_eq!(wake(&lab, 0), "failed=false status=ok fresh=false used=40 error=- failures=0 wait=60");
+        // Past cswap's planned read and the two minutes after it, the reading is only old.
+        lab.list(&read(40, 2400));
+        assert_eq!(wake(&lab, 900), "failed=true status=ok fresh=false used=40 error=- failures=0 wait=60");
+        lab.done();
+    }
+
     /// The collector counts the accounts that are fresh, so an account with no five-hour
     /// limit makes a whole wake, and one whose row is missing does not.
     #[test]

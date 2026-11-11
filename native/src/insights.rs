@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use crate::activity::add_action_event;
-use crate::capacity::fresh_timestamp;
+use crate::capacity::{fresh_timestamp, quiet};
 use crate::codex::format_codex_status;
 use crate::files;
 use crate::forecast::{forecast, update_history};
@@ -289,7 +289,7 @@ fn add_native_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V,
             continue;
         }
         slot.add_member("forecast", V::Null, true)?;
-        if !slot.g("fresh")?.t()? || !slot.g("observedAt")?.t()? {
+        if !quiet(&slot, now)? || !slot.g("observedAt")?.t()? {
             continue;
         }
         let key = cat!("claude/", slot.g("streamKey")?, "/10080");
