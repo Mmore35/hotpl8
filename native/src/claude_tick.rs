@@ -328,6 +328,28 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         entry.set("h5", normalized.g("shortRemaining")?)?;
         entry.set("h7", normalized.g("weeklyRemaining")?)?;
         entry.set("fresh", (fresh && normalized.g("valid")?.t()?).into())?;
+        // Old only because cswap is spacing its reads (it backs off up to 30 minutes after
+        // a 429): said nowhere, but still no ground for a decision.
+        let paced = if !off && a.g("usageStatus")?.eq_s("ok")? && age.is_number() && age.dbl()? > max_age && !normalized.g("valid")?.t()? {
+            // Sound in every way but its age, or the reading is not merely paced: judged
+            // as it would be were it young enough, then put back as it is.
+            let ageless = policy.shallow()?;
+            ageless.add_member("maxUsageAgeS", V::Dbl(age.dbl()? + 60.0), true)?;
+            let decided = entry.g("fresh")?;
+            entry.set("fresh", true.into())?;
+            entry.set("observation", V::Null)?;
+            let young = claude_entry_observation(&number, &entry, &ageless, now, false)?;
+            entry.set("observation", observation.clone())?;
+            entry.set("fresh", decided)?;
+            if provider_account(&young, &ageless, &[], now)?.g("valid")?.t()? {
+                cswap::paced_until(request.home, slot, &email, &a.g("organizationUuid")?, age.dbl()?, now)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        entry.set("pacedUntil", paced.map_or(V::Null, |until| V::from(until.o())))?;
     }
 
     let outcomes = warm_outcomes(state);
@@ -444,10 +466,11 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     }
     stuck.retain(|n| !ended.contains(n));
     really_broken.retain(|n| !ended.contains(n));
-    let mut any_fresh = false;
+    let (mut any_fresh, mut any_paced) = (false, false);
     for n in &prefer {
         let e = acc.get(*n);
         any_fresh |= e.t()? && e.g("fresh")?.t()?;
+        any_paced |= e.t()? && e.g("pacedUntil")?.t()?;
     }
     let mut any_eligible = critical_active && !critical.g("ranked")?.each().is_empty();
     if !any_eligible {
@@ -623,10 +646,11 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         calls.push(format!("slot {} QUARANTINE STALE (>{hours}h unchecked) -> verify with 'cswap list'; if it answers, the strike is stale, not the account", joined(&stuck)));
     }
     let mut unreported = Vec::new();
-    let mut registered = 0;
+    let (mut registered, mut loud) = (0, 0);
     for n in &prefer {
         let e = acc.get(*n);
         registered += i32::from(e.t()? && !e.g("obj")?.g("usageStatus")?.eq_s("disabled")?);
+        loud += i32::from(e.t()? && !e.g("obj")?.g("usageStatus")?.eq_s("disabled")? && !e.g("fresh")?.t()? && !e.g("pacedUntil")?.t()?);
         if e.g("limit5h")?.eq_s("unreported")? {
             unreported.push(*n);
         }
@@ -635,9 +659,12 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         format!(" · {}", calls.join(" · "))
     } else if !any_fresh && !unreported.is_empty() && unreported.len() as i32 == registered {
         format!(" · slot {} reported no 5-hour window, holding", joined(&unreported))
-    } else if !any_fresh {
+    } else if !any_fresh && loud > 0 {
         format!(" · usage STALE (>{}m), holding", V::Dbl(max_age / 60.0).to_int()?)
-    } else if !any_eligible {
+    } else if !any_fresh {
+        // Every reading is one cswap is pacing: nothing is wrong and nothing is said.
+        String::new()
+    } else if !any_eligible && !any_paced {
         " · no headroom on any slot".to_string()
     } else {
         String::new()
@@ -717,8 +744,10 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
             format!("  [{status}]")
         } else if unreported {
             "  [incomplete]".to_string()
-        } else if !e.g("fresh")?.t()? {
+        } else if !e.g("fresh")?.t()? && !e.g("pacedUntil")?.t()? {
             format!("  [stale {}s]", a.g("usageAgeSeconds")?.to_int()?)
+        } else if !e.g("fresh")?.t()? {
+            String::new()
         } else if e.g("cold")?.t()? {
             // Why a cold account was not opened, so a stuck one can be told from one that
             // is waiting for its turn.
@@ -844,6 +873,9 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         // Written only when it says something, so every other reading keeps its shape.
         if e.g("limit5h")?.t()? {
             slot.add_member("limit5h", e.g("limit5h")?, true)?;
+        }
+        if e.g("pacedUntil")?.t()? {
+            slot.add_member("pacedUntil", e.g("pacedUntil")?, true)?;
         }
         slots.push(slot);
     }
@@ -1690,7 +1722,16 @@ pub(crate) mod tests {
     }
     /// One wake, with an old warm request on file for account 1.
     fn no_row(name: &str, policy_text: &str, plan_rows: &str, accounts: &str) -> NoRow {
+        cached(name, policy_text, plan_rows, accounts, None)
+    }
+    /// The same, with cswap's own usage cache holding these account rows.
+    fn cached(name: &str, policy_text: &str, plan_rows: &str, accounts: &str, cache: Option<&str>) -> NoRow {
         let lab = Lab::new(name);
+        if let Some(rows) = cache {
+            let folder = lab.home.join(".claude-swap-backup").join("cache");
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join("usage.json"), format!(r#"{{"schemaVersion":2,"accounts":{{{rows}}}}}"#)).unwrap();
+        }
         std::fs::write(lab.state.join("claude-plans.json"), format!(r#"{{"schemaVersion":1,"accounts":{{{plan_rows}}}}}"#)).unwrap();
         std::fs::write(lab.state.join("warm-outcomes.json"), r#"{"schemaVersion":1,"claude:1":{"schemaVersion":1,"id":"x","provider":"claude","slot":"1","meter":"","sentAt":"2026-10-05T12:00:00.0000000+00:00","expiresAt":"2026-10-05T17:00:00.0000000+00:00","outcome":"expired","observedAt":null,"resetAt":null,"identity":"none"}}"#).unwrap();
         lab.list(&format!(r#"{{"schemaVersion":1,"activeAccountNumber":1,"accounts":[{accounts}]}}"#));
@@ -1793,6 +1834,44 @@ pub(crate) mod tests {
         assert_eq!(first_slot(&seen), r#""none" false false null null null"#);
         assert!(!seen.lines.contains("5h") && seen.lines.contains("[stale 2000s]") && seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
         assert_eq!(seen.calls, Vec::<String>::new());
+    }
+
+    /// cswap's cache row for an account read `age` seconds before noon, to be read again
+    /// `next` seconds after it.
+    fn cache_row(number: i32, email: &str, age: i64, next: i64) -> String {
+        const NOON_UNIX: i64 = 1_791_288_000;
+        format!(r#""{number}":{{"email":"{email}","fetchedAt":{},"nextPollAt":{}}}"#, NOON_UNIX - age, NOON_UNIX + next)
+    }
+
+    /// cswap waits up to half an hour between reads after one is refused. The reading it
+    /// goes on answering with is older than one to act on, and that is all: nothing is said.
+    #[test]
+    fn a_reading_cswap_is_pacing_says_nothing() {
+        let seen = cached("paced-quiet", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_read(1, EMAIL_ONE, 1200, WEEK), Some(&cache_row(1, EMAIL_ONE, 1200, 600)));
+        assert_eq!(text(&seen.payload, "slots.0.pacedUntil"), r#""2026-10-06T12:12:00.0000000+00:00""#);
+        assert_eq!(text(&seen.payload, "slots.0.fresh"), "false");
+        assert!(!seen.lines.contains("STALE") && !seen.lines.contains("[stale"), "{}", seen.lines);
+        assert_eq!(text(&seen.payload, "verdict"), r#""""#);
+        assert_eq!(seen.calls, Vec::<String>::new());
+    }
+
+    /// Once cswap's planned read has come and gone, the reading is as old as it is.
+    #[test]
+    fn a_reading_past_its_planned_read_is_stale_again() {
+        let seen = cached("paced-gone", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_read(1, EMAIL_ONE, 1200, WEEK), Some(&cache_row(1, EMAIL_ONE, 1200, -300)));
+        assert_eq!(text(&seen.payload, "slots.0.pacedUntil"), "null");
+        assert!(seen.lines.contains("usage STALE (>15m), holding") && seen.lines.contains("[stale 1200s]"), "{}", seen.lines);
+    }
+
+    /// One account cswap is pacing does not quiet another that is simply old.
+    #[test]
+    fn a_paced_reading_beside_a_stale_one_still_says_stale() {
+        let plans = format!(r#""1":{},"2":{}"#, detected(EMAIL_ONE, "claude-max-20x"), detected(EMAIL_TWO, "claude-max-20x"));
+        let accounts = format!("{},{}", account_read(1, EMAIL_ONE, 1200, WEEK), account_read(2, EMAIL_TWO, 1200, WEEK));
+        let seen = cached("paced-beside-stale", DUO, &plans, &accounts, Some(&cache_row(1, EMAIL_ONE, 1200, 600)));
+        assert!(truthy(&seen.payload, "slots.0.pacedUntil") && !truthy(&seen.payload, "slots.1.pacedUntil"), "{}", text(&seen.payload, "slots"));
+        assert!(seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
+        assert_eq!(seen.lines.matches("[stale 1200s]").count(), 1, "{}", seen.lines);
     }
 
     /// A row that is missing on a reading already too old says only that it is old.

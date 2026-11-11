@@ -2,7 +2,7 @@
 //! The window, its menu and which announcements were already made stay with src/tray.ps1.
 
 use crate::automation::work_time;
-use crate::capacity::fresh_timestamp;
+use crate::capacity::{fresh_timestamp, quiet};
 use crate::codex::codex_eligibility;
 use crate::cswap::sign_in_notice;
 use crate::insights::{format_explanation, format_forecast, health, name_text};
@@ -104,7 +104,7 @@ fn account_lines(snapshot: &V, policy: &V, now: Dto) -> R<Vec<String>> {
         if !s.t()? {
             continue;
         }
-        let fresh = s.g("fresh")?.t()? && fresh_timestamp(&s.g("observedAt")?, now)?;
+        let fresh = (s.g("fresh")?.t()? && fresh_timestamp(&s.g("observedAt")?, now)?) || (!s.g("fresh")?.t()? && quiet(&s, now)?);
         let unreported = s.g("limit5h")?.eq_s("unreported")?;
         lines.push(cat!("Claude ", s.g("label")?, ": ", s.g("status")?, if fresh { "" } else if unreported { " / incomplete" } else { " / stale" }));
         if s.g("limit5h")?.eq_s("none")? {
