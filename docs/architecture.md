@@ -118,7 +118,7 @@ Provider summaries are additive `providerOverview` fields on snapshots and statu
 
 ## Capacity and emergency selection
 
-`native/src/capacity.rs` normalizes applicable window amounts with the versioned `data/capacity-profiles.json` catalogue and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `native/src/critical.rs` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. The compiled dashboard (`native/src/dashboard.rs`, `display.rs`, `paint.rs` and `nyan.rs`) lays out sanitized styled cells and the clock-driven animation, and the screenshot harness draws its images from the same frames. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).
+`native/src/capacity.rs` sizes every account in weeks of the provider's smallest paid plan, from the versioned `data/capacity-profiles.json` catalogue (published multiples and a measured five-hour share, never prices) and explicit user estimates. It computes gross, admitted and next-reset allowance without provider calls. `native/src/critical.rs` supplies the pure emergency selector; provider adapters and replay use it, with persistent state and launch-time eligibility checks. The compiled dashboard (`native/src/dashboard.rs`, `display.rs`, `paint.rs` and `nyan.rs`) lays out sanitized styled cells and the clock-driven animation, and the screenshot harness draws its images from the same frames. Animation ticks never collect providers. [Metric and configuration contract](capacity.md).
 
 ## Local agent boundary
 

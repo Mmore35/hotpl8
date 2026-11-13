@@ -16,11 +16,30 @@ def profile(kind="claude_pro", tier="default_claude_ai"):
 
 
 class Store:
+    def __init__(self, subscription=None, tier=None):
+        self.stored = dict(subscriptionType=subscription, rateLimitTier=tier) if subscription else {}
+
     def account_identity(self, slot):
         return EXPECTED
 
     def read_account_credentials(self, slot, email):
-        return json.dumps(dict(claudeAiOauth=dict(accessToken="fictional-token", refreshToken="never-use-this")))
+        return json.dumps(dict(claudeAiOauth=dict(accessToken="fictional-token", refreshToken="never-use-this", **self.stored)))
+
+
+def network_down(token):
+    raise urllib.error.URLError("private-url")
+
+
+def limited(token):
+    raise urllib.error.HTTPError("private-url", 429, "secret-body", {"Retry-After": "3600"}, None)
+
+
+STORED_PAIRS = (
+    ("pro", "default_claude_ai", "claude-pro", "Pro"),
+    ("pro", "default_claude_pro", "claude-pro", "Pro"),
+    ("max", "default_claude_max_5x", "claude-max-5x", "Max"),
+    ("max", "default_claude_max_20x", "claude-max-20x", "Ultra"),
+)
 
 
 class PlanTests(unittest.TestCase):
@@ -81,6 +100,37 @@ class PlanTests(unittest.TestCase):
             raise urllib.error.HTTPError("private-url", 429, "secret-body", {"Retry-After": "3600"}, None)
         result = plan.read_plan(Store(), 1, fetch)
         self.assertEqual(result["retryAfterSeconds"], 3600)
+
+    def test_the_stored_sign_in_names_the_plan_when_the_endpoint_does_not_answer(self):
+        for subscription, tier, profile_id, label in STORED_PAIRS:
+            for fetch in (network_down, limited):
+                result = plan.read_plan(Store(subscription, tier), 1, fetch)
+                said = (result["status"], result["profile"], result["label"], result["source"])
+                self.assertEqual(said, ("detected", profile_id, label, "stored-sign-in"), (subscription, tier, fetch.__name__))
+                # The endpoint's wait still holds, so it is not asked again before it.
+                self.assertEqual(result.get("retryAfterSeconds"), 3600 if fetch is limited else None)
+                serialized = json.dumps(result)
+                for value in ("fictional-token", "never-use-this", EXPECTED["email"], "secret"):
+                    self.assertNotIn(value, serialized)
+
+    def test_a_stored_plan_the_table_does_not_hold_changes_nothing(self):
+        for fetch, status in ((network_down, "unavailable"), (limited, "rate_limited")):
+            for store in (Store(), Store("team", "default_claude_max_5x"), Store("max", "future-tier")):
+                result = plan.read_plan(store, 1, fetch)
+                self.assertEqual((result["status"], result["source"]), (status, "anthropic-oauth-profile"))
+                self.assertNotIn("profile", result)
+
+    def test_an_answering_endpoint_is_never_overridden(self):
+        result = plan.read_plan(Store("max", "default_claude_max_20x"), 1, lambda token: profile())
+        self.assertEqual((result["profile"], result["source"]), ("claude-pro", "anthropic-oauth-profile"))
+        result = plan.read_plan(Store("max", "default_claude_max_20x"), 1, lambda token: profile("claude_team", "default_claude_max_5x"))
+        self.assertEqual((result["status"], result["label"], result["source"]), ("partial", "Team", "anthropic-oauth-profile"))
+
+    def test_the_plans_are_named_as_the_catalogue_names_them(self):
+        catalogue = json.loads((Path(__file__).resolve().parents[1] / "data/capacity-profiles.json").read_text(encoding="utf-8"))
+        claude = {key: value["tier"] for key, value in catalogue["profiles"].items() if value["provider"] == "claude"}
+        self.assertEqual({key: label for key, (label, _) in plan.PLANS.items()}, claude)
+        self.assertLessEqual(set(plan.ENDPOINT.values()) | set(plan.STORED.values()), set(plan.PLANS))
 
     def test_redirect_never_forwards_authorization(self):
         self.assertIsNone(plan.NoRedirect().redirect_request(None, None, 302, "", {}, "https://example.invalid"))

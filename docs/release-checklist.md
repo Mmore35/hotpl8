@@ -52,4 +52,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package.ps1
 ```
 
+Run `python scripts/check-plans.py`, and check that `verifiedAt` in `data/capacity-profiles.json` is within 30 days of the release ([plan catalogue](plan-catalogue.md)).
+
 CI uploads the ZIP and SHA256SUMS for review. Building or pushing a candidate branch does not authorize public publication. A checksum detects mismatch; it does not independently establish publisher identity.

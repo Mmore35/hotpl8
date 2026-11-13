@@ -175,16 +175,25 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
         members.push(member);
     }
     let measured = count(filter(&members, |member| Ok(!member.g("remainingPercent")?.is_null()))?.len())?;
-    let mut sum = 0.0;
+    // Each account's week counts by its plan's size, as it does in the bar.
+    let capacity = provider_capacity(snapshot, &part, family, now, meter, false)?;
+    let sized = capacity.g("accounts")?.arr();
+    let (mut sum, mut whole, mut unread) = (0.0, 0.0, 0.0);
     for member in &members {
+        let account = filter(&sized, |account| account.g("slot")?.eq(&member.g("slot")?))?;
+        let weekly = account.first().map_or(Ok(V::Null), |account| account.g("weekly"))?;
+        let weight = if weekly.is_number() && weekly.gt_i(0)? { weekly.dbl()? } else { 1.0 };
         let percent = member.g("remainingPercent")?;
-        if !percent.is_null() {
-            sum += percent.dbl()?;
+        whole += weight;
+        if percent.is_null() {
+            unread += weight;
+        } else {
+            sum += weight * percent.dbl()?;
         }
     }
     let total = count(members.len())?;
-    let known = if total > 0 { dbl(sum / f64::from(total))? } else { V::Dbl(0.0) };
-    let unknown = if total > 0 { dbl(100.0 * f64::from(total - measured) / f64::from(total))? } else { V::Dbl(100.0) };
+    let known = if total > 0 { dbl(sum / whole)? } else { V::Dbl(0.0) };
+    let unknown = if total > 0 { dbl(100.0 * unread / whole)? } else { V::Dbl(100.0) };
     let ready = !where_truthy(&members, "eligible")?.is_empty();
     let mut availability = if total == 0 {
         "No accounts enabled"
@@ -261,7 +270,6 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
     if !["manual / no collector evidence", "recent collection completed", "collecting"].contains(&health.as_str()) {
         availability = cat!(availability, "; ", health);
     }
-    let capacity = provider_capacity(snapshot, &part, family, now, meter, false)?;
     let immediate = provider_capacity(snapshot, &part, family, now, meter, true)?;
     let critical = capacity.path(&["critical", "active"])?.t()?;
     if critical {
@@ -335,19 +343,6 @@ fn capacity_display(p: &V) -> R<Display> {
     if c.g("metric")?.eq_s("plan-weighted-quota-headroom")? && complete {
         state += " (estimate)";
     }
-    let weekly_uncertain = filter(&c.g("accounts")?.arr(), |account| {
-        if !V::s_of("10080").is_in(&account.g("unconvertedConstraints")?)? {
-            return Ok(false);
-        }
-        let near = filter(&account.g("windows")?.arr(), |window| {
-            Ok(window.g("name")?.eq_s("10080")? && window.g("remaining")?.gt_i(0)? && window.g("remaining")?.le_i(20)?)
-        })?;
-        Ok(!near.is_empty())
-    })?
-    .len();
-    if weekly_uncertain > 0 && complete {
-        state = state.replace("(estimate)", "(weekly cap uncertain)");
-    }
     if !p.g("remainingPercent")?.is_null() {
         state = cat!(state, " / ", p.g("remainingPercent")?.tenths()?, "% weekly left");
     }
@@ -415,7 +410,7 @@ pub fn format_overview(overview: &V) -> R<Vec<String>> {
             }
         }
     }
-    lines.push("Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.".to_string());
+    lines.push("Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.".to_string());
     Ok(lines)
 }
 
@@ -521,9 +516,8 @@ mod tests {
         assert_eq!(estimate(""), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(estimate(r#"{"name":"300","remaining":10},{"name":"10080","remaining":25}"#), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(estimate(r#"{"name":"10080","remaining":0}"#), "41.7% available now (estimate) / 90% weekly left");
-        assert_eq!(estimate(r#"{"name":"10080","remaining":20.5}"#), "41.7% available now (estimate) / 90% weekly left");
-        // A weekly limit nearly reached, and no way to say what it is worth in the estimate.
-        assert_eq!(estimate(r#"{"name":"10080","remaining":20}"#), "41.7% available now (weekly cap uncertain) / 90% weekly left");
+        // A week nearly used is said the same way: every week has a size, so its worth is counted.
+        assert_eq!(estimate(r#"{"name":"10080","remaining":20}"#), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":0},"totalUnits":6}}"#), "No account readable now");
         assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":1},"totalUnits":null,"measured":1}}"#), "Plan allowance unknown; total unavailable");
         assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":1},"totalUnits":6,"measured":1}}"#), "Partial: 1/2 measured; total unavailable");
@@ -581,7 +575,7 @@ mod tests {
                 "  Includes reserve allowance.",
                 "  Profiles: 1=Pro",
                 "FICTIONAL: No accounts enabled; No accounts enabled; none",
-                "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.",
+                "Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.",
             ]
         );
         assert!(format_overview(&V::Null).is_err());

@@ -53,7 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\test-onboarding.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\screenshots.ps1
 ```
 
-Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do not infer weekly or short-window capacity from price ratios, weaken unknown-state checks in the calibrated capacity model, or count a skipped retry as a failed provider attempt. The displayed metric measures readable accounts and records every exclusion in `coverage`; it must never blank because one account is unreadable. Preserve third-party animation notices in source and release packages.
+Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do not infer capacity from prices; sizes come from the catalogue's published multiples and its measured five-hour share. Do not weaken unknown-state checks in the calibrated capacity model, or count a skipped retry as a failed provider attempt. The displayed metric measures readable accounts and records every exclusion in `coverage`; it must never blank because one account is unreadable. Preserve third-party animation notices in source and release packages.
 
 Claude plan discovery is isolated in `src/providers/claude_plan.py`, which the collector asks (`native/src/plans.rs`); the check of a stored answer is there too. Run `python tests/test_claude_plan.py` and `cargo test --locked` in `native/` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
 

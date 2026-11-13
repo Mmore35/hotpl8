@@ -115,6 +115,7 @@ $critical=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $critical.policy.mode='automate'
 $critical.policy.reserve=@()
 $critical.policy|Add-Member NoteProperty critical @{enabled=$true}
+$critical.policy|Add-Member NoteProperty switchEnabled $true
 foreach($slot in $critical.status.slots){$slot.used5h=94;$slot.used7d=94}
 Write-DashboardImage 'critical.png' $critical.status $critical.policy 94 25
 $unknown=Get-Hotpl8ScreenshotFixture -TwoAccounts
@@ -125,6 +126,7 @@ Write-DashboardImage 'narrow.png' $healthy.status $healthy.policy 50 18
 # Plenty of weekly inventory, but none is usable before a short-window reset.
 $available=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $available.policy.mode='automate';$available.policy.reserve=@()
+$available.policy|Add-Member NoteProperty switchEnabled $true
 $available.policy.PSObject.Properties.Remove('capacity')
 foreach($slot in $available.status.slots){
     $slot|Add-Member NoteProperty plan @{status='detected';profile='claude-pro';label='Pro';observedAt=$available.now.ToString('o')} -Force
@@ -135,6 +137,7 @@ Write-DashboardImage 'available-now.png' $available.status $available.policy 94 
 # Three equal session allowances; weekly percentages must not lower this bar.
 $session=Get-Hotpl8ScreenshotFixture -TwoAccounts
 $session.policy.mode='automate';$session.policy.reserve=@();$session.policy.prefer=@(1,2,3)
+$session.policy|Add-Member NoteProperty switchEnabled $true
 $session.policy.PSObject.Properties.Remove('capacity')
 $third=$session.status.slots[0]|ConvertTo-Json -Depth 12|ConvertFrom-Json
 $third.slot=3;$third.label='Weekend';$third.active=$false

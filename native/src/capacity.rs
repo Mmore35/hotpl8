@@ -1,17 +1,19 @@
-//! Capacity is expressed in relative weekly units within one
-//! provider/meter only. Unknown conversions are not inferred from monthly prices or
-//! selection weights.
+//! Capacity is counted in weeks of the provider's smallest paid plan, within one
+//! provider/meter only. Sizes are the vendors' published multiples and one measured
+//! five-hour share from the catalogue, never prices; a plan it does not know is size 1.
 
 use crate::contract::{age_seconds, resolve_window};
 use crate::critical::{critical_decision, critical_setting};
 use crate::obj;
+use crate::plans::last_known_plan;
 use crate::ps::*;
 use crate::time::Dto;
 use std::cell::RefCell;
 use std::path::PathBuf;
 
 thread_local! {
-    static SOURCE: RefCell<PathBuf> = RefCell::new(PathBuf::new());
+    // Every account is sized from the catalogue now, so a unit test reads the checkout's.
+    static SOURCE: RefCell<PathBuf> = RefCell::new(if cfg!(test) { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../data/capacity-profiles.json") } else { PathBuf::new() });
     static CATALOG: RefCell<Option<V>> = const { RefCell::new(None) };
 }
 /// The data/capacity-profiles.json this request's release ships. It is read when a rule
@@ -87,28 +89,45 @@ pub fn fresh_timestamp(timestamp: &V, now: Dto) -> R<bool> {
     Ok(age_seconds(timestamp, now)?.is_some_and(|age| (-5.0..=900.0).contains(&age)))
 }
 
-/// Get-Hotpl8AccountCapacity
+/// Get-Hotpl8AccountCapacity. `detected` is a Claude account's plan row, or a Codex
+/// account's `planType`.
 pub fn account_capacity(part: &V, slot: &str, provider: &str, meter: &str, detected: &V, now: Dto) -> R<V> {
     let c = part.g("capacity")?.gd(slot)?;
-    let profile_id = if c.g("profile")?.t()? {
+    let catalog = catalog()?;
+    let mut profile_id = if c.g("profile")?.t()? {
         c.g("profile")?.sv()?
-    } else if provider == "claude" && detected.g("status")?.eq_s("detected")? && detected_plan(detected, now)? {
-        detected.g("profile")?.sv()?
+    } else if provider == "claude" {
+        last_known_plan(detected, now)?
     } else {
         V::Null
     };
-    let mut profile = if profile_id.t()? { catalog()?.g("profiles")?.gd(&profile_id.s()?)? } else { V::Null };
+    if provider == "codex" && !profile_id.t()? && detected.t()? {
+        for (id, known) in catalog.g("profiles")?.props()? {
+            if known.g("provider")?.eq_s(provider)? && known.g("meter")?.eq(&V::s_of(meter))? && detected.is_in(&known.g("planTypes")?)? {
+                profile_id = V::s_of(&id);
+                break;
+            }
+        }
+    }
+    let mut profile = if profile_id.t()? { catalog.g("profiles")?.gd(&profile_id.s()?)? } else { V::Null };
     if profile.t()? && (profile.g("provider")?.ne_s(provider)? || (provider == "codex" && profile.g("meter")?.ne(&V::s_of(meter))?)) {
         profile = V::Null;
     }
-    let weekly = if c.g("weekly")?.is_null() { profile.g("weekly")? } else { c.g("weekly")? };
-    let short = if c.g("fiveHour")?.is_null() { profile.g("fiveHour")? } else { c.g("fiveHour")? };
+    // A plan the catalogue does not know is the smallest, so an answer leans low.
+    let weekly = if c.g("weekly")?.t()? { c.g("weekly")? } else if profile.g("weekly")?.t()? { profile.g("weekly")? } else { V::I32(1) };
+    let short = if c.g("fiveHour")?.t()? {
+        c.g("fiveHour")?
+    } else if profile.g("fiveHour")?.t()? {
+        profile.g("fiveHour")?
+    } else {
+        dbl(weekly.dbl()? * catalog.g("fiveHourShare")?.g(provider)?.dbl()?)?
+    };
     let confidence = if c.g("weekly")?.t()? || c.g("fiveHour")?.t()? {
         "user estimate".into()
     } else if profile.t()? {
         profile.g("confidence")?
     } else {
-        "capacity setup needed".into()
+        "default size".into()
     };
     Ok(obj! {
         "weekly" => weekly,
@@ -195,7 +214,7 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
             }
             seen.insert(key)?;
         }
-        let c = account_capacity(part, &id.s()?, provider, meter, &s.g("plan")?, now)?;
+        let c = account_capacity(part, &id.s()?, provider, meter, &if claude { s.g("plan")? } else { s.g("planType")? }, now)?;
         let mut fresh = s.t()? && s.g("status")?.eq_s("ok")? && fresh_timestamp(&s.g("observedAt")?, now)?;
         let mut windows: Vec<V> = Vec::new();
         let mut blocked = false;
@@ -243,51 +262,18 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
                     }
                 })?
                 .unwrap_or(V::Null);
-                let weekly = text_eq(name, "10080")?;
-                let mut full = if weekly { c.g("weekly")? } else { c.g("fiveHour")? };
-                // A single weekly-only subscription needs no cross-account conversion.
-                if ids.len() == 1 && weekly && entries.len() == 1 && full.is_null() {
-                    full = V::I32(1);
-                    c.set("weekly", V::I32(1))?;
-                    c.set("confidence", "single-account normalization".into())?;
-                }
+                let full = if text_eq(name, "10080")? { c.g("weekly")? } else { c.g("fiveHour")? };
                 let confirmed = w.g("anchorState")?.eq_s("observed-active")?;
                 windows.push(capacity_window(name, w.g("remainingPercent")?, full, reset, now, confirmed, &w.g("observedAt")?)?);
             }
         }
-        let mut basis = "calibrated";
         if quota_headroom {
-            let profile = if c.g("profile")?.t()? { catalog()?.g("profiles")?.gd(&c.g("profile")?.s()?)? } else { V::Null };
-            let primary = primary_window(&windows)?;
-            let primary_full = match &primary {
+            // Every window is already in the same units, so an account weighs what its
+            // current window holds: its five-hour window where it has one, else its week.
+            let weight = match primary_window(&windows)? {
                 Some(window) => window.g("full")?,
                 None => V::Null,
             };
-            let calibrated = !primary_full.is_null();
-            // A plan with no published multiplier gives no weight, and is not called one.
-            let has_profile = profile.t()?
-                && profile.g("provider")?.eq_s(provider)?
-                && (provider != "codex" || profile.g("meter")?.eq(&V::s_of(meter))?)
-                && !profile.g("sessionMultiplier")?.is_null();
-            let weight = if has_profile {
-                profile.g("sessionMultiplier")?
-            } else if calibrated {
-                primary_full.clone()
-            } else if ids.len() == 1 {
-                V::I32(1)
-            } else {
-                V::Null
-            };
-            basis = if has_profile || !calibrated { "plan" } else { "calibrated" };
-            for window in &windows {
-                if primary.as_ref().is_some_and(|primary| window.same_ref(primary)) {
-                    window.set("full", weight.clone())?;
-                } else if !calibrated {
-                    window.set("full", V::Null)?;
-                } else if !window.g("full")?.is_null() {
-                    window.set("full", window.g("full")?.div(&primary_full)?.mul(&weight)?)?;
-                }
-            }
             c.set("weekly", weight)?;
             let confidence = if unconverted(&windows)?.is_empty() { "calibrated current-window estimate" } else { "weekly/model conversion unavailable" };
             c.set("confidence", confidence.into())?;
@@ -315,7 +301,7 @@ pub fn capacity_accounts(snapshot: &V, part: &V, provider: &str, now: Dto, meter
             "knownZero" => known_zero,
             "refillExpected" => refill_expected,
             "weekly" => c.g("weekly")?,
-            "weightBasis" => basis,
+            "weightBasis" => "calibrated",
             "unconvertedConstraints" => pluck(&missing, "name")?,
             "windows" => windows,
             "gross" => gross,
@@ -380,31 +366,9 @@ pub fn provider_capacity(snapshot: &V, part: &V, provider: &str, now: Dto, meter
             }
         }
         accounts = filter(&accounts, usable)?;
-        if !filter(&accounts, |a| Ok(!a.g("scaled")?.t()? || a.g("weekly")?.is_null()))?.is_empty()
-            || unique_count(&pluck(&accounts, "weightBasis")?)? > 1
-        {
-            for a in &accounts {
-                let windows = a.g("windows")?.arr();
-                let primary = primary_window(&windows)?;
-                for w in &windows {
-                    let weight = if primary.as_ref().is_some_and(|primary| w.same_ref(primary)) { V::Dbl(1.0) } else { V::Null };
-                    w.set("full", weight)?;
-                }
-                a.set("weekly", V::Dbl(1.0))?;
-                a.set("scaled", true.into())?;
-                a.set("weightBasis", "equal".into())?;
-                let missing = pluck(&unconverted(&windows)?, "name")?;
-                let confidence = if missing.is_empty() { "equal-weight current-window estimate" } else { "weekly/model conversion unavailable" };
-                a.set("unconvertedConstraints", missing.into())?;
-                a.set("gross", least_usable(&windows)?)?;
-                a.set("confidence", confidence.into())?;
-            }
-        }
         coverage = obj! {"measured" => accounts.len() as i32, "excluded" => excluded};
     }
-    let denominator_known = !accounts.is_empty()
-        && filter(&accounts, |a| Ok(a.g("weekly")?.is_null()))?.is_empty()
-        && unique_count(&pluck(&accounts, "weightBasis")?)? <= 1;
+    let denominator_known = !accounts.is_empty() && filter(&accounts, |a| Ok(a.g("weekly")?.is_null()))?.is_empty();
     let total =
         if denominator_known { measure_sum(&accounts.iter().map(|a| a.g("weekly")).collect::<R<Vec<V>>>()?)? } else { V::Null };
     let complete =
@@ -528,4 +492,112 @@ pub fn provider_capacity(snapshot: &V, part: &V, provider: &str, now: Dto, meter
             "capacity setup or fresh reading needed"
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json::parse;
+
+    const NOW: &str = "2026-11-13T19:36:00.0000000+00:00";
+
+    fn now() -> Dto {
+        set_core(false);
+        Dto::parse(NOW).ok().unwrap()
+    }
+
+    /// A plan row as the collector writes it.
+    fn row(status: &str, profile: &str, at: &str) -> V {
+        parse(&format!(r#"{{"status":"{status}","profile":"{profile}","observedAt":"{at}"}}"#), "").ok().unwrap()
+    }
+
+    fn sized(policy: &str, provider: &str, meter: &str, detected: &V) -> (String, f64, f64, String) {
+        let c = account_capacity(&parse(policy, "").ok().unwrap(), "1", provider, meter, detected, now()).ok().unwrap();
+        let text = |name: &str| c.g(name).ok().unwrap().sv().ok().unwrap().s().ok().unwrap();
+        (text("profile"), c.g("weekly").ok().unwrap().dbl().ok().unwrap(), c.g("fiveHour").ok().unwrap().dbl().ok().unwrap(), text("confidence"))
+    }
+
+    /// One Claude account read at NOW: what is left of its five-hour window (none for a
+    /// reading without one) and of its week.
+    fn claude_slot(slot: i32, five: Option<i32>, week: i32, profile: &str) -> String {
+        let (used5h, limit) = match five { Some(left) => (format!("{}", 100 - left), "reported"), None => ("null".to_owned(), "none") };
+        format!(
+            r#"{{"slot":{slot},"status":"ok","fresh":true,"observedAt":"{NOW}","used5h":{used5h},"limit5h":"{limit}","reset5h":"2026-11-13T21:30:00.0000000+00:00","used7d":{},"reset7d":"2026-11-15T22:00:00.0000000+00:00","plan":{{"status":"detected","profile":"{profile}","observedAt":"{NOW}"}}}}"#,
+            100 - week
+        )
+    }
+
+    fn usable_now(slots: &[String]) -> f64 {
+        let now = now();
+        let snapshot = parse(&format!(r#"{{"slots":[{}]}}"#, slots.join(",")), "").ok().unwrap();
+        let policy = parse(r#"{"prefer":[1,2],"reserve":[],"margin5h":25,"margin7d":20}"#, "").ok().unwrap();
+        let pooled = provider_capacity(&snapshot, &policy, "claude", now, "", true).ok().unwrap();
+        (pooled.g("usableNowPercent").ok().unwrap().dbl().ok().unwrap() * 10.0).round() / 10.0
+    }
+
+    #[test]
+    fn the_bar_is_every_account_s_current_window_in_weeks_of_the_smallest_plan() {
+        // Ultra 74% of its week, which is 7.4 of 10; Max 26% of a five-hour window of 0.5,
+        // which is 0.13. 7.53 of 10.5.
+        let screenshot = [claude_slot(1, None, 74, "claude-max-20x"), claude_slot(2, Some(26), 28, "claude-max-5x")];
+        assert_eq!(usable_now(&screenshot), 71.7);
+        assert_eq!(usable_now(&[claude_slot(1, None, 0, "claude-max-20x"), claude_slot(2, Some(100), 100, "claude-max-5x")]), 4.8);
+        assert_eq!(usable_now(&[claude_slot(1, None, 100, "claude-max-20x"), claude_slot(2, Some(100), 100, "claude-max-5x")]), 100.0);
+    }
+
+    #[test]
+    fn an_account_is_sized_by_its_plan_and_a_plan_unknown_is_the_smallest() {
+        let ultra = row("detected", "claude-max-20x", NOW);
+        // An unverified Ultra reports a five-hour window, and it holds a tenth of the week,
+        // as Max's does.
+        assert_eq!(sized("{}", "claude", "", &ultra), ("claude-max-20x".to_owned(), 10.0, 1.0, "published".to_owned()));
+        assert_eq!(sized("{}", "claude", "", &row("detected", "claude-max-5x", NOW)).2, 0.5);
+        assert_eq!(sized("{}", "claude", "", &V::Null), (String::new(), 1.0, 0.1, "default size".to_owned()));
+        assert_eq!(sized("{}", "claude", "", &row("detected", "claude-team", NOW)), ("claude-team".to_owned(), 1.0, 0.1, "default size".to_owned()));
+        // What the policy says wins over what was detected.
+        assert_eq!(sized(r#"{"capacity":{"1":{"profile":"claude-pro"}}}"#, "claude", "", &ultra).1, 1.0);
+        assert_eq!(sized(r#"{"capacity":{"1":{"weekly":3,"fiveHour":0.5}}}"#, "claude", "", &ultra), ("claude-max-20x".to_owned(), 3.0, 0.5, "user estimate".to_owned()));
+        // A Codex account is sized by the plan type it reports.
+        let codex = |plan: &str| sized("{}", "codex", "codex", &V::s_of(plan));
+        assert_eq!(codex("plus"), ("codex-plus".to_owned(), 1.0, 0.1, "unconfirmed".to_owned()));
+        assert_eq!(codex("prolite").0, "codex-pro-5x");
+        assert_eq!(codex("pro").0, "codex-pro-20x");
+        assert_eq!(codex("promax"), ("codex-pro-20x".to_owned(), 20.0, 2.0, "unconfirmed".to_owned()));
+        assert_eq!(codex("team"), (String::new(), 1.0, 0.1, "default size".to_owned()));
+        assert_eq!(sized("{}", "codex", "codex_bengalfox", &V::s_of("plus")).0, "");
+        assert_eq!(sized(r#"{"capacity":{"1":{"profile":"codex-plus"}}}"#, "codex", "codex", &V::s_of("promax")).1, 1.0);
+    }
+
+    #[test]
+    fn an_account_keeps_the_size_of_the_plan_last_known_for_it() {
+        assert_eq!(sized("{}", "claude", "", &row("detected", "claude-max-20x", "2026-11-13T19:11:00.0000000+00:00")).1, 10.0);
+        let unavailable = |at: &str| parse(&format!(r#"{{"status":"unavailable","observedAt":"{NOW}","lastDetected":{{"profile":"claude-max-20x","observedAt":"{at}"}}}}"#), "").ok().unwrap();
+        assert_eq!(sized("{}", "claude", "", &unavailable("2026-11-12T19:36:00.0000000+00:00")).1, 10.0);
+        assert_eq!(sized("{}", "claude", "", &unavailable("2026-11-05T19:36:00.0000000+00:00")).1, 1.0);
+    }
+
+    #[test]
+    fn the_policy_names_every_profile_the_catalogue_holds() {
+        set_core(false);
+        let known: Vec<String> = catalog().ok().unwrap().g("profiles").ok().unwrap().props().ok().unwrap().iter().map(|(id, _)| id.to_string()).collect();
+        let schema = crate::json::read_file(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../policy.schema.json")).ok().unwrap().unwrap();
+        let mut lists = Vec::new();
+        fn enums(value: &V, lists: &mut Vec<Vec<String>>) {
+            if value.is_arr() {
+                value.arr().iter().for_each(|item| enums(item, lists));
+            } else if value.is_obj() {
+                for (name, inner) in value.props().ok().unwrap() {
+                    if &*name == "profile" && inner.is_obj() && inner.g("enum").ok().unwrap().is_arr() {
+                        lists.push(inner.g("enum").ok().unwrap().arr().iter().map(|id| id.s().ok().unwrap()).collect());
+                    }
+                    enums(&inner, lists);
+                }
+            }
+        }
+        enums(&schema, &mut lists);
+        assert!(!lists.is_empty());
+        for list in lists {
+            assert_eq!(list, known);
+        }
+    }
 }

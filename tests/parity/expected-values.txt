@@ -2,76 +2,76 @@
 # Windows PowerShell's numbers and PowerShell 7's, whether it answered and a digest of its typed
 # values or of its refusal.
 # Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.
-plain | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-operations | answer 97892d36465a5c67 | answer bc4526c933de9b11 | answer 01a60cd85c7e87af | answer 0cd779bc0b9e15da
-collector shape | answer b197b41ddeae0733 | answer af931de8f4045c7d | answer fc3fc2de354c5fbf | answer f46278755dd8f970
-collector shape with Windows line ends and no byte order mark | answer f35602a484b5f113 | answer 40e3fc0cd164cdd3 | answer fc3fc2de354c5fbf | answer f46278755dd8f970
+plain | answer 78c05a9e53e96646 | answer a364a41008025f4f | answer 1d6092ac228073ec | answer f76735ed906de046
+operations | answer 553c95db6b34ccaa | answer 33061f5897d2c57e | answer 2e125b0c59122bd4 | answer 3773bf42f991d834
+collector shape | answer 7ad16831317528e4 | answer 0012eb43174b9e2e | answer 1f6e5bdb487ce968 | answer 3af5c9f57058415e
+collector shape with Windows line ends and no byte order mark | answer 6ef0f60ed4e15f2f | answer e3c6b09b8ccec5a8 | answer 1f6e5bdb487ce968 | answer 3af5c9f57058415e
 readings twenty minutes old | answer 581a3770fa7b887c | answer f641a04357f043c0 | answer 602eb8457dea01d1 | answer 8c015ef06636744d
 readings from the future | answer 927debb05cb65622 | answer 60a025ddd821d4a9 | answer 1bf2c48b63562233 | answer 81883a99a8eead89
-readings at the age limit | answer 056158bedcf76c99 | answer edf220a5c55a0eca | answer 7f88ed7af8dd2858 | answer 68d7444e51d41cfd
+readings at the age limit | answer 214ec1f8b24bf83b | answer 717fb0e8609dad57 | answer c7b4165ca317987a | answer c5db9015a541c53f
 readings one second past the age limit | answer b5eff98f11533b52 | answer 292ec93eaef0d731 | answer 0c620f8acba1de02 | answer 0d4910d5ad4eb60a
-one account stale | answer 2933cef7d7f94dbe | answer fbab80fb610ce6c4 | answer acb5f9aecee44a76 | answer 29e87a8fdd541402
-no 5-hour limit | answer aa86547431c2c193 | answer 95c49f7ba83432fb | answer d436df8c7e755250 | answer f1f778fcc5d581f5
-no 5-hour limit, the reading stale | answer c988543b9b5a798e | answer 3a608cd85ae43230 | answer f61c44c997091ef7 | answer e39d1b8b1153565a
-5-hour limit not reported | answer bb5b2a84cda54aea | answer a0b9242530e7744b | answer 0db2a049162979e7 | answer b65c534dec6883d9
+one account stale | answer 44165c03bdeabfa3 | answer bfda37c0addb61de | answer 83aba3a1590ef647 | answer a5e0543075ae0a13
+no 5-hour limit | answer 8c9562d55742211e | answer 85cd24acce6ec345 | answer 8f7eef03f0a7739b | answer 4757f8d0891928c9
+no 5-hour limit, the reading stale | answer f147ccd6ab10c89c | answer 607a2bd4a8e588a4 | answer 962241abe9d5fc05 | answer b8b34d22213beece
+5-hour limit not reported | answer 3ad9c346ce7ace5f | answer ab4710789731d6f6 | answer a4de28fddacea589 | answer 80daf0f28ef5dd3b
 policy only | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer e86875de57f6245f | answer e86875de57f6245f
 policy and collector only | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer 368511db004795ee | answer adfc65a1b9aec09c
 policy and pause only | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer 85fcdd69a3f9137b | answer 5405609e71e225cb
-status without a generation time | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer 9910c36050e0dc7a | answer 2dbb950735862cc2
-collector running | answer 506afdc3188af641 | answer 3fec046d9dfbe7c8 | answer 3f18d1ace0b617ed | answer 4a2dd7a7cf5cda69
-collector stalled | answer 3b42c0687f7c0b98 | answer cceb5e89cfd56bb2 | answer 16bb5c437aaba35f | answer 6115e769b1d4deda
-collector overdue | answer 062437728f33caa0 | answer 317b531e197253b9 | answer df36f72931e93b53 | answer f7a3948b5f9a9fb6
-collector started in the future | answer cf442ceb8c748560 | answer 2cdbc4499a89e893 | answer 3b7813ece2c8ae69 | answer b3075ada513f262f
-collector without a start time | answer 4d1c677a0547e7a6 | answer 906c6ceff7ce947c | answer 3b7813ece2c8ae69 | answer b3075ada513f262f
-collector with one provider failing | answer 68bda0f039320f76 | answer ca4f5cdf59a86770 | answer 4365b086d549e831 | answer 2c1298216289274e
-collector unable to write state | answer 745fafb9cb37f4b1 | answer 4a5edfe0b39da3ed | answer 829e2d1913163455 | answer 467e1a8538257167
-collector with stale provider success | answer e669942027c365d5 | answer 15984998b746fd5c | answer 3e7bf41a62f3d479 | answer 0a31096773366ac9
-stored collector newer than the collector file | answer 232ef365923ef0be | answer 77bbaf6e00ecf930 | answer e90bd9e2754f129f | answer e2c2024c38ab4cf8
-manual pause | answer ab74779ca33b04ef | answer b08fd32fb9415dec | answer fd0882c270c6f67b | answer 31e6cfa132cd39f5
-manual pause that ended | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-pause file without an end | answer 710ce7f80a7b2175 | answer 0b5139184ce49196 | answer 28e07f0f60cf50c1 | answer ca9143b5acd76712
-pause reason with control characters | answer 2e4ca9a0032529fb | answer fa7b9fe5e9e5dc6a | answer 6d0c1840f0041f07 | answer d5ab880d609a7e8e
-one agent lease | answer d8c41fb011e9b41d | answer f4e83bc14a9a5145 | answer 4633c1d82853914f | answer ca4cff13d78593e7
-several agent leases | answer 8849c061a7be2e8b | answer 9f7816d5d0d1941f | answer 4209d66166a2841b | answer e05dd3a669d6e750
-only released leases | answer 8849c061a7be2e8b | answer 9f7816d5d0d1941f | answer 4209d66166a2841b | answer e05dd3a669d6e750
-empty lease ledger | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-lease with the wrong end | answer 8849c061a7be2e8b | answer 9f7816d5d0d1941f | answer 4209d66166a2841b | answer e05dd3a669d6e750
-lease ledger with an extra field | answer 8849c061a7be2e8b | answer 9f7816d5d0d1941f | answer 4209d66166a2841b | answer e05dd3a669d6e750
+status without a generation time | answer 893f66ea7bb29006 | answer 893f66ea7bb29006 | answer ae128337deb202e1 | answer db50eab7e5caec3a
+collector running | answer 1c1b8956c0e28a60 | answer 66ef0e13977db249 | answer 7047074b9e42f024 | answer 95d9c83663fb76c6
+collector stalled | answer 0f92adbbffbb6236 | answer 7ac64654cb6f13f5 | answer 35175767ed408126 | answer da4c65e9f151dc7a
+collector overdue | answer 3df135b029055514 | answer dee4d7ef80f7adec | answer 3dfe81804179727b | answer ef96095000454f5e
+collector started in the future | answer 7d935dbed380627c | answer af6ed4c5b142c333 | answer 5f0a0ed0e90e9688 | answer 8c2e7e7d42ff861c
+collector without a start time | answer 4554646043e3f0a1 | answer 323d467c4d3348ed | answer 5f0a0ed0e90e9688 | answer 8c2e7e7d42ff861c
+collector with one provider failing | answer 2430ec0c6d8299bf | answer 6e9ce0f27225496d | answer 43a38ea634973f51 | answer e1fa53490745fafd
+collector unable to write state | answer a829b330ca0504c3 | answer 3d691949575f480b | answer 1e7accbc44316b79 | answer 82d2796ffedabf98
+collector with stale provider success | answer f8c5c8879c72f40f | answer 83e4c7e3054740b2 | answer ff5456938e5f93fe | answer caef1777e2010aff
+stored collector newer than the collector file | answer 2f6c7ae79c2492cd | answer 58ee205e9df0e5dc | answer f7c20f5e55bd5f15 | answer b75968c8bfb8396f
+manual pause | answer 273b3ad015286d57 | answer b9212beb3bd5c20b | answer 786290d41d3744e4 | answer 636320723a06f351
+manual pause that ended | answer 78c05a9e53e96646 | answer a364a41008025f4f | answer 1d6092ac228073ec | answer f76735ed906de046
+pause file without an end | answer cf4da9b98602267c | answer 23713df517f1b41e | answer 59818d52b8529e5e | answer bf527f0145caefc6
+pause reason with control characters | answer 3331e432b14c1c56 | answer 59124762f7e275bf | answer f40eceb63f6bea7a | answer 49065fc3378b16cc
+one agent lease | answer e91abaef45c7edca | answer 1f682a57fadd1ccb | answer e3cfc54e0f175419 | answer 8c36c2151a04f8c4
+several agent leases | answer f6b69e53af95dcd1 | answer e8f3d5c6e66a2e29 | answer 575ffad3562ebe6d | answer 0c221b9d81baee49
+only released leases | answer f6b69e53af95dcd1 | answer e8f3d5c6e66a2e29 | answer 575ffad3562ebe6d | answer 0c221b9d81baee49
+empty lease ledger | answer 78c05a9e53e96646 | answer a364a41008025f4f | answer 1d6092ac228073ec | answer f76735ed906de046
+lease with the wrong end | answer f6b69e53af95dcd1 | answer e8f3d5c6e66a2e29 | answer 575ffad3562ebe6d | answer 0c221b9d81baee49
+lease ledger with an extra field | answer f6b69e53af95dcd1 | answer e8f3d5c6e66a2e29 | answer 575ffad3562ebe6d | answer 0c221b9d81baee49
 lease ledger that is not an object | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb | stopped 901cd41fa6a35beb
-lease and manual pause, pause later | answer 40c741e11043c253 | answer 32c77759fde50adc | answer da59b90d250bb4ce | answer 8617652807e82ca3
-lease and manual pause, lease later | answer 56445ea4ef10909e | answer 0a7760ac2f755b08 | answer d398d875da286b43 | answer 917be3efce7da883
-lease and a pause file without an end | answer 710ce7f80a7b2175 | answer 0b5139184ce49196 | answer 28e07f0f60cf50c1 | answer ca9143b5acd76712
-automatic selection | answer 39ab3c1286b35eeb | answer d4f01babf799639e | answer 8cb11193f5026971 | answer 30a77cab74498576
-automatic mode with selection off | answer 228f83ca0a5d14f9 | answer ad58234cd100629a | answer 05b8c4fdd5d30565 | answer bcb211c181000432
-automatic selection while paused | answer ab74779ca33b04ef | answer b08fd32fb9415dec | answer fd0882c270c6f67b | answer 31e6cfa132cd39f5
-policy without a version | answer 86a52a2d948d6c8d | answer 02b5a4f8b0a71cc5 | answer db811034a0daa39d | answer 9e91dc0c2e167c8b
-policy version one | answer b573c20e032bb54b | answer 9ed7319012797a88 | answer 99ec415bf9dd393f | answer bf00a8df7fcb4489
-Claude only | answer 8b72959ba009daa8 | answer 3bbd2ce4787fa0f3 | answer b795a5480a9798e7 | answer cd1a6b1dd0b8eac2
-Codex only | answer 89a43c325fd26f18 | answer ac4bdde77a8aa4ba | answer 28656ed9a5847b0d | answer 07967e01f85b4889
+lease and manual pause, pause later | answer def860ba61bdbaa8 | answer 0707ab96b6238060 | answer 3fd4cebc87d94aa9 | answer b37efa136af92d1f
+lease and manual pause, lease later | answer f8eab6fd17e9ae40 | answer c2bd020ced2fcaac | answer 21aa687063438880 | answer 3f34979e9204a77d
+lease and a pause file without an end | answer cf4da9b98602267c | answer 23713df517f1b41e | answer 59818d52b8529e5e | answer bf527f0145caefc6
+automatic selection | answer 1f18e7bdbfb48ace | answer b376ed70220f6b5e | answer 4ff5a120d995cb48 | answer 692771dd98f9cf77
+automatic mode with selection off | answer bb1a303d52ccd1a4 | answer ae7576840975fc06 | answer f3168f2d83e21785 | answer 1bc411bf8cf64b5d
+automatic selection while paused | answer 273b3ad015286d57 | answer b9212beb3bd5c20b | answer 786290d41d3744e4 | answer 636320723a06f351
+policy without a version | answer b528e0483d208e72 | answer ffe2fc360dc98385 | answer 705d94b7e9731756 | answer ac991b607d5dd397
+policy version one | answer cd1c22a24929f858 | answer 8429767e4187c7a2 | answer e82af864ffb7ac2c | answer 90d06dc6bbc2b4cb
+Claude only | answer 3a6d528063bc2e23 | answer ff947b1046c57fcc | answer b33a892b877c1611 | answer a559e5530d490505
+Codex only | answer c5cb721433462124 | answer d97b5fc5a196e9bb | answer f41c94ff2ffb5171 | answer a8d4135595a93737
 no providers configured | answer 410c6b1bc7e6e9c8 | answer 0f80bc0acb17bb9e | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
-one Codex account without capacity | answer dafc6b91e0691bed | answer 4e788067d0662e9b | answer ecbbbb4901b76f95 | answer 6d3a520afefd130a
+one Codex account without capacity | answer d5bc5f8f79e4241a | answer bd17c2db70bcb450 | answer 57949ae15511b9c5 | answer f91ce0285cbd6ff6
 one Codex account without an id | answer 410c6b1bc7e6e9c8 | answer 0f80bc0acb17bb9e | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
 two Codex accounts without an id | answer 6d6d62e2b3b5fab7 | answer 3035824e08e58ec0 | answer 67eab7e604e54d52 | answer 67eab7e604e54d52
-Codex configured but never observed | answer fa6ad9d4a3efe65d | answer f763ecf8a2023e2e | answer 02a8512b30235302 | answer 56b47a6d05a61120
-capacity profiles | answer 07333f5c9be32b6c | answer 872891d9977cdec7 | answer eadee837c37149a8 | answer 707735e759d048a4
-capacity profile of the other provider | answer fb800a5425471e0d | answer f5d2c1e473ec1ee4 | answer 520bdad88914c663 | answer 603ca1bb31242939
-no capacity settings | answer 21e423e099cd035d | answer 28921683be5e42da | answer 04d6e2b517a528cc | answer 5d033073c68aa71e
-disabled accounts | answer ed495b2438887bf1 | answer 5cc677951d3057fd | answer a2223c57105cdf61 | answer 34ef0942dd041e5b
+Codex configured but never observed | answer 6a135ff081b1217d | answer d4439cb78663b7ad | answer 3948dff7468a8934 | answer 0236bf96f3084757
+capacity profiles | answer 9c834dd259da9c87 | answer 6b842af2febb841a | answer ee2f19ed501e7e55 | answer aeecea19ebef211a
+capacity profile of the other provider | answer bf548b7ff340839b | answer 8fa761802716ac64 | answer 6dc2f78af3658379 | answer 92804c375aaf9799
+no capacity settings | answer 4e305ff70b0ecda1 | answer f330f0329910521d | answer 5ad8e106b805671f | answer 28a73c4caf2734ba
+disabled accounts | answer e5a81c09b6143db9 | answer 43832327a573f607 | answer 71e17dca625024a7 | answer 9ef84b7bb0356d96
 every account disabled | answer f759d5c77d26dee8 | answer 7c3d9b8949702c6e | answer 230cfce0271d7178 | answer 230cfce0271d7178
-account enrolled but not observed | answer 1a83c22eda1d0eb9 | answer 088f9f858a3a7379 | answer b028bfeb3d92ad76 | answer 2dd1b598a4e79070
-display settings and history flags | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-policy version three | answer 39ab3c1286b35eeb | answer d4f01babf799639e | answer 8cb11193f5026971 | answer 30a77cab74498576
-policy version three with one provider | answer 622f44b903d9f524 | answer 666813651895fe29 | answer 62ce615210147831 | answer 9ee14318e183971d
+account enrolled but not observed | answer fdadabbe2f49f832 | answer 66a7c7aca91f5d3a | answer a3ad823125cb80b9 | answer c4833f824e29d01f
+display settings and history flags | answer 78c05a9e53e96646 | answer a364a41008025f4f | answer 1d6092ac228073ec | answer f76735ed906de046
+policy version three | answer 1f18e7bdbfb48ace | answer b376ed70220f6b5e | answer 4ff5a120d995cb48 | answer 692771dd98f9cf77
+policy version three with one provider | answer 80f651811b43c198 | answer 3c64fd3d4302374b | answer b7b39cb9f3a60ec5 | answer 63862f30dd540011
 policy version three with no providers | answer 410c6b1bc7e6e9c8 | answer 0f80bc0acb17bb9e | answer 4b86fc056f1ecbbb | answer 4b86fc056f1ecbbb
-a third provider | answer ce3a90a0a40a0f49 | answer 7df35bfaa25189b2 | answer fbf281b9dd57a92a | answer 47dedf79f495b64f
-a third provider that is not configured | answer 48427e2b580c9082 | answer 56d883e1ed888d6a | answer 773055d736866b41 | answer 5d007bbcf2c1f1b7
-a third provider never observed | answer 0d59aa7e9535d2a9 | answer a84e55a56692c789 | answer 6284b4fd47302eeb | answer 07cf7311f637bb31
-providers that share a place in the display order | answer 7edc83a10c295f20 | answer 93319c6d5fe2db8f | answer 9eea7e5bb462becd | answer 6dbf38e839f36693
-two providers of the Codex driver | answer f4717a723ae7af90 | answer 1c1d3d512c159ea1 | answer cb07a3d09a50080f | answer 3cdfc8113ae75988
+a third provider | answer 1aa1ac732d1139aa | answer 0074d83b22d5ba71 | answer 38e81dde707ff7cf | answer ef0ce3c7b42d4564
+a third provider that is not configured | answer a35529ad1aba39c3 | answer c43d5c06f0fb61df | answer 3b7ad986ac787e58 | answer b842003c70d3f648
+a third provider never observed | answer cf565854d6886975 | answer e152b5394b3339f1 | answer 861fb52b3427a91a | answer 105e4ea148ebaa67
+providers that share a place in the display order | answer 4c63bd6c54630b4a | answer 8ce99ae9e5096df6 | answer 3b548510dd1363bb | answer ff023b71127c3702
+two providers of the Codex driver | answer a9b4b1c6d2f2fcf6 | answer 02e981e63d0d578a | answer 7db5162e8ef5d75a | answer bea8866261b9d177
 two providers of the Claude driver | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3 | ruled 17576d07a8bc4ed3
-a shipped provider moved in the display order | answer f317aae86ea9fb30 | answer c64cb85e3e25afbd | answer a33466a4bff8ac49 | answer ba69fe501790fa35
+a shipped provider moved in the display order | answer 37cd8b9a9a03efc3 | answer 0d033748f667f06e | answer ad8a91ce6babf120 | answer fd0d842b472c7443
 a copy without the Claude definition | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5 | ruled d415f8457933fac5
-a copy without the Claude definition and no Claude accounts | answer 5557a63ccbb6f350 | answer 1c2e7f8cfd798e0f | answer e4550f6d402d40d1 | answer 4bd11c390ef8f372
+a copy without the Claude definition and no Claude accounts | answer f96a1858671ed7cb | answer 65d814604177d20b | answer 5619b5c0cde861ee | answer 0bad0034f47491fe
 definition with an unknown driver | ruled 61998696d39f7f08 | ruled 61998696d39f7f08 | ruled 61998696d39f7f08 | ruled 61998696d39f7f08
 definition with an unknown field | ruled e19db7430973f026 | ruled e19db7430973f026 | ruled e19db7430973f026 | ruled e19db7430973f026
 definition under another file name | ruled 96d9e8f7a85999b7 | ruled 96d9e8f7a85999b7 | ruled 96d9e8f7a85999b7 | ruled 96d9e8f7a85999b7
@@ -80,62 +80,62 @@ definition with a window its driver has not | ruled 42f384e3707e1483 | ruled 42f
 definition with a fractional display order | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012 | ruled eaee940d439b5012
 definition that is not JSON | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9 | stopped 7619b9b5a430ade9
 no definitions at all | ruled 8d6b6eb4cb1528e5 | ruled 8d6b6eb4cb1528e5 | ruled 8d6b6eb4cb1528e5 | ruled 8d6b6eb4cb1528e5
-preview policy | answer 4e2b40e190b21a87 | answer 7b2596d868027070 | answer 8cb11193f5026971 | answer 30a77cab74498576
-preview policy without a stored policy | answer 75ba30ab6f5d2fa7 | answer 88010f76741beff7 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
+preview policy | answer e453e7e5d8851d47 | answer 55720d97c3802a0c | answer 4ff5a120d995cb48 | answer 692771dd98f9cf77
+preview policy without a stored policy | answer 7e61c93f8bc1b33a | answer 8668553cb7f2aa82 | answer 1d6092ac228073ec | answer f76735ed906de046
 preview policy that is invalid | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
-rotation held | answer 05a5d234dc842bbb | answer 26de4287a0f74ecd | answer f93bc97fe278324e | answer f28e7cbf22755323
-rotation hold that ended | answer 038a8039aa2de39e | answer 7bce58c6ad5a076a | answer 8cb11193f5026971 | answer 30a77cab74498576
-Codex selection held | answer 0608d0fd7523a05e | answer ac59fa36290ae8b0 | answer 8ab79894cbd0c105 | answer 595e259efcc030dd
-active account below its margin | answer c8cd8e7b226ee461 | answer f3530650757dd1a5 | answer 39b2de1e3e87d7ab | answer 3da2f1359147c3c8
-every account below its margin | answer 85902fb345585f16 | answer d139b61342082f33 | answer 144b27a3adeb0b93 | answer 176b5756a3f56195
-no active account | answer df91dacb07287c96 | answer 1608484606f61ae8 | answer 93b116681ad09fb2 | answer fa05f91c7310cd74
-active account not enrolled | answer 67b98ac4ffeb11db | answer a2996cf9c96dd577 | answer ed7aea4c8c23323a | answer 5edb0e33b2b0d7c5
-order soonest-reset | answer 4366487f0e0865bf | answer 245676ae9b2bf40e | answer ec031cadfd8007fd | answer 54aeca2bf870d7a3
-order soonest-reset with the second account active | answer c8916e719c060f6e | answer 4a265ed79fe5515b | answer 32d033d364b46f06 | answer 761d1134beaca7af
-order weekly-expiry | answer 4366487f0e0865bf | answer 245676ae9b2bf40e | answer ec031cadfd8007fd | answer 54aeca2bf870d7a3
-order weekly-expiry with the second account active | answer c8916e719c060f6e | answer 4a265ed79fe5515b | answer 32d033d364b46f06 | answer 761d1134beaca7af
-order balanced | answer 4366487f0e0865bf | answer 245676ae9b2bf40e | answer ec031cadfd8007fd | answer 54aeca2bf870d7a3
-order balanced with the second account active | answer c8916e719c060f6e | answer 4a265ed79fe5515b | answer 32d033d364b46f06 | answer 761d1134beaca7af
-weekly allowance nearly spent | answer bc1afae4721f8a5a | answer dc67326814ce943a | answer bae002fc4ab583e5 | answer f341c3f2229ddcb1
-critical allowance | answer cfdab34bab0e577f | answer 8196b50a1ca20887 | answer af8585821023dad4 | answer 376b48c365994636
-critical allowance with stored state | answer 7d5339b699b40c5d | answer a0d62067c5226a9e | answer af8585821023dad4 | answer 376b48c365994636
-critical allowance drained to zero | answer de1d626e29b45d56 | answer 5b1078caba6491d1 | answer 77142bfacbbd7db5 | answer d7d5cd0ac6a7c0df
-critical setting off while low | answer df8bb44994595c2b | answer a6bea9717decb434 | answer 7323d5d2590ca9c2 | answer 6b17d2f20e3de325
-scoped model limits | answer 85e1c9571ab1033b | answer 3f5b020bb2c545bc | answer 36aa54c576bdc8b0 | answer dbd58c1b7f530b1d
-scoped model limits not observed | answer c176c0c5f2e4600a | answer 0db430974673321a | answer ab4493df4991f6a3 | answer 41c5d054a232afea
-scoped model limits with capacity | answer a1bdd87b7518867a | answer 0907da00e20b7fca | answer 0e75a064d64052e1 | answer 8648bc6b6229d389
-account needs sign-in | answer 2c6acb46a9506b7f | answer f4f837adbff21ed4 | answer f4dcab53ef983350 | answer 3f7e0459222243f1
-sign-in near and past its end | answer 458b18e85bd19597 | answer 14933e354794e656 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-account signed out recently | answer a94137699fdd8b5e | answer cf7589f490c61c2a | answer 10fa0921ab542714 | answer 8e395179eafc4730
-Codex plan ended | answer c17fcfb7970a9bf3 | answer ca773a8cbd70475e | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-same subscription enrolled twice | answer b0966e8130dde4b4 | answer f5fc2b80f7538ae3 | answer 24939750c04c072d | answer b58a18257c787d8f
-same slot observed twice | answer d4a5cb24144b0ad2 | answer 18277640dbf99443 | answer 5d9888b7dc72bc4d | answer 7000281665e5155e
-Codex account blocked until its reset | answer e64c5147380d1ea1 | answer 155f7b784447cfb1 | answer ac6e05027aff6637 | answer 303bfc59df234278
-Codex account blocked without a reason | answer 2a663aa625de81c1 | answer 2dcbfab694a19b0e | answer 3201155a202ae66f | answer cea3020c5e055649
-Codex meter missing | answer 12d258e47630c6f3 | answer ec49a93bf8623626 | answer 4c41624becf00bed | answer 34c6f5fc217e10a6
-Codex windows that do not add up | answer 15090595b940c73e | answer d71a7152c76ce4a8 | answer ffca18938cc76530 | answer f838cfaa6e82a8a6
-Codex window with an unknown name | answer 277b3c4c4e7b41fb | answer 3582b9c929ecfadf | answer 0cc052d8d74e7116 | answer d26bd291ab2d14ae
-windows that already reset | answer 2cd16d54c2cfdd65 | answer 01c8ab9b852871d2 | answer a8683b8e7216a13c | answer e0855acc51afa6e8
-windows that reset before the reading | answer 761336904601ba63 | answer cbdeea7b3845bfbc | answer 08ab2239722af554 | answer 973c6e177f79a80c
-readings without usage | answer d254b16905e3c3f4 | answer 6cac84717e000e90 | answer 0e11c7bfef1a8733 | answer 1e8ec894fcf8acbd
-readings without reset times | answer 2b1fa2fc23ac425e | answer 4046537225194b3c | answer 6690f1789f01aeef | answer cecaada1b2d28d0e
-account marked not fresh | answer d3b7c3b6d3678e71 | answer 9ad71a02ecfd2be5 | answer cc9b162ab08b198d | answer c046b94ff2b47143
-fully used | answer 7372f2752e5a32cd | answer a58009ed99820439 | answer 018c93ef42526e43 | answer 86cce0de58e72b8a
-fractional readings | answer 3e5e30cbd1edf38c | answer 967d6c63ce037b15 | answer 4cda770a4ce36333 | answer 643faf1e596390d0
-fractional readings and automatic selection | answer e54c8199a8644386 | answer b979fb1dd67f0ccc | answer 5dc07dac752c6d11 | answer 20d3a0fc47da7122
-fractional settings | answer 112f2c6f08c20010 | answer a511e259718bfcdb | answer b59bf83439d6cfd3 | answer 85e4b99617ae54f8
-fractional settings and readings | answer 3a82e8a03de8dee5 | answer b9207516c8604c2d | answer a85adc936725038d | answer 90be8154187e980c
-thirds | answer 43fe44f3141e82b6 | answer 467cd6a1b33211a8 | answer 34043b8e4302ed51 | answer 2a61ecede0ea21b8
-forecast hours | answer 83139c587516cd71 | answer 8e1d5448bb0cb44f | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-forecast without a time to limit | answer 8863f445c1ecf59e | answer 54fc988b6ed605c1 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-large whole numbers | answer 2ee462fb3f51ff59 | answer 5f3f6d225129a371 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-Codex margin beyond one hundred | answer 64a56b7308da3f17 | answer 95a0be384a092841 | answer 90a70a92a1cc09a9 | answer 4145975cfea7124d
-stored decisions | answer d0f448c7c6f65088 | answer 9463cf727e099259 | answer 364393e49f18666b | answer 46b82b2e64efd7de
-stored decisions for another provider | answer f4d5b4da13b2d911 | answer 9890f443f176c171 | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-announcements | answer e8d6e4e8bae73a4a | answer 62fd2cdc6ca281c9 | answer a9c4a3af68c3c955 | answer e414e612773fe809
-announcements outside working days | answer e8d6e4e8bae73a4a | answer 62fd2cdc6ca281c9 | answer a9c4a3af68c3c955 | answer e414e612773fe809
-announcements with nothing wrong | answer b65aebd1ad964f8a | answer 03615042e706c54c | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-announcements with Claude only | answer 8b72959ba009daa8 | answer 3bbd2ce4787fa0f3 | answer b795a5480a9798e7 | answer cd1a6b1dd0b8eac2
+rotation held | answer 4c205209a2c888fb | answer f3d144c397ece8eb | answer a76af1c3f6634505 | answer a42b86bfbbe9731a
+rotation hold that ended | answer b9b8c9ff981acfaa | answer a4de4e5cf8aac3b7 | answer 4ff5a120d995cb48 | answer 692771dd98f9cf77
+Codex selection held | answer 76c6ea195a2a94a9 | answer 05a598eae3215759 | answer 66edbbefb6350eb1 | answer 26e052ece26f4fdd
+active account below its margin | answer 1452f37bd3648f5d | answer 2446952557f79f0a | answer 8b082b06bf35d09d | answer 8a5753e4e7491156
+every account below its margin | answer 66e812fda057ef65 | answer 823b4e2116f975fa | answer cee5362efde4e025 | answer 84897390a17c7fcb
+no active account | answer 6456bb93e4fd8f28 | answer 97687b1aaa298349 | answer fe7fd88a62e34047 | answer a4515d06e2095fc4
+active account not enrolled | answer 3c084082a7c9232e | answer e1b7e87be9dd20b0 | answer 10fd56f3c8d0e37e | answer 51e96e79e37e7175
+order soonest-reset | answer cb20f0f385333897 | answer b3715a812c910f55 | answer 69967681bc6eb06f | answer 5ed73e87f1fced12
+order soonest-reset with the second account active | answer a3706134c892732e | answer c7958433270ad794 | answer fd3549ea228a081a | answer 622d7282a0dec643
+order weekly-expiry | answer cb20f0f385333897 | answer b3715a812c910f55 | answer 69967681bc6eb06f | answer 5ed73e87f1fced12
+order weekly-expiry with the second account active | answer a3706134c892732e | answer c7958433270ad794 | answer fd3549ea228a081a | answer 622d7282a0dec643
+order balanced | answer cb20f0f385333897 | answer b3715a812c910f55 | answer 69967681bc6eb06f | answer 5ed73e87f1fced12
+order balanced with the second account active | answer a3706134c892732e | answer c7958433270ad794 | answer fd3549ea228a081a | answer 622d7282a0dec643
+weekly allowance nearly spent | answer fba7eca04b228e59 | answer 5f8e40023299f4f3 | answer fbb716903eb1d7ab | answer d3133b62ba10c781
+critical allowance | answer e039d19750db9a78 | answer 554f433c82d12f27 | answer cfd6ef3dc6d78d18 | answer 86f72abfa4e92c3c
+critical allowance with stored state | answer 684ae81e199c5b81 | answer 4891d232cd2805f8 | answer cfd6ef3dc6d78d18 | answer 86f72abfa4e92c3c
+critical allowance drained to zero | answer d749dfcb7dc3c406 | answer 63a5dea65b8c3360 | answer ba883bd62448a47a | answer fa7a14ac400a33c2
+critical setting off while low | answer a54364aee06da631 | answer 27dff447bbd5f8aa | answer 375592084748111e | answer 4f1687a56b54e7be
+scoped model limits | answer a0802d22c5e9e389 | answer 1b28ae7602a4798e | answer cfcd6cdbd269847f | answer 13ff50d029c5ace0
+scoped model limits not observed | answer d7c0f4afc4464110 | answer ee7d80c3bd738fd7 | answer 12720b670c0ca359 | answer 1699aa5784494dec
+scoped model limits with capacity | answer 27da648a1bdcd8f3 | answer 650df06153c55832 | answer 5129fad525498343 | answer 121a04f43e443c9f
+account needs sign-in | answer 6bb0450f072637d1 | answer 4b80f0b47a4730f2 | answer 6a78951474c1e4c3 | answer 04f8ebbd9ce10d77
+sign-in near and past its end | answer 6ecbf35959be1ee0 | answer fd8e081a1f218369 | answer 1d6092ac228073ec | answer f76735ed906de046
+account signed out recently | answer fed6930774a17ee7 | answer fe509a3c0f6f7ec9 | answer c623b22a67e6401b | answer 4381e7a4e33cbbfb
+Codex plan ended | answer 6c1bfffc147a3bdf | answer 04ac283ca5e178b9 | answer 1d6092ac228073ec | answer f76735ed906de046
+same subscription enrolled twice | answer 0c575406c6606732 | answer 07f357d123069a84 | answer 5decf7f494f75296 | answer dbad71ae640cf4ad
+same slot observed twice | answer d04a9b229335c425 | answer 150567552f8f35b4 | answer cbb3c51602dcece8 | answer 88a6b1ca40387232
+Codex account blocked until its reset | answer 18f4f8bd1acbd0b3 | answer 5f3513ed112a1303 | answer 472c51e0e9eef076 | answer 5918df00cba2b238
+Codex account blocked without a reason | answer 2203719fdcac6c93 | answer 53b7162cf48a40cb | answer b7e944247c764030 | answer 59394bb13183f16d
+Codex meter missing | answer cc8442036a779d0c | answer 3b864c8d8dcc093e | answer 811ce969d59c98e1 | answer 3187ff4b0065db0f
+Codex windows that do not add up | answer 69521795d978e56f | answer b4646e121c85a5e0 | answer 52565ac418d4ddc0 | answer 505156eb604b1422
+Codex window with an unknown name | answer 14e80dda129d111a | answer c2637e8307223cf8 | answer db85d64f95f72a98 | answer 4c8c3d7d53851561
+windows that already reset | answer 9d1da7b6bf6d4b8e | answer cd54abb4e1d95d91 | answer 632359e2e73a1264 | answer 3ff8a240cb1df605
+windows that reset before the reading | answer f3d1735e5bbe8888 | answer 68c036dba929b62c | answer faebe4d05ca6e347 | answer 5f865d307c7b0720
+readings without usage | answer f66f90a8f7ec39a3 | answer 595b8d3791d811f3 | answer 39c6a1f34fe9ad75 | answer 40beb40717b9f120
+readings without reset times | answer 3bf17ec96f41bb4a | answer ef7a01273edee673 | answer 00c8c87910e93c21 | answer a152a2ae1005139f
+account marked not fresh | answer 1c3b7fa2b8dcb3a2 | answer c72136d56b51c2fd | answer 3d27a5a32d2a7e58 | answer bd97e04665a16856
+fully used | answer f0f8d6125eae5ebe | answer 871fe44199c488e2 | answer 84cf930976841a49 | answer e754e11c0fa27d12
+fractional readings | answer 520859b3670d372a | answer 93782b3a5055d16d | answer 129c5cde3d00d3c2 | answer 85930efb9768264b
+fractional readings and automatic selection | answer dd5270d38b33659b | answer 5604156105c094b6 | answer e7264678cad2d4d0 | answer b83deec6d8eae11b
+fractional settings | answer 159e8249117dcabc | answer 1bce715a030e4bd0 | answer 4f1a5b4cfda747ac | answer 5b691b06f5b0ceaf
+fractional settings and readings | answer 99e3d472276a659a | answer 78be26804f93c36b | answer 5a866f235ddd9afd | answer 30f4054aedc6875e
+thirds | answer 6d0dcf991cd6db28 | answer 3dfdf58d2e7c3cf3 | answer 65cc79b9b04810d3 | answer 9ccbec3f805e96fd
+forecast hours | answer c1674f1127084783 | answer 077a6ce1ac13410b | answer 1d6092ac228073ec | answer f76735ed906de046
+forecast without a time to limit | answer 090a58d8cd9d49a8 | answer 700377825d50748d | answer 1d6092ac228073ec | answer f76735ed906de046
+large whole numbers | answer c1877bfb90775fe2 | answer 9e7854fc788f8465 | answer 1d6092ac228073ec | answer f76735ed906de046
+Codex margin beyond one hundred | answer 688a881ff1249f5c | answer 1027be6f1f691336 | answer 3e81e621b44be224 | answer c4a508295c01f3b8
+stored decisions | answer 7398acdcff3e1e68 | answer cba839a56f35dd8d | answer 169c5598a8535708 | answer 6932d7ddbd7d09a8
+stored decisions for another provider | answer 9df529ddd958f0ec | answer e7f31337a3bb441b | answer 1d6092ac228073ec | answer f76735ed906de046
+announcements | answer 0237a005032dd20f | answer fc882de8cb87e865 | answer 9541a8d14e0baaff | answer 6cd3120282914e58
+announcements outside working days | answer 0237a005032dd20f | answer fc882de8cb87e865 | answer 9541a8d14e0baaff | answer 6cd3120282914e58
+announcements with nothing wrong | answer 78c05a9e53e96646 | answer a364a41008025f4f | answer 1d6092ac228073ec | answer f76735ed906de046
+announcements with Claude only | answer 3a6d528063bc2e23 | answer ff947b1046c57fcc | answer b33a892b877c1611 | answer a559e5530d490505
 no policy | ruled ae91860a59556749 | ruled ae91860a59556749 | ruled ae91860a59556749 | ruled ae91860a59556749
 policy with an unknown field | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5 | ruled 8a428cac4c82bec5
 policy with an unknown mode | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb | ruled 22e5c61130c5dfbb
@@ -153,12 +153,12 @@ policy that is an array | stopped dec21719bcd30400 | stopped dec21719bcd30400 | 
 policy that is not JSON | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7 | stopped f5e85cdb9d0f70a7
 empty policy file | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400 | stopped dec21719bcd30400
 generation time that is not a time | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
-labels outside ASCII | answer 2e6c35e3e4491d7a | answer a17059e29013c8ed | answer c31c3ce69423fa60 | answer 649664d45fad1f7a
-number with an exponent | answer 64713fe3d11d3854 | answer 0041310f1e518c17 | answer c31c3ce69423fa60 | answer befac8911264cde1
-readings too small to write without an exponent | answer d9798cef9e2c88e3 | answer 94ab907c62f3a72a | answer 969d0a0acca2933b | answer eb9a68c786193af8
-reading too large to write without an exponent | answer 9f0e2264fc7a16b5 | answer 8628a1d12689222e | answer d677702c11eb1820 | answer 7b6eaf7f71e9c985
-text where a percentage belongs | answer 9dc22cdb6a682ea6 | answer 955c83243e7e437f | answer 0038b2c66b0413f8 | answer 2bec3b2cbaf8258a
-usage that is an object | answer 595979f9fe06334f | answer 4bb253d36c78f707 | answer d62216a73a961ce4 | answer 72ba8350bd527c2b
+labels outside ASCII | answer 6a0c1405519baacd | answer cc952481969b6cc0 | answer 1d6092ac228073ec | answer f76735ed906de046
+number with an exponent | answer 587d67553baf0ebb | answer e9b247e79045ff18 | answer 1d6092ac228073ec | answer 8ae6ec7e01e42821
+readings too small to write without an exponent | answer de1f431532fb7af6 | answer 7fe8870e04d68f86 | answer ad0d514af71869d8 | answer 48acc32269194f31
+reading too large to write without an exponent | answer 45013c94b4bd5dea | answer bb1d55ccec673d4a | answer 6ca78e9a822be526 | answer 34623a779d42ef07
+text where a percentage belongs | answer 53a2568815098781 | answer 467917560573632b | answer 19c6a865bf3c4c63 | answer db8a150e2b947043
+usage that is an object | answer a04d9f42612b31de | answer 9f28a3430c196433 | answer e2283cd31c0334da | answer b318d135ec7e8ead
 time in a regional form | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
 time without an offset | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552
 time without seconds | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552 | stopped b4deabdef1777552

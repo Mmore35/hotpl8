@@ -6,7 +6,8 @@
 //! A case is never edited to make it pass. A rule that is meant to change has its cases
 //! changed with it, by hand and in review. Where the program is meant to differ from
 //! PowerShell, the case keeps PowerShell's answer and says so beside it: `"program"` is
-//! `refuses` or `answers`, and `"why"` names the difference.
+//! `refuses` or `answers`, and `"why"` names the difference. A case whose `"program"` is
+//! `changes` holds the program's own answer instead, and is compared like any other.
 
 use crate::claude::{self, Accounts};
 use crate::ps::*;
@@ -268,7 +269,7 @@ fn answered(rule: &str, asked: &Asked) -> R<V> {
 
 /// Why a case may say the program is meant to differ from PowerShell. Each is a difference
 /// docs/plans/rust-read-side.md lists.
-const WHY: [&str; 3] = ["a time is not one HotPl8 writes", "a number is none", "a time zone is judged where it is used"];
+const WHY: [&str; 4] = ["a time is not one HotPl8 writes", "a number is none", "a time zone is judged where it is used", "sizes now come from the catalogue"];
 
 /// The cases of the rules whose names begin as given, each answered and compared.
 fn hold(family: &str) {
@@ -300,12 +301,15 @@ fn hold(family: &str) {
             let held = match says {
                 "refuses" => now.is_err(),
                 "answers" => now.is_ok() && !refused.is_null(),
+                "changes" => true,
                 _ => false,
             };
             if !held || !WHY.contains(&&*why) {
                 wrong.push(format!("line {}: {rule} [{}]: the case says the program {says} ({why})", number + 1, field("from").s().ok().unwrap()));
             }
-            continue;
+            if says != "changes" {
+                continue;
+            }
         }
         let (expected, said) = match now {
             Ok(answer_now) => {
