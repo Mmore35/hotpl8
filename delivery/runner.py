@@ -420,7 +420,7 @@ def update(root, github=None, adapter=invoke_adapter):
         try:
             if recover(root, config, adapter):
                 # The next wake, five minutes on, tries the revision again (see reject).
-                raise Deferred("An activation was interrupted and the previous release restored; the next update tries again")
+                raise Deferred("An activation was interrupted and rolled back; the next update tries again")
             current = read(root / "current.json")
             sha = github.main()
             status.update(desiredSha=sha, installedSha=current.get("sha") if current else None)
@@ -486,9 +486,12 @@ def update(root, github=None, adapter=invoke_adapter):
                         adapter(config, root / current["release"], "preflight", root)
                         write(root / "current.json", current)
                         adapter(config, root / current["release"], "recover", root)
-                    reject(root, sha, "Activation health check failed: "
+                    reject(root, sha, "Activation failed: "
                            + (str(error) if isinstance(error, DeliveryError) else type(error).__name__))
-                    if current:
+                    # A first activation that failed before its pointer was written left
+                    # nothing to recover: dropping the transaction keeps the next update
+                    # from counting the same failure again as an interruption.
+                    if current or not (root / "current.json").exists():
                         (root / "transaction.json").unlink()
                     raise
                 if current:

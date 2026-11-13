@@ -437,9 +437,20 @@ export async function main(config, args) {
         self.assertIn("bad health", d.read(self.root / "rejected.json")["reason"])
         result = self.update()
         self.assertEqual(result["state"], "pending")
-        self.assertIn("failed activation 3 times (Activation health check failed: bad health)", result["reason"])
+        self.assertIn("failed activation 3 times (Activation failed: bad health)", result["reason"])
         self.assertEqual(d.read(self.root / "current.json"), self.previous)
         self.assertEqual(self.github.downloads, 1)
+
+    def test_a_failed_first_activation_is_counted_once_with_its_own_reason(self):
+        (self.root / "current.json").unlink()
+        def adapter(config, release, operation, root):
+            if operation == "drain":
+                raise d.DeliveryError("boom at drain")
+        self.assertEqual([d.update(self.root, self.github, adapter)["state"] for _ in range(4)], ["error", "error", "error", "pending"])
+        rejected = d.read(self.root / "rejected.json")
+        self.assertEqual((rejected["attempts"], rejected["reason"]), (3, "Activation failed: boom at drain"))
+        self.assertFalse((self.root / "transaction.json").exists())
+        self.assertFalse((self.root / "current.json").exists())
 
     def test_a_revision_that_failed_activation_once_is_installed_when_it_next_succeeds(self):
         d.write(self.root / "rejected.json", {"sha": B, "at": d.now(), "reason": "Interrupted activation"})
