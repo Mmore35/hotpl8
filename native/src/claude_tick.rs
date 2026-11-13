@@ -242,6 +242,23 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     let mut acc = Accounts::default();
     let mut no_short_limit = Vec::new();
     for a in &listed {
+        // cswap trusts a reading it could not renew (after a 429) only until the soonest
+        // window in it resets, then lists it `unavailable` with the reading as
+        // `lastGoodUsage` until its next planned read, usually a few minutes on. That is
+        // routine and clears with nothing to do, so when cswap's own cache plans that read,
+        // the last reading is shown as paced. It is never `fresh`, so it grounds no switch,
+        // warm or probe; a window whose reset has passed is drawn as refilled.
+        let withheld = a.g("usageStatus")?.eq_s("unavailable")?
+            && !a.g("usage")?.t()?
+            && a.g("lastGoodUsage")?.t()?
+            && a.g("lastGoodAgeSeconds")?.is_number()
+            && a.g("email")?.is_str()
+            && cswap::paced_until(request.home, a.g("number")?.to_int()?, &a.g("email")?.s()?, &a.g("organizationUuid")?, a.g("lastGoodAgeSeconds")?.dbl()?, now).is_some();
+        if withheld {
+            a.set("usageStatus", "ok".into())?;
+            a.set("usage", a.g("lastGoodUsage")?)?;
+            a.add_member("usageAgeSeconds", a.g("lastGoodAgeSeconds")?, true)?;
+        }
         // Unsupported native data stays visible as its own state rather than an empty healthy row.
         let mut valid = true;
         for window in [a.path(&["usage", "fiveHour"])?, a.path(&["usage", "sevenDay"])?] {
@@ -278,7 +295,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         // Fresh only when cswap vouches for the reading. A cached "ok" snapshot can be
         // hours old; without an age it cannot be trusted, and anything that is not "ok"
         // is unusable. Fail closed.
-        let fresh = a.g("usageStatus")?.eq_s("ok")? && !age.is_null() && age.dbl()? <= max_age;
+        let fresh = !withheld && a.g("usageStatus")?.eq_s("ok")? && !age.is_null() && age.dbl()? <= max_age;
         let slot = number.to_int()?;
         // A reading with a weekly window and no five-hour one. The provider gives no sign
         // of its own beyond the row being gone, so only the plan can say that is right; on
@@ -330,7 +347,7 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
         entry.set("fresh", (fresh && normalized.g("valid")?.t()?).into())?;
         // Old only because cswap is spacing its reads (it backs off up to 30 minutes after
         // a 429): said nowhere, but still no ground for a decision.
-        let paced = if !off && a.g("usageStatus")?.eq_s("ok")? && age.is_number() && age.dbl()? > max_age && !normalized.g("valid")?.t()? {
+        let paced = if !off && a.g("usageStatus")?.eq_s("ok")? && age.is_number() && (withheld || age.dbl()? > max_age) && !normalized.g("valid")?.t()? {
             // Sound in every way but its age, or the reading is not merely paced: judged
             // as it would be were it young enough, then put back as it is.
             let ageless = policy.shallow()?;
@@ -1872,6 +1889,38 @@ pub(crate) mod tests {
         assert!(truthy(&seen.payload, "slots.0.pacedUntil") && !truthy(&seen.payload, "slots.1.pacedUntil"), "{}", text(&seen.payload, "slots"));
         assert!(seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
         assert_eq!(seen.lines.matches("[stale 1200s]").count(), 1, "{}", seen.lines);
+    }
+
+    /// What cswap lists once a reading it could not renew has outlived the soonest reset in it.
+    fn account_withheld(number: i32, email: &str, age: i32, usage: &str) -> String {
+        format!(r#"{{"number":{number},"email":"{email}","usageStatus":"unavailable","usage":null,"lastGoodUsage":{{{usage}}},"lastGoodAgeSeconds":{age}}}"#)
+    }
+
+    /// After a 429 cswap withholds a reading once a window in it resets, until its next
+    /// planned read a few minutes on. That clears by itself: the last reading is shown,
+    /// nothing is said, and it still grounds nothing.
+    #[test]
+    fn a_reading_cswap_withholds_until_its_planned_read_says_nothing() {
+        let seen = cached("withheld-quiet", SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_withheld(1, EMAIL_ONE, 540, WEEK), Some(&cache_row(1, EMAIL_ONE, 540, 180)));
+        assert_eq!(text(&seen.payload, "slots.0.pacedUntil"), r#""2026-10-06T12:05:00.0000000+00:00""#);
+        assert_eq!(text(&seen.payload, "slots.0.fresh"), "false");
+        assert_eq!(text(&seen.payload, "slots.0.status"), r#""ok""#);
+        assert!(text(&seen.payload, "slots.0.used7d") != "null", "{}", text(&seen.payload, "slots"));
+        assert!(!seen.lines.contains("STALE") && !seen.lines.contains("[stale") && !seen.lines.contains("[unavailable]"), "{}", seen.lines);
+        assert_eq!(text(&seen.payload, "verdict"), r#""""#);
+        assert_eq!(seen.calls, Vec::<String>::new());
+    }
+
+    /// Withheld past cswap's planned read, or with no plan from cswap at all, it is
+    /// unavailable as before.
+    #[test]
+    fn a_withheld_reading_with_no_read_coming_is_unavailable() {
+        for (name, cache) in [("withheld-gone", Some(cache_row(1, EMAIL_ONE, 540, -300))), ("withheld-no-cache", None)] {
+            let seen = cached(name, SOLO, &format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x")), &account_withheld(1, EMAIL_ONE, 540, WEEK), cache.as_deref());
+            assert_eq!(text(&seen.payload, "slots.0.pacedUntil"), "null", "{name}");
+            assert_eq!(text(&seen.payload, "slots.0.used7d"), "null", "{name}");
+            assert!(seen.lines.contains("[unavailable]"), "{name}: {}", seen.lines);
+        }
     }
 
     /// A row that is missing on a reading already too old says only that it is old.
