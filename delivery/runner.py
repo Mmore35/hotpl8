@@ -321,10 +321,26 @@ def drained(root, config):
         yield
 
 
+ACTIVATION_ATTEMPTS = 3
+
+
+def reject(root, sha, reason):
+    """Count one failed activation of sha in rejected.json.
+
+    An activation cut off by a restart, a sleep or the scheduler's time limit, or one whose
+    health check met a busy machine, usually succeeds the next time, so update tries the
+    same revision again until it has failed ACTIVATION_ATTEMPTS times in a row; only then is
+    it held back until main moves. A record from before attempts were counted is one.
+    """
+    prior = read(root / "rejected.json", {})
+    attempts = int(prior.get("attempts", 1)) + 1 if prior.get("sha") == sha else 1
+    write(root / "rejected.json", {"sha": sha, "at": now(), "reason": reason, "attempts": attempts})
+
+
 def recover(root, config, adapter=invoke_adapter):
     txn = read(root / "transaction.json")
     if not txn:
-        return
+        return False
     # An interrupted activation is never silently declared healthy. Restore the
     # prior pointer, keeping all state written since deployment and both releases.
     previous = txn.get("previous")
@@ -337,8 +353,9 @@ def recover(root, config, adapter=invoke_adapter):
             adapter(config, root / previous["release"], "recover", root)
     elif read(root / "current.json"):
         raise DeliveryError("Interrupted first activation requires operator recovery")
-    write(root / "rejected.json", {"sha": txn["candidate"]["sha"], "at": now(), "reason": "Interrupted activation"})
+    reject(root, txn["candidate"]["sha"], "Interrupted activation")
     (root / "transaction.json").unlink()
+    return True
 
 
 KEEP_RELEASES = 3
@@ -401,7 +418,9 @@ def update(root, github=None, adapter=invoke_adapter):
         status.update(lastCheck=now(), channel="main")
         candidate = None
         try:
-            recover(root, config, adapter)
+            if recover(root, config, adapter):
+                # The next wake, five minutes on, tries the revision again (see reject).
+                raise Deferred("An activation was interrupted and the previous release restored; the next update tries again")
             current = read(root / "current.json")
             sha = github.main()
             status.update(desiredSha=sha, installedSha=current.get("sha") if current else None)
@@ -414,8 +433,10 @@ def update(root, github=None, adapter=invoke_adapter):
                 return status
             if current and not github.is_forward(current["sha"], sha):
                 raise Deferred("Main history was rewritten; automatic downgrade or divergence is not permitted")
-            if read(root / "rejected.json", {}).get("sha") == sha:
-                raise Deferred("This revision failed activation; awaiting a newer main revision")
+            rejected = read(root / "rejected.json", {})
+            if rejected.get("sha") == sha and int(rejected.get("attempts", 1)) >= ACTIVATION_ATTEMPTS:
+                raise Deferred("This revision failed activation %d times (%s); awaiting a newer main revision"
+                               % (int(rejected["attempts"]), rejected.get("reason") or "no reason recorded"))
             candidate = github.candidate(sha, config)
             releases = root / "releases"
             releases.mkdir(exist_ok=True)
@@ -457,7 +478,7 @@ def update(root, github=None, adapter=invoke_adapter):
                     write(root / "current.json", pointer)
                     adapter(config, destination, "activate", root)
                     adapter(config, destination, "health", root)
-                except Exception:
+                except Exception as error:
                     if current:
                         # Activation may have advanced a state schema. Preserve
                         # the candidate pointer and transaction if rollback is
@@ -465,13 +486,16 @@ def update(root, github=None, adapter=invoke_adapter):
                         adapter(config, root / current["release"], "preflight", root)
                         write(root / "current.json", current)
                         adapter(config, root / current["release"], "recover", root)
-                    write(root / "rejected.json", {"sha": sha, "at": now(), "reason": "Activation health check failed"})
+                    reject(root, sha, "Activation health check failed: "
+                           + (str(error) if isinstance(error, DeliveryError) else type(error).__name__))
                     if current:
                         (root / "transaction.json").unlink()
                     raise
                 if current:
                     write(root / "previous.json", current)
                 (root / "transaction.json").unlink()
+                if read(root / "rejected.json", {}).get("sha") == sha:
+                    (root / "rejected.json").unlink()
             status.update(state="current", reason=None, installedSha=sha, lastUpdate=now(),
                           pruneError=prune(root, config, adapter))
             return status
