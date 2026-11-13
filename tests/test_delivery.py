@@ -255,7 +255,9 @@ export async function main(config, args) {
         # New bootstrap remains safe even though old recover cannot undo it.
         self.assertTrue(d.read(self.bridge_config).get("deliveryRoot"))
         self.assertEqual(self.t3_probe(), A)
-        self.assertEqual(d.update(self.root, self.github)["state"], "pending")
+        # Tried again until it has failed three times, then held back until main moves.
+        self.assertEqual([d.update(self.root, self.github)["state"] for _ in range(3)], ["error", "error", "pending"])
+        self.assertEqual(self.t3_probe(), A)
 
     @unittest.skipUnless(os.name == "nt", "Windows T3 delivery")
     def test_t3_interrupted_activation_recovers_and_tamper_fails_closed(self):
@@ -429,17 +431,61 @@ export async function main(config, args) {
         self.assertEqual(result["state"], "error")
         self.assertEqual(d.read(self.root / "current.json"), self.previous)
         self.assertEqual(d.read(self.state / "ledger.json"), {"request": 43})
-        self.assertEqual(self.update()["state"], "pending")
+        # The same revision is tried again, from its staged copy, until it has failed three times.
+        self.assertEqual([d.update(self.root, self.github, adapter)["state"] for _ in range(2)], ["error", "error"])
+        self.assertEqual(d.read(self.root / "rejected.json")["attempts"], 3)
+        self.assertIn("bad health", d.read(self.root / "rejected.json")["reason"])
+        result = self.update()
+        self.assertEqual(result["state"], "pending")
+        self.assertIn("failed activation 3 times (Activation failed: bad health)", result["reason"])
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
         self.assertEqual(self.github.downloads, 1)
 
-    def test_interrupted_activation_restores_previous(self):
+    def test_a_failed_first_activation_is_counted_once_with_its_own_reason(self):
+        (self.root / "current.json").unlink()
+        def adapter(config, release, operation, root):
+            if operation == "drain":
+                raise d.DeliveryError("boom at drain")
+        self.assertEqual([d.update(self.root, self.github, adapter)["state"] for _ in range(4)], ["error", "error", "error", "pending"])
+        rejected = d.read(self.root / "rejected.json")
+        self.assertEqual((rejected["attempts"], rejected["reason"]), (3, "Activation failed: boom at drain"))
+        self.assertFalse((self.root / "transaction.json").exists())
+        self.assertFalse((self.root / "current.json").exists())
+
+    def test_a_revision_that_failed_activation_once_is_installed_when_it_next_succeeds(self):
+        d.write(self.root / "rejected.json", {"sha": B, "at": d.now(), "reason": "Interrupted activation"})
+        result = self.update()
+        self.assertEqual(result["state"], "current")
+        self.assertEqual(d.read(self.root / "current.json")["sha"], B)
+        self.assertFalse((self.root / "rejected.json").exists())
+
+    def test_interrupted_activation_restores_previous_then_tries_again(self):
         d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": B}})
         d.write(self.root / "current.json", {"sha": B, "release": "releases/" + B})
         result = self.update()
         self.assertEqual(result["state"], "pending")
         self.assertEqual(d.read(self.root / "current.json"), self.previous)
-        self.assertIn("recover", self.calls)
-        self.assertEqual(self.calls[:2], ["preflight", "recover"])
+        self.assertEqual(self.calls, ["preflight", "recover"])
+        # An activation cut off part way is routine (a restart, a sleep, a time limit): the
+        # next update activates the same revision again.
+        result = self.update()
+        self.assertEqual(result["state"], "current")
+        self.assertEqual(d.read(self.root / "current.json")["sha"], B)
+        self.assertEqual(d.read(self.root / "previous.json"), self.previous)
+        self.assertFalse((self.root / "rejected.json").exists())
+
+    def test_a_third_interrupted_activation_holds_the_revision_back(self):
+        d.write(self.root / "rejected.json", {"sha": B, "at": d.now(), "reason": "Interrupted activation", "attempts": 2})
+        d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": B}})
+        d.write(self.root / "current.json", {"sha": B, "release": "releases/" + B})
+        self.assertEqual(self.update()["state"], "pending")
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
+        self.assertEqual(self.calls, ["preflight", "recover"])
+        result = self.update()
+        self.assertEqual(result["state"], "pending")
+        self.assertIn("failed activation 3 times (Interrupted activation)", result["reason"])
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
+        self.assertEqual(self.github.downloads, 0)
 
     def old_releases(self, count):
         """Staged releases other than A, oldest first, each a minute older than the next."""

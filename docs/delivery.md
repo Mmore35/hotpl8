@@ -191,8 +191,12 @@ or an image command as the live PR preview.
 
 If the updater is interrupted during activation, its next invocation restores the
 previous code pointer and records the rejected SHA. It retains all current state.
-An activation failure is quarantined until a newer main commit exists; it is not
-retried on every timer wake. Interrupted first enrollment is reported for operator
+A failed or interrupted activation is usually routine (a restart, a sleep, the
+scheduler's time limit, a busy machine at the health check), so the next timer wake
+tries the same revision again from its verified staged copy. `rejected.json` counts
+the attempts and keeps the last reason; after the third failure in a row the
+revision is quarantined until a newer main commit exists, and `delivery-status.json`
+says so with that reason. A successful activation removes the record. Interrupted first enrollment is reported for operator
 recovery because no previous managed release exists yet. The original app remains
 available until successful enrollment installs its compatibility launchers.
 
