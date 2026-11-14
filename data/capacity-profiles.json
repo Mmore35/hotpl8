@@ -1,14 +1,16 @@
 {
   "schemaVersion": 1,
-  "verifiedAt": "2026-10-31",
-  "unit": "relative weekly allowance within the same provider and meter",
-  "note": "Published session multipliers do not establish weekly capacity or a weekly/short-window conversion. Supply measured estimates explicitly; null means unknown. Ultra publishes no session multiplier: its allowance is published as 10 times the Pro plan's usage every week, recorded here and not converted.",
+  "verifiedAt": "2026-11-13",
+  "unit": "one week of the provider's smallest paid plan",
+  "fiveHourShare": {"claude":0.1,"codex":0.1},
+  "fiveHourShareEvidence": "Measured on a Max account from paired readings: the 5h window rose 56, 66 and 11 points while the 7d window rose 5, 7 and 1, a pooled 13/133 = 0.098. No vendor publishes it; see docs/plan-catalogue.md.",
+  "planTypesEvidence": "Codex's codex-rs/protocol/src/auth.rs names prolite Pro, pro Pro (More) and promax Pro (Max); matching them in order of price to Pro at $100, $200 and $500 is an inference, and promax at 20 is a floor until a multiple is published.",
   "profiles": {
-    "claude-pro": {"provider":"claude","tier":"Pro","weekly":null,"fiveHour":null,"sessionMultiplier":1,"confidence":"conversion needed","source":"https://support.claude.com/en/articles/11049741-what-is-the-max-plan"},
-    "claude-max-5x": {"provider":"claude","tier":"Max","weekly":null,"fiveHour":null,"sessionMultiplier":5,"confidence":"conversion needed","source":"https://support.claude.com/en/articles/11049741-what-is-the-max-plan"},
-    "claude-max-20x": {"provider":"claude","tier":"Ultra","weekly":null,"fiveHour":null,"sessionMultiplier":null,"confidence":"conversion needed","source":"https://support.claude.com/en/articles/17728952-what-is-the-ultra-plan"},
-    "codex-plus": {"provider":"codex","meter":"codex","tier":"Plus","weekly":null,"fiveHour":null,"sessionMultiplier":1,"confidence":"conversion needed","source":"https://learn.chatgpt.com/docs/pricing"},
-    "codex-pro-5x": {"provider":"codex","meter":"codex","tier":"Pro 5x","weekly":null,"fiveHour":null,"sessionMultiplier":5,"confidence":"conversion needed","source":"https://learn.chatgpt.com/docs/pricing"},
-    "codex-pro-20x": {"provider":"codex","meter":"codex","tier":"Pro 20x","weekly":null,"fiveHour":null,"sessionMultiplier":20,"confidence":"conversion needed","source":"https://learn.chatgpt.com/docs/pricing"}
+    "claude-pro": {"provider":"claude","tier":"Pro","weekly":1,"confidence":"published","source":"https://support.claude.com/en/articles/11049741-what-is-the-max-plan","published":"five times the Pro plan's usage every five hours and every week"},
+    "claude-max-5x": {"provider":"claude","tier":"Max","weekly":5,"confidence":"published","source":"https://support.claude.com/en/articles/11049741-what-is-the-max-plan","published":"five times the Pro plan's usage every five hours and every week"},
+    "claude-max-20x": {"provider":"claude","tier":"Ultra","weekly":10,"confidence":"published","source":"https://support.claude.com/en/articles/17728952-what-is-the-ultra-plan","published":"10 times the Pro plan's usage every week"},
+    "codex-plus": {"provider":"codex","meter":"codex","tier":"Plus","weekly":1,"confidence":"unconfirmed","source":"https://learn.chatgpt.com/docs/pricing","published":null,"planTypes":["plus"]},
+    "codex-pro-5x": {"provider":"codex","meter":"codex","tier":"Pro 5x","weekly":5,"confidence":"unconfirmed","source":"https://learn.chatgpt.com/docs/pricing","published":null,"planTypes":["prolite"]},
+    "codex-pro-20x": {"provider":"codex","meter":"codex","tier":"Pro 20x","weekly":20,"confidence":"unconfirmed","source":"https://learn.chatgpt.com/docs/pricing","published":null,"planTypes":["pro","promax"]}
   }
 }

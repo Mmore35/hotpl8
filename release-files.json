@@ -202,7 +202,10 @@
     "tests/parity/replay-frames.txt",
     "tests/parity/replay-expected.txt",
     "docs/plans/rust-read-side.md",
-    "src/lane.ps1"
+    "src/lane.ps1",
+    "scripts/check-plans.py",
+    "tests/test_check_plans.py",
+    "docs/plan-catalogue.md"
   ],
   "platformFiles": {
     "windows": [

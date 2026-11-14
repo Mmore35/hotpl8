@@ -406,7 +406,7 @@ mod tests {
     use crate::json::parse;
 
     const STALE: &str = "STALE: these are the decisions at the last observation, not a current recommendation.";
-    const HEADROOM: &str = "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.";
+    const HEADROOM: &str = "Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.";
     const NATIVE: &str = "Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.";
 
     #[test]

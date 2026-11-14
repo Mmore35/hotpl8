@@ -79,6 +79,7 @@ if(Get-Command python -ErrorAction SilentlyContinue){
     $work+=[pscustomobject]@{name='tests/test_delivery.py';weight=200;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_delivery.py'))}
     $work+=[pscustomobject]@{name='tests/test_publish_main.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_publish_main.py'))}
     $work+=[pscustomobject]@{name='tests/test_macos_delivery.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_macos_delivery.py'))}
+    $work+=[pscustomobject]@{name='tests/test_check_plans.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_check_plans.py'))}
 }
 if(-not $SkipClaude){
     $work+=[pscustomobject]@{name='tests/test_claude_plan.py';weight=1;executable=(Get-Command python).Source;arguments=@((Join-Path $root 'tests/test_claude_plan.py'))}

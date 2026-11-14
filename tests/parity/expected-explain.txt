@@ -2,44 +2,44 @@
 # Written by tests/test-native-parity.ps1 -Update. Review a change here; do not edit by hand.
 
 == plain
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == operations
-CLAUDE: 93.7% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 93.7% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 93.7% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 93.7% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector shape
-CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 62% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 62% available now (estimate) / 52.2% weekly left; Ready; automatic selection on
+  Capacity: 62% available now (estimate) / 52.2% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +38% available at 2026-09-12T13:23:00.2500000+00:00; assumes no further consumption.
   Profiles: 1=Max
-CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 87% available now (weekly cap uncertain) / 35% weekly left; normal policy
+CODEX: 78.3% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 78.3% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Next reset: +21.7% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Claude: active account remains eligible; policy prefer
   slot 1: eligible; rank 1
@@ -53,16 +53,16 @@ Codex codex_bengalfox: next launch none; policy prefer
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector shape with Windows line ends and no byte order mark
-CLAUDE: 62% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 62% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 62% available now (estimate) / 52.2% weekly left; Ready; automatic selection on
+  Capacity: 62% available now (estimate) / 52.2% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +38% available at 2026-09-12T13:23:00.2500000+00:00; assumes no further consumption.
   Profiles: 1=Max
-CODEX: 87% available now (weekly cap uncertain) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 87% available now (weekly cap uncertain) / 35% weekly left; normal policy
+CODEX: 78.3% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 78.3% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Next reset: +21.7% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Claude: active account remains eligible; policy prefer
   slot 1: eligible; rank 1
@@ -84,7 +84,7 @@ CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - r
 CODEX: No account readable now / 2 expired; awaiting update; Readings stale - refresh; collector overdue; native launches; managed sessions need adoption evidence
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:40:00.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -97,21 +97,21 @@ CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - r
 CODEX: No account readable now / 2 expired; awaiting update; Readings stale - refresh; native launches; managed sessions need adoption evidence
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T12:02:00.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings at the age limit
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:45:00.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -124,7 +124,7 @@ CLAUDE: No account readable now / 2 expired; awaiting update; Readings stale - r
 CODEX: No account readable now / 2 expired; awaiting update; Readings stale - refresh; native launches; managed sessions need adoption evidence
   Capacity: No account readable now / 2 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:44:59.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -138,22 +138,22 @@ CODEX: 74% available now (estimate) / 1 expired; awaiting update; Ready for next
   Capacity: 74% available now (estimate) / 1 expired; awaiting update; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == no 5-hour limit
-CLAUDE: 73.6% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 73.6% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 73.6% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 73.6% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +4.8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
   Profiles: 1=Ultra
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -164,11 +164,11 @@ CLAUDE: 92% available now (estimate) / 1 expired; awaiting update; Account avail
   Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
   Profiles: 1=Ultra
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -179,11 +179,11 @@ CLAUDE: 92% available now (estimate) / 1 reported no 5-hour window; Account avai
   Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
   Profiles: 1=Max
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -200,275 +200,275 @@ No observation. Run hotpl8 refresh.
 No observation. Run hotpl8 refresh.
 
 == collector running
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector stalled
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector stalled; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; collector stalled; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector stalled; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; collector stalled; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector overdue
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector overdue; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; collector overdue; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector overdue; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; collector overdue; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector started in the future
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector state invalid; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; collector state invalid; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector state invalid; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; collector state invalid; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector without a start time
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; collector state invalid; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; collector state invalid; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; collector state invalid; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; collector state invalid; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector with one provider failing
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; provider checks incomplete; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; provider checks incomplete; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector unable to write state
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; local state write failed; retrying; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; local state write failed; retrying; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == collector with stale provider success
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; provider readings stale; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; provider readings stale; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == stored collector newer than the collector file
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == manual pause
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: owner asked
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == manual pause that ended
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == pause file without an end
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: invalid_pause
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == pause reason with control characters
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: line oneline twotabbed
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == one agent lease
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: agent_leases
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == several agent leases
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: invalid_leases
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == only released leases
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: invalid_leases
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == empty lease ledger
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease with the wrong end
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: invalid_leases
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease ledger with an extra field
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: invalid_leases
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
@@ -477,89 +477,89 @@ Native launches use the recommendation. Managed host sessions require their own 
 refused: automation-leases.json is not JSON as HotPl8 writes it (line 1, column 1).
 
 == lease and manual pause, pause later
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: manual_and_agent_leases
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease and manual pause, lease later
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: manual_and_agent_leases
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == lease and a pause file without an end
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: invalid_pause
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == automatic selection
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == automatic mode with selection off
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; manual selection
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; manual selection
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == automatic selection while paused
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automation paused
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automation paused
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Automation paused: owner asked
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
@@ -570,11 +570,11 @@ CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; automatic selec
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 42.5% available now (estimate) / 35% weekly left; normal policy
+CODEX: 16.7% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 16.7% available now (estimate) / 35% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Next reset: +2.4% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -583,11 +583,11 @@ CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; manual selectio
   Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 37% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 37% available now (estimate) / 35% weekly left; normal policy
+CODEX: 6.7% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 6.7% available now (estimate) / 35% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Next reset: +2.4% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -599,7 +599,7 @@ CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -607,11 +607,11 @@ Native launches use the recommendation. Managed host sessions require their own 
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 42.5% available now (estimate) / 35% weekly left; normal policy
+CODEX: 16.7% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 16.7% available now (estimate) / 35% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Next reset: +2.4% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -622,7 +622,7 @@ CLAUDE: No accounts enabled; No accounts enabled; monitor only
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -634,7 +634,7 @@ CODEX: 11% available now (estimate) / 11% weekly left; Unavailable now - see det
   Capacity: 11% available now (estimate) / 11% weekly left; normal policy
   Membership: 1 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -645,7 +645,7 @@ CLAUDE: No accounts enabled; No accounts enabled; monitor only
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -656,50 +656,50 @@ CLAUDE: No accounts enabled; No accounts enabled; monitor only
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 2 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex configured but never observed
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
 CODEX: No account readable now; Unavailable now - see details; native launches; managed sessions need adoption evidence
   Capacity: No account readable now; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == capacity profiles
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
   Profiles: 1=Pro, 2=Max
-CODEX: 63.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 63.5% available now (estimate) / 35% weekly left; normal policy
+CODEX: 32% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 32% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +21.7% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Next reset: +8.7% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == capacity profile of the other provider
-CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 77% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
+  Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
   Profiles: 1=codex-plus
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -709,11 +709,11 @@ CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +19% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 42.5% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 42.5% available now (estimate) / 35% weekly left; normal policy
+CODEX: 16.7% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 16.7% available now (estimate) / 35% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-  Next reset: +13% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+  Next reset: +2.4% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -726,7 +726,7 @@ CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; na
   Capacity: 74% available now (estimate) / 59% weekly left; normal policy
   Membership: 1 enabled; 1 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -737,7 +737,7 @@ CLAUDE: No accounts enabled; No accounts enabled; monitor only
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 2 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -751,21 +751,21 @@ CODEX: 48.8% available now (estimate); Ready for next launch; native launches; m
   Capacity: 48.8% available now (estimate); normal policy
   Membership: 3 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == display settings and history flags
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -776,7 +776,7 @@ CLAUDE: No account readable now / 64.5% weekly left; Unavailable now - see detai
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -787,44 +787,44 @@ CLAUDE: No accounts enabled; No accounts enabled; monitor only
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == a third provider that is not configured
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == providers that share a place in the display order
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
 CLAUDE: No accounts enabled; No accounts enabled; monitor only
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -832,16 +832,16 @@ Native launches use the recommendation. Managed host sessions require their own 
 refused: The native global activation driver supports only one configured provider owner.
 
 == a shipped provider moved in the display order
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -853,7 +853,7 @@ CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; na
   Capacity: 74% available now (estimate) / 59% weekly left; normal policy
   Membership: 1 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -882,30 +882,30 @@ refused: codex.json is not JSON as HotPl8 writes it (line 15, column 26).
 refused: Invalid provider catalog size.
 
 == preview policy
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == preview policy without a stored policy
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -913,286 +913,286 @@ Native launches use the recommendation. Managed host sessions require their own 
 refused: Invalid policy: mode must be monitor or automate.
 
 == rotation held
-CLAUDE: 10.3% available now (estimate) / 64.5% weekly left; Ready; rotation held
-  Capacity: 10.3% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 10.3% available now (estimate) / 76.8% weekly left; Ready; rotation held
+  Capacity: 10.3% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == rotation hold that ended
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex selection held
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 44.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 44.4% available now (estimate) / 35% weekly left; normal policy
+CODEX: 44.4% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 44.4% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == active account below its margin
-CLAUDE: 78.2% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 78.2% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 78.2% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 78.2% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == every account below its margin
-CLAUDE: 9.8% available now (estimate) / 24.5% weekly left; Ready; automatic selection on
-  Capacity: 9.8% available now (estimate) / 24.5% weekly left; normal policy
+CLAUDE: 9.8% available now (estimate) / 10.2% weekly left; Ready; automatic selection on
+  Capacity: 9.8% available now (estimate) / 10.2% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 0% available now (estimate) / 30% weekly left; Unavailable now - see details; native launches; managed sessions need adoption evidence
-  Capacity: 0% available now (estimate) / 30% weekly left; normal policy
+CODEX: 0% available now (estimate) / 49.3% weekly left; Unavailable now - see details; native launches; managed sessions need adoption evidence
+  Capacity: 0% available now (estimate) / 49.3% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == no active account
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == active account not enrolled
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order soonest-reset
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order soonest-reset with the second account active
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order weekly-expiry
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order weekly-expiry with the second account active
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order balanced
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == order balanced with the second account active
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == weekly allowance nearly spent
-CLAUDE: 45.6% available now (estimate) / 13% weekly left; Unavailable now - see details; automatic selection on
-  Capacity: 45.6% available now (estimate) / 13% weekly left; normal policy
+CLAUDE: 45.6% available now (estimate) / 13.7% weekly left; Unavailable now - see details; automatic selection on
+  Capacity: 45.6% available now (estimate) / 13.7% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical allowance
-CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
-  Capacity: 24.7% available now (estimate) / 27% weekly left; retained to avoid churn
+CLAUDE: 24.7% available now (estimate) / 14.3% weekly left; Ready / critical; automatic selection on
+  Capacity: 24.7% available now (estimate) / 14.3% weekly left; retained to avoid churn
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
-  Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+CODEX: 17.6% available now (estimate) / 51% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+  Capacity: 17.6% available now (estimate) / 51% weekly left; largest remaining allowance
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical allowance with stored state
-CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
-  Capacity: 24.7% available now (estimate) / 27% weekly left; retained to avoid churn
+CLAUDE: 24.7% available now (estimate) / 14.3% weekly left; Ready / critical; automatic selection on
+  Capacity: 24.7% available now (estimate) / 14.3% weekly left; retained to avoid churn
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
-  Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+CODEX: 17.6% available now (estimate) / 51% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+  Capacity: 17.6% available now (estimate) / 51% weekly left; largest remaining allowance
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Claude critical: largest remaining allowance / usable capacity / checks 60s
 Codex codex critical: largest remaining allowance / usable capacity / checks 90s
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical allowance drained to zero
-CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready / critical; automatic selection on
-  Capacity: 24.7% available now (estimate) / 27% weekly left; retained to avoid churn
+CLAUDE: 24.7% available now (estimate) / 14.3% weekly left; Ready / critical; automatic selection on
+  Capacity: 24.7% available now (estimate) / 14.3% weekly left; retained to avoid churn
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
-  Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+CODEX: 17.6% available now (estimate) / 51% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+  Capacity: 17.6% available now (estimate) / 51% weekly left; largest remaining allowance
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == critical setting off while low
-CLAUDE: 24.7% available now (estimate) / 27% weekly left; Ready; automatic selection on
-  Capacity: 24.7% available now (estimate) / 27% weekly left; normal policy
+CLAUDE: 24.7% available now (estimate) / 14.3% weekly left; Ready; automatic selection on
+  Capacity: 24.7% available now (estimate) / 14.3% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +14.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 17.6% available now (estimate) / 35% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
-  Capacity: 17.6% available now (estimate) / 35% weekly left; largest remaining allowance
+CODEX: 17.6% available now (estimate) / 51% weekly left; Ready for next launch / critical; native launches; managed sessions need adoption evidence
+  Capacity: 17.6% available now (estimate) / 51% weekly left; largest remaining allowance
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +46.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == scoped model limits
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == scoped model limits not observed
-CLAUDE: No account readable now / 64.5% weekly left; Unavailable now - see details; automatic selection on
-  Capacity: No account readable now / 64.5% weekly left; normal policy
+CLAUDE: No account readable now / 76.8% weekly left; Unavailable now - see details; automatic selection on
+  Capacity: No account readable now / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == scoped model limits with capacity
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; automatic selection on
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; automatic selection on
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +1.8% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1206,21 +1206,21 @@ CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; nati
   Capacity: 74% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == sign-in near and past its end
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1234,21 +1234,21 @@ CODEX: 74% available now (estimate); Ready for next launch; native launches; man
   Capacity: 74% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex plan ended
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1261,7 +1261,7 @@ CODEX: 74% available now (estimate) / 59% weekly left; Ready for next launch; na
   Capacity: 74% available now (estimate) / 59% weekly left; normal policy
   Membership: 1 enabled; 0 disabled; 1 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1275,41 +1275,41 @@ CODEX: 11% available now (estimate); Ready for next launch; native launches; man
   Capacity: 11% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex account blocked until its reset
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 44.4% available now (estimate) / 29.5% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 44.4% available now (estimate) / 29.5% weekly left; normal policy
+CODEX: 44.4% available now (estimate) / 49.2% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 44.4% available now (estimate) / 49.2% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex account blocked without a reason
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 44.4% available now (estimate) / 29.5% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 44.4% available now (estimate) / 29.5% weekly left; normal policy
+CODEX: 44.4% available now (estimate) / 49.2% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 44.4% available now (estimate) / 49.2% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex meter missing
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
@@ -1317,48 +1317,48 @@ CODEX: 74% available now (estimate); Ready for next launch; native launches; man
   Capacity: 74% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex windows that do not add up
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 46.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 46.4% available now (estimate) / 35% weekly left; normal policy
+CODEX: 46.4% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 46.4% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +18% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex window with an unknown name
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == windows that already reset
-CLAUDE: 93.3% available now (estimate) / 73% weekly left; Ready; monitor only
-  Capacity: 93.3% available now (estimate) / 73% weekly left; normal policy
+CLAUDE: 93.3% available now (estimate) / 91% weekly left; Ready; monitor only
+  Capacity: 93.3% available now (estimate) / 91% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.7% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
 CODEX: No account readable now; Ready for next launch; native launches; managed sessions need adoption evidence
   Capacity: No account readable now; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1370,7 +1370,7 @@ CLAUDE: No account readable now; Unavailable now - see details; monitor only
 CODEX: No account readable now; Unavailable now - see details; native launches; managed sessions need adoption evidence
   Capacity: No account readable now; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1383,7 +1383,7 @@ CODEX: 11% available now (estimate); Ready for next launch; native launches; man
   Capacity: 11% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +89% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1395,7 +1395,7 @@ CLAUDE: 87% available now (estimate); Unavailable now - see details; monitor onl
 CODEX: 48.8% available now (estimate); Ready for next launch; native launches; managed sessions need adoption evidence
   Capacity: 48.8% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1405,79 +1405,79 @@ CLAUDE: 92% available now (estimate) / 1 expired; awaiting update; Account avail
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == fully used
-CLAUDE: 83.3% available now (estimate) / 50% weekly left; Account available - manual selection needed; monitor only
-  Capacity: 83.3% available now (estimate) / 50% weekly left; normal policy
+CLAUDE: 83.3% available now (estimate) / 83.3% weekly left; Account available - manual selection needed; monitor only
+  Capacity: 83.3% available now (estimate) / 83.3% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Includes reserve allowance.
-CODEX: 4.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 4.4% available now (estimate) / 35% weekly left; normal policy
+CODEX: 4.4% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 4.4% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == fractional readings
-CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; monitor only
-  Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
+CLAUDE: 86.9% available now (estimate) / 76.7% weekly left; Ready; monitor only
+  Capacity: 86.9% available now (estimate) / 76.7% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.6% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.6% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == fractional readings and automatic selection
-CLAUDE: 86.9% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
-  Capacity: 86.9% available now (estimate) / 64.3% weekly left; normal policy
+CLAUDE: 86.9% available now (estimate) / 76.7% weekly left; Ready; automatic selection on
+  Capacity: 86.9% available now (estimate) / 76.7% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
-CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.6% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.6% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == fractional settings
-CLAUDE: 82.3% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 82.3% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 82.3% available now (estimate) / 72.1% weekly left; Ready; monitor only
+  Capacity: 82.3% available now (estimate) / 72.1% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +12.2% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == fractional settings and readings
-CLAUDE: 82.2% available now (estimate) / 64.3% weekly left; Ready; automatic selection on
-  Capacity: 82.2% available now (estimate) / 64.3% weekly left; normal policy
+CLAUDE: 82.2% available now (estimate) / 72% weekly left; Ready; automatic selection on
+  Capacity: 82.2% available now (estimate) / 72% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +12.4% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.6% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.6% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.6% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.6% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.8% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1487,81 +1487,81 @@ CLAUDE: 50.5% available now (estimate) / 49.5% weekly left; Ready; monitor only
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +16% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == forecast hours
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == forecast without a time to limit
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == large whole numbers
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == Codex margin beyond one hundred
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 4.4% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 4.4% available now (estimate) / 35% weekly left; normal policy
+CODEX: 4.4% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 4.4% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +35.6% available at 2026-09-13T06:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == stored decisions
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Claude critical: largest remaining allowance / usable capacity / checks 60s
 Claude: active account remains eligible; policy prefer
@@ -1575,16 +1575,16 @@ Codex codex_bengalfox: next launch none; policy prefer
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == stored decisions for another provider
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 example: only account; policy prefer
@@ -1602,7 +1602,7 @@ CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; coll
   Capacity: 74% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Claude: no eligible account; policy prefer
   slot 1: below_margin; rank 1
@@ -1622,7 +1622,7 @@ CODEX: 74% available now (estimate); Ready for next launch; sign-in needed; coll
   Capacity: 74% available now (estimate); normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +26% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Claude: no eligible account; policy prefer
   slot 1: below_margin; rank 1
@@ -1633,16 +1633,16 @@ Codex codex: next launch none; policy prefer
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == announcements with nothing wrong
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1654,7 +1654,7 @@ CLAUDE: 77% available now (estimate) / 64.5% weekly left; Ready; monitor only
 CODEX: No accounts enabled; No accounts enabled; native launches; managed sessions need adoption evidence
   Capacity: No accounts enabled; normal policy
   Membership: 0 enabled; 0 disabled; 0 duplicate entries excluded.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1707,44 +1707,44 @@ refused: policy.json is not JSON as HotPl8 writes it (line 1, column 1).
 refused: This state cannot be shown: one of its values is not one HotPl8 writes (src/contract.rs). Run hotpl8 refresh; if that changes nothing, run hotpl8 doctor.
 
 == labels outside ASCII
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == number with an exponent
-CLAUDE: 87% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 87% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 87% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 87% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.3% available at 2026-09-12T13:23:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == readings too small to write without an exponent
-CLAUDE: 93.3% available now (estimate) / 64.5% weekly left; Ready; monitor only
-  Capacity: 93.3% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 93.3% available now (estimate) / 76.8% weekly left; Ready; monitor only
+  Capacity: 93.3% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +6.7% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 40% available now (estimate) / 79.5% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 40% available now (estimate) / 79.5% weekly left; normal policy
+CODEX: 40% available now (estimate) / 65.8% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 40% available now (estimate) / 65.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +60% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1754,25 +1754,25 @@ CLAUDE: 92% available now (estimate); Account available - manual selection neede
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
 == text where a percentage belongs
-CLAUDE: 92% available now (estimate) / 64.5% weekly left; Account available - manual selection needed; monitor only
-  Capacity: 92% available now (estimate) / 64.5% weekly left; normal policy
+CLAUDE: 92% available now (estimate) / 76.8% weekly left; Account available - manual selection needed; monitor only
+  Capacity: 92% available now (estimate) / 76.8% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 
@@ -1782,11 +1782,11 @@ CLAUDE: 92% available now (estimate); Account available - manual selection neede
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +8% available at 2026-09-12T16:00:00.0000000+00:00; assumes no further consumption.
   Includes reserve allowance.
-CODEX: 48.8% available now (estimate) / 35% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
-  Capacity: 48.8% available now (estimate) / 35% weekly left; normal policy
+CODEX: 48.8% available now (estimate) / 51% weekly left; Ready for next launch; native launches; managed sessions need adoption evidence
+  Capacity: 48.8% available now (estimate) / 51% weekly left; normal policy
   Membership: 2 enabled; 0 disabled; 0 duplicate entries excluded.
   Next reset: +15.6% available at 2026-09-12T14:00:00.0000000+00:00; assumes no further consumption.
-Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.
+Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.
 Observed: 2026-09-12T11:59:18.0000000+00:00
 Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.
 

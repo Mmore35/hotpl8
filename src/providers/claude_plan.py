@@ -2,7 +2,8 @@
 
 The OAuth profile endpoint is also used by claude-swap for identity checks.
 Its schema is not a public stability guarantee. Unknown values stay unknown.
-Only an allowlisted, identity-verified projection leaves this process.
+Only an allowlisted projection leaves this process: an identity-verified answer of the
+endpoint, or, when it does not answer, the plan the stored sign-in names.
 """
 import argparse
 import contextlib
@@ -13,6 +14,44 @@ import logging
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+
+
+# Each plan's ID, label and session multiplier. They are named the same in
+# data/capacity-profiles.json and native/src/plans.rs; tests/test_claude_plan.py checks.
+PLANS = {"claude-pro": ("Pro", 1), "claude-max-5x": ("Max", 5), "claude-max-20x": ("Ultra", None)}
+# What the profile endpoint says of an organization.
+ENDPOINT = {
+    ("claude_pro", "default_claude_ai"): "claude-pro",
+    ("claude_pro", "default_claude_pro"): "claude-pro",
+    ("claude_max", "default_claude_max_5x"): "claude-max-5x",
+    ("claude_max", "default_claude_max_20x"): "claude-max-20x",
+}
+# What Claude Code stores beside the sign-in, read when the endpoint does not answer.
+STORED = {
+    ("pro", "default_claude_ai"): "claude-pro",
+    ("pro", "default_claude_pro"): "claude-pro",
+    ("max", "default_claude_max_5x"): "claude-max-5x",
+    ("max", "default_claude_max_20x"): "claude-max-20x",
+}
+
+
+def detected(profile):
+    label, sessions = PLANS[profile]
+    return dict(status="detected", profile=profile, label=label, sessionMultiplier=sessions)
+
+
+def stored_plan(row, credentials):
+    """The row, or the plan the stored sign-in names when the endpoint gave no answer.
+
+    Only the two plan fields are read, and the endpoint's wait is kept."""
+    if row.get("status") not in ("unavailable", "rate_limited", "authentication_required"):
+        return row
+    try:
+        oauth = credentials.get("claudeAiOauth") or {}
+        profile = STORED.get((oauth.get("subscriptionType"), oauth.get("rateLimitTier")))
+    except Exception:
+        return row
+    return dict(row, **detected(profile), source="stored-sign-in") if profile else row
 
 
 def identity_key(email, organization):
@@ -38,15 +77,9 @@ def classify(profile, expected):
         return {"status": "identity_mismatch"}
     kind = org.get("organization_type")
     tier = org.get("rate_limit_tier")
-    table = {
-        ("claude_pro", "default_claude_ai"): ("claude-pro", "Pro", 1),
-        ("claude_pro", "default_claude_pro"): ("claude-pro", "Pro", 1),
-        ("claude_max", "default_claude_max_5x"): ("claude-max-5x", "Max", 5),
-        ("claude_max", "default_claude_max_20x"): ("claude-max-20x", "Ultra", None),
-    }
-    match = table.get((kind, tier))
+    match = ENDPOINT.get((kind, tier))
     if match:
-        return dict(status="detected", profile=match[0], label=match[1], sessionMultiplier=match[2])
+        return detected(match)
     # Do not misclassify a Team organization with a Max-shaped rate tier.
     labels = {"claude_team": "Team", "claude_enterprise": "Enterprise", "claude_pro": "Pro", "claude_max": "Max or Ultra (tier unknown)"}
     if kind in labels:
@@ -73,6 +106,7 @@ def fetch_profile(token):
 
 def read_plan(switcher, slot, fetch=fetch_profile):
     base = dict(slot=slot, source="anthropic-oauth-profile")
+    credentials = {}
     try:
         expected = switcher.account_identity(str(slot))
         email = expected.get("email") or ""
@@ -94,10 +128,10 @@ def read_plan(switcher, slot, fetch=fetch_profile):
                 retry = max(900, min(86400, int(error.headers.get("Retry-After", "900"))))
             except (ValueError, TypeError):
                 pass
-        return dict(base, status="rate_limited" if error.code == 429 else "authentication_required" if error.code in (401, 403) else "unavailable", retryAfterSeconds=retry)
+        return stored_plan(dict(base, status="rate_limited" if error.code == 429 else "authentication_required" if error.code in (401, 403) else "unavailable", retryAfterSeconds=retry), credentials)
     except Exception:
         # Never stringify an exception that might carry a URL, token or body.
-        return dict(base, status="unavailable")
+        return stored_plan(dict(base, status="unavailable"), credentials)
 
 
 def main():

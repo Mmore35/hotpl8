@@ -1,0 +1,22 @@
+name: Plan catalogue
+# Report only: reads each plan's source page and fails when a published sentence is
+# gone, so GitHub mails the owner. It writes nothing. See docs/plan-catalogue.md.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Check the published plan sizes
+        run: python scripts/check-plans.py

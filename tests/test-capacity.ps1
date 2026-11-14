@@ -140,21 +140,17 @@ Check 'detected plan weights estimate current session allowance without inventin
     $text=(Summary $s $p)-join "`n"
     Assert ($text.Contains('~42% now') -and $text.Contains('7d 90%') -and -not $text.Contains('Weekly remaining'))
 }
-Check 'an Ultra account counts equally in any mix and its headroom is its week' {
-    $mixed={param($Profile)
-        $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
-        foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile=$Profile;observedAt=$now.ToString('o')} -Force}
-        $s.slots[0].plan.profile='claude-max-20x'
-        $s.slots[0]|Add-Member NoteProperty limit5h 'none' -Force
-        $s.slots[0].used5h=$null;$s.slots[0].reset5h='';$s.slots[0].used7d=50
-        $s.slots[1].used5h=100;$s.slots[1].used7d=50
-        (Summary $s $p)-join "`n"
-    }
-    # 50 and 0 at one each. Weighted 20 to 1 or 20 to 5 this would be far higher.
-    foreach($other in @('claude-pro','claude-max-5x')){
-        $text=& $mixed $other
-        Assert ($text.Contains('~25% now') -and $text.Contains('7d 50%')) $text
-    }
+Check 'Ultra and Max pool what each can use now, in weeks of the smallest plan' {
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-max-5x';observedAt=$now.ToString('o')} -Force}
+    $s.slots[0].plan.profile='claude-max-20x'
+    $s.slots[0]|Add-Member NoteProperty limit5h 'none' -Force
+    $s.slots[0].used5h=$null;$s.slots[0].reset5h='';$s.slots[0].used7d=26
+    $s.slots[1].used5h=74;$s.slots[1].used7d=72
+    # 7.4 of Ultra's week of 10 and 0.13 of Max's five hours of 0.5: 7.53 of 10.5. The weeks
+    # are 74% of 10 and 28% of 5.
+    $text=(Summary $s $p)-join "`n"
+    Assert ($text.Contains('~72% now') -and $text.Contains('7d 59%')) $text
     $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity');$p|Add-Member NoteProperty disabled @(2)
     $s.slots[0]|Add-Member NoteProperty plan @{status='detected';profile='claude-max-20x';observedAt=$now.ToString('o')} -Force
     $s.slots[0]|Add-Member NoteProperty limit5h 'none' -Force
