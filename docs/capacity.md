@@ -1,5 +1,7 @@
 # Capacity, critical mode and motion
 
+How the **Available now** bar sizes accounts by plan, how weekly limits cap session capacity, how to set capacity by hand, and how opt-in critical mode chooses an account when every work account is low.
+
 HotPl8 has one **Available now** bar per provider. Its solid foreground is estimated usable allowance under current limits and routing policy. The patterned extension is additional allowance at the first confirmed reset that increases availability within 24 hours, assuming no further consumption. Resets still blocked by other limits are skipped. With no positive refill in that horizon, no pattern appears; a useful refill further out is named in text beside the bar instead. The clock reaching zero never turns a projection into measured capacity.
 
 The bar is compute usable right now, pooled across a provider's accounts. Every account is sized in one unit, one week of the provider's smallest paid plan: Claude Pro 1, Max 5, Ultra 10; Codex Plus 1, Pro 5x 5, Pro 20x 20. A five-hour window holds a tenth of its plan's week. An account counts its current window: its five-hour window where it has one, otherwise its week, as an Ultra account with no five-hour limit does. Three equal plans at 100%, 100% and 75% show **91.7% now**, with **+8.3%** when the depleted session resets.

@@ -1,4 +1,6 @@
-# How HotPl8 works
+# How HotPl8 works: architecture and source map
+
+How HotPl8 reads Claude Code and Codex usage limits, chooses and switches accounts, warms idle accounts, and where each part lives in the source. For commands see the [command reference](usage.md); for day-to-day controls see [account operations](operations.md).
 
 HotPl8 collects quota readings, chooses accounts according to policy, and renders a cached terminal dashboard. Displaying the dashboard never launches a provider process. The optional local MCP subprocess uses stdio; there is no HotPl8 network listener.
 

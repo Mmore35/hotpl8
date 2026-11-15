@@ -1,5 +1,7 @@
 # Adding a registered provider
 
+How to register another provider through a declarative definition in `data/providers/` when a shipped native driver supports it.
+
 Provider definitions live in `data/providers/`. They select a reviewed native
 driver; they are not executable plugins. Adding a compatible definition and
 enrolling its accounts does not require changing collector, selection, dashboard,

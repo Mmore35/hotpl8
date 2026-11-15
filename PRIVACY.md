@@ -1,5 +1,7 @@
 # Privacy and local data
 
+What HotPl8 reads, stores and sends. Everything it keeps stays on your machine; it has no telemetry.
+
 HotPl8 has no telemetry service. Quota collection invokes native provider tools, which contact their providers and retain their own authentication/logging behavior. Cached dashboard, status, and doctor commands do not call quota APIs or send prompts. Enabled Claude warming/recovery sends a prompt and can consume subscription capacity.
 
 The state directory contains policy.json (account homes/labels and action choices), status snapshots, Codex observations and identity/binding hashes, warming timestamps, a lock file, and bounded event logs. Codex observation history is capped; event logs rotate. Hashes and quotas can still identify or describe a user and are not anonymous data. Do not upload the state folder.

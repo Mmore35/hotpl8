@@ -1,5 +1,7 @@
 # Connect an account
 
+How `hotpl8 setup` and `hotpl8 add` connect a Claude or Codex account through its existing native sign-in, with no account folders, slot numbers or JSON to edit.
+
 Run `hotpl8 setup` for your first account, or `hotpl8 add` for another. An agent can do the same work through the [JSON interface](agent-api.md#connect-an-account). No account directories, slot numbers, configuration edits, or manual refreshes are required.
 
 HotPl8 checks the selected provider's native sign-ins. One available account connects automatically. If several accounts are available, choose one. If the provider tools are missing, setup offers to install the required tools for your user. If there is no usable sign-in, complete the provider's browser login. HotPl8 captures the native account, prevents duplicate enrollment, reads usage, and opens the account view.

@@ -1,5 +1,7 @@
 # T3 Code and Codex account routing
 
+An optional bridge that makes T3 Code's ordinary Codex provider use HotPl8's account choice, so new turns run on an enrolled ChatGPT/Codex account with allowance left.
+
 The optional bridge makes T3's normal **Codex** provider consume HotPl8's account policy.
 It supports T3's stdio app-server sessions, account/model probes and stateless
 `codex exec` helpers. Windows, Node 22+, independently enrolled file-backed native

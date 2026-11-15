@@ -1,5 +1,7 @@
 # Updating the plan catalogue
 
+How the plan sizes in `data/capacity-profiles.json` are taken from vendor pages, and how to check and update them.
+
 [`data/capacity-profiles.json`](../data/capacity-profiles.json) sizes every subscription plan HotPl8 knows. The unit is one week of the provider's smallest paid plan: Claude Pro is 1, Max 5 and Ultra 10; Codex Plus is 1, Pro 5x 5 and Pro 20x 20. A plan's five-hour window is its `weekly` times the provider's `fiveHourShare` unless the profile names a `fiveHour` of its own. A plan HotPl8 does not know is size 1. Sizes come from what a vendor page says, never from prices.
 
 Each profile names its `source` page and, in `published`, the exact sentence its size rests on. A profile whose size no page states has `published: null` and `"confidence": "unconfirmed"`.

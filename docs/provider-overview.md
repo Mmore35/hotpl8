@@ -1,4 +1,6 @@
-# Provider overview
+# Provider overview: the Available now bar
+
+What the Claude and Codex bars at the top of the dashboard measure, what the patterned refill means, and which accounts are left out of the total.
 
 The pinned overview shows **Available now** for Claude and main Codex. Solid fill represents estimated usable allowance across every account that can be read now. An account that cannot be read, or is blocked for an unstated reason, is left out of the bar and shown on its own row; the bar never blanks because of one account. Auto-switch being off or paused does not shrink the bar, because switching may be done by hand or by another tool; a selection hold still narrows it to the held account. Weekly remaining is supporting text beneath the bar. Spark is excluded from the summary, dashboard details and tray; native data remains available in JSON.
 

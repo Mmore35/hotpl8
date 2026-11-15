@@ -1,5 +1,7 @@
 # Release checklist
 
+The steps and gates for publishing a HotPl8 release or a tested main package.
+
 Installations explicitly enrolled in the [main delivery channel](delivery.md) use
 the additional `publish-main` job in `ci.yml`: after checks it wraps the tested
 archive with source identity, attests it and publishes an immutable

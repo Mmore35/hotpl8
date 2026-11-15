@@ -3,6 +3,7 @@
   "files": [
     "VERSION",
     "README.md",
+    "docs/README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",

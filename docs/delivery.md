@@ -1,5 +1,7 @@
 # Verified main updates and PR previews
 
+How an installation can follow tested `main` automatically through attested, checksummed packages, how PR previews work, and the lifecycle rules every installed component follows.
+
 HotPl8 has two installation choices. Ordinary installations use reviewed versioned
 releases. An installation explicitly enrolled in Local Delivery follows tested
 `main` automatically. Contributors continue to work in separate source checkouts.

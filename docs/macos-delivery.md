@@ -1,5 +1,7 @@
 # Verified main updates on macOS
 
+Mac enrollment, inspection and recovery for verified main updates, including the managed T3 Code bridge.
+
 Mac delivery selects the same verified main release as Windows when explicitly
 invoked. Setup creates no schedules by default. Operators own automated update
 scheduling and machine configuration; a merged PR, source sync or passing CI does

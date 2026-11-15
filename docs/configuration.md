@@ -1,4 +1,6 @@
-# Configuration
+# Configuration reference (policy.json)
+
+The fields of `policy.json`, which controls account order, reserves, switching, warming, automatic continue and critical mode.
 
 Copy the tracked example only for a new installation. The [schema](../policy.schema.json) documents versions 1, 2 and 3. Runtime validation also applies to legacy policy fields before Claude actions.
 

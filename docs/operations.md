@@ -1,5 +1,7 @@
 # Account operations
 
+Day-to-day control of enrolled accounts: rename, reserve, disable, park, pause, automatic continue, work hours, warming receipts, weekly pace, the Windows tray and Claude sign-in expiry.
+
 ![Fictional accounts showing collector health, weekly pace, an unconfirmed warm receipt and work-hour blocking](assets/operations.png)
 
 These commands are in the 0.2 source candidate. The older downloadable preview does not contain them. Start with `hotpl8 setup`, optionally `hotpl8 setup -Interactive`. Setup preserves an existing policy and uses native sign-in. The one setting it can change is warming, and only when you answer `y` to its question. Claude enrollment uses an existing cswap account number:

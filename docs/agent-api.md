@@ -1,4 +1,6 @@
-# Local agent API
+# Local agent API and MCP server
+
+A versioned JSON command (`hotpl8 agent`) and a local stdio MCP server (`hotpl8 mcp`) that let coding agents read cached account readiness, connect accounts and pause automation.
 
 HotPl8 has a versioned JSON command and an optional local MCP subprocess. Both use the same dispatcher and shared provider decision core. Reads inspect local evidence; they do not collect quota, start provider processes, change accounts, send prompts or validate native login. Read operations remain cache-only. Explicit onboarding operations may start native processes and change enrollment. Windows PowerShell 5.1 and PowerShell 7.5+ on macOS are supported.
 

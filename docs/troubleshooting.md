@@ -1,5 +1,7 @@
 # Troubleshooting
 
+What to check when readings become unavailable, a Claude reading drops, or Codex quota disappears. Start with `hotpl8 doctor -AsJson`, which is offline and redacted.
+
 ## Readings become unavailable while the dashboard is open
 
 Run `hotpl8 explain` and inspect the sanitized local `events.jsonl`. `state_io_failed` with a known state filename means local persistence failed; it does not mean the provider rejected your login. Windows replacement error 1175 can occur during replacement's delete phase. The shared writer retries safe contention for up to one second, retaining complete old data on failure. Persistent required-state failures retry on the next scheduler minute; network/provider failures keep their own backoff.

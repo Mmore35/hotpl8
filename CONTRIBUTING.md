@@ -1,5 +1,7 @@
 # Contributing
 
+How to build HotPl8, run its offline test suites and change the code safely. The [architecture and source map](docs/architecture.md) shows where each part lives.
+
 Use Windows PowerShell 5.1, Git Bash, Python 3, Node 22+ and Rust (through [rustup](https://rustup.rs); the version is pinned in `native/rust-toolchain.toml`) for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository, build the compiled reader once and after any change under `native/`, and run:
 
 ```powershell
