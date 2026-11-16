@@ -549,18 +549,23 @@ export async function main(config, args) {
     def test_activation_prunes_old_previews(self):
         old = time.time() - 15 * 86400
         folders = {name: self.root / "previews" / name for name in
-                   ("pr-1/" + A, "pr-2/" + A, "pr-2/" + B, "pr-3/" + C)}
+                   ("pr-1/" + A, "pr-2/" + A, "pr-2/" + B, "pr-3/" + C, "baseline-" + A, "baseline-" + B,
+                    ".baseline-x", "baseline-" + C)}
         for name, folder in folders.items():
             folder.mkdir(parents=True)
             (folder / "preview.json").write_text("{}")
-            if name != "pr-2/" + B:
+            if name not in ("pr-2/" + B, "baseline-" + B):
                 os.utime(folder, (old, old))
         held = str(folders["pr-3/" + C])
-        result = d.update(self.root, self.github, self.pruning_adapter({"refuse": False, "paths": [held]}))
+        held_baseline = str(folders["baseline-" + C])
+        result = d.update(self.root, self.github, self.pruning_adapter({"refuse": False, "paths": [held, held_baseline]}))
         self.assertIsNone(result["pruneError"])
         self.assertFalse((self.root / "previews" / "pr-1").exists())
         self.assertFalse(folders["pr-2/" + A].exists())
         self.assertTrue(folders["pr-2/" + B].exists() and folders["pr-3/" + C].exists())
+        # Observe baselines go the same way, and a half-unpacked one too.
+        self.assertFalse(folders["baseline-" + A].exists() or folders[".baseline-x"].exists())
+        self.assertTrue(folders["baseline-" + B].exists() and folders["baseline-" + C].exists())
 
     def test_failed_activation_refuses_incompatible_rollback_before_pointer_or_recover(self):
         calls = []

@@ -234,7 +234,9 @@ try{
         }
         # A parameter that belongs to another command is the entry's to refuse, as for any command.
         $result=Invoke-Entry @('status','-StateDirectory',$state,'-TrustRevision','x')
-        Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -like 'HotPl8: Live and TrustRevision are preview-only.*') $result.errors
+        Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -like 'HotPl8: TrustRevision is for preview and observe only.*') $result.errors
+        $result=Invoke-Entry @('status','-StateDirectory',$state,'-Scenario','x')
+        Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -like 'HotPl8: Scenario and Baseline are observe-only.*') $result.errors
         $result=Invoke-Entry @('version','-PreviewPolicy',$previewPolicy)
         Assert ($result.exitCode -eq 1 -and $result.output -eq '' -and $result.errors -like 'HotPl8: PreviewPolicy is display-only.*') $result.errors
     }
