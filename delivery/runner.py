@@ -141,7 +141,7 @@ def lock(path, wait=0):
 
 # The one line of adapter output allowed into the status feed: the adapter's own
 # refusal, as its last stderr line. Without it a refusal read only "Command failed:
-# powershell.exe" (an Anigent update stalled three days on that, 2026-10). Bounded
+# powershell.exe" (an update once stalled three days on that). Bounded
 # printable ASCII with a known kind; any other line still never leaves the child.
 ADAPTER_REASON = re.compile(r"delivery-(deferred|error): ([ -~]{1,240})")
 

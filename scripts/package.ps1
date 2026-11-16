@@ -37,6 +37,9 @@ try{
         }
     }finally{if($archive){$archive.Dispose()};$stream.Dispose()}
     $digest=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    # The line ends as the building platform ends lines, so a Windows build's SHA256SUMS has
+    # CRLF and `sha256sum -c` rejects it until the CR is removed:
+    # tr -d '\r' < SHA256SUMS | sha256sum -c
     Write-Hotpl8Text (Join-Path $output 'SHA256SUMS') ($digest+'  '+[IO.Path]::GetFileName($zip)+[Environment]::NewLine) -NoBom
     $zip
 }finally{

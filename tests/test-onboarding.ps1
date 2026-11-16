@@ -26,6 +26,9 @@ function Invoke-TestCli([string[]]$Arguments) {
         $stderr = $proc.StandardError.ReadToEndAsync()
         # Fresh isolated homes on hosted Windows incur first-use PowerShell/module
         # initialization (~23s in CI). This is a harness budget, not a provider timeout.
+        # Standard input is inherited. In a run started hidden or detached, guided setup waits
+        # on a console nobody can type into until this budget ends: give such a run an empty
+        # file as its standard input.
         if (-not $proc.WaitForExit(45000)) { $proc.Kill(); throw 'CLI test timed out' }
         return @{ code = $proc.ExitCode; text = $stdout.Result + $stderr.Result }
     } finally { $proc.Dispose() }

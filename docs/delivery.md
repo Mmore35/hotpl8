@@ -183,9 +183,13 @@ open a preview; the pinned live command above stays available to look by hand.
 
 Observe runs the reader only. For presentation changes, the reader's own tests cover
 key input, resize and clean exit, and CI covers the other system; a PNG alone is not
-evidence of terminal behaviour. Run relay review on the final candidate before
+evidence of terminal behaviour. Run an independent review on the final candidate before
 merging; after merge, verify installed and running component adoption through normal
 delivery.
+
+When the handoff also offers the live command, run it yourself first. With standard input
+redirected it prints the one frame the owner would open and ends; until CI has passed for
+that head it answers `No completed preview for this PR revision yet`.
 
 If installed main predates `observe` or live-preview support, use the reviewed
 candidate's runner temporarily, without changing the installed release:
@@ -198,6 +202,10 @@ candidate's runner temporarily, without changing the installed release:
 The same GitHub/CI/revision checks and demo mode apply. Say in the handoff that the
 run used this bootstrap; never label an unbound local checkout or an image command as
 an observed run or the live PR preview.
+
+`<managed-root>` can be an empty directory that holds a copy of an installation's
+`delivery.json`, which checks a PR's preview route without touching the installation.
+Without that file the command ends in a `TypeError`.
 
 ## Failure and recovery
 
@@ -212,6 +220,12 @@ says so with that reason. A successful activation removes the record. Interrupte
 recovery because no previous managed release exists yet. The original app remains
 available until successful enrollment installs its compatibility launchers.
 
+A merge reaches installations only after its `main` run publishes. That run can fail
+before any test starts (a corrupt download in `Install pinned static analyzer`, for one);
+`publish-main` is then skipped and `hotpl8 delivery` stays `pending`, and nothing on the
+merged PR says so. Re-run the failed job (`gh run rerun RUN --failed`); the next updater
+wake installs the revision.
+
 Inspect `delivery-status.json`, `transaction.json`, `current.json`, `previous.json`
 and `rejected.json` in the owned installation. Releases other than the current,
 previous, rejected and three newest are removed after each activation, and job
@@ -219,6 +233,11 @@ receipts after 7 or 30 days, so look at a failure before then. Do not delete or
 restore subscription history to roll code back. An operator recovery must hold the same update/runtime
 and application writer locks before changing the pointer. Retained immutable code
 does not make incompatible data/schema migrations reversible.
+
+Each retained release holds its own reader under `releases/<sha>/bin`, so a merged change
+can be seen before and after without building: run the two readers' `watch`, `status` or
+`tray` against the same state and `--now`. A release that has been removed is still the
+GitHub release `main-<full sha>`.
 
 Policy schema migration is allowed only after a compatible managed update commits.
 The candidate records `state/delivery-owner.json` during drain, before the code
@@ -273,6 +292,12 @@ ends, the host removes older folders of its role, at most 500 per attempt: a
 `complete` run after 7 days, any other after 30, judged by the time in its own
 receipt. A folder whose receipt cannot be read is kept. Removal never changes the
 attempt's exit code.
+
+A receipt records `hostCreatedAt`, `startedAt` and `completedAt`: the last two give the
+attempt's run time, the first two the host's start delay. Read `run.json` only after its
+host has ended. The host replaces the file in place, and another process holding it open
+at that moment makes the replacement fail, which leaves `run.json.tmp` beside a receipt
+that still says `running`.
 
 The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
 against that repository/revision and replace the import plus normalized LF SHA256
