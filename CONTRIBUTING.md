@@ -114,8 +114,10 @@ executable. Never print the private broker response: it contains an access token
 
 ## PR preview handoff
 
-Follow [the live PR handoff](docs/delivery.md#required-pr-handoff) for every PR.
-Include the PR URL, exact head SHA, Windows/Mac checks and a runnable, pinned
-live-preview command. The owner tests the candidate before merge. Keep Windows
+Follow [the PR handoff](docs/delivery.md#required-pr-handoff) for every PR.
+Include the PR URL, exact head SHA, Windows/Mac checks and an observed run of that
+head: a scenario written from the PR's claim, run with `hotpl8 observe`, and its
+report ([Observe scenarios](docs/observe-scenarios.md)). The owner approves from that
+and a plain-words line on what changes for them, not from a preview. Keep Windows
 and Mac terminal behavior qualified; screenshots alone do not establish native
-terminal rendering. A changed head needs a fresh command and fresh checks.
+terminal rendering. A changed head needs a fresh observed run and fresh checks.

@@ -37,6 +37,6 @@ terminal stream, not native Terminal captures. Other images retain the RGB palet
 
 Block glyphs are painted as exact cell rectangles in PNGs, preventing font padding
 from introducing artificial seams. Apple Terminal Nyan uses whole background
-cells (10 or 18 rows); Windows keeps its 5- or 9-row half-block sprite. The native
-live preview remains required for terminal acceptance; CI images are not native
-Terminal captures.
+cells (10 or 18 rows); Windows keeps its 5- or 9-row half-block sprite. An observed
+run of the PR's compiled reader is what accepts a dashboard change
+([observe scenarios](observe-scenarios.md)); CI images are not native Terminal captures.

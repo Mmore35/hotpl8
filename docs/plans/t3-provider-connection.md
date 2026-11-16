@@ -78,7 +78,7 @@ the first successful new collection supplies its optional receipt. Rolling back
 ignores that optional field and restores the previous full-read initialization.
 
 Before landing, run the full offline suite, Windows and Mac CI, and independent
-relay review. Obtain owner preview acceptance through the standard delivery
+relay review. Hand it over with an observed run through the standard delivery
 handoff. After normal release delivery, verify installed and newly launched bridge
 revisions, collector receipt production, and actual T3 provider readiness. Existing
 chat processes retain their loaded version until their normal restart.
