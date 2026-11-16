@@ -8,7 +8,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 
-namespace UltraAgent.Jobs {
+namespace HotPl8.Jobs {
  public sealed class Child : IDisposable {
   IntPtr job, process; int pid; bool unix, reaped; int code;
   public int Id { get { return pid; } }
