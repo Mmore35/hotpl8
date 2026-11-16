@@ -268,9 +268,18 @@ def baseline_release(trusted, sha):
         except zipfile.BadZipFile:
             raise DeliveryError("Invalid baseline package") from None
         write(stage / "baseline.json", dict(candidate, unpackedAt=now()))
+        # Another observe may have unpacked the same baseline meanwhile and be running its
+        # reader: keep its copy. Only a folder without baseline.json is a half-finished one.
+        if (cached / "baseline.json").is_file():
+            os.utime(cached)
+            return cached
         if cached.exists():
             shutil.rmtree(cached)
-        os.replace(stage, cached)
+        try:
+            os.replace(stage, cached)
+        except OSError:
+            if not (cached / "baseline.json").is_file():
+                raise
     return cached
 
 

@@ -572,6 +572,24 @@ class Observe(Fixture):
         self.assertEqual(self.gh.attest.call_args[0][1:], (BASE, "ci.yml"))
         self.assertFalse(list((self.root / "previews").glob(".baseline-*")))
 
+    def test_a_baseline_another_observe_unpacked_meanwhile_is_kept(self):
+        shutil.rmtree(self.root / "releases" / BASE)
+        self.gh.candidate.return_value = dict(sha=BASE, assetId=5, digest="d" * 64, runId=6, releaseId=7)
+        cached = self.root / "previews" / ("baseline-" + BASE)
+        def download(candidate, archive):
+            # A second observe finishes the same baseline while this one downloads, and is
+            # running its reader from it.
+            (cached / "bin").mkdir(parents=True)
+            (cached / "in-use").write_text("fictional")
+            d.write(cached / "baseline.json", dict(sha=BASE))
+        self.gh.download.side_effect = download
+        with mock.patch.object(live, "unpack", side_effect=lambda a, dest, c, s: (dest / "bin").mkdir(parents=True)):
+            self.assertEqual(self.observed(), live.PASS)
+        self.assertTrue((cached / "in-use").is_file())
+        argv = self.children[0][0]
+        self.assertEqual(argv[argv.index("-Baseline") + 1], str(cached))
+        self.assertFalse(list((self.root / "previews").glob(".baseline-*")))
+
     def test_unavailable_baseline_is_deferred_before_candidate_code_is_fetched(self):
         shutil.rmtree(self.root / "releases" / BASE)
         self.gh.candidate.side_effect = d.Deferred("Main has no available passing release")
