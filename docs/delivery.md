@@ -293,9 +293,11 @@ The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
 against that repository/revision and replace the import plus normalized LF SHA256
 together; the installer rejects a mismatched import. Product host source is beside
 it. Provenance points to the byte-identical public HotPl8 snapshot, so verification
-and source refresh need no private repository access. The retained source namespace
-records its origin; the vendored implementation has no runtime dependency on that
-project or its checkout.
+and source refresh need no private repository access. The import's types are in
+the `HotPl8.Jobs` namespace, and it has no runtime dependency on any checkout.
+A change to `process.cs` takes two commits: the change, then the refresh naming it
+as `-Revision`, merged with a merge commit so that revision stays reachable from
+`main`.
 
 Both tasks run at Task Scheduler priority 5. At 7, the default, Windows starts a
 task's program below normal on the processor and at low priority on the disk, and
