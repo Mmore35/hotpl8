@@ -17,7 +17,7 @@ The harness stages each fictional state in a temporary directory and asks the co
 
 The [fixture](../tests/fixtures/screenshots.ps1) fixes account labels, percentages and the clock. The harness fixes viewport, font, DPI and cell size. Identical inputs on the same Windows/font environment produce identical bytes; other font/OS revisions may rasterize differently. Use `-OutputDirectory PATH` to compare a second render without replacing the committed images.
 
-Change the renderer for a UI change, or the fixture for a different documentation scenario. Keep fixtures fictional and independent of the machine. Never load policy.json, status.json, account homes, environment secrets, or native provider output into this harness. This is a development tool, not an application demo command.
+Change the renderer for a UI change, or the fixture for a different documentation scenario. Keep fixtures fictional and independent of the machine. A fixture whose policy does not set `switchEnabled` is drawn with "auto-switch off". Never load policy.json, status.json, account homes, environment secrets, or native provider output into this harness. This is a development tool, not an application demo command.
 
 `dashboard.png` fixes the opening view at 94 columns by 25 rows. `details.png` renders the last details page at 94 by 34 with the same pinned provider overview. `operations.png` exercises operational detail at 110 by 50. All use the same fixed clock and renderer.
 
@@ -34,6 +34,8 @@ Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bund
 including the cached live Nyan frame. An independent fixture decoder maps the
 emitted fixed 256-color indices to pixels. These are fictional CI previews of the
 terminal stream, not native Terminal captures. Other images retain the RGB palette.
+A run writes both beside the committed images, but the repository does not track
+them: leave them out of a commit.
 
 Block glyphs are painted as exact cell rectangles in PNGs, preventing font padding
 from introducing artificial seams. Apple Terminal Nyan uses whole background

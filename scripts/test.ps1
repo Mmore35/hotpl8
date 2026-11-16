@@ -32,11 +32,16 @@ function Start-IsolatedSuite([string]$Name,[string]$Executable,[string[]]$Argume
     $psi.Arguments=(@($Arguments|ForEach-Object{ConvertTo-NativeArgument $_}) -join ' ')
     $psi.UseShellExecute=$false;$psi.WorkingDirectory=$root
     # Child-only environment; the real account directories and parent environment are unchanged.
+    # TMP and TEMP are inherited: suites build their fixtures, locks and the compiled fake under
+    # GetTempPath, so a run that must write inside one folder sets both before calling this script.
     foreach($key in @('HOME','USERPROFILE')){$psi.EnvironmentVariables[$key]=$homeDir}
     foreach($key in @('LOCALAPPDATA','APPDATA')){$psi.EnvironmentVariables[$key]=(Join-Path $homeDir $key);[void][IO.Directory]::CreateDirectory($psi.EnvironmentVariables[$key])}
     $psi.EnvironmentVariables['CODEX_HOME']=Join-Path $homeDir '.codex'
     $psi.EnvironmentVariables['PSModuleAnalysisCachePath']=Join-Path $homeDir 'ModuleAnalysisCache'
     foreach($key in @('HOTPL8_STATE_DIRECTORY','OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','CLAUDE_CODE_OAUTH_TOKEN','ANTHROPIC_API_KEY','CLAUDE_CONFIG_DIR','HOTPL8_INSTALL_DIRECTORY')){$psi.EnvironmentVariables.Remove($key)}
+    # Standard input is never redirected: every suite reads this script's. Start this script hidden
+    # or detached with an empty file as its standard input, or tests/test-onboarding.ps1 waits on a
+    # console nobody can type into and times out.
     $psi.RedirectStandardOutput=$Capture;$psi.RedirectStandardError=$Capture
     # Nothing owns this suite's temp home until it is handed back, so a failure to
     # start has to remove it here.

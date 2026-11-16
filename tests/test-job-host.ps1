@@ -1,5 +1,8 @@
 # Actual native containment, synthetic workers only. -Native also creates one
 # uniquely named task to prove action replacement preserves admitted work.
+# The host is compiled to <temp>/hotpl8-host-test-<guid>/launchers/<digest>/stage-<guid>.exe.
+# Under a long TMP that path passes MAX_PATH and Add-Type fails with "File name ... is too
+# long or invalid", so keep TMP and TEMP short when pointing them somewhere else.
 param([switch]$Native)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
