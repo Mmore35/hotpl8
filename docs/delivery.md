@@ -172,26 +172,36 @@ existing previews retain their exported candidate until they exit.
 ### Required PR handoff
 
 Every HotPl8 PR handoff includes its URL, full head SHA, passing Windows and Mac
-CI evidence, and the pinned live command above. For presentation changes, test
-animation, freeze/resume, resize/scroll and clean exit; inspect both terminal
-renderers. A PNG alone does not complete interactive acceptance. Run an independent review
-on the final candidate and obtain owner preview acceptance before merging; after
-merge, verify installed and running component adoption through normal delivery.
+CI evidence, and an **observed run** of that head: the agent writes a scenario from
+the PR's claim, runs `hotpl8 observe pr NUMBER -TrustRevision FULL_SHA -Scenario FILE`
+and puts the report's `report.md` in the PR, with a plain-words line on what changes
+for the owner. [Observe scenarios](observe-scenarios.md) has the format and the verdict
+rule. A PR that changes no surface is observed with `"change": "none"`. Only a PASS on
+the final head is handed over; a FAIL is fixed or explained first, and a changed head
+needs a fresh run. The owner approves or declines from the handoff and does not need to
+open a preview; the pinned live command above stays available to look by hand.
 
-Run the pinned command yourself before handing it over. With standard input redirected it
-prints the one frame the owner will open and ends; until CI has passed for that head it
-answers `No completed preview for this PR revision yet`.
+Observe runs the reader only. For presentation changes, the reader's own tests cover
+key input, resize and clean exit, and CI covers the other system; a PNG alone is not
+evidence of terminal behaviour. Run an independent review on the final candidate before
+merging; after merge, verify installed and running component adoption through normal
+delivery.
 
-If installed main predates live-preview support, use the reviewed candidate's
-runner temporarily, without changing the installed release:
+When the handoff also offers the live command, run it yourself first. With standard input
+redirected it prints the one frame the owner would open and ends; until CI has passed for
+that head it answers `No completed preview for this PR revision yet`.
+
+If installed main predates `observe` or live-preview support, use the reviewed
+candidate's runner temporarily, without changing the installed release:
 
 ```text
+<enrolled-python> <reviewed-checkout>/delivery/runner.py --install <managed-root> preview NUMBER --trust-revision FULL_SHA --observe SCENARIO
 <enrolled-python> <reviewed-checkout>/delivery/runner.py --install <managed-root> preview NUMBER --trust-revision FULL_SHA
 ```
 
-The same GitHub/CI/revision checks and demo mode apply. Provide this concrete
-bootstrap command in that first handoff; never label an unbound local checkout
-or an image command as the live PR preview.
+The same GitHub/CI/revision checks and demo mode apply. Say in the handoff that the
+run used this bootstrap; never label an unbound local checkout or an image command as
+an observed run or the live PR preview.
 
 `<managed-root>` can be an empty directory that holds a copy of an installation's
 `delivery.json`, which checks a PR's preview route without touching the installation.

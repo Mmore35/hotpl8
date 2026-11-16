@@ -400,6 +400,10 @@ def prune(root, config, adapter=invoke_adapter):
                     shutil.rmtree(old, ignore_errors=True)
             with contextlib.suppress(OSError):
                 pr.rmdir()
+        # Main releases unpacked as observe baselines, and any an interrupted unpack left.
+        for old in (root / "previews").glob("*baseline-*"):
+            if old.is_dir() and old.stat().st_mtime < cutoff and not held(old):
+                shutil.rmtree(old, ignore_errors=True)
         return None
     except Exception as error:
         return type(error).__name__
@@ -616,16 +620,30 @@ def main():
         else:
             if not args.arguments or not args.arguments[0].isdigit() or int(args.arguments[0]) < 1:
                 raise DeliveryError("Specify a positive PR number")
-            if len(args.arguments) == 3 and args.arguments[1] == "--trust-revision":
+            if len(args.arguments) >= 3 and args.arguments[1] == "--trust-revision":
                 # bootstrap.py uses runpy; its sys.path points at the install
                 # root, not this immutable release's delivery directory.
                 import importlib.util
                 spec = importlib.util.spec_from_file_location("hotpl8_live_preview", Path(__file__).with_name("live_preview.py"))
                 candidate_preview = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(candidate_preview)
-                return candidate_preview.launch(root, int(args.arguments[0]), args.arguments[2])
+                if len(args.arguments) == 3:
+                    return candidate_preview.launch(root, int(args.arguments[0]), args.arguments[2])
+                options = args.arguments[3:]
+                if (len(options) % 2 or options[0] != "--observe" or len(set(options[::2])) != len(options[::2])
+                        or not set(options[::2]) <= {"--observe", "--report", "--baseline"}):
+                    raise DeliveryError("Use preview NUMBER --trust-revision FULL_SHA --observe SCENARIO"
+                                        " [--report DIRECTORY] [--baseline FULL_SHA]")
+                options = dict(zip(options[::2], options[1::2]))
+                try:
+                    return candidate_preview.observe(root, int(args.arguments[0]), args.arguments[2], options["--observe"],
+                                                     options.get("--report"), options.get("--baseline"))
+                except Deferred as error:
+                    # Not yet observable (no package, a moved head): an agent retries later; not a FAIL.
+                    print(json.dumps({"state": "blocked", "reason": str(error)}))
+                    return candidate_preview.BLOCKED
             if len(args.arguments) != 1:
-                raise DeliveryError("Use preview NUMBER [--trust-revision FULL_SHA]")
+                raise DeliveryError("Use preview NUMBER [--trust-revision FULL_SHA [--observe SCENARIO]]")
             result = preview(root, int(args.arguments[0]))
         print(json.dumps(result, indent=2))
         return 1 if result.get("state") == "error" else 0
