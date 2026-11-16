@@ -153,6 +153,10 @@ foreach ($step in @($(if ($plan.steps) { $plan.steps } else { @([pscustomobject]
     $at = $fixtureNow.Add($(if ($null -ne $step.at) { Get-ObserveSpan ([string]$step.at) } else { [timespan]::Zero }))
     $steps.Add([pscustomobject]@{ name = [string]$step.name; now = $at.UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ') })
 }
+function ConvertTo-ObserveExpected($Value) {
+    if ($Value -is [bool]) { return $(if ($Value) { 'present' } else { 'absent' }) }
+    return [string]$Value
+}
 $checks = @($plan.checks | Where-Object { $_ })
 foreach ($check in $checks) {
     if (-not ($steps | Where-Object { $_.name -eq $check.step })) { Stop-ObserveInvalid ('a check names a step that is not in the timeline: ' + $check.step) }
@@ -160,6 +164,10 @@ foreach ($check in $checks) {
     $kinds = @('text', 'match', 'json' | Where-Object { $check.PSObject.Properties[$_] })
     if ($kinds.Count -ne 1) { Stop-ObserveInvalid 'a check tests one of text, match or json' }
     if ($null -eq $check.candidate -or $null -eq $check.baseline) { Stop-ObserveInvalid 'a check declares what it expects of both the candidate and the baseline' }
+}
+# A check that expects the same of both sides cannot show the change, so it is no evidence for it.
+if ($change -eq 'visible' -and -not @($checks | Where-Object { (ConvertTo-ObserveExpected $_.candidate) -cne (ConvertTo-ObserveExpected $_.baseline) }).Count) {
+    Stop-ObserveInvalid 'a visible change needs a check that expects something different of the candidate and the baseline'
 }
 
 # --- Running a reader ---------------------------------------------------------------------
@@ -263,10 +271,6 @@ function Get-ObserveResult($Check, [string]$Side) {
     if ($Check.PSObject.Properties['text']) { return $(if ($result.output.Contains([string]$Check.text)) { 'present' } else { 'absent' }) }
     if ($Check.PSObject.Properties['match']) { return $(if ($result.output -match [string]$Check.match) { 'present' } else { 'absent' }) }
     return Get-ObserveJson $result.output ([string]$Check.json)
-}
-function ConvertTo-ObserveExpected($Value) {
-    if ($Value -is [bool]) { return $(if ($Value) { 'present' } else { 'absent' }) }
-    return [string]$Value
 }
 $checkResults = @()
 foreach ($check in $checks) {

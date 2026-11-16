@@ -170,7 +170,8 @@ try{
         $plans=@(@{change='none';reason='x'},@{claim='no checks'},@{claim='x';change='none'},@{claim='x';change='sideways';reason='x'},
             @{claim='x';checks=@(@{step='later';capture='status';text='x';candidate=$true;baseline=$false})},
             @{claim='x';checks=@(@{step='start';capture='nowhere';text='x';candidate=$true;baseline=$false})},
-            @{claim='x';checks=@(@{step='start';capture='status';text='x';candidate=$true})})
+            @{claim='x';checks=@(@{step='start';capture='status';text='x';candidate=$true})},
+            @{claim='x';checks=@(@{step='start';capture='status';text='same';candidate=$true;baseline=$true},@{step='start';capture='tray';json='say';candidate='same';baseline='same'})})
         for($i=0;$i -lt $plans.Count;$i++){
             $result=Invoke-Observe $plans[$i] ('invalid'+$i)
             Assert ($result.exitCode -eq 1 -and -not $result.summary -and $result.errors.Contains('Invalid observe scenario')) ([string]$i+': '+$result.exitCode+' '+$result.errors)

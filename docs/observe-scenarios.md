@@ -56,7 +56,8 @@ fails even when its own checks are met. Each reader has 30 s per capture.
 
 A JSON file the agent writes from the PR's claim, before it runs. A check states what the
 candidate must show **and what the baseline must show**, so a check that main already
-passes, or one that cannot tell the two apart, does not count as evidence.
+passes, or one that cannot tell the two apart, does not count as evidence. A visible
+change needs at least one check whose two expectations differ.
 
 ```json
 {
@@ -85,7 +86,7 @@ passes, or one that cannot tell the two apart, does not count as evidence.
 | Field | Meaning |
 |---|---|
 | `claim` | Required. One line: what the PR says changes |
-| `change` | `visible` (the default) needs at least one check. `none` says nothing drawn should change, needs a `reason`, and fails if any capture differs from the baseline at any step |
+| `change` | `visible` (the default) needs at least one check that expects something different of the candidate and the baseline; a scenario without one is refused. `none` says nothing drawn should change, needs a `reason`, and fails if any capture differs from the baseline at any step |
 | `fixture` | `{ "operations": true }` or `{ "twoAccounts": true }` turns on the fixture's switch of that name; the candidate's fixture must have it |
 | `patches` | Changes to the fixture's `status` or `policy` before anything runs. `path` is dotted (`slots.0.used5h`); an array element is set by an existing index. `value` replaces what is there, or `"remove": true` removes it |
 | `steps` | The timeline: each a `name` and an offset `at` from the fixture's clock (`0`, `+3h`, `90m`, `-1d`, `30s`). Without steps, one step `start` at `0` |
