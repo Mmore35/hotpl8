@@ -154,10 +154,16 @@ pub fn provider_decision(accounts: &V, policy: &V, context: &V, now: Dto) -> R<V
                     proposed = previous.clone();
                 }
             } else if order.eq_s("soonest-reset")? {
-                if best.g("resetAt")?.t()?
-                    && old.g("resetAt")?.t()?
-                    && V::Dbl(Dto::of(&old.g("resetAt")?)?.since(Dto::of(&best.g("resetAt")?)?).total_minutes())
-                        .lt(&setting(policy, "resetLeadMin", V::I32(10))?)?
+                // An account in use whose short window has nothing used and no reset time
+                // has not started that window yet; its next request starts it and makes it
+                // the soonest reset again, so leaving it now would only come back minutes later.
+                let short = old.g("shortRemaining")?;
+                let unstarted = !old.g("resetAt")?.t()? && short.is_number() && short.ge_i(100)?;
+                if unstarted
+                    || (best.g("resetAt")?.t()?
+                        && old.g("resetAt")?.t()?
+                        && V::Dbl(Dto::of(&old.g("resetAt")?)?.since(Dto::of(&best.g("resetAt")?)?).total_minutes())
+                            .lt(&setting(policy, "resetLeadMin", V::I32(10))?)?)
                 {
                     proposed = previous.clone();
                 }
