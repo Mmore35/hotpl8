@@ -392,10 +392,26 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     let mut active = data.g("activeAccountNumber")?.to_int()?;
     let critical_prior = json::read_or_null(&state.join("critical-claude.json"));
     let selection = claude_selection(policy, &prefer, &acc, active, now, &critical_prior)?;
-    let target = match &selection.target {
+    let mut target = match &selection.target {
         V::Null => None,
         slot => Some(slot.to_int()?),
     };
+    // A reading of the account in use that is only late grounds no move away from it. It
+    // is out of the running while late, so the one other account can be the only choice
+    // left; judged by its last reading the account in use would be kept, and the next good
+    // reading would move the work straight back. Too old to judge by, or saying itself
+    // that the work should move, the reading leaves selection as it was.
+    if target.is_some_and(|target| target != active) {
+        if let Some((young, ageless)) = last_reading(&acc.get(active), active, &plans, policy, now, max_age)? {
+            let mut judged = Accounts::default();
+            for n in &prefer {
+                judged.put(*n, if *n == active { young.clone() } else { acc.get(*n) });
+            }
+            if claude_selection(&ageless, &prefer, &judged, active, now, &critical_prior)?.target.is_null() {
+                target = None;
+            }
+        }
+    }
 
     // A hold stops the switch and nothing else. It exists so that work in flight is not
     // moved to another account; a request through `cswap run` belongs to its own process
@@ -963,6 +979,65 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
     let acted = switched || !warmed.is_empty() || !warm_failed.is_empty() || !unrenewed.is_empty();
     let action = if acted { Some(format!("{}  {said}", now.local()?.hour_minute_second())) } else { None };
     Ok(Some(Collected { lines, payload, action }))
+}
+
+/// The account in use as its last reading would show it were that reading young, with the
+/// policy that judges it so: none when the reading is fresh, when the account is lost or
+/// off, or when the reading is more than twice `maxUsageAgeS` old.
+fn last_reading(e: &V, slot: i32, plans: &V, policy: &V, now: Dto, max_age: f64) -> R<Option<(V, V)>> {
+    if !e.t()? || e.g("fresh")?.t()? || e.g("modelBlocked")?.t()? {
+        return Ok(None);
+    }
+    let a = e.g("obj")?;
+    let status = a.g("usageStatus")?;
+    let (usage, age) = if status.eq_s("ok")? {
+        (a.g("usage")?, a.g("usageAgeSeconds")?)
+    } else if status.eq_s("unavailable")? {
+        (a.g("lastGoodUsage")?, a.g("lastGoodAgeSeconds")?)
+    } else {
+        return Ok(None);
+    };
+    if !usage.t()? || !age.is_number() || age.lt_i(0)? || age.dbl()? > 2.0 * max_age {
+        return Ok(None);
+    }
+    let (five, seven) = (usage.g("fiveHour")?, usage.g("sevenDay")?);
+    for window in [&five, &seven] {
+        if window.t()? {
+            let pct = window.g("pct")?;
+            if !pct.is_number() || pct.lt_i(0)? || pct.gt_i(100)? {
+                return Ok(None);
+            }
+        }
+    }
+    let read = a.shallow()?;
+    read.set("usageStatus", "ok".into())?;
+    read.set("usage", usage.clone())?;
+    read.add_member("usageAgeSeconds", age.clone(), true)?;
+    let limit5h: V = if !(seven.t()? && !five.t()?) {
+        V::Null
+    } else if plans::no_five_hour_limit(&plans.g(&slot.to_string())?, now)? {
+        "none".into()
+    } else {
+        "unreported".into()
+    };
+    let h5 = if five.t()? { V::Dbl(100.0 - five.g("pct")?.dbl()?) } else { V::Null };
+    let h7 = if seven.t()? { V::Dbl(100.0 - seven.g("pct")?.dbl()?) } else { V::Null };
+    let cold = five.t()? && blank(&five.g("resetsAt")?.s()?)?;
+    let young = hash! {"n" => slot, "h5" => h5, "h7" => h7, "fresh" => true, "cold" => cold, "limit5h" => limit5h, "obj" => read};
+    young.set("observedAt", V::from(now.plus(-age.dbl()?)?.o()))?;
+    young.set("modelBlocked", false.into())?;
+    young.set("modelReason", V::Null)?;
+    let ageless = policy.shallow()?;
+    ageless.add_member("maxUsageAgeS", V::Dbl(age.dbl()? + 60.0), true)?;
+    let observation = claude_entry_observation(&V::I32(slot), &young, &ageless, now, false)?;
+    let normalized = provider_account(&observation, &ageless, &[], now)?;
+    if !normalized.g("valid")?.t()? {
+        return Ok(None);
+    }
+    young.set("observation", observation)?;
+    young.set("h5", normalized.g("shortRemaining")?)?;
+    young.set("h7", normalized.g("weeklyRemaining")?)?;
+    Ok(Some((young, ageless)))
 }
 
 #[cfg(test)]
@@ -1921,6 +1996,40 @@ pub(crate) mod tests {
             assert_eq!(text(&seen.payload, "slots.0.used7d"), "null", "{name}");
             assert!(seen.lines.contains("[unavailable]"), "{name}: {}", seen.lines);
         }
+    }
+
+    /// The active account read `age` seconds ago, as cswap lists it when the read is `ok`
+    /// and when it could not be renewed (`unavailable`, with the last good one beside it).
+    fn read_aged(number: i32, email: &str, status: &str, age: i32, five: i32) -> String {
+        let usage = format!(r#"{{"fiveHour":{{"pct":{five},"resetsAt":"2026-10-06T13:00:00.0000000+00:00"}},"sevenDay":{{"pct":50,"resetsAt":"2026-10-09T12:00:00.0000000+00:00"}}}}"#);
+        if status == "ok" {
+            format!(r#"{{"number":{number},"email":"{email}","usageStatus":"ok","usageAgeSeconds":{age},"usage":{usage}}}"#)
+        } else {
+            format!(r#"{{"number":{number},"email":"{email}","usageStatus":"unavailable","usage":null,"lastGoodUsage":{usage},"lastGoodAgeSeconds":{age}}}"#)
+        }
+    }
+
+    /// The account in use stays in use while its reading is only late. Judged by that
+    /// reading it would be kept, so a switch to the one other account (nearly spent for
+    /// the week) would rest on nothing but the reading's age, and the next good reading
+    /// would switch straight back. Once the reading is too old to judge by, or what it
+    /// says would itself move the work, selection goes on as before.
+    #[test]
+    fn a_late_reading_of_the_account_in_use_moves_nothing() {
+        let plans = format!(r#""1":{},"2":{}"#, detected(EMAIL_ONE, "claude-max-20x"), detected(EMAIL_TWO, "claude-max-20x"));
+        let spent_week = r#"{"number":2,"email":"two@example.invalid","usageStatus":"ok","usageAgeSeconds":30,"usage":{"fiveHour":{"pct":10,"resetsAt":"2026-10-06T13:00:00.0000000+00:00"},"sevenDay":{"pct":90,"resetsAt":"2026-10-07T12:00:00.0000000+00:00"}}}"#;
+        let switches = |name: &str, active: String| -> Vec<String> {
+            let seen = no_row(name, DUO, &plans, &format!("{active},{spent_week}"));
+            seen.calls.into_iter().filter(|call| call.starts_with("switch")).collect()
+        };
+        assert_eq!(switches("late-fresh", read_aged(1, EMAIL_ONE, "ok", 30, 20)), Vec::<String>::new());
+        assert_eq!(switches("late-stale", read_aged(1, EMAIL_ONE, "ok", 1000, 20)), Vec::<String>::new());
+        assert_eq!(switches("late-unavailable", read_aged(1, EMAIL_ONE, "unavailable", 60, 20)), Vec::<String>::new());
+        assert_eq!(switches("late-too-old", read_aged(1, EMAIL_ONE, "ok", 2000, 20)), vec!["switch 2"]);
+        assert_eq!(switches("late-spent", read_aged(1, EMAIL_ONE, "ok", 1000, 90)), vec!["switch 2"]);
+        // An Ultra account, read with no five-hour window, is held the same way.
+        assert_eq!(switches("late-ultra-stale", account_read(1, EMAIL_ONE, 1000, WEEK)), Vec::<String>::new());
+        assert_eq!(switches("late-ultra-unavailable", account_withheld(1, EMAIL_ONE, 60, WEEK)), Vec::<String>::new());
     }
 
     /// A row that is missing on a reading already too old says only that it is old.
