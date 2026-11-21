@@ -233,12 +233,12 @@ Further arguments exist for the tests, and no launcher or script sends them: `--
 
 ## Contract: the account in use while its five-hour window has not started
 
-Under `soonest-reset`, a reset time that cannot be measured sorts behind every known one. An account whose five-hour window has ended and has nothing used in the next one has no reset time until a request starts that window, so at the end of every window it fell behind the other account, was switched away from, and came back minutes later once the warm (or any request) started the window again.
+Under `soonest-reset`, a reset time that cannot be measured sorts behind every known one. An account whose five-hour window has ended and has nothing used in the next one has no reset time until a request starts that window, so at the end of every window it fell behind an account with no five-hour limit (whose reset is its weekly one), was switched away from, and came back minutes later once the warm (or any request) started the window again.
 
 | Behavior | Notes |
 |---|---|
-| The account in use is kept when it is still eligible and its short window has nothing used (100% left) and no reset time, whatever the other accounts' reset times | Only the hold on a change is widened: the ranking is unchanged, so an account that is not in use and has not started its window still sorts behind one that has, and is not switched to |
-| An account in use with some of its short window used and no confirmed reset is not kept by this rule | Its reading is `reset_unconfirmed` and it is not eligible, as before |
+| The account in use is kept when it is still eligible, its short window has nothing used (100% left) and no reset time, and the best other account resets no sooner than a fresh five-hour window here would end (now plus 300 minutes, less `resetLeadMin`), or has no reset time | Only the hold on a change is widened: the ranking is unchanged, so an account that is not in use and has not started its window still sorts behind one that has, and is not switched to. An account whose own five-hour window resets sooner is still moved to, as before: once the window here starts it would rank behind that one anyway |
+| An account in use with some of its short window used and no confirmed reset is not kept by this rule | For Claude its reading is `reset_unconfirmed` and it is not eligible, as before. A Codex window whose anchor is unconfirmed stays eligible with no reset time, and is not kept, because it is not 100% left |
 | The rule is part of the decision every provider shares | So a Codex account in use whose short window reads 100% left with no confirmed reset is kept the same way |
 
 ## Contract: a Claude reading with no five-hour window

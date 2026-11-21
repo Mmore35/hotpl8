@@ -29,7 +29,7 @@ There is no separate Warden component in this repository: collection and decisio
 1. Exclude unavailable, stale, malformed, or insufficient quota readings from automatic selection. Missing quota is unknown, not unlimited.
 2. Keep reserve accounts behind work accounts. Healthy accounts outrank accounts near their weekly floor; among degraded accounts, favor more weekly headroom.
 3. Among healthy peers, use configured preference order or the soonest reset. Unmeasurable reset times sort behind known expiry times.
-4. Avoid needless changes. Claude uses a headroom band in preference mode or a reset lead in soonest-reset mode, where the account in use is also kept while its five-hour window has nothing used and so no reset time yet; a hold blocks the switch. Both adapters invoke the same normalized decision function; different quota facts or native activation boundaries remain explicit inputs.
+4. Avoid needless changes. Claude uses a headroom band in preference mode or a reset lead in soonest-reset mode, where the account in use is also kept while its five-hour window has nothing used and so no reset time yet, unless the best other account resets before a fresh window there would; a hold blocks the switch. Both adapters invoke the same normalized decision function; different quota facts or native activation boundaries remain explicit inputs.
 
 Shared decisions: [decision.rs](../native/src/decision.rs) in the compiled program, fed by [native observation adapters](../native/src/observation.rs). The collector, the display commands, the choice of an account for T3 and the Codex launch all call it, and PowerShell holds no copy. These choose according to configured policy; “best” is not a universal optimization guarantee.
 
