@@ -175,4 +175,25 @@ mod tests {
         );
         crate::time::set_zone(None);
     }
+
+    /// The account in use under soonest-reset whose five-hour window is unconfirmed and has
+    /// no reset time: with nothing used in it, it has not started and is kept beside an
+    /// account that resets days later; with some of it used, it is eligible but not kept.
+    #[test]
+    fn soonest_reset_keeps_a_codex_account_only_while_its_five_hour_window_is_unused() {
+        let noon = "2026-09-13T12:00:00.0000000+00:00";
+        let now = Dto::parse(noon).ok().unwrap();
+        let policy = parse(r#"{"prefer":["a","b"],"defaultMeter":"codex","order":"soonest-reset","reserve":[],"margin5h":25,"margin7d":20,"resetLeadMin":10,"slots":[{"id":"a","home":"home A"},{"id":"b","home":"home B"}]}"#, "").ok().unwrap();
+        let window = |minutes: &str, used: i32, reset: &str, anchor: &str| {
+            format!(r#""{minutes}":{{"usedPercent":{used},"remainingPercent":{},"resetsAt":{reset},"anchorState":"{anchor}","observedAt":"{noon}"}}"#, 100 - used)
+        };
+        let slot = |id: &str, windows: &str| {
+            parse(&format!(r#"{{"id":"{id}","label":"{id}","status":"ok","observedAt":"{noon}","buckets":{{"codex":{{"meter":"codex","status":"observed","blockReason":null,"windows":{{{windows}}}}}}},"defaultModel":"fixture-model","modelProvider":"openai"}}"#), "").ok().unwrap()
+        };
+        let other = slot("b", &window("10080", 10, "1789563600", "observed-active"));
+        let in_use = |used: i32| slot("a", &format!("{},{}", window("300", used, "null", "unconfirmed"), window("10080", 3, "1789822800", "observed-active")));
+        let chosen = |used: i32| select_codex_slot(&[in_use(used), other.clone()], &policy, "codex", "a", &V::Null, now, &V::Null).ok().unwrap().s().ok().unwrap();
+        assert_eq!(chosen(0), "a");
+        assert_eq!(chosen(10), "b");
+    }
 }

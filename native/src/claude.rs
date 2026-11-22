@@ -293,4 +293,41 @@ observe held|observe_only|2|False|False|False|1|1=eligible/True/True,2=eligible/
         assert_eq!(said.len(), DECIDED.lines().count());
         assert!(decide(Some(obj! {"intent" => "nonsense"})).err().unwrap().thrown());
     }
+
+    /// The account in use reaches the end of its five-hour window: nothing is used in the
+    /// new one, so it has no reset time yet and sorts behind any account that has one. Beside
+    /// an account with no five-hour limit, whose reset is its weekly one, that alone is no
+    /// reason to leave it: the next request (or the warm that follows) starts its window and
+    /// makes it the soonest reset again, so leaving meant switching away and back within
+    /// minutes, every five hours. Beside an account whose own window resets sooner than a
+    /// fresh one here would, soonest-reset still moves to it.
+    #[test]
+    fn soonest_reset_keeps_the_account_in_use_while_its_five_hour_window_has_not_started() {
+        let now = Dto::parse("2026-10-06T12:00:00.0000000+00:00").ok().unwrap();
+        let policy = parse(r#"{"prefer":[1,2],"order":"soonest-reset","margin5h":25,"margin7d":20,"hysteresis":10,"resetLeadMin":10}"#, "").ok().unwrap();
+        let mut accounts = Accounts::default();
+        let no_five_hour = entry(100, 40, "", false);
+        no_five_hour.set("h5", V::Null).ok().unwrap();
+        no_five_hour.set("limit5h", "none".into()).ok().unwrap();
+        no_five_hour.set("obj", parse(r#"{"usageStatus":"ok","usageAgeSeconds":10,"usage":{"sevenDay":{"pct":60,"resetsAt":"2026-10-09T12:00:00.0000000+00:00"}}}"#, "").ok().unwrap()).ok().unwrap();
+        accounts.put(1, no_five_hour);
+        accounts.put(2, entry(100, 97, "", true));
+        let kept = claude_selection(&policy, &[1, 2], &accounts, 2, now, &V::Null).ok().unwrap();
+        assert!(kept.active_ok);
+        assert!(kept.target.is_null(), "switched off an account whose window has not started");
+        // Not in use, the account with no reset time still sorts behind, as before.
+        let other = claude_selection(&policy, &[1, 2], &accounts, 1, now, &V::Null).ok().unwrap();
+        assert!(other.target.is_null());
+        assert_eq!(other.ranked, vec![1, 2]);
+        // An account whose five-hour window resets in three hours is still the soonest.
+        accounts.put(1, entry(60, 40, "2026-10-06T15:00:00.0000000+00:00", false));
+        let sooner = claude_selection(&policy, &[1, 2], &accounts, 2, now, &V::Null).ok().unwrap();
+        assert!(sooner.active_ok);
+        assert_eq!(sooner.target.to_int().ok().unwrap(), 1);
+        // A Claude window with something used and no reset is not eligible at all.
+        accounts.put(2, entry(99, 97, "", false));
+        let used = claude_selection(&policy, &[1, 2], &accounts, 2, now, &V::Null).ok().unwrap();
+        assert!(!used.active_ok);
+        assert_eq!(used.target.to_int().ok().unwrap(), 1);
+    }
 }
