@@ -9,6 +9,9 @@ use crate::selection::selection_key;
 use crate::time::Dto;
 use std::cmp::Ordering;
 
+/// The length of a short window: five hours for every provider that has one.
+const SHORT_WINDOW_MINUTES: f64 = 300.0;
+
 /// `Sort-Object reserve,degraded,rankKey,preference,id`
 fn rank_order(a: &V, b: &V) -> R<Ordering> {
     for name in ["reserve", "degraded", "rankKey", "preference"] {
@@ -154,10 +157,22 @@ pub fn provider_decision(accounts: &V, policy: &V, context: &V, now: Dto) -> R<V
                     proposed = previous.clone();
                 }
             } else if order.eq_s("soonest-reset")? {
-                if best.g("resetAt")?.t()?
-                    && old.g("resetAt")?.t()?
-                    && V::Dbl(Dto::of(&old.g("resetAt")?)?.since(Dto::of(&best.g("resetAt")?)?).total_minutes())
-                        .lt(&setting(policy, "resetLeadMin", V::I32(10))?)?
+                // An account in use whose short window has nothing used and no reset time
+                // has not started that window yet. Its next request starts it, so when the
+                // best account resets no sooner than that fresh window would, leaving now
+                // would only come back minutes later. One that resets sooner is still taken.
+                let short = old.g("shortRemaining")?;
+                let lead = setting(policy, "resetLeadMin", V::I32(10))?.dbl()?;
+                let unstarted = !old.g("resetAt")?.t()?
+                    && short.is_number()
+                    && short.ge_i(100)?
+                    && (!best.g("resetAt")?.t()?
+                        || Dto::of(&best.g("resetAt")?)?.since(now).total_minutes() >= SHORT_WINDOW_MINUTES - lead);
+                if unstarted
+                    || (best.g("resetAt")?.t()?
+                        && old.g("resetAt")?.t()?
+                        && V::Dbl(Dto::of(&old.g("resetAt")?)?.since(Dto::of(&best.g("resetAt")?)?).total_minutes())
+                            .lt(&setting(policy, "resetLeadMin", V::I32(10))?)?)
                 {
                     proposed = previous.clone();
                 }
