@@ -137,13 +137,23 @@ pub const PACED_GRACE_S: f64 = 120.0;
 /// with its JITTER_FRAC (0.1) on top (claude_swap/poll_policy.py). A plan for a longer
 /// one is not pacing HotPl8 vouches for.
 pub const PACED_MAX_S: f64 = 1800.0 * 1.1;
+/// The longest wait cswap sets after a refused read: the server's Retry-After with its
+/// margin, capped at RETRY_AFTER_FLOOR_CAP_S (claude_swap/usage_store.py).
+pub const REFUSED_WAIT_MAX_S: f64 = 4500.0;
+/// How old a reading cswap goes on trusting after a refused read:
+/// RATE_LIMIT_TRUST_MAX_AGE_S (claude_swap/usage_store.py).
+pub const REFUSED_TRUST_MAX_S: f64 = 7200.0;
 
 /// Until when a reading older than HotPl8 would like is one cswap is deliberately not
 /// renewing yet: its own usage cache says this account's reading was taken when the age
-/// says it was and names the moment it will read again. Anything that does not say so
-/// exactly (no cache, another schema, another account, another reading, no plan, a plan
-/// longer than cswap ever makes, a planned read that is long gone) is not pacing: None,
-/// and the reading is stale as before.
+/// says it was and names the moment it will read again. That moment is the plan
+/// (`nextPollAt`), or, after a refused read (`lastError` `http-429`), the end of the wait
+/// cswap set then (`backoffUntil`): cswap leaves the plan as it was, already due, and does
+/// not read the account before the wait ends. Anything that does not say so exactly (no
+/// cache, another schema, another account, another reading, no plan, a plan or a wait
+/// longer than cswap ever makes, a failure that is not a refusal, a reading older than
+/// cswap trusts after one, a planned read that is long gone) is not pacing: None, and the
+/// reading is stale as before.
 pub fn paced_until(home: &Path, slot: i32, email: &str, organization: &V, age: f64, now: Dto) -> Option<Dto> {
     let text = std::fs::read_to_string(home.join(".claude-swap-backup").join("cache").join("usage.json")).ok()?;
     let cache = json::parse_foreign(text.trim_start_matches('\u{feff}')).ok()?;
@@ -161,10 +171,23 @@ pub fn paced_until(home: &Path, slot: i32, email: &str, organization: &V, age: f
     let (fetched, next) = (number("fetchedAt")?, number("nextPollAt")?);
     let now = now.unix_seconds() as f64;
     let consistent = (now - age - fetched).abs() <= 30.0;
-    if !consistent || next < fetched || next - fetched > PACED_MAX_S + 30.0 || now > next + PACED_GRACE_S {
+    if !consistent || next < fetched || next - fetched > PACED_MAX_S + 30.0 {
         return None;
     }
-    Dto::from_unix_seconds((next + PACED_GRACE_S).ceil() as i64).ok()
+    let refused = row.g("lastError").ok().is_some_and(|error| error.eq_s("http-429").unwrap_or(false));
+    let planned = match (number("backoffUntil"), number("lastAttemptAt")) {
+        (Some(wait), Some(attempt)) if wait > next => {
+            if !refused || attempt < fetched || attempt > now + 30.0 || wait < attempt || wait - attempt > REFUSED_WAIT_MAX_S + 30.0 || wait - fetched > REFUSED_TRUST_MAX_S + 30.0 {
+                return None;
+            }
+            wait
+        }
+        _ => next,
+    };
+    if now > planned + PACED_GRACE_S {
+        return None;
+    }
+    Dto::from_unix_seconds((planned + PACED_GRACE_S).ceil() as i64).ok()
 }
 
 /// The name cswap gives an account's own session directory.
@@ -491,6 +514,55 @@ mod tests {
         assert_eq!(until(60.0), None);
         write("not json");
         assert_eq!(until(1200.0), None);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// After a refused read cswap leaves its plan as it was, long gone, and waits until
+    /// `backoffUntil` before it reads the account again. That wait is pacing too, as long as
+    /// it is one cswap sets after a 429 and the reading is one it still trusts.
+    #[test]
+    fn a_reading_cswap_waits_on_after_a_refused_read_is_paced() {
+        let directory = scratch("paced-backoff");
+        let home = directory.join("home");
+        let cache = home.join(".claude-swap-backup").join("cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        let now = Dto::parse("2026-10-06T12:00:00Z").ok().unwrap();
+        let noon = 1_791_288_000_i64;
+        let organization = V::from("org-1");
+        let until = |age: f64| paced_until(&home, 1, "one@example.invalid", &organization, age, now).map(|at| at.unix_seconds() - noon);
+        let row = |fetched: i64, next: i64, attempt: i64, backoff: i64, error: &str| {
+            format!(
+                r#"{{"schemaVersion":2,"accounts":{{"1":{{"email":"one@example.invalid","organizationUuid":"org-1","fetchedAt":{},"nextPollAt":{},"lastAttemptAt":{},"backoffUntil":{},"lastError":"{error}"}}}}}}"#,
+                noon + fetched,
+                noon + next,
+                noon + attempt,
+                noon + backoff
+            )
+        };
+        let write = |text: &str| std::fs::write(cache.join("usage.json"), text).unwrap();
+        // Read twenty-one minutes ago; the read planned fifteen minutes ago was refused, and
+        // cswap waits fourteen more minutes: paced until two minutes past the end of the wait.
+        write(&row(-1260, -900, -900, 840, "http-429"));
+        assert_eq!(until(1260.0), Some(960));
+        // The wait ended more than two minutes ago.
+        write(&row(-1260, -900, -900, -180, "http-429"));
+        assert_eq!(until(1260.0), None);
+        // A failure that is not a refusal is not pacing.
+        for error in ["timeout", "network", "invalid_grant", "refresh-failed"] {
+            write(&row(-1260, -900, -900, 840, error));
+            assert_eq!(until(1260.0), None, "{error}");
+        }
+        // A wait longer than cswap ever sets, an attempt before this reading, and a reading
+        // older than cswap trusts after a refusal.
+        write(&row(-1260, -900, -900, 3700, "http-429"));
+        assert_eq!(until(1260.0), None);
+        write(&row(-1260, -900, -1290, 840, "http-429"));
+        assert_eq!(until(1260.0), None);
+        write(&row(-7000, -6700, -300, 300, "http-429"));
+        assert_eq!(until(7000.0), None);
+        // A wait that ends before the plan leaves the plan in charge.
+        write(&row(-1200, 600, -1100, -900, "http-429"));
+        assert_eq!(until(1200.0), Some(720));
         std::fs::remove_dir_all(directory).unwrap();
     }
 

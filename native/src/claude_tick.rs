@@ -1998,6 +1998,41 @@ pub(crate) mod tests {
         }
     }
 
+    /// cswap's cache row for an account read `age` seconds before noon whose planned read,
+    /// `next` seconds after noon, was refused `attempt` seconds before it, and which cswap
+    /// will not read again until `wait` seconds after noon.
+    fn cache_row_refused(number: i32, email: &str, age: i64, next: i64, attempt: i64, wait: i64) -> String {
+        const NOON_UNIX: i64 = 1_791_288_000;
+        format!(
+            r#""{number}":{{"email":"{email}","fetchedAt":{},"nextPollAt":{},"lastAttemptAt":{},"backoffUntil":{},"lastError":"http-429","consecutiveFailures":1}}"#,
+            NOON_UNIX - age,
+            NOON_UNIX + next,
+            NOON_UNIX - attempt,
+            NOON_UNIX + wait
+        )
+    }
+
+    /// A refused read leaves cswap's plan gone by and makes it wait before it reads the
+    /// account again. Whether cswap goes on listing the reading or withholds it once a
+    /// window in it resets, that wait is pacing: nothing is said, and the wake is complete.
+    #[test]
+    fn a_reading_cswap_waits_on_after_a_refused_read_says_nothing() {
+        let plans = format!(r#""1":{}"#, detected(EMAIL_ONE, "claude-max-20x"));
+        let cache = cache_row_refused(1, EMAIL_ONE, 1260, -900, 900, 840);
+        for (name, account) in [("refused-listed", account_read(1, EMAIL_ONE, 1260, WEEK)), ("refused-withheld", account_withheld(1, EMAIL_ONE, 1260, WEEK))] {
+            let seen = cached(name, SOLO, &plans, &account, Some(&cache));
+            assert_eq!(text(&seen.payload, "slots.0.pacedUntil"), r#""2026-10-06T12:16:00.0000000+00:00""#, "{name}");
+            assert_eq!(text(&seen.payload, "slots.0.fresh"), "false", "{name}");
+            assert!(text(&seen.payload, "slots.0.used7d") != "null", "{name}: {}", text(&seen.payload, "slots"));
+            assert!(!seen.lines.contains("STALE") && !seen.lines.contains("[stale") && !seen.lines.contains("[unavailable]"), "{name}: {}", seen.lines);
+            assert_eq!(seen.calls, Vec::<String>::new(), "{name}");
+        }
+        // Once that wait has come and gone, the reading is as old as it is.
+        let seen = cached("refused-gone", SOLO, &plans, &account_read(1, EMAIL_ONE, 1260, WEEK), Some(&cache_row_refused(1, EMAIL_ONE, 1260, -900, 900, -180)));
+        assert_eq!(text(&seen.payload, "slots.0.pacedUntil"), "null");
+        assert!(seen.lines.contains("usage STALE (>15m), holding"), "{}", seen.lines);
+    }
+
     /// The active account read `age` seconds ago, as cswap lists it when the read is `ok`
     /// and when it could not be renewed (`unavailable`, with the last good one beside it).
     fn read_aged(number: i32, email: &str, status: &str, age: i32, five: i32) -> String {
