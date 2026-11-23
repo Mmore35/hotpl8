@@ -149,11 +149,12 @@ pub const REFUSED_TRUST_MAX_S: f64 = 7200.0;
 /// says it was and names the moment it will read again. That moment is the plan
 /// (`nextPollAt`), or, after a refused read (`lastError` `http-429`), the end of the wait
 /// cswap set then (`backoffUntil`): cswap leaves the plan as it was, already due, and does
-/// not read the account before the wait ends. Anything that does not say so exactly (no
-/// cache, another schema, another account, another reading, no plan, a plan or a wait
-/// longer than cswap ever makes, a failure that is not a refusal, a reading older than
-/// cswap trusts after one, a planned read that is long gone) is not pacing: None, and the
-/// reading is stale as before.
+/// not read the account before the wait ends. After any other failure, or a wait outside
+/// cswap's bounds (longer than it ever sets, from an attempt before this reading, past the
+/// age it trusts after a refusal), the plan alone counts. Anything that does not say so
+/// exactly (no cache, another schema, another account, another reading, no plan, a plan
+/// longer than cswap ever makes, a planned read that is long gone) is not pacing: None,
+/// and the reading is stale as before.
 pub fn paced_until(home: &Path, slot: i32, email: &str, organization: &V, age: f64, now: Dto) -> Option<Dto> {
     let text = std::fs::read_to_string(home.join(".claude-swap-backup").join("cache").join("usage.json")).ok()?;
     let cache = json::parse_foreign(text.trim_start_matches('\u{feff}')).ok()?;
@@ -175,11 +176,19 @@ pub fn paced_until(home: &Path, slot: i32, email: &str, organization: &V, age: f
         return None;
     }
     let refused = row.g("lastError").ok().is_some_and(|error| error.eq_s("http-429").unwrap_or(false));
+    // Only a refusal inside cswap's own bounds moves the planned read to the end of its
+    // wait. Any other failure (cswap waits at least 30 s after each one) leaves the plan in
+    // charge, with its grace, as before.
     let planned = match (number("backoffUntil"), number("lastAttemptAt")) {
-        (Some(wait), Some(attempt)) if wait > next => {
-            if !refused || attempt < fetched || attempt > now + 30.0 || wait < attempt || wait - attempt > REFUSED_WAIT_MAX_S + 30.0 || wait - fetched > REFUSED_TRUST_MAX_S + 30.0 {
-                return None;
-            }
+        (Some(wait), Some(attempt))
+            if wait > next
+                && refused
+                && attempt >= fetched
+                && attempt <= now + 30.0
+                && wait >= attempt
+                && wait - attempt <= REFUSED_WAIT_MAX_S + 30.0
+                && wait - fetched <= REFUSED_TRUST_MAX_S + 30.0 =>
+        {
             wait
         }
         _ => next,
@@ -547,11 +556,17 @@ mod tests {
         // The wait ended more than two minutes ago.
         write(&row(-1260, -900, -900, -180, "http-429"));
         assert_eq!(until(1260.0), None);
-        // A failure that is not a refusal is not pacing.
+        // A failure that is not a refusal is not pacing: once the plan's grace is over the
+        // reading is stale, and inside it the plan alone counts, as before.
         for error in ["timeout", "network", "invalid_grant", "refresh-failed"] {
             write(&row(-1260, -900, -900, 840, error));
             assert_eq!(until(1260.0), None, "{error}");
+            write(&row(-960, -60, -60, -30, error));
+            assert_eq!(until(960.0), Some(60), "{error} inside the grace");
         }
+        // A refusal whose wait is outside cswap's bounds leaves the plan in charge too.
+        write(&row(-960, -60, -60, 4600, "http-429"));
+        assert_eq!(until(960.0), Some(60));
         // A wait longer than cswap ever sets, an attempt before this reading, and a reading
         // older than cswap trusts after a refusal.
         write(&row(-1260, -900, -900, 3700, "http-429"));
