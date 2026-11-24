@@ -983,7 +983,9 @@ pub fn claude_tick(request: &Request) -> R<Option<Collected>> {
 
 /// The account in use as its last reading would show it were that reading young, with the
 /// policy that judges it so: none when the reading is fresh, when the account is lost or
-/// off, or when the reading is more than twice `maxUsageAgeS` old.
+/// off, or when the reading is more than twice `maxUsageAgeS` old. `token_expired` is not
+/// lost: cswap says it of the account in use for a wake or so near its token's end and
+/// renews the token itself, so it is read like `unavailable`.
 fn last_reading(e: &V, slot: i32, plans: &V, policy: &V, now: Dto, max_age: f64) -> R<Option<(V, V)>> {
     if !e.t()? || e.g("fresh")?.t()? || e.g("modelBlocked")?.t()? {
         return Ok(None);
@@ -992,7 +994,7 @@ fn last_reading(e: &V, slot: i32, plans: &V, policy: &V, now: Dto, max_age: f64)
     let status = a.g("usageStatus")?;
     let (usage, age) = if status.eq_s("ok")? {
         (a.g("usage")?, a.g("usageAgeSeconds")?)
-    } else if status.eq_s("unavailable")? {
+    } else if status.eq_s("unavailable")? || status.eq_s("token_expired")? {
         (a.g("lastGoodUsage")?, a.g("lastGoodAgeSeconds")?)
     } else {
         return Ok(None);
@@ -2034,13 +2036,13 @@ pub(crate) mod tests {
     }
 
     /// The active account read `age` seconds ago, as cswap lists it when the read is `ok`
-    /// and when it could not be renewed (`unavailable`, with the last good one beside it).
+    /// and under any other status, with the last good reading beside it.
     fn read_aged(number: i32, email: &str, status: &str, age: i32, five: i32) -> String {
         let usage = format!(r#"{{"fiveHour":{{"pct":{five},"resetsAt":"2026-10-06T13:00:00.0000000+00:00"}},"sevenDay":{{"pct":50,"resetsAt":"2026-10-09T12:00:00.0000000+00:00"}}}}"#);
         if status == "ok" {
             format!(r#"{{"number":{number},"email":"{email}","usageStatus":"ok","usageAgeSeconds":{age},"usage":{usage}}}"#)
         } else {
-            format!(r#"{{"number":{number},"email":"{email}","usageStatus":"unavailable","usage":null,"lastGoodUsage":{usage},"lastGoodAgeSeconds":{age}}}"#)
+            format!(r#"{{"number":{number},"email":"{email}","usageStatus":"{status}","usage":null,"lastGoodUsage":{usage},"lastGoodAgeSeconds":{age}}}"#)
         }
     }
 
@@ -2065,6 +2067,34 @@ pub(crate) mod tests {
         // An Ultra account, read with no five-hour window, is held the same way.
         assert_eq!(switches("late-ultra-stale", account_read(1, EMAIL_ONE, 1000, WEEK)), Vec::<String>::new());
         assert_eq!(switches("late-ultra-unavailable", account_withheld(1, EMAIL_ONE, 60, WEEK)), Vec::<String>::new());
+    }
+
+    /// cswap lists the account in use `token_expired` while its sign-in token is within five
+    /// minutes of its end and it is not due a read: no reading for that wake, and the next
+    /// one renews the token. The last good reading holds the account as a late one does, and
+    /// no longer than a late one. An account a person has to sign in again is let go at once.
+    #[test]
+    fn an_expiring_token_of_the_account_in_use_moves_nothing() {
+        let plans = format!(r#""1":{},"2":{}"#, detected(EMAIL_ONE, "claude-max-20x"), detected(EMAIL_TWO, "claude-max-20x"));
+        let spent_week = r#"{"number":2,"email":"two@example.invalid","usageStatus":"ok","usageAgeSeconds":30,"usage":{"fiveHour":{"pct":10,"resetsAt":"2026-10-06T13:00:00.0000000+00:00"},"sevenDay":{"pct":90,"resetsAt":"2026-10-07T12:00:00.0000000+00:00"}}}"#;
+        let switches = |name: &str, active: String| -> Vec<String> {
+            let seen = no_row(name, DUO, &plans, &format!("{active},{spent_week}"));
+            seen.calls.into_iter().filter(|call| call.starts_with("switch")).collect()
+        };
+        assert_eq!(switches("token-young", read_aged(1, EMAIL_ONE, "token_expired", 60, 20)), Vec::<String>::new());
+        assert_eq!(switches("token-late", read_aged(1, EMAIL_ONE, "token_expired", 1000, 20)), Vec::<String>::new());
+        // An Ultra account, read with no five-hour window, is held the same way.
+        let ultra = account_withheld(1, EMAIL_ONE, 60, WEEK).replace("unavailable", "token_expired");
+        assert_eq!(switches("token-ultra", ultra), Vec::<String>::new());
+        // Let go: a last reading too old, one that would itself move the work, and none at all.
+        assert_eq!(switches("token-too-old", read_aged(1, EMAIL_ONE, "token_expired", 2000, 20)), vec!["switch 2"]);
+        assert_eq!(switches("token-spent", read_aged(1, EMAIL_ONE, "token_expired", 60, 90)), vec!["switch 2"]);
+        let unread = format!(r#"{{"number":1,"email":"{EMAIL_ONE}","usageStatus":"token_expired","usage":null}}"#);
+        assert_eq!(switches("token-unread", unread), vec!["switch 2"]);
+        // Let go: every status that is not cswap's to mend, whatever was last read.
+        for status in ["relogin_required", "no_credentials", "foreign_credential"] {
+            assert_eq!(switches(&format!("token-{status}"), read_aged(1, EMAIL_ONE, status, 60, 20)), vec!["switch 2"], "{status}");
+        }
     }
 
     /// A row that is missing on a reading already too old says only that it is old.
