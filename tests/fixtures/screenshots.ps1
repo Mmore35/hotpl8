@@ -1,10 +1,14 @@
 ﻿# Fictional, fixed-time documentation data. Never read account homes or cached state here.
-function Get-Hotpl8ScreenshotFixture([switch]$Operations) {
+function Get-Hotpl8ScreenshotFixture([switch]$Operations,[switch]$TwoAccounts,[switch]$FixedClock) {
     $now = [datetimeoffset]::Parse('2026-09-12T12:00:00Z')
+    # A plan read long ago is not shown, and a preview launcher already installed moves this
+    # fixture's other times forward but not this one. So a plan is read by the real clock,
+    # unless the frame is drawn at the fixture's own: then ask for -FixedClock.
+    $planRead = $(if($FixedClock){$now}else{[datetimeoffset]::UtcNow}).AddMinutes(-10).ToString('o')
     $policy = @{
-        schemaVersion = 2; mode = 'monitor'; prefer = @(1, 2); reserve = @(2)
-        capacity=@{'1'=@{weekly=1;fiveHour=0.3};'2'=@{weekly=5;fiveHour=1.5}}
-        labels = @{ '1' = 'Everyday'; '2' = 'Reserve' }
+        schemaVersion = 2; mode = 'monitor'; prefer = @(1, 2, 3); reserve = @(2)
+        capacity=@{'1'=@{weekly=1;fiveHour=0.3};'2'=@{weekly=5;fiveHour=1.5};'3'=@{weekly=10;fiveHour=$null}}
+        labels = @{ '1' = 'Everyday'; '2' = 'Reserve'; '3' = 'Studio' }
         codex = @{
             slots = @(@{ id = 'work'; label = 'Work' }, @{ id = 'personal'; label = 'Personal' })
             capacity=@{work=@{weekly=5;fiveHour=1.5};personal=@{weekly=1;fiveHour=0.3}}
@@ -15,9 +19,16 @@ function Get-Hotpl8ScreenshotFixture([switch]$Operations) {
         generatedAt = $now.AddSeconds(-42).ToString('o'); active = 1; hold = $null
         slots = @(
             @{ slot = 1; label = 'Everyday'; status = 'ok'; observedAt = $now.AddSeconds(-42).ToString('o'); active = $true; fresh = $true
-               used5h = 38; used7d = 54; reset5h = $now.AddMinutes(83).ToString('o'); reset7d = $now.AddDays(2).AddHours(4).ToString('o') },
+               used5h = 38; used7d = 54; reset5h = $now.AddMinutes(83).ToString('o'); reset7d = $now.AddDays(2).AddHours(4).ToString('o')
+               plan = @{ status = 'detected'; profile = 'claude-pro'; label = 'Pro'; observedAt = $planRead } },
             @{ slot = 2; label = 'Reserve'; status = 'ok'; observedAt = $now.AddSeconds(-42).ToString('o'); active = $false; fresh = $true
-               used5h = 8; used7d = 17; reset5h = $now.AddHours(4).ToString('o'); reset7d = $now.AddDays(5).ToString('o') }
+               used5h = 8; used7d = 17; reset5h = $now.AddHours(4).ToString('o'); reset7d = $now.AddDays(5).ToString('o')
+               plan = @{ status = 'detected'; profile = 'claude-max-5x'; label = 'Max'; observedAt = $planRead } },
+            # A verified Ultra account, which has no five-hour limit. Its reset5h is not shown:
+            # a preview launcher already installed parses that time on every account it is given.
+            @{ slot = 3; label = 'Studio'; status = 'ok'; observedAt = $now.AddSeconds(-42).ToString('o'); active = $false; fresh = $true
+               used5h = $null; limit5h = 'none'; used7d = 31; reset5h = $now.AddHours(5).ToString('o'); reset7d = $now.AddDays(4).ToString('o')
+               plan = @{ status = 'detected'; profile = 'claude-max-20x'; label = 'Ultra'; observedAt = $planRead } }
         )
         providers = @{
             codex = @{
@@ -36,6 +47,11 @@ function Get-Hotpl8ScreenshotFixture([switch]$Operations) {
                 )
             }
         }
+    }
+    if($TwoAccounts){
+        $status.slots=@($status.slots[0],$status.slots[1]);$policy.prefer=@(1,2)
+        foreach($slot in $status.slots){$slot.Remove('plan')}
+        $policy.capacity.Remove('3');$policy.labels.Remove('3')
     }
     if($Operations){
         $status.collector=@{startedAt=$now.AddSeconds(-45).ToString('o');completedAt=$now.AddSeconds(-42).ToString('o');status='ok'}

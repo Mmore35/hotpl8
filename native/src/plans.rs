@@ -1,6 +1,9 @@
 //! Which subscription each Claude account has, asked at
-//! most every fifteen minutes. Knowing the plan is optional: it cannot change sign-in,
-//! quota or which account is eligible.
+//! most every fifteen minutes. Knowing the plan is optional: it cannot change sign-in or
+//! grant quota. Two things rest on it, both through `last_known_plan`: the account's size in
+//! pooled capacity, and `no_five_hour_limit`, which lets it explain a five-hour window the
+//! provider did not report, for the one plan that may have none. A reading that has the
+//! window is measured whatever the plan, and an unknown plan explains nothing.
 
 use crate::files;
 use crate::json;
@@ -11,7 +14,57 @@ use crate::sha256::hash;
 use crate::time::Dto;
 use std::path::{Path, PathBuf};
 
-const PROFILES: [(&str, &str, i32); 3] = [("claude-pro", "Pro", 1), ("claude-max-5x", "Max 5x", 5), ("claude-max-20x", "Max 20x", 20)];
+// The IDs are stored in saved policies and keep their old names; the labels are Anthropic's
+// current ones. Ultra's weekly allowance is published as ten times Pro's, and no session
+// multiplier is, so it has none.
+const PROFILES: [(&str, &str, Option<i32>); 3] = [("claude-pro", "Pro", Some(1)), ("claude-max-5x", "Max", Some(5)), ("claude-max-20x", "Ultra", None)];
+/// Where an answer came from: Anthropic's profile endpoint, or the plan Claude Code stored
+/// beside the sign-in, read when the endpoint does not answer.
+const SOURCES: [&str; 2] = ["anthropic-oauth-profile", "stored-sign-in"];
+const PARTIAL_LABELS: [&str; 4] = ["Pro", "Max or Ultra (tier unknown)", "Team", "Enterprise"];
+/// What a person reads for a stored plan ID.
+pub fn plan_name(profile: &str) -> Option<&'static str> {
+    PROFILES.iter().find(|(id, _, _)| *id == profile).map(|(_, label, _)| *label)
+}
+
+const ULTRA: &str = "claude-max-20x";
+/// How long the last answer may stand while the plan cannot be asked.
+const LAST_DETECTED_SECONDS: f64 = 604_800.0;
+
+/// The plan last known for this account (the row is bound to the identity): a `detected`
+/// row's profile at any age, else the last answer while it is under a week old, else none.
+/// A week bounds how long a change of plan can go unseen while the plan cannot be asked.
+pub fn last_known_plan(plan: &V, now: Dto) -> R<V> {
+    let named = |profile: V| Ok(if profile.t()? { profile.sv()? } else { V::Null });
+    if plan.g("status")?.eq_s("detected")? {
+        return named(plan.g("profile")?);
+    }
+    let last = plan.g("lastDetected")?;
+    let Some(at) = catch(|| Dto::parse_external(&last.g("observedAt")?.s()?))? else { return Ok(V::Null) };
+    let age = now.since(at).total_seconds();
+    if (-5.0..=LAST_DETECTED_SECONDS).contains(&age) { named(last.g("profile")?) } else { Ok(V::Null) }
+}
+
+/// Whether this plan row explains a reading with no five-hour window: the plan last known
+/// for this account is Ultra. Any other answer explains nothing.
+pub fn no_five_hour_limit(plan: &V, now: Dto) -> R<bool> {
+    last_known_plan(plan, now)?.eq_s(ULTRA)
+}
+
+/// A row written before the names changed reads as it would today, so no account shows an
+/// old name until its next answer, which can be a day away after a refusal.
+fn current_names(row: &V) -> R<()> {
+    if row.g("status")?.eq_s("detected")? {
+        let named = row.g("profile")?.s()?;
+        if let Some((_, name, sessions)) = PROFILES.iter().find(|(known, _, _)| named.eq_ignore_ascii_case(known)) {
+            row.set("label", V::from(*name))?;
+            row.set("sessionMultiplier", sessions.map_or(V::Null, V::I32))?;
+        }
+    } else if row.g("label")?.eq_s("Max (tier unknown)")? {
+        row.set("label", V::from("Max or Ultra (tier unknown)"))?;
+    }
+    Ok(())
+}
 
 /// `$id -notmatch '^[1-9][0-9]{0,3}$'`, the other way round.
 pub fn numbered(id: &str) -> bool {
@@ -85,6 +138,8 @@ pub fn plans(accounts: &[V], directory: &Path, now: Dto, reader: impl FnOnce(&[S
             Ok(next.since(now).0 > 0 && next.since(now.plus_seconds(86_400)?).0 <= 0)
         })?;
         if reuse == Some(true) {
+            // A row short of a member keeps what it says: a name is no reason to lose a reading.
+            catch(|| current_names(&prior))?;
             result.add_member(&id, prior, false)?;
         } else {
             pending.push((id, binding));
@@ -103,7 +158,7 @@ pub fn plans(accounts: &[V], directory: &Path, now: Dto, reader: impl FnOnce(&[S
             }
         }
         let row = if data.g("schemaVersion")?.eq_i(1)? && matches.len() == 1 { matches.remove(0) } else { V::Null };
-        let (mut status, mut profile, mut label, mut multiplier, mut retry) = (V::from("unavailable"), V::Null, V::Null, V::Null, V::I32(900));
+        let (mut status, mut profile, mut label, mut multiplier, mut retry, mut source) = (V::from("unavailable"), V::Null, V::Null, V::Null, V::I32(900), V::from(SOURCES[0]));
         if row.t()? && row.g("identityKey")?.eq_s(binding)? {
             let said = row.g("status")?;
             if said.in_s(&["detected", "partial", "unsupported", "identity_mismatch", "no_credentials", "rate_limited", "authentication_required", "unavailable"])? {
@@ -112,28 +167,49 @@ pub fn plans(accounts: &[V], directory: &Path, now: Dto, reader: impl FnOnce(&[S
             if status.eq_s("detected")? {
                 let named = row.g("profile")?.s()?;
                 match PROFILES.iter().find(|(known, _, _)| named.eq_ignore_ascii_case(known)) {
-                    Some((_, name, sessions)) => (profile, label, multiplier) = (V::from(named), V::from(*name), V::I32(*sessions)),
+                    Some((_, name, sessions)) => (profile, label, multiplier) = (V::from(named), V::from(*name), sessions.map_or(V::Null, V::I32)),
                     None => status = V::from("unsupported"),
                 }
             }
-            if status.eq_s("partial")? && row.g("label")?.in_s(&["Pro", "Max (tier unknown)", "Team", "Enterprise"])? {
+            if status.eq_s("partial")? && row.g("label")?.in_s(&PARTIAL_LABELS)? {
                 label = row.g("label")?.sv()?;
             }
+            // A wait the endpoint asked for holds whatever is shown meanwhile, the stored
+            // sign-in's answer among it, and the endpoint's answer replaces that at the next ask.
             let after = row.g("retryAfterSeconds")?;
-            if status.eq_s("rate_limited")? && after.is_number() {
+            if after.is_number() {
                 retry = math_pick(&V::I32(900), &math_pick(&V::I32(86_400), &after, false)?, true)?;
             }
+            if row.g("source")?.in_s(&SOURCES)? {
+                source = row.g("source")?.sv()?;
+            }
         }
+        // Failing to ask is not an answer, and is not shown as the current plan either; what
+        // was last known of this same account stays beside it. Any answer replaces it. A
+        // refused or unreadable stored token is a failure too: the helper asks with the slot's
+        // backup, which can lag behind the sign-in that usage is being read through.
+        let prior = cache.g("accounts")?.g(id)?;
+        let unanswered = status.in_s(&["unavailable", "rate_limited", "authentication_required", "no_credentials"])?;
+        let last_detected = if !unanswered || !prior.g("identityKey")?.eq_s(binding)? {
+            V::Null
+        } else if prior.g("status")?.eq_s("detected")? {
+            obj! {"profile" => prior.g("profile")?, "observedAt" => prior.g("observedAt")?}
+        } else {
+            prior.g("lastDetected")?
+        };
         let row = obj! {
             "status" => status,
             "identityKey" => binding.as_str(),
             "profile" => profile,
             "label" => label,
             "sessionMultiplier" => multiplier,
-            "source" => "anthropic-oauth-profile",
+            "source" => source,
             "observedAt" => now.o(),
             "nextAttemptAt" => now.plus(retry.dbl()?)?.o(),
         };
+        if last_detected.t()? {
+            row.add_member("lastDetected", last_detected, false)?;
+        }
         result.add_member(id, row, false)?;
     }
     // The caller holds the collector's lock. What is not written is asked again next time.
@@ -178,7 +254,7 @@ mod tests {
             .ok()
             .unwrap()
         };
-        let pro = r#","status":"detected","profile":"claude-pro","retryAfterSeconds":3600"#;
+        let pro = r#","status":"detected","profile":"claude-pro""#;
         let first = ask(&one, 0, pro);
         assert_eq!((text(&first, "profile").as_str(), text(&first, "label").as_str(), calls.get()), ("claude-pro", "Pro", 1));
         assert_eq!(text(&first, "sessionMultiplier"), "1");
@@ -187,9 +263,9 @@ mod tests {
         let cached = ask(&one, 5, pro);
         assert_eq!((text(&cached, "profile").as_str(), calls.get()), ("claude-pro", 1));
         // A changed plan is seen at the next asking.
-        let max = r#","status":"detected","profile":"claude-max-5x","retryAfterSeconds":3600"#;
+        let max = r#","status":"detected","profile":"claude-max-5x""#;
         let updated = ask(&one, 16, max);
-        assert_eq!((text(&updated, "label").as_str(), text(&updated, "sessionMultiplier").as_str(), calls.get()), ("Max 5x", "5", 2));
+        assert_eq!((text(&updated, "label").as_str(), text(&updated, "sessionMultiplier").as_str(), calls.get()), ("Max", "5", 2));
         // The same slot holding another account is another account.
         one = account("replacement@example.invalid", Some("fictional-org"));
         let replaced = ask(&one, 17, max);
@@ -226,13 +302,23 @@ mod tests {
             ["status", "profile", "label", "sessionMultiplier", "nextAttemptAt"].map(|name| text(&plans, name)).join("|")
         };
         let soon = "2026-09-14T12:15:00.0000000+00:00";
-        assert_eq!(ask(r#","status":"detected","profile":"claude-max-20x""#), format!("detected|claude-max-20x|Max 20x|20|{soon}"));
+        assert_eq!(ask(r#","status":"detected","profile":"claude-max-20x""#), format!("detected|claude-max-20x|Ultra||{soon}"));
         assert_eq!(ask(r#","status":"detected","profile":"claude-team""#), format!("unsupported||||{soon}"));
         assert_eq!(ask(r#","status":"partial","label":"Team""#), format!("partial||Team||{soon}"));
         assert_eq!(ask(r#","status":"partial","label":"Free""#), format!("partial||||{soon}"));
         assert_eq!(ask(r#","status":"surprising""#), format!("unavailable||||{soon}"));
         assert_eq!(ask(r#","status":"rate_limited","retryAfterSeconds":5"#), format!("rate_limited||||{soon}"));
         assert_eq!(ask(r#","status":"rate_limited","retryAfterSeconds":999999"#), "rate_limited||||2026-09-15T12:00:00.0000000+00:00");
+        // The stored sign-in's answer keeps where it came from and the endpoint's wait; any
+        // other source is the endpoint's.
+        let source = |more: &str| {
+            let _ = std::fs::remove_file(directory.join("claude-plans.json"));
+            let plans = plans(std::slice::from_ref(&one), &directory, now, |_| said(&identity, more)).ok().unwrap();
+            ["status", "profile", "label", "source", "nextAttemptAt"].map(|name| text(&plans, name)).join("|")
+        };
+        assert_eq!(source(r#","status":"detected","profile":"claude-max-20x","source":"stored-sign-in","retryAfterSeconds":3600"#), "detected|claude-max-20x|Ultra|stored-sign-in|2026-09-14T13:00:00.0000000+00:00");
+        assert_eq!(source(r#","status":"detected","profile":"claude-max-5x","source":"stored-sign-in""#), format!("detected|claude-max-5x|Max|stored-sign-in|{soon}"));
+        assert_eq!(source(r#","status":"detected","profile":"claude-pro","source":"elsewhere""#), format!("detected|claude-pro|Pro|anthropic-oauth-profile|{soon}"));
         // No answer, and an account that is switched off, are not errors.
         let none = plans(std::slice::from_ref(&one), &directory, now.plus_seconds(86_400 * 2).ok().unwrap(), |_| None).ok().unwrap();
         assert_eq!(text(&none, "status"), "unavailable");
@@ -240,6 +326,107 @@ mod tests {
         let skipped = plans(&[off], &directory, now, |_| panic!("asked")).ok().unwrap();
         assert!(skipped.props().ok().unwrap().is_empty());
         assert!(numbered("9999") && !numbered("0") && !numbered("01") && !numbered("12345") && !numbered("x"));
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// A plan row as the file holds it.
+    fn row(members: &str) -> V {
+        parse(&format!("{{{members}}}"), "").ok().unwrap()
+    }
+
+    #[test]
+    fn only_ultra_explains_a_five_hour_window_left_out_and_an_old_answer_stops_explaining() {
+        let now = Dto::parse("2026-09-14T12:00:00.0000000+00:00").ok().unwrap();
+        let explains = |members: &str| no_five_hour_limit(&row(members), now).ok().unwrap();
+        assert!(explains(r#""status":"detected","profile":"claude-max-20x""#));
+        for other in ["claude-pro", "claude-max-5x", "claude-team"] {
+            assert!(!explains(&format!(r#""status":"detected","profile":"{other}""#)), "{other}");
+        }
+        assert!(!explains(r#""status":"partial","label":"Max or Ultra (tier unknown)""#));
+        assert!(!explains(r#""status":"unavailable""#));
+        assert!(!no_five_hour_limit(&V::Null, now).ok().unwrap());
+        // Not asked since: the last answer stands for a week, to the second.
+        let asked = |status: &str, profile: &str, at: &str| format!(r#""status":"{status}","lastDetected":{{"profile":"{profile}","observedAt":"{at}"}}"#);
+        assert!(explains(&asked("rate_limited", "claude-max-20x", "2026-09-13T12:00:00.0000000+00:00")));
+        assert!(explains(&asked("unavailable", "claude-max-20x", "2026-09-07T12:00:00.0000000+00:00")));
+        assert!(!explains(&asked("unavailable", "claude-max-20x", "2026-09-07T11:59:59.0000000+00:00")));
+        assert!(!explains(&asked("unavailable", "claude-max-5x", "2026-09-13T12:00:00.0000000+00:00")));
+        assert!(!explains(&asked("unavailable", "claude-max-20x", "2026-09-20T12:00:00.0000000+00:00")));
+        assert!(!explains(&asked("unavailable", "claude-max-20x", "not a time")));
+        // An answer that is not Ultra outweighs what was known before it.
+        assert!(!explains(r#""status":"detected","profile":"claude-pro","lastDetected":{"profile":"claude-max-20x","observedAt":"2026-09-13T12:00:00.0000000+00:00"}"#));
+    }
+
+    #[test]
+    fn the_plan_last_known_is_a_detected_row_at_any_age_else_the_last_answer_within_a_week() {
+        let now = Dto::parse("2026-09-14T12:00:00.0000000+00:00").ok().unwrap();
+        let known = |members: &str| last_known_plan(&row(members), now).ok().unwrap().s().ok().unwrap();
+        assert_eq!(known(r#""status":"detected","profile":"claude-max-20x","observedAt":"2026-09-14T11:35:00.0000000+00:00""#), "claude-max-20x");
+        assert_eq!(known(r#""status":"detected","profile":"claude-pro","observedAt":"2026-08-01T12:00:00.0000000+00:00""#), "claude-pro");
+        assert_eq!(known(r#""status":"unavailable","lastDetected":{"profile":"claude-max-5x","observedAt":"2026-09-13T12:00:00.0000000+00:00"}"#), "claude-max-5x");
+        assert_eq!(known(r#""status":"unavailable","lastDetected":{"profile":"claude-max-20x","observedAt":"2026-09-06T12:00:00.0000000+00:00"}"#), "");
+        assert_eq!(known(r#""status":"partial","label":"Team""#), "");
+        assert!(last_known_plan(&V::Null, now).ok().unwrap().is_null());
+    }
+
+    #[test]
+    fn a_failed_asking_keeps_the_last_answer_of_the_same_account_until_there_is_an_answer() {
+        let directory = scratch("plans-last");
+        let now = Dto::parse("2026-09-14T12:00:00.0000000+00:00").ok().unwrap();
+        let one = account("fictional@example.invalid", Some("fictional-org"));
+        let identity = hash("fictional@example.invalid|fictional-org");
+        let ask = |account: &V, hours: i64, more: &str| plans(std::slice::from_ref(account), &directory, now.plus_seconds(hours * 3600).ok().unwrap(), |_| said(&identity, more)).ok().unwrap();
+        let last = |plans: &V, name: &str| plans.g("1").ok().unwrap().g("lastDetected").ok().unwrap().g(name).ok().unwrap().s().ok().unwrap();
+        let first = "2026-09-14T12:00:00.0000000+00:00";
+        let ultra = r#","status":"detected","profile":"claude-max-20x""#;
+        // An answer carries nothing beside itself.
+        let detected = ask(&one, 0, ultra);
+        assert_eq!(last(&detected, "profile"), "");
+        assert!(!std::fs::read_to_string(directory.join("claude-plans.json")).unwrap().contains("lastDetected"));
+        // A failure claims no plan and keeps the answer with the time it was given, through a second one.
+        let limited = ask(&one, 1, r#","status":"rate_limited""#);
+        assert_eq!((text(&limited, "profile").as_str(), last(&limited, "profile").as_str(), last(&limited, "observedAt").as_str()), ("", "claude-max-20x", first));
+        let failed = ask(&one, 2, r#","status":"surprising""#);
+        assert_eq!((text(&failed, "status").as_str(), last(&failed, "profile").as_str(), last(&failed, "observedAt").as_str()), ("unavailable", "claude-max-20x", first));
+        // A token refused or unreadable says nothing of the plan either.
+        for (hours, failure) in [(3, "authentication_required"), (4, "no_credentials")] {
+            let refused = ask(&one, hours, &format!(r#","status":"{failure}""#));
+            assert_eq!((text(&refused, "status").as_str(), text(&refused, "profile").as_str(), last(&refused, "profile").as_str(), last(&refused, "observedAt").as_str()), (failure, "", "claude-max-20x", first));
+        }
+        // Any answer ends it, whatever it says.
+        for answer in [r#","status":"partial","label":"Team""#, r#","status":"detected","profile":"claude-team""#, r#","status":"detected","profile":"claude-pro""#, r#","status":"unsupported""#, r#","status":"identity_mismatch""#] {
+            ask(&one, 5, ultra);
+            ask(&one, 6, r#","status":"rate_limited""#);
+            let answered = ask(&one, 40, answer);
+            assert_eq!(last(&answered, "profile"), "", "{answer}");
+        }
+        // The same slot holding another account knows nothing of what the last one had.
+        ask(&one, 41, ultra);
+        let replacement = account("replacement@example.invalid", Some("fictional-org"));
+        let other = plans(std::slice::from_ref(&replacement), &directory, now.plus_seconds(42 * 3600).ok().unwrap(), |_| None).ok().unwrap();
+        assert_eq!((text(&other, "status").as_str(), last(&other, "profile").as_str()), ("unavailable", ""));
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// A row can sit unasked for a day, so it reads as it would today before then.
+    #[test]
+    fn a_row_kept_from_before_the_names_changed_reads_as_it_would_today() {
+        let directory = scratch("plans-names");
+        let now = Dto::parse("2026-09-14T12:00:00.0000000+00:00").ok().unwrap();
+        let one = account("fictional@example.invalid", Some("fictional-org"));
+        let identity = hash("fictional@example.invalid|fictional-org");
+        let kept = |members: &str| {
+            std::fs::write(directory.join("claude-plans.json"), format!(r#"{{"schemaVersion":1,"accounts":{{"1":{{"identityKey":"{identity}","nextAttemptAt":"2026-09-14T12:10:00.0000000+00:00",{members}}}}}}}"#)).unwrap();
+            let plans = plans(std::slice::from_ref(&one), &directory, now, |_| panic!("asked")).ok().unwrap();
+            ["status", "profile", "label", "sessionMultiplier"].map(|name| text(&plans, name)).join("|")
+        };
+        assert_eq!(kept(r#""status":"detected","profile":"claude-max-20x","label":"Max 20x","sessionMultiplier":20"#), "detected|claude-max-20x|Ultra|");
+        assert_eq!(kept(r#""status":"detected","profile":"claude-max-5x","label":"Max 5x","sessionMultiplier":5"#), "detected|claude-max-5x|Max|5");
+        assert_eq!(kept(r#""status":"detected","profile":"claude-pro","label":"Pro","sessionMultiplier":1"#), "detected|claude-pro|Pro|1");
+        assert_eq!(kept(r#""status":"partial","profile":null,"label":"Max (tier unknown)","sessionMultiplier":null"#), "partial||Max or Ultra (tier unknown)|");
+        assert_eq!(kept(r#""status":"detected","profile":"claude-max-20x""#), "detected|claude-max-20x||");
+        assert_eq!(plan_name("claude-max-20x"), Some("Ultra"));
+        assert_eq!(plan_name("codex-pro-20x"), None);
         std::fs::remove_dir_all(&directory).unwrap();
     }
 
@@ -262,5 +449,14 @@ mod tests {
             assert_eq!(python(launcher.to_str().unwrap()), None, "{line}");
         }
         std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// A plan renamed in the catalogue and not here, or here and not there, is caught.
+    #[test]
+    fn the_catalogue_names_each_claude_plan_as_the_dashboard_does() {
+        set_core(false);
+        let catalog = crate::capacity::catalog().ok().unwrap();
+        let claude: Vec<(String, String)> = catalog.g("profiles").ok().unwrap().props().ok().unwrap().iter().filter(|(_, profile)| profile.g("provider").ok().unwrap().eq_s("claude").ok().unwrap()).map(|(id, profile)| (id.to_string(), profile.g("tier").ok().unwrap().s().ok().unwrap())).collect();
+        assert_eq!(claude, PROFILES.iter().map(|(id, label, _)| (id.to_string(), label.to_string())).collect::<Vec<_>>());
     }
 }

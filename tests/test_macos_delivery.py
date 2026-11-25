@@ -116,6 +116,21 @@ class EnrollmentContract(unittest.TestCase):
                 m.setup(root, root, sys.executable, sys.executable, adopt='fixture')
             self.assertFalse(root.exists())
 
+    def test_in_use_names_releases_and_previews_and_refuses_unknown_bridges(self):
+        root = Path('/opt/fixture/hotpl8')
+        listing = ('  1 /usr/bin/pwsh -File /opt/fixture/hotpl8/releases/' + A + '/hotpl8.ps1 watch\n'
+                   '  2 /usr/bin/open /opt/fixture/hotpl8/previews/pr-7/' + B + '/overview.png\n'
+                   '  3 /usr/bin/true /x/releases/' + 'd' * 41 + '\n').encode()
+        bridges = [dict(runningShas=[C], unknownRunningProcesses=0)]
+        fake = type('T3', (), {'components': staticmethod(lambda root: bridges)})
+        with patch.object(m, 'run', return_value=listing) as ps, patch.object(m, 't3_module', return_value=fake):
+            used = m.in_use(root)
+            self.assertEqual(ps.call_args.args[0], ['/bin/ps', '-axo', 'pid=,command='])
+            self.assertEqual(used, dict(refuse=False, paths=sorted([str(root / 'releases' / A), str(root / 'releases' / C),
+                                                                    str(root / 'previews/pr-7' / B)])))
+            bridges.append(dict(runningShas=[], unknownRunningProcesses=1))
+            self.assertTrue(m.in_use(root)['refuse'])
+
 
 @unittest.skipUnless(sys.platform == 'darwin', 'Native Mac qualification required')
 class Lifecycle(unittest.TestCase):

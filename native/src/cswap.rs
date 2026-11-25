@@ -130,6 +130,43 @@ fn found_in(places: &Places) -> Option<PathBuf> {
     local.or_else(|| places.roaming.as_ref().and_then(|base| beside_python(base.join("Python"))))
 }
 
+/// How long past the moment cswap planned to read an account again a reading is still
+/// waited for: the collector lists cswap every minute, so two of its runs.
+pub const PACED_GRACE_S: f64 = 120.0;
+/// The longest wait between reads cswap plans on purpose: POST_429_MAX_INTERVAL_S (1800)
+/// with its JITTER_FRAC (0.1) on top (claude_swap/poll_policy.py). A plan for a longer
+/// one is not pacing HotPl8 vouches for.
+pub const PACED_MAX_S: f64 = 1800.0 * 1.1;
+
+/// Until when a reading older than HotPl8 would like is one cswap is deliberately not
+/// renewing yet: its own usage cache says this account's reading was taken when the age
+/// says it was and names the moment it will read again. Anything that does not say so
+/// exactly (no cache, another schema, another account, another reading, no plan, a plan
+/// longer than cswap ever makes, a planned read that is long gone) is not pacing: None,
+/// and the reading is stale as before.
+pub fn paced_until(home: &Path, slot: i32, email: &str, organization: &V, age: f64, now: Dto) -> Option<Dto> {
+    let text = std::fs::read_to_string(home.join(".claude-swap-backup").join("cache").join("usage.json")).ok()?;
+    let cache = json::parse_foreign(text.trim_start_matches('\u{feff}')).ok()?;
+    if !cache.g("schemaVersion").ok()?.eq_i(2).ok()? {
+        return None;
+    }
+    let row = cache.g("accounts").ok()?.g(&slot.to_string()).ok()?;
+    if !row.g("email").ok()?.is_str() || row.g("email").ok()?.s().ok()? != email {
+        return None;
+    }
+    if organization.is_str() && row.g("organizationUuid").ok()?.s().ok()? != organization.s().ok()? {
+        return None;
+    }
+    let number = |name: &str| row.g(name).ok().filter(V::is_number).and_then(|value| value.dbl().ok());
+    let (fetched, next) = (number("fetchedAt")?, number("nextPollAt")?);
+    let now = now.unix_seconds() as f64;
+    let consistent = (now - age - fetched).abs() <= 30.0;
+    if !consistent || next < fetched || next - fetched > PACED_MAX_S + 30.0 || now > next + PACED_GRACE_S {
+        return None;
+    }
+    Dto::from_unix_seconds((next + PACED_GRACE_S).ceil() as i64).ok()
+}
+
 /// The name cswap gives an account's own session directory.
 pub fn slug_email(email: &str) -> String {
     email.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '_' }).collect()
@@ -210,6 +247,75 @@ pub fn credential_mark(path: &Path, encoded: bool) -> String {
         Some(format!("{print}@{}", until().unwrap_or_else(|_| "?".into())))
     };
     read().unwrap_or_else(|| "?".into())
+}
+
+/// Claude Code's own folder: `CLAUDE_CONFIG_DIR` when set, else `.claude` in the home.
+pub fn claude_folder(home: &Path) -> PathBuf {
+    folder_named(home, std::env::var_os("CLAUDE_CONFIG_DIR"))
+}
+
+fn folder_named(home: &Path, named: Option<OsString>) -> PathBuf {
+    named.filter(|value| !value.is_empty()).map_or_else(|| home.join(".claude"), PathBuf::from)
+}
+
+/// When the active account's sign-in ends: the date on what Claude Code itself holds, else
+/// on cswap's copy, which can lag behind a sign-in made inside Claude Code. A Mac gives no
+/// date: Claude Code renews there in the Keychain, which does not show one, and a file
+/// beside it can be out of date. A stale date would call for a sign-in nobody needs and
+/// stop the account's warm and recovery requests, so no warning is the safer answer.
+pub fn active_sign_in_end(folder: &Path, stored: &Path) -> Option<Dto> {
+    if cfg!(target_os = "macos") {
+        return None;
+    }
+    sign_in_end(&folder.join(".credentials.json"), false).or_else(|| sign_in_end(stored, true))
+}
+
+/// When a sign-in can no longer be renewed, by the provider's own date. Each renewal
+/// replaces the token and leaves this date where it was, so a sign-in in daily use still
+/// ends and only a person signing in again sets a new one. `None` says the file does not
+/// tell: it is absent, unreadable, or written by a client that does not keep the date.
+pub fn sign_in_end(path: &Path, encoded: bool) -> Option<Dto> {
+    let bytes = std::fs::read(path).ok().filter(|bytes| bytes.len() <= 1_048_576)?;
+    let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes).to_vec();
+    let bytes = if encoded { base64(String::from_utf8_lossy(&bytes).trim())? } else { bytes };
+    let sign_in = json::parse(&String::from_utf8_lossy(&bytes), "").ok()?.g("claudeAiOauth").ok()?;
+    let end = sign_in.g("refreshTokenExpiresAt").ok()?;
+    if !end.is_number() {
+        return None;
+    }
+    Dto::from_unix_milliseconds(end.to_long().ok()?).ok()
+}
+
+/// How long before its end a sign-in is mentioned. The client's own notice comes three
+/// days before, and only inside its own screen.
+const SIGN_IN_WARN_SECONDS: f64 = 7.0 * 86_400.0;
+
+/// The seconds left of a sign-in that is near its end, not above zero once it has passed.
+/// `None` when the end is unknown or still far away.
+pub fn sign_in_left(ends_at: &V, now: Dto) -> R<Option<f64>> {
+    if !ends_at.t()? {
+        return Ok(None);
+    }
+    let Ok(end) = Dto::parse_external(&ends_at.s()?) else { return Ok(None) };
+    let left = end.since(now).total_seconds();
+    Ok((left <= SIGN_IN_WARN_SECONDS).then_some(left))
+}
+
+/// How much of a sign-in is left, in the largest unit that fits.
+pub fn sign_in_left_text(left: f64) -> String {
+    let seconds = left.max(0.0) as i64;
+    if seconds >= 86_400 {
+        format!("{}d", seconds / 86_400)
+    } else if seconds >= 3_600 {
+        format!("{}h", seconds / 3_600)
+    } else {
+        format!("{}m", seconds / 60)
+    }
+}
+
+/// What to tell a person about a sign-in near or past its end, once for any screen.
+pub fn sign_in_notice(ends_at: &V, now: Dto) -> R<Option<String>> {
+    Ok(sign_in_left(ends_at, now)?.map(|left| if left <= 0.0 { "sign-in ended".to_string() } else { format!("sign-in ends in {}", sign_in_left_text(left)) }))
 }
 
 /// A request that worked through a session of the account's own, yet
@@ -297,6 +403,96 @@ mod tests {
     /// A sign-in no account has: `{"claudeAiOauth":{"refreshToken":"fictional-refresh-token","expiresAt":1791288000000}}`.
     const SESSION: &str = r#"{"claudeAiOauth":{"refreshToken":"fictional-refresh-token","expiresAt":1791288000000}}"#;
     const STORED: &str = "eyJjbGF1ZGVBaU9hdXRoIjp7InJlZnJlc2hUb2tlbiI6ImZpY3Rpb25hbC1yZWZyZXNoLXRva2VuIiwiZXhwaXJlc0F0IjoxNzkxMjg4MDAwMDAwfX0=";
+
+    #[test]
+    fn a_sign_in_says_when_it_ends_and_never_guesses() {
+        let directory = scratch("sign-in-end");
+        let plain = directory.join("plain.json");
+        let noon = Dto::parse("2026-10-06T12:00:00Z").ok().unwrap().o();
+        std::fs::write(&plain, r#"{"claudeAiOauth":{"refreshToken":"fictional","refreshTokenExpiresAt":1791288000000}}"#).unwrap();
+        assert_eq!(sign_in_end(&plain, false).unwrap().o(), noon);
+        // `{"claudeAiOauth":{"refreshToken":"fictional","refreshTokenExpiresAt":1791288000000}}`, as cswap stores it.
+        let stored = directory.join("stored.enc");
+        std::fs::write(&stored, "eyJjbGF1ZGVBaU9hdXRoIjp7InJlZnJlc2hUb2tlbiI6ImZpY3Rpb25hbCIsInJlZnJlc2hUb2tlbkV4cGlyZXNBdCI6MTc5MTI4ODAwMDAwMH19").unwrap();
+        assert_eq!(sign_in_end(&stored, true).unwrap().o(), noon);
+        // Nothing that does not state the date is taken to have one.
+        std::fs::write(&plain, SESSION).unwrap();
+        assert!(sign_in_end(&plain, false).is_none());
+        std::fs::write(&plain, r#"{"claudeAiOauth":{"refreshTokenExpiresAt":"soon"}}"#).unwrap();
+        assert!(sign_in_end(&plain, false).is_none());
+        std::fs::write(&plain, "not json").unwrap();
+        assert!(sign_in_end(&plain, false).is_none());
+        assert!(sign_in_end(&directory.join("absent"), false).is_none());
+
+        let home = Path::new("home");
+        assert_eq!(folder_named(home, None), home.join(".claude"));
+        assert_eq!(folder_named(home, Some(OsString::new())), home.join(".claude"));
+        assert_eq!(folder_named(home, Some(OsString::from("elsewhere"))), PathBuf::from("elsewhere"));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn a_sign_in_is_mentioned_only_near_its_end() {
+        let now = Dto::parse("2026-10-06T12:00:00Z").ok().unwrap();
+        let notice = |ends: &str| sign_in_notice(&V::from(ends), now).ok().unwrap();
+        assert_eq!(notice("2026-10-13T12:00:01Z"), None);
+        assert_eq!(notice("2026-10-13T12:00:00Z").as_deref(), Some("sign-in ends in 7d"));
+        assert_eq!(notice("2026-10-06T14:30:00Z").as_deref(), Some("sign-in ends in 2h"));
+        assert_eq!(notice("2026-10-06T12:10:00Z").as_deref(), Some("sign-in ends in 10m"));
+        assert_eq!(notice("2026-10-06T12:00:00Z").as_deref(), Some("sign-in ended"));
+        assert_eq!(notice("2026-09-06T12:00:00Z").as_deref(), Some("sign-in ended"));
+        assert_eq!(notice("not a time"), None);
+        assert_eq!(sign_in_notice(&V::Null, now).ok().unwrap(), None);
+    }
+
+    /// cswap's cache vouches for an old reading only when it names this account, this very
+    /// reading and a next read cswap could have planned, not long gone.
+    #[test]
+    fn a_reading_is_paced_only_when_cswap_s_own_cache_says_exactly_so() {
+        let directory = scratch("paced-until");
+        let home = directory.join("home");
+        let cache = home.join(".claude-swap-backup").join("cache");
+        let now = Dto::parse("2026-10-06T12:00:00Z").ok().unwrap();
+        let noon = 1_791_288_000_i64;
+        let organization = V::from("org-1");
+        let until = |age: f64| paced_until(&home, 1, "one@example.invalid", &organization, age, now).map(|at| at.unix_seconds() - noon);
+        let row = |email: &str, org: &str, fetched: i64, next: i64| {
+            format!(r#"{{"schemaVersion":2,"accounts":{{"1":{{"email":"{email}","organizationUuid":"{org}","fetchedAt":{},"nextPollAt":{}}}}}}}"#, noon + fetched, noon + next)
+        };
+        let write = |text: &str| std::fs::write(cache.join("usage.json"), text).unwrap();
+        // No cache at all.
+        assert_eq!(until(1200.0), None);
+        std::fs::create_dir_all(&cache).unwrap();
+        // Read twenty minutes ago, next read planned in ten: paced until two minutes past it.
+        write(&row("one@example.invalid", "org-1", -1200, 600));
+        assert_eq!(until(1200.0), Some(720));
+        write(&format!("\u{feff}{}", row("one@example.invalid", "org-1", -1200, 600)));
+        assert_eq!(until(1200.0), Some(720));
+        // The planned read went by more than two minutes ago.
+        write(&row("one@example.invalid", "org-1", -1200, -300));
+        assert_eq!(until(1200.0), None);
+        // Another schema, account, organization or reading.
+        write(&row("one@example.invalid", "org-1", -1200, 600).replace(r#""schemaVersion":2"#, r#""schemaVersion":1"#));
+        assert_eq!(until(1200.0), None);
+        write(&row("someone@example.invalid", "org-1", -1200, 600));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-2", -1200, 600));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-1", -1260, 600));
+        assert_eq!(until(1200.0), None);
+        // No plan, and plans cswap never makes.
+        write(&row("one@example.invalid", "org-1", -1200, 600).replace(r#","nextPollAt""#, r#","plannedAt""#));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-1", -1200, 780));
+        assert_eq!(until(1200.0), Some(900));
+        write(&row("one@example.invalid", "org-1", -1200, 900));
+        assert_eq!(until(1200.0), None);
+        write(&row("one@example.invalid", "org-1", -60, -90));
+        assert_eq!(until(60.0), None);
+        write("not json");
+        assert_eq!(until(1200.0), None);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn base64_reads_what_dotnet_reads() {

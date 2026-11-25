@@ -333,6 +333,17 @@ pub fn collect(c: &Collection) -> R<V> {
             last_success = observed.o().into();
             identity = account.identity_key.as_str().into();
         }
+        // Only a completed read advances this proof. A busy collector retains its age;
+        // a definitive account/config failure removes it.
+        let connection = match (&read.outcome, status) {
+            (Ok(account), "ok") if account.connection.is_obj() => {
+                let receipt = account.connection.shallow()?;
+                receipt.add_member("observedAt", observed.o().into(), true)?;
+                receipt
+            }
+            (_, "home_busy" | "timeout" | "collection_budget" | "backoff") => member(&old, "connection"),
+            _ => V::Null,
+        };
         let attempt = if ["collection_budget", "backoff"].contains(&status) { member(&old, "lastAttemptAt") } else { observed.o().into() };
         let retry = match status {
             "rate_limited" => observed.plus_seconds(300)?.o().into(),
@@ -367,6 +378,7 @@ pub fn collect(c: &Collection) -> R<V> {
             "planType" => plan,
             "previousPlanType" => previous_plan,
             "planChangedAt" => plan_changed,
+            "connection" => connection,
         };
         next.push((id, record));
     }
@@ -574,7 +586,7 @@ mod tests {
     fn account(identity: &str, plan: &str, used: i32) -> HomeRead {
         let quota = format!(r#"{{"rateLimits":{{"limitId":"codex","primary":{{"usedPercent":{used},"windowDurationMins":10080,"resetsAt":1791720000}},"secondary":null,"spendControlReached":false}}}}"#);
         let quota = json::parse(&quota, "").ok().unwrap();
-        HomeRead { elapsed_ms: 40, outcome: Ok(Account { quota, identity_key: identity.into(), plan_type: plan.into(), model: "gpt-fixture".into(), model_provider: "openai".into(), standard_transport: true, identity_verified: false, auth: None }) }
+        HomeRead { elapsed_ms: 40, outcome: Ok(Account { connection: V::Null, quota, identity_key: identity.into(), plan_type: plan.into(), model: "gpt-fixture".into(), model_provider: "openai".into(), standard_transport: true, identity_verified: false, auth: None }) }
     }
 
     fn failed(name: &'static str) -> HomeRead {
@@ -596,6 +608,32 @@ mod tests {
         let rows = result.g("slots").ok().unwrap().arr();
         rows.iter().map(|slot| format!("{} {}", slot.g("id").ok().unwrap().s().ok().unwrap(), slot.g("status").ok().unwrap().s().ok().unwrap())).collect::<Vec<_>>().join(", ")
     }
+
+    #[test]
+    fn connection_receipt_is_private_does_not_refresh_on_busy_and_is_invalidated_by_auth_failure() {
+        let lab = Lab::new();
+        let policy = lab.policy(&["a"], vec![]);
+        let good = |_: &str, _: u64| {
+            let mut read = account("a", "plus", 10);
+            read.outcome.as_mut().unwrap().connection = obj! {"authDigest" => "fictional-digest", "identity" => "fictional-identity"};
+            read
+        };
+        let first = lab.collect(&policy, &V::Null, &good);
+        let receipt = lab.kept("a", "connection");
+        assert!(receipt.contains("fictional-digest") && receipt.contains(NOON));
+        assert!(!at(&first, &[]).contains("fictional-digest"));
+        lab.pass(60);
+        lab.collect(&policy, &first, &|_, _| HomeRead { elapsed_ms: 0, outcome: Err("home_busy") });
+        assert_eq!(lab.kept("a", "connection"), receipt);
+        lab.pass(60);
+        lab.collect(&policy, &first, &|_, _| HomeRead { elapsed_ms: 0, outcome: Err("authentication_required") });
+        assert_eq!(lab.kept("a", "connection"), "null");
+        lab.pass(60);
+        lab.collect(&policy, &first, &good);
+        assert_ne!(lab.kept("a", "connection"), receipt);
+        assert!(lab.kept("a", "connection").contains(&lab.now()));
+    }
+
 
     #[test]
     fn every_account_is_read_once_and_one_is_recommended() {

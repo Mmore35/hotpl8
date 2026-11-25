@@ -1,5 +1,7 @@
 # Updating the screenshots
 
+How to regenerate the documentation screenshots from fictional data with the production frame renderer.
+
 `operations.png` uses the optional operations fixture: collector health, weekly pace, an unconfirmed warm receipt and work-hour blocking. Like the primary dashboard image, it is rendered from fictional data through the production frame renderer.
 
 From the repository root, on Windows with Windows PowerShell 5.1 and Consolas, with the compiled reader built:
@@ -15,15 +17,15 @@ The harness stages each fictional state in a temporary directory and asks the co
 
 The [fixture](../tests/fixtures/screenshots.ps1) fixes account labels, percentages and the clock. The harness fixes viewport, font, DPI and cell size. Identical inputs on the same Windows/font environment produce identical bytes; other font/OS revisions may rasterize differently. Use `-OutputDirectory PATH` to compare a second render without replacing the committed images.
 
-Change the renderer for a UI change, or the fixture for a different documentation scenario. Keep fixtures fictional and independent of the machine. Never load policy.json, status.json, account homes, environment secrets, or native provider output into this harness. This is a development tool, not an application demo command.
+Change the renderer for a UI change, or the fixture for a different documentation scenario. Keep fixtures fictional and independent of the machine. A fixture whose policy does not set `switchEnabled` is drawn with "auto-switch off". Never load policy.json, status.json, account homes, environment secrets, or native provider output into this harness. This is a development tool, not an application demo command.
 
 `dashboard.png` fixes the opening view at 94 columns by 25 rows. `details.png` renders the last details page at 94 by 34 with the same pinned provider overview. `operations.png` exercises operational detail at 110 by 50. All use the same fixed clock and renderer.
 
-Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bundled attributed animation with a frozen frame; critical/unknown frames should be added or regenerated alongside main/detail screenshots. `unknown.png` removes the Claude capacity weights, so its Claude bar shows the equal-weight estimate; Codex keeps its calibrated weights. An image is drawn from the escape sequences a terminal is sent, so it has the terminal's cells and palette.
+Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bundled attributed animation with a frozen frame; critical/unknown frames should be added or regenerated alongside main/detail screenshots. `unknown.png` removes the Claude capacity weights, and its two Claude accounts have no detected plan, so each is size 1, the smallest plan; Codex keeps its calibrated weights. An image is drawn from the escape sequences a terminal is sent, so it has the terminal's cells and palette.
 
 `nyan-compact.png` shows the animation at 48 columns by 24 rows. The cat switches between purpose-drawn five-row compact and nine-row original sprites, reserving space for account details. Both use exact palette pixels without interpolation or blur. Playback uses 12 sprite frames per second and approximately 24 starfield updates per second. A refresh of the state takes a few milliseconds, so it is laid out between two frames of the animation.
 
-`available-now.png` shows the important counterexample: 90% weekly remaining, zero usable now, and a projected refill in five hours. It uses fictional detected Pro plans without window conversions, exercising the plan-weighted quota estimate.
+`available-now.png` shows the important counterexample: 90% weekly remaining, zero usable now, and a projected refill in five hours. It uses fictional detected Pro plans without window conversions, so each is sized from the catalogue.
 
 `session-capacity.png` shows three equal plans at 100%, 100% and 75% session allowance: 91.7% now, gaining 8.3 points at the next useful reset. Its two Codex accounts have distinct numbered headers, with one exhausted and the other ready for the next launch.
 
@@ -32,9 +34,11 @@ Capacity fixtures declare fictional per-window weights. `nyan.png` uses the bund
 including the cached live Nyan frame. An independent fixture decoder maps the
 emitted fixed 256-color indices to pixels. These are fictional CI previews of the
 terminal stream, not native Terminal captures. Other images retain the RGB palette.
+A run writes both beside the committed images, but the repository does not track
+them: leave them out of a commit.
 
 Block glyphs are painted as exact cell rectangles in PNGs, preventing font padding
 from introducing artificial seams. Apple Terminal Nyan uses whole background
-cells (10 or 18 rows); Windows keeps its 5- or 9-row half-block sprite. The native
-live preview remains required for terminal acceptance; CI images are not native
-Terminal captures.
+cells (10 or 18 rows); Windows keeps its 5- or 9-row half-block sprite. An observed
+run of the PR's compiled reader is what accepts a dashboard change
+([observe scenarios](observe-scenarios.md)); CI images are not native Terminal captures.

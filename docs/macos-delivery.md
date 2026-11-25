@@ -1,5 +1,7 @@
 # Verified main updates on macOS
 
+Mac enrollment, inspection and recovery for verified main updates, including the managed T3 Code bridge.
+
 Mac delivery selects the same verified main release as Windows when explicitly
 invoked. Setup creates no schedules by default. Operators own automated update
 scheduling and machine configuration; a merged PR, source sync or passing CI does
@@ -145,7 +147,11 @@ state. Interrupted activation is recovered by the known-good runner. A failed
 first activation has no proven previous release and requires inspection of the
 transaction before retry; do not erase the transaction to force admission.
 Wrong platform, bad hashes/provenance and unavailable builds never replace the
-working release. Immutable releases are retained for active processes/recovery.
+working release. Immutable releases are retained for active processes/recovery:
+after each activation the updater removes only releases other than the current,
+previous, rejected and three newest that no process names in `ps` and no T3 bridge
+reports it loaded, and previews older than 14 days (see `docs/delivery.md`). Mac
+job receipts are one file per role and are not pruned.
 
 For removal, close T3 and run `delivery/macos-t3.py remove --install ...` to
 restore its prior ordinary provider configuration. Then run

@@ -2,7 +2,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'add', 'explain', 'accounts', 'park', 'unpark', 'pause', 'resume', 'continue', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview')]
+    [ValidateSet('watch', 'nyan', 'status', 'refresh', 'tick', 'codex', 'doctor', 'version', 'help', 'init', 'enroll', 'setup', 'add', 'explain', 'accounts', 'park', 'unpark', 'pause', 'resume', 'continue', 'capabilities', 'history', 'tray', 'update-check', 'update', 'agent', 'mcp', 'delivery', 'preview', 'observe')]
     [string]$Command = 'watch',
     [string]$Slot,
     [string]$Model,
@@ -10,6 +10,8 @@ param(
     [string]$PreviewPolicy,
     [switch]$Live,
     [string]$TrustRevision,
+    [string]$Scenario,
+    [string]$Baseline,
     [string]$CodexExecutable,
     [switch]$AsJson,
     [string]$AccountHome,
@@ -67,7 +69,9 @@ try {
         Exit-Hotpl8NativeCodex $PSScriptRoot $StateDirectory $CodexExecutable $Provider $Slot $Model $ExecutionContext.SessionState.Path.CurrentLocation.Path $CodexArguments
     }
     . (Join-Path $PSScriptRoot 'src/common.ps1')
-    if(($Live -or $TrustRevision) -and $Command -ne 'preview'){throw 'Live and TrustRevision are preview-only.'}
+    if($Live -and $Command -ne 'preview'){throw 'Live is preview-only.'}
+    if($TrustRevision -and $Command -notin @('preview','observe')){throw 'TrustRevision is for preview and observe only.'}
+    if(($Scenario -or $Baseline) -and $Command -ne 'observe'){throw 'Scenario and Baseline are observe-only.'}
     if($PreviewPolicy -and $Command -notin @('watch','nyan','status','explain')){throw 'PreviewPolicy is display-only.'}
     . (Join-Path $PSScriptRoot 'src/config.ps1')
     . (Join-Path $PSScriptRoot 'src/diagnostics.ps1')
@@ -128,6 +132,7 @@ try {
         'agent [-RequestJson JSON]: versioned local agent request; stdin JSON is also accepted.'
         'delivery: installed, desired and previous commit; update: follow tested main when enrolled.'
         'preview pr NUMBER: download CI images. Add -Live -TrustRevision FULL_SHA to execute that reviewed PR dashboard with demo accounts.'
+        'observe pr NUMBER -TrustRevision FULL_SHA -Scenario FILE [-Baseline MAIN_SHA]: run that reviewed PR''s dashboard beside main with demo accounts, check the scenario''s claim and write a report. Exit 0 PASS, 10 FAIL, 11 not ready yet. See docs/observe-scenarios.md.'
         'mcp [-AllowAgentPause]: local stdio MCP; read tools only unless pause writes are enabled.'
         exit 0
     }
@@ -149,12 +154,12 @@ try {
         if($AsJson){$report|ConvertTo-Json -Depth 8}else{$report|ConvertTo-Json -Depth 8}
         exit 0
     }
-    if($Command -in @('delivery','preview') -or ($Command -eq 'update' -and $env:HOTPL8_INSTALL_DIRECTORY)){
+    if($Command -in @('delivery','preview','observe') -or ($Command -eq 'update' -and $env:HOTPL8_INSTALL_DIRECTORY)){
         $managed=if($InstallDirectory){$InstallDirectory}else{$env:HOTPL8_INSTALL_DIRECTORY}
         if(-not $managed){throw 'This command requires a Local Delivery installation. See docs/delivery.md.'}
         $registration=Read-Hotpl8Json (Join-Path $managed 'delivery.json')
         $runner=Join-Path $managed 'delivery.py'
-        $verb=if($Command -eq 'delivery'){'status'}else{$Command}
+        $verb=if($Command -eq 'delivery'){'status'}elseif($Command -eq 'observe'){'preview'}else{$Command}
         $forward=@($runner,$verb)
         if($Command -eq 'preview'){
             if($CodexArguments.Count -ne 2 -or $CodexArguments[0] -ne 'pr' -or $CodexArguments[1] -notmatch '^[1-9][0-9]*$'){throw 'Use hotpl8 preview pr NUMBER.'}
@@ -163,6 +168,15 @@ try {
                 if(-not $Live -or $TrustRevision -cnotmatch '^[0-9a-f]{40}$'){throw 'Live preview requires -Live -TrustRevision FULL_SHA. This executes trusted PR code locally.'}
                 $forward+=@('--trust-revision',$TrustRevision)
             }
+        }
+        if($Command -eq 'observe'){
+            if($CodexArguments.Count -ne 2 -or $CodexArguments[0] -ne 'pr' -or $CodexArguments[1] -notmatch '^[1-9][0-9]*$'){throw 'Use hotpl8 observe pr NUMBER -TrustRevision FULL_SHA -Scenario FILE.'}
+            if($TrustRevision -cnotmatch '^[0-9a-f]{40}$'){throw 'Observe requires -TrustRevision FULL_SHA. This executes trusted PR code locally.'}
+            if(-not $Scenario -or -not (Test-Path -LiteralPath $Scenario -PathType Leaf)){throw 'Observe requires -Scenario FILE. See docs/observe-scenarios.md.'}
+            if($Baseline -and $Baseline -cnotmatch '^[0-9a-f]{40}$'){throw 'Baseline must be a full main revision.'}
+            # The runner starts in the install directory: hand it an absolute scenario path.
+            $forward+=@($CodexArguments[1],'--trust-revision',$TrustRevision,'--observe',(Resolve-Path -LiteralPath $Scenario).ProviderPath)
+            if($Baseline){$forward+=@('--baseline',$Baseline)}
         }
         & $registration.python @forward
         exit $LASTEXITCODE

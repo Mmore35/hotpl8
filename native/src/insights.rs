@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use crate::activity::add_action_event;
-use crate::capacity::fresh_timestamp;
+use crate::capacity::{fresh_timestamp, quiet};
 use crate::codex::format_codex_status;
 use crate::files;
 use crate::forecast::{forecast, update_history};
@@ -169,9 +169,14 @@ pub fn format_status(status: &V, policy: &V, state_directory: &Path, now: Dto) -
         if view.g("provider")?.eq_s("claude")? {
             lines.push(safe_text(&cat!(name, ": active slot ", snapshot.g("active")?, " | ", snapshot.g("verdict")?)));
             for account in snapshot.g("slots")?.arr() {
-                let five_hour = remaining_text(&account.g("used5h")?)?;
+                // An account with no five-hour limit has no five-hour part to its row.
+                let five_hour = match account.g("limit5h")?.s()?.as_str() {
+                    "none" => String::new(),
+                    "unreported" => "5h not reported | ".to_string(),
+                    _ => format!("5h {} | ", remaining_text(&account.g("used5h")?)?),
+                };
                 let weekly = remaining_text(&account.g("used7d")?)?;
-                lines.push(safe_text(&cat!("  ", account.g("label")?, " [", account.g("slot")?, "] 5h ", five_hour, " | 7d ", weekly, " | ", account.g("status")?)));
+                lines.push(safe_text(&cat!("  ", account.g("label")?, " [", account.g("slot")?, "] ", five_hour, "7d ", weekly, " | ", account.g("status")?)));
                 if account.g("warmOutcome")?.t()? {
                     lines.push(cat!("    warm: ", account.path(&["warmOutcome", "outcome"])?));
                 }
@@ -274,7 +279,8 @@ fn kept_aside(directory: &Path, code: &str, body: impl FnOnce() -> R<()>) {
 /// What one provider's reading says besides its numbers. Each
 /// fresh weekly reading gets a pace, a change of account or recommendation is recorded,
 /// and the decision the rules would have made is set beside the one that was made.
-fn add_native_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, now: Dto) -> R<()> {
+/// `family` is the provider whose view this is.
+fn add_native_insights(family: &str, snapshot: &V, policy: &V, directory: &Path, previous: &V, now: Dto) -> R<()> {
     let keeps_history = policy.g("historyEnabled")?.eq(&V::Bool(true))?;
     let history = if keeps_history { json::read_or_null(&directory.join("usage-history.json")) } else { V::Null };
     let samples_of = |key: &str| filter(&history.g("samples")?.each(), |sample| sample.g("key")?.eq_s(key));
@@ -284,7 +290,7 @@ fn add_native_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V,
             continue;
         }
         slot.add_member("forecast", V::Null, true)?;
-        if !slot.g("fresh")?.t()? || !slot.g("observedAt")?.t()? {
+        if !quiet(&slot, now)? || !slot.g("observedAt")?.t()? {
             continue;
         }
         let key = cat!("claude/", slot.g("streamKey")?, "/10080");
@@ -320,8 +326,11 @@ fn add_native_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V,
         kept_aside(directory, "history_output_failed", || update_history(directory, &new_samples, now).map(|_| ()));
     }
     snapshot.add_member("automationPause", pause(directory, now)?, true)?;
+    // A Codex view is made from the whole snapshot and so carries Claude's `active` too,
+    // and both providers record in the same activity.json: only Claude's own pass says
+    // that its account changed, or every change is recorded twice.
     let (active, was_active) = (snapshot.g("active")?, previous.g("active")?);
-    if active.t()? && was_active.t()? && active.ne(&was_active)? {
+    if family == "claude" && active.t()? && was_active.t()? && active.ne(&was_active)? {
         let slot = active.s()?;
         kept_aside(directory, "activity_output_failed", || add_action_event(directory, "claude", &slot, "active_changed", "observed_account_change", now));
     }
@@ -349,8 +358,8 @@ pub fn add_insights(snapshot: &V, policy: &V, directory: &Path, previous: &V, no
             continue;
         }
         let native = view.g("snapshot")?;
-        add_native_insights(&native, &view.g("policy")?, &state, &old.g("snapshot")?, now)?;
         let family = view.g("provider")?.s()?;
+        add_native_insights(&family, &native, &view.g("policy")?, &state, &old.g("snapshot")?, now)?;
         let payload = if family == "claude" { native.clone() } else { native.path(&["providers", "codex"])? };
         if id == "claude" {
             for key in ["slots", "decision", "critical"] {
@@ -401,7 +410,7 @@ mod tests {
     use crate::json::parse;
 
     const STALE: &str = "STALE: these are the decisions at the last observation, not a current recommendation.";
-    const HEADROOM: &str = "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.";
+    const HEADROOM: &str = "Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.";
     const NATIVE: &str = "Native launches use the recommendation. Managed host sessions require their own confirmed routing evidence.";
 
     #[test]
@@ -460,5 +469,28 @@ mod tests {
             format_explanation(&parse(&shown, "").ok().unwrap(), now, false).ok().unwrap(),
             ["Observed: 2026-09-13T12:00:00.0000000+00:00", "Claude: switch held; policy balanced", "  slot 2: model_below_margin; rank 1", NATIVE]
         );
+    }
+
+    #[test]
+    fn a_change_of_the_claude_account_is_recorded_once_beside_codex() {
+        set_core(false);
+        crate::display::packaged_data(&Path::new(env!("CARGO_MANIFEST_DIR")).join(".."));
+        let directory = crate::files::tests::scratch("insights-active");
+        let now = Dto::parse("2026-11-21T06:00:08.0000000+00:00").ok().unwrap();
+        // Claude and Codex both keep their state in the state directory itself, and every
+        // provider's view is made from the same snapshot, so the Codex pass sees Claude's
+        // `active` too. Only the Claude pass may say that the Claude account changed.
+        let policy = parse(r#"{"schemaVersion":2,"prefer":[1,2],"codex":{"prefer":["a"]}}"#, "").ok().unwrap();
+        let snapshot = |active: i32| parse(&format!(r#"{{"generatedAt":"2026-11-21T06:00:08.0000000+00:00","active":{active},"slots":[],"providers":{{"codex":{{"slots":[]}}}}}}"#), "").ok().unwrap();
+        let (previous, current) = (snapshot(1), snapshot(2));
+        add_insights(&current, &policy, &directory, &previous, now).ok().unwrap();
+        let changes = filter(&json::read_or_null(&directory.join("activity.json")).g("events").ok().unwrap().each(), |event| event.g("kind")?.eq_s("active_changed")).ok().unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].g("slot").ok().unwrap().s().ok().unwrap(), "2");
+        assert_eq!(changes[0].g("provider").ok().unwrap().s().ok().unwrap(), "claude");
+        // What status shows lists it once too.
+        let shown = filter(&current.g("recentActions").ok().unwrap().each(), |event| event.g("kind")?.eq_s("active_changed")).ok().unwrap();
+        assert_eq!(shown.len(), 1);
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 }

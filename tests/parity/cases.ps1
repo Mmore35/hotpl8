@@ -224,7 +224,7 @@ function Get-Hotpl8ParityCases {
       "lastGoodAt": "@t-44s@",
       "modelBlock": null,
       "observedAt": "@t-44s@",
-      "plan": {"identityKey": "plan-one", "label": "Max 5x", "nextAttemptAt": "@t+6h@", "observedAt": "@t-10m@", "profile": "claude-max-5x", "sessionMultiplier": 5, "source": "native", "status": "detected"},
+      "plan": {"identityKey": "plan-one", "label": "Max", "nextAttemptAt": "@t+6h@", "observedAt": "@t-10m@", "profile": "claude-max-5x", "sessionMultiplier": 5, "source": "native", "status": "detected"},
       "registered": true,
       "reset5h": "@f+83m@",
       "reset7d": "@f+52h@",
@@ -300,6 +300,15 @@ function Get-Hotpl8ParityCases {
     [void]$cases.Add(@{name='readings at the age limit';files=@{'policy.json'=$policy;'status.json'=$status.Replace('@t-42s@','@t-900s@')}})
     [void]$cases.Add(@{name='readings one second past the age limit';files=@{'policy.json'=$policy;'status.json'=$status.Replace('@t-42s@','@t-901s@')}})
     [void]$cases.Add(@{name='one account stale';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($one,$two.Replace('@t-42s@','@t-20m@')) @($work,$personal.Replace('@t-42s@','@t-20m@')))}})
+
+    # A good reading with no five-hour window, explained by the plan or not.
+    $noWindow=$one.Replace('"used5h":38','"used5h":null').Replace('"reset5h":"@t+83m@"','"reset5h":""')
+    $ultraPlan='"plan":{"status":"detected","profile":"claude-max-20x","label":"Ultra","sessionMultiplier":null,"observedAt":"@t-10m@"},'
+    $maxPlan='"plan":{"status":"detected","profile":"claude-max-5x","label":"Max","sessionMultiplier":5,"observedAt":"@t-10m@"},'
+    $noLimit=$noWindow.Replace('"slot":1,','"slot":1,"limit5h":"none",'+$ultraPlan)
+    [void]$cases.Add(@{name='no 5-hour limit';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($noLimit,$two) @($work,$personal))}})
+    [void]$cases.Add(@{name='no 5-hour limit, the reading stale';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($noLimit.Replace('@t-42s@','@t-20m@').Replace('"fresh":true','"fresh":false'),$two) @($work,$personal))}})
+    [void]$cases.Add(@{name='5-hour limit not reported';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($noWindow.Replace('"slot":1,','"slot":1,"limit5h":"unreported",'+$maxPlan).Replace('"fresh":true','"fresh":false'),$two) @($work,$personal))}})
 
     # Nothing collected yet.
     [void]$cases.Add(@{name='policy only';files=@{'policy.json'=$policy}})
@@ -443,6 +452,7 @@ function Get-Hotpl8ParityCases {
 
     # Account states.
     [void]$cases.Add(@{name='account needs sign-in';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($one,'{"slot":2,"label":"Reserve","status":"relogin_required","observedAt":"@t-42s@","active":false,"fresh":false,"lastGoodAt":"@t-10d@"}') @($work,'{"id":"personal","label":"Personal","status":"authentication_required","observedAt":"@t-9d@"}'))}})
+    [void]$cases.Add(@{name='sign-in near and past its end';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @((Edit-Hotpl8ParityText $one '"reset7d":"@t+52h@"}' '"reset7d":"@t+52h@","signInEndsAt":"@t+72h@"}'),(Edit-Hotpl8ParityText $two '"reset7d":"@t+5d@"}' '"reset7d":"@t+5d@","signInEndsAt":"@t-2h@"}')) @($work,$personal))}})
     [void]$cases.Add(@{name='account signed out recently';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($one,'{"slot":2,"label":"Reserve","status":"no_credentials","observedAt":"@t-42s@","active":false,"fresh":false,"lastGoodAt":"@t-2d@"}') @($work,'{"id":"personal","label":"Personal","status":"subscription_login_required","observedAt":"@t-3d@"}'))}})
     [void]$cases.Add(@{name='Codex plan ended';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @($one,$two) @($work,(Edit-Hotpl8ParityText $personal '"status":"ok",' '"status":"ok","planType":"free",')))}})
     [void]$cases.Add(@{name='same subscription enrolled twice';files=@{'policy.json'=$policy;'status.json'=(Join-Hotpl8ParityStatus @((Edit-Hotpl8ParityText $one '"status":"ok",' '"status":"ok","streamKey":"same",'),(Edit-Hotpl8ParityText $two '"status":"ok",' '"status":"duplicate_subscription","streamKey":"same",')) @((Edit-Hotpl8ParityText $work '"status":"ok",' '"status":"ok","streamKey":"same",'),(Edit-Hotpl8ParityText $personal '"status":"ok",' '"status":"ok","streamKey":"same",')))}})

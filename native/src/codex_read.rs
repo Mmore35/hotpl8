@@ -32,6 +32,8 @@ const WITHHELD: [&str; 4] = ["CODEX_ACCESS_TOKEN", "CODEX_API_KEY", "OPENAI_API_
 
 /// What one account answered.
 pub struct Account {
+    /// Nonsecret proof tying a completed observation to unchanged credential bytes.
+    pub connection: V,
     /// The limits, as Codex words them.
     pub quota: V,
     /// A name for the subscription that says nothing about it. It changes when another
@@ -335,6 +337,17 @@ impl Wire {
 
 /// What Codex keeps beside the sign-in: the account id, which `account/read` leaves out,
 /// and the token. The rest of the file is let go unread.
+/// Bounded, exact bytes: a receipt never aliases malformed UTF-8 or a partial read.
+pub(crate) fn credential_snapshot(home: &str) -> Option<(String, V)> {
+    let file = std::fs::File::open(Path::new(home).join("auth.json")).ok()?;
+    let mut bytes = Vec::new();
+    file.take(1_048_577).read_to_end(&mut bytes).ok()?;
+    if bytes.len() > 1_048_576 { return None; }
+    let text = std::str::from_utf8(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes)).ok()?;
+    let tokens = member(&json::parse_foreign(text).ok()?, "tokens");
+    Some((sha256::hex(&sha256::digest(&bytes), false), tokens))
+}
+
 fn signed_in(home: &str) -> V {
     let Ok(bytes) = std::fs::read(Path::new(home).join("auth.json")) else { return V::Null };
     if bytes.len() > 16_000_000 {
@@ -381,6 +394,7 @@ fn named(account: &V, quota: V, config: &V, signed: &V, asked: &Asked, auth: Opt
         standard_transport = false;
     }
     Ok(Account {
+        connection: V::Null,
         quota,
         identity_key,
         plan_type: plan_name(&member(account, "planType")),
@@ -396,6 +410,7 @@ fn named(account: &V, quota: V, config: &V, signed: &V, asked: &Asked, auth: Opt
 fn conversation(wire: &mut Wire, home: &str, asked: &Asked) -> Result<Account, &'static str> {
     wire.ask(1, r#"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"hotpl8","version":"0.1"},"capabilities":{"experimentalApi":true}}}"#)?;
     wire.say(r#"{"method":"initialized"}"#)?;
+    let before = credential_snapshot(home).map(|(digest, _)| digest);
     let account = member(&wire.ask(2, &format!(r#"{{"id":2,"method":"account/read","params":{{"refreshToken":{}}}}}"#, asked.refresh))?, "account");
     // A key is not a subscription: its limits are not the ones HotPl8 measures.
     if !member(&account, "type").as_str().is_some_and(|kind| kind.eq_ignore_ascii_case("chatgpt")) {
@@ -407,7 +422,17 @@ fn conversation(wire: &mut Wire, home: &str, asked: &Asked) -> Result<Account, &
     };
     let place = json::text(asked.directory.unwrap_or(home));
     let config = member(&wire.ask(4, &format!(r#"{{"id":4,"method":"config/read","params":{{"includeLayers":false,"cwd":{place}}}}}"#))?, "config");
-    described(home, &account, quota, &config, asked)?.map_err(|_| "transport_failed")
+    let mut read = described(home, &account, quota, &config, asked)?.map_err(|_| "transport_failed")?;
+    if !asked.identity_only && read.standard_transport && (read.model_provider.is_empty() || read.model_provider.eq_ignore_ascii_case("openai")) {
+        if let Some((digest, tokens)) = credential_snapshot(home).filter(|(digest, _)| Some(digest) == before.as_ref()) {
+            let email = member(&account, "email").s().unwrap_or_default();
+            let id = member(&tokens, "account_id").s().unwrap_or_default();
+            if !email.trim().is_empty() && !id.is_empty() {
+                read.connection = crate::obj! {"authDigest" => digest, "identity" => sha256::hash(&format!("{}|{id}", email.trim().to_lowercase()))};
+            }
+        }
+    }
+    Ok(read)
 }
 
 /// The program as it is started for one home: in that home unless the caller works
@@ -510,8 +535,15 @@ pub mod tests {
         script
     }
 
+    /// A read of a home nobody holds. The lock of the read before it can still look held
+    /// for a moment (`let_go` says why), so a home that answers busy is asked again.
     fn read(home: &str, timeout_ms: u64) -> HomeRead {
-        read_home(home, &Ok(stand_in()), timeout_ms)
+        let_go(|| Some(read_home(home, &Ok(stand_in()), timeout_ms)).filter(|read| failure(read) != "home_busy"))
+    }
+
+    /// The same read with what a caller adds.
+    fn read_as(home: &str, asked: &Asked) -> HomeRead {
+        let_go(|| Some(read_home_as(home, &Ok(stand_in()), 20_000, asked)).filter(|read| failure(read) != "home_busy"))
     }
 
     fn failure(read: &HomeRead) -> &'static str {
@@ -652,7 +684,7 @@ pub mod tests {
         let home = home("placed", &answers(&[]));
         let place = scratch("place");
         let named = place.to_string_lossy().into_owned();
-        let read = read_home_as(&home, &Ok(stand_in()), 20_000, &Asked { directory: Some(&named), refresh: true, ..Asked::default() });
+        let read = read_as(&home, &Asked { directory: Some(&named), refresh: true, ..Asked::default() });
         let account = read.outcome.ok().unwrap();
         assert!(account.auth.is_none() && !account.identity_verified);
         assert_eq!(account.identity_key, sha256::hash("fixture-a@example.invalid|"));
@@ -666,7 +698,7 @@ pub mod tests {
         remove(&named);
         // A place with no name is the home.
         let home = self::home("unplaced", &answers(&[]));
-        assert!(read_home_as(&home, &Ok(stand_in()), 20_000, &Asked { directory: Some(""), ..Asked::default() }).outcome.is_ok());
+        assert!(read_as(&home, &Asked { directory: Some(""), ..Asked::default() }).outcome.is_ok());
         assert_eq!(heard(&home)[4], format!(r#"{{"id":4,"method":"config/read","params":{{"includeLayers":false,"cwd":{}}}}}"#, json::text(&home)));
         remove(&home);
     }
@@ -681,19 +713,19 @@ pub mod tests {
         let config = r#"reply {"config":{"model":"gpt-fixture","model_provider":"openai","forced_chatgpt_workspace_id":"ws-fixture"}}"#;
         let home = home("who", &answers(&[("account/read", account), ("config/read", config)]));
         std::fs::write(Path::new(&home).join("auth.json"), r#"{"tokens":{"access_token":"fixture-not-a-token","account_id":"acct-fixture"}}"#).unwrap();
-        let read = read_home_as(&home, &Ok(stand_in()), 20_000, &only).outcome.ok().unwrap();
+        let read = read_as(&home, &only).outcome.ok().unwrap();
         assert!(read.identity_verified && read.quota.is_null() && read.auth.is_none());
         assert_eq!(read.identity_key, sha256::hash("fixture-a@example.invalid|acct-fixture"));
         let lines = heard(&home);
         assert_eq!(lines.len(), 4);
         assert!(lines.iter().all(|line| !line.contains("rateLimits")) && lines[3].starts_with(r#"{"id":4,"method":"config/read""#));
         // The same home, asked the usual way, is named the usual way.
-        let usual = read_home(&home, &Ok(stand_in()), 20_000).outcome.ok().unwrap();
+        let usual = read_as(&home, &Asked::default()).outcome.ok().unwrap();
         assert!(!usual.identity_verified && !usual.quota.is_null());
         assert_eq!(usual.identity_key, sha256::hash(" Fixture-A@example.invalid |ws-fixture|acct-fixture"));
         // A sign-in that names no account is not vouched for, and keeps the usual name.
         std::fs::remove_file(Path::new(&home).join("auth.json")).unwrap();
-        let unsigned = read_home_as(&home, &Ok(stand_in()), 20_000, &only).outcome.ok().unwrap();
+        let unsigned = read_as(&home, &only).outcome.ok().unwrap();
         assert!(!unsigned.identity_verified);
         assert_eq!(unsigned.identity_key, sha256::hash(" Fixture-A@example.invalid |ws-fixture"));
         remove(&home);
@@ -708,17 +740,17 @@ pub mod tests {
         let home = home("token", &answers(&[]));
         let file = Path::new(&home).join("auth.json");
         std::fs::write(&file, r#"{"tokens":{"access_token":"fixture-not-a-token","account_id":"acct-fixture","refresh_token":"fixture-never-read"}}"#).unwrap();
-        let account = read_home_as(&home, &Ok(stand_in()), 20_000, &with).outcome.ok().unwrap();
+        let account = read_as(&home, &with).outcome.ok().unwrap();
         let auth = account.auth.unwrap();
         assert_eq!((auth.access_token.as_str(), auth.account_id.as_str()), ("fixture-not-a-token", "acct-fixture"));
         assert_eq!(account.identity_key, sha256::hash("fixture-a@example.invalid||acct-fixture"));
         assert!(read(&home, 20_000).outcome.ok().unwrap().auth.is_none());
         for partial in [r#"{"tokens":{"account_id":"acct-fixture"}}"#, r#"{"tokens":{"access_token":"fixture-not-a-token"}}"#, r#"{"tokens":{"access_token":"","account_id":"acct-fixture"}}"#, "{}"] {
             std::fs::write(&file, partial).unwrap();
-            assert_eq!(failure(&read_home_as(&home, &Ok(stand_in()), 20_000, &with)), "subscription_login_required", "{partial}");
+            assert_eq!(failure(&read_as(&home, &with)), "subscription_login_required", "{partial}");
         }
         std::fs::remove_file(&file).unwrap();
-        assert_eq!(failure(&read_home_as(&home, &Ok(stand_in()), 20_000, &with)), "subscription_login_required");
+        assert_eq!(failure(&read_as(&home, &with)), "subscription_login_required");
         remove(&home);
     }
 
@@ -884,7 +916,7 @@ pub mod tests {
         assert_eq!(failure(&read(&gone, 20_000)), "home_missing");
         assert_eq!(failure(&read("fixture/relative", 20_000)), "home_missing");
         let held = files::lock(&lock_path(&home_path(&home).ok().unwrap())).ok().unwrap();
-        assert_eq!(failure(&read(&home, 20_000)), "home_busy");
+        assert_eq!(failure(&read_home(&home, &Ok(stand_in()), 20_000)), "home_busy");
         // A busy home is said before a missing program, and a missing program once it is free.
         assert_eq!(failure(&read_home(&home, &Err("codex_missing"), 20_000)), "home_busy");
         drop(held);

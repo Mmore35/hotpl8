@@ -1,4 +1,6 @@
-# Configuration
+# Configuration reference (policy.json)
+
+The fields of `policy.json`, which controls account order, reserves, switching, warming, automatic continue and critical mode.
 
 Copy the tracked example only for a new installation. The [schema](../policy.schema.json) documents versions 1, 2 and 3. Runtime validation also applies to legacy policy fields before Claude actions.
 
@@ -11,7 +13,7 @@ Copy the tracked example only for a new installation. The [schema](../policy.sch
 | `automation.continue` | [Automatic continue](plans/automatic-continue.md) after a usage limit. On unless set to `false`; needs a mode other than monitor, not `switchEnabled`. |
 | `order`, `resetLeadMin` | prefer, soonest-reset, or version-2 weekly-expiry/balanced; 10-minute lead avoids unnecessary switches. |
 | `margin5h`, `margin7d`, `margin7dWork`, `hysteresis` | Remaining-percentage floors: 25, 20, 5, and 10. |
-| `maxUsageAgeS`, `staleQuarantineS` | Freshness ceiling 900 seconds; stale recovery threshold 21600 seconds. |
+| `maxUsageAgeS`, `staleQuarantineS` | Freshness ceiling 900 seconds; stale recovery threshold 21600 seconds. A reading cswap is pacing on purpose, or holding back after a 429 until its next planned read, is not called stale or unavailable until 120 seconds past that read. |
 | `warmMin7d`, `warmMin7dWork` | Remaining weekly floors for warming: 20/5. |
 | `warmFloorMin`, `warmPhaseWindowMin` | Minimum repeat interval 20 minutes; phase tolerance 15 minutes. |
 | `pattern`, `weights`, `warmGroup` | maintain (default), even, synced, or clustered; optional positive weights/group size. |

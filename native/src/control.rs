@@ -95,7 +95,7 @@ pub fn provider_action_context(policy: &V, directory: &Path, context: &V, now: D
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::files::tests::{scratch, shared_rules};
+    use crate::files::tests::{let_go, scratch, shared_rules};
     use crate::obj;
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
         std::fs::write(directory.join("hold.json"), "{}").unwrap();
         assert_eq!(action_authorization(&directory, &generation, || Ok(7)).err().unwrap().said(), Some("action_state_changed"));
         // Someone else inside the boundary is waited for, for a moment.
-        let held = files::lock(&directory.join("action-control.lock")).ok().unwrap();
+        let held = let_go(|| files::lock(&directory.join("action-control.lock")).ok());
         assert_eq!(control_write(&directory, 60, || Ok(())).err().unwrap().said(), Some("action_control_busy"));
         drop(held);
         assert_eq!(control_write(&directory.join("none"), 60, || Ok(())).err().unwrap().said(), Some("action_state_unavailable"));

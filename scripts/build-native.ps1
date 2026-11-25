@@ -41,6 +41,8 @@ try{
         }
         & cargo build --release --locked --target $triple
         if($LASTEXITCODE -ne 0){throw ('Native build failed: '+$triple)}
+        # Read from native/target. With CARGO_TARGET_DIR set cargo builds somewhere else and
+        # the copy below fails or takes an older file, so unset it for this script.
         $built+=Join-Path $native ('target/'+$triple+'/release/'+$name)
     }
     [void][IO.Directory]::CreateDirectory((Split-Path $output -Parent))

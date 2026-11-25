@@ -255,7 +255,9 @@ export async function main(config, args) {
         # New bootstrap remains safe even though old recover cannot undo it.
         self.assertTrue(d.read(self.bridge_config).get("deliveryRoot"))
         self.assertEqual(self.t3_probe(), A)
-        self.assertEqual(d.update(self.root, self.github)["state"], "pending")
+        # Tried again until it has failed three times, then held back until main moves.
+        self.assertEqual([d.update(self.root, self.github)["state"] for _ in range(3)], ["error", "error", "pending"])
+        self.assertEqual(self.t3_probe(), A)
 
     @unittest.skipUnless(os.name == "nt", "Windows T3 delivery")
     def test_t3_interrupted_activation_recovers_and_tamper_fails_closed(self):
@@ -333,6 +335,70 @@ export async function main(config, args) {
         self.assertEqual(d.read(self.settings_path)["providerInstances"]["codex"]["config"]["binaryPath"], "codex")
         self.assertEqual(self.t3_probe(), C)
 
+    def test_adapter_reason_reaches_status_but_other_child_output_never_does(self):
+        def child(*stderr):
+            code = "import sys\n" + "".join("print(%r, file=sys.stderr)\n" % line for line in stderr) + "raise SystemExit(1)\n"
+            return [sys.executable, "-c", code]
+        with self.assertRaises(d.Deferred) as caught:
+            d.run(child("D:/HotPl8 state/policy.json", "delivery-deferred: Collector is busy"), reasons=True)
+        self.assertEqual(str(caught.exception), "Collector is busy")
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.run(child("delivery-error: Candidate policy/readiness validation failed."), reasons=True)
+        self.assertNotIsInstance(caught.exception, d.Deferred)
+        self.assertEqual(str(caught.exception), "Candidate policy/readiness validation failed.")
+        # Only the adapter's own last line counts, and only when the caller opts in.
+        for stderr, reasons in ((("delivery-error: early", "token=secret"), True),
+                                (("delivery-error: ok",), False),
+                                (("delivery-error: caf\u00e9",), True),
+                                (("delivery-error: " + "x" * 241,), True),
+                                (("delivery-later: unknown kind",), True)):
+            with self.subTest(stderr=stderr, reasons=reasons):
+                with self.assertRaises(d.DeliveryError) as caught:
+                    d.run(child(*stderr), reasons=reasons)
+                self.assertNotIsInstance(caught.exception, d.Deferred)
+                self.assertTrue(str(caught.exception).startswith("Command failed: "))
+
+    def test_adapter_refusal_is_reported_with_its_reason(self):
+        def refuse(config, release, operation, root):
+            raise d.DeliveryError("Candidate policy/readiness validation failed.")
+        status = d.update(self.root, self.github, refuse)
+        self.assertEqual((status["state"], status["reason"]), ("error", "Candidate policy/readiness validation failed."))
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
+
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell adapter")
+    def test_real_adapters_name_their_own_refusal_and_nothing_else(self):
+        # Until 2026-10 every refusal read only "Command failed: powershell.exe".
+        source = Path(__file__).resolve().parents[1]
+        release = self.root / "releases" / B
+        release.mkdir(parents=True)
+        for name in ("src", "delivery"):
+            shutil.copytree(source / name, release / name, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(source / "hotpl8.ps1", release / "hotpl8.ps1")
+        shutil.copyfile(source / "policy.example.json", self.state / "policy.json")
+        config = dict(self.config, adapter="delivery/hotpl8-adapter.ps1")
+        # A release without its compiled reader is refused by a literal throw.
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(config, release, "preflight", self.root)
+        self.assertTrue(str(caught.exception).startswith("This copy has no compiled reader it can start"))
+        # An error PowerShell raises itself names the private path, so it stays generic.
+        missing = self.root / "releases" / C
+        shutil.copytree(release, missing)
+        (missing / "src" / "common.ps1").unlink()
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(config, missing, "preflight", self.root)
+        self.assertEqual(str(caught.exception), "Command failed: powershell.exe")
+        # So does a literal throw whose text holds a path, even one without a drive.
+        planted = self.root / "releases" / ("d" * 40)
+        shutil.copytree(release, planted)
+        (planted / "src" / "config.ps1").write_text("throw 'Cannot read private\\policy.json'\n", encoding="utf-8")
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(config, planted, "preflight", self.root)
+        self.assertEqual(str(caught.exception), "Command failed: powershell.exe")
+        macos = dict(config, platform="macos", adapter="delivery/macos.py", python=sys.executable)
+        with self.assertRaises(d.DeliveryError) as caught:
+            d.invoke_adapter(macos, release, "preflight", self.root)
+        self.assertEqual(str(caught.exception), "This operation requires macOS")
+
     def test_failed_ci_never_changes_pointer(self):
         self.github.fail = True
         self.assertEqual(self.update()["state"], "pending")
@@ -365,17 +431,141 @@ export async function main(config, args) {
         self.assertEqual(result["state"], "error")
         self.assertEqual(d.read(self.root / "current.json"), self.previous)
         self.assertEqual(d.read(self.state / "ledger.json"), {"request": 43})
-        self.assertEqual(self.update()["state"], "pending")
+        # The same revision is tried again, from its staged copy, until it has failed three times.
+        self.assertEqual([d.update(self.root, self.github, adapter)["state"] for _ in range(2)], ["error", "error"])
+        self.assertEqual(d.read(self.root / "rejected.json")["attempts"], 3)
+        self.assertIn("bad health", d.read(self.root / "rejected.json")["reason"])
+        result = self.update()
+        self.assertEqual(result["state"], "pending")
+        self.assertIn("failed activation 3 times (Activation failed: bad health)", result["reason"])
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
         self.assertEqual(self.github.downloads, 1)
 
-    def test_interrupted_activation_restores_previous(self):
+    def test_a_failed_first_activation_is_counted_once_with_its_own_reason(self):
+        (self.root / "current.json").unlink()
+        def adapter(config, release, operation, root):
+            if operation == "drain":
+                raise d.DeliveryError("boom at drain")
+        self.assertEqual([d.update(self.root, self.github, adapter)["state"] for _ in range(4)], ["error", "error", "error", "pending"])
+        rejected = d.read(self.root / "rejected.json")
+        self.assertEqual((rejected["attempts"], rejected["reason"]), (3, "Activation failed: boom at drain"))
+        self.assertFalse((self.root / "transaction.json").exists())
+        self.assertFalse((self.root / "current.json").exists())
+
+    def test_a_revision_that_failed_activation_once_is_installed_when_it_next_succeeds(self):
+        d.write(self.root / "rejected.json", {"sha": B, "at": d.now(), "reason": "Interrupted activation"})
+        result = self.update()
+        self.assertEqual(result["state"], "current")
+        self.assertEqual(d.read(self.root / "current.json")["sha"], B)
+        self.assertFalse((self.root / "rejected.json").exists())
+
+    def test_interrupted_activation_restores_previous_then_tries_again(self):
         d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": B}})
         d.write(self.root / "current.json", {"sha": B, "release": "releases/" + B})
         result = self.update()
         self.assertEqual(result["state"], "pending")
         self.assertEqual(d.read(self.root / "current.json"), self.previous)
-        self.assertIn("recover", self.calls)
-        self.assertEqual(self.calls[:2], ["preflight", "recover"])
+        self.assertEqual(self.calls, ["preflight", "recover"])
+        # An activation cut off part way is routine (a restart, a sleep, a time limit): the
+        # next update activates the same revision again.
+        result = self.update()
+        self.assertEqual(result["state"], "current")
+        self.assertEqual(d.read(self.root / "current.json")["sha"], B)
+        self.assertEqual(d.read(self.root / "previous.json"), self.previous)
+        self.assertFalse((self.root / "rejected.json").exists())
+
+    def test_a_third_interrupted_activation_holds_the_revision_back(self):
+        d.write(self.root / "rejected.json", {"sha": B, "at": d.now(), "reason": "Interrupted activation", "attempts": 2})
+        d.write(self.root / "transaction.json", {"previous": self.previous, "candidate": {"sha": B}})
+        d.write(self.root / "current.json", {"sha": B, "release": "releases/" + B})
+        self.assertEqual(self.update()["state"], "pending")
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
+        self.assertEqual(self.calls, ["preflight", "recover"])
+        result = self.update()
+        self.assertEqual(result["state"], "pending")
+        self.assertIn("failed activation 3 times (Interrupted activation)", result["reason"])
+        self.assertEqual(d.read(self.root / "current.json"), self.previous)
+        self.assertEqual(self.github.downloads, 0)
+
+    def old_releases(self, count):
+        """Staged releases other than A, oldest first, each a minute older than the next."""
+        shas = [format(n, "x") * 40 for n in range(3, 3 + count)]
+        for age, sha in enumerate(reversed(shas)):
+            folder = self.root / "releases" / sha
+            folder.mkdir(parents=True)
+            (folder / "file.txt").write_text(sha)
+            stamp = time.time() - 3600 - 60 * age
+            os.utime(folder, (stamp, stamp))
+        (self.root / "releases" / A).mkdir(parents=True, exist_ok=True)
+        return shas
+
+    def pruning_adapter(self, answer):
+        def adapter(config, release, operation, root):
+            self.calls.append(operation)
+            if operation == "inuse":
+                if isinstance(answer, Exception):
+                    raise answer
+                return json.dumps(answer(root) if callable(answer) else answer).encode()
+        return adapter
+
+    def test_activation_prunes_releases_nothing_needs(self):
+        shas = self.old_releases(7)
+        rejected, held = shas[0], shas[1]
+        d.write(self.root / "rejected.json", {"sha": rejected})
+        (self.root / "releases" / (".prune-" + shas[2] + "-left")).mkdir()
+        adapter = self.pruning_adapter(lambda root: {"refuse": False, "paths": [str(root / "releases" / held)]})
+        result = d.update(self.root, self.github, adapter)
+        self.assertEqual(result["state"], "current")
+        self.assertIsNone(result["pruneError"])
+        left = sorted(p.name for p in (self.root / "releases").iterdir())
+        # Current, previous, rejected, the release a process holds and the three newest others.
+        self.assertEqual(left, sorted([B, A, rejected, held, *shas[-3:]]))
+        self.assertEqual(self.calls[-1], "inuse")
+
+    def test_unknown_use_removes_nothing(self):
+        shas = self.old_releases(6)
+        for answer, error in (({"refuse": True, "paths": []}, "InUseUnknown"), ({}, "InUseUnknown"),
+                              (d.DeliveryError("Command failed: powershell.exe"), "DeliveryError")):
+            result = d.update(self.root, self.github, self.pruning_adapter(answer))
+            self.assertEqual(result["state"], "current")
+            self.assertEqual(result["pruneError"], error)
+            self.assertEqual(len([p for p in (self.root / "releases").iterdir()]), len(shas) + 2)
+            d.write(self.root / "current.json", self.previous)
+
+    def test_a_release_that_cannot_be_moved_aside_is_kept_whole(self):
+        shas = self.old_releases(5)
+        real = os.rename
+        def rename(source, target):
+            if Path(source).name == shas[0]:
+                raise PermissionError("in use")
+            return real(source, target)
+        with patch.object(d.os, "rename", rename):
+            result = d.update(self.root, self.github, self.pruning_adapter({"refuse": False, "paths": []}))
+        self.assertIsNone(result["pruneError"])
+        self.assertEqual((self.root / "releases" / shas[0] / "file.txt").read_text(), shas[0])
+        self.assertFalse((self.root / "releases" / shas[1]).exists())
+        self.assertFalse([p for p in (self.root / "releases").iterdir() if p.name.startswith(".prune-")])
+
+    def test_activation_prunes_old_previews(self):
+        old = time.time() - 15 * 86400
+        folders = {name: self.root / "previews" / name for name in
+                   ("pr-1/" + A, "pr-2/" + A, "pr-2/" + B, "pr-3/" + C, "baseline-" + A, "baseline-" + B,
+                    ".baseline-x", "baseline-" + C)}
+        for name, folder in folders.items():
+            folder.mkdir(parents=True)
+            (folder / "preview.json").write_text("{}")
+            if name not in ("pr-2/" + B, "baseline-" + B):
+                os.utime(folder, (old, old))
+        held = str(folders["pr-3/" + C])
+        held_baseline = str(folders["baseline-" + C])
+        result = d.update(self.root, self.github, self.pruning_adapter({"refuse": False, "paths": [held, held_baseline]}))
+        self.assertIsNone(result["pruneError"])
+        self.assertFalse((self.root / "previews" / "pr-1").exists())
+        self.assertFalse(folders["pr-2/" + A].exists())
+        self.assertTrue(folders["pr-2/" + B].exists() and folders["pr-3/" + C].exists())
+        # Observe baselines go the same way, and a half-unpacked one too.
+        self.assertFalse(folders["baseline-" + A].exists() or folders[".baseline-x"].exists())
+        self.assertTrue(folders["baseline-" + B].exists() and folders["baseline-" + C].exists())
 
     def test_failed_activation_refuses_incompatible_rollback_before_pointer_or_recover(self):
         calls = []

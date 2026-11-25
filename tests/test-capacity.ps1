@@ -3,7 +3,7 @@ $root=Split-Path $PSScriptRoot -Parent
 foreach($file in @('common','config','collection','management','native')){. (Join-Path $root ('src/'+$file+'.ps1'))}
 . (Join-Path $PSScriptRoot 'fixtures/screenshots.ps1')
 . (Join-Path $PSScriptRoot 'fixtures/frame.ps1')
-$fixture=Get-Hotpl8ScreenshotFixture;$now=$fixture.now
+$fixture=Get-Hotpl8ScreenshotFixture -TwoAccounts;$now=$fixture.now
 $script:passed=0;$script:failed=0
 function Assert($Value,[string]$Message='assertion failed'){if(-not $Value){throw $Message}}
 function Check($Name,[scriptblock]$Body){try{& $Body;$script:passed++;'PASS '+$Name}catch{$script:failed++;'FAIL '+$Name+': '+$_.Exception.Message+' at '+$_.InvocationInfo.ScriptLineNumber}}
@@ -139,6 +139,24 @@ Check 'detected plan weights estimate current session allowance without inventin
     $s.slots[1].used5h=50;$s.slots[1].used7d=10
     $text=(Summary $s $p)-join "`n"
     Assert ($text.Contains('~42% now') -and $text.Contains('7d 90%') -and -not $text.Contains('Weekly remaining'))
+}
+Check 'Ultra and Max pool what each can use now, in weeks of the smallest plan' {
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity')
+    foreach($slot in $s.slots){$slot|Add-Member NoteProperty plan @{status='detected';profile='claude-max-5x';observedAt=$now.ToString('o')} -Force}
+    $s.slots[0].plan.profile='claude-max-20x'
+    $s.slots[0]|Add-Member NoteProperty limit5h 'none' -Force
+    $s.slots[0].used5h=$null;$s.slots[0].reset5h='';$s.slots[0].used7d=26
+    $s.slots[1].used5h=74;$s.slots[1].used7d=72
+    # 7.4 of Ultra's week of 10 and 0.13 of Max's five hours of 0.5: 7.53 of 10.5. The weeks
+    # are 74% of 10 and 28% of 5.
+    $text=(Summary $s $p)-join "`n"
+    Assert ($text.Contains('~72% now') -and $text.Contains('7d 59%')) $text
+    $p=Policy;$s=Snapshot;$p.PSObject.Properties.Remove('capacity');$p|Add-Member NoteProperty disabled @(2)
+    $s.slots[0]|Add-Member NoteProperty plan @{status='detected';profile='claude-max-20x';observedAt=$now.ToString('o')} -Force
+    $s.slots[0]|Add-Member NoteProperty limit5h 'none' -Force
+    $s.slots[0].used5h=$null;$s.slots[0].reset5h='';$s.slots[0].used7d=50
+    $text=(Summary $s $p)-join "`n"
+    Assert ($text.Contains('~50% now') -and $text.Contains('+50% in 2d 04h')) $text
 }
 Check 'equal Codex plans with one switched off show the other alone' {
     $p=Clone $fixture.policy;$s=Snapshot

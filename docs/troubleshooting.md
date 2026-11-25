@@ -1,5 +1,7 @@
 # Troubleshooting
 
+What to check when readings become unavailable, a Claude reading drops, or Codex quota disappears. Start with `hotpl8 doctor -AsJson`, which is offline and redacted.
+
 ## Readings become unavailable while the dashboard is open
 
 Run `hotpl8 explain` and inspect the sanitized local `events.jsonl`. `state_io_failed` with a known state filename means local persistence failed; it does not mean the provider rejected your login. Windows replacement error 1175 can occur during replacement's delete phase. The shared writer retries safe contention for up to one second, retaining complete old data on failure. Persistent required-state failures retry on the next scheduler minute; network/provider failures keep their own backoff.
@@ -16,7 +18,8 @@ Start with `hotpl8 doctor -AsJson`. It is offline and redacted. Run `hotpl8 refr
 | Missing cswap/Codex | Install the relevant native dependency; verify PATH in a new terminal. |
 | No accounts | Complete native login and explicit enrollment. |
 | An account stopped being paid for, or has been unreadable for a week | Run `hotpl8 park`; see [canceled and unreadable accounts](operations.md#canceled-and-unreadable-accounts). |
-| Stale reading | Check the collector task in Task Scheduler and local events.jsonl. Offline/sleep periods do not imply refreshed quota. |
+| Stale reading | Check the collector task in Task Scheduler and local events.jsonl. Offline/sleep periods do not imply refreshed quota. The Windows task runs only while its user is signed in, so after an unattended restart (a Windows update, for one) collection stops until someone signs in. |
+| A Claude plan reads `unavailable`, or an account `INCOMPLETE` | One ask for the plan can fail. `claude-plans.json` keeps that answer until its `nextAttemptAt`, 15 minutes later, and a plan detected before is carried as `lastDetected` for a week. Wait for the next ask, or run `python src/providers/claude_plan.py SLOT` (a real ask) before suspecting the account. |
 | Collector busy | Another collector/setup holds the state lock. Wait; do not delete live lock files. |
 | Authentication required | Use the native provider login/recovery flow. Do not copy another home's token. |
 | Unknown quota meter/constraint | Inspect native quota and the configured account basis; unknown evidence is not unlimited. |

@@ -2,6 +2,7 @@
 //! Each is a program of its own, started only when the wake has that work for it, and it
 //! answers with one line of JSON: that it is done, or the failure it met.
 
+use crate::cswap;
 use crate::files;
 use crate::json;
 use crate::obj;
@@ -38,8 +39,7 @@ pub fn powershell(named: Option<&str>) -> String {
 
 /// Get-Hotpl8ClaudeSettingsPath
 fn claude_settings(home: &Path) -> PathBuf {
-    let named = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|value| !value.is_empty());
-    named.map_or_else(|| home.join(".claude"), PathBuf::from).join("settings.json")
+    cswap::claude_folder(home).join("settings.json")
 }
 
 impl Lanes<'_> {

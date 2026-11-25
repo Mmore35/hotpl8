@@ -1,4 +1,6 @@
-# Commands
+# Command reference
+
+The `hotpl8` commands and what each does, from the cached dashboard to account enrollment and Codex launches. The controls are explained in [account operations](operations.md).
 
 | Command | Behavior |
 |---|---|

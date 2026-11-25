@@ -291,13 +291,14 @@ fn native_readiness(policy: &V, snapshot: &V, directory: &Path, family: &str, mo
                     let w7 = resolve_window(&slot.g("used7d")?, &slot.g("reset7d")?, &observed, now, false)?;
                     let w5 = resolve_window(&slot.g("used5h")?, &slot.g("reset5h")?, &observed, now, false)?;
                     let week = overview_percent(&w7.g("used")?)? && (w7.g("rolledOver")?.t()? || future_reset(&w7.g("resetAt")?, now, false)?);
-                    let short = overview_percent(&w5.g("used")?)?
+                    let no_limit = slot.g("limit5h")?.eq_s("none")?;
+                    let short = no_limit || overview_percent(&w5.g("used")?)?
                         && (w5.g("rolledOver")?.t()?
                             || future_reset(&w5.g("resetAt")?, now, false)?
                             || (slot.g("cold")?.is_true()? && slot.g("used5h")?.eq_i(0)? && !slot.g("reset5h")?.t()?));
                     let number = V::s_of(id).to_int()?;
                     let blocked = model_block(&slot.g("scoped")?, policy, number, now, &observed)?;
-                    let h5 = if short { Some(100.0 - w5.g("used")?.dbl()?) } else { None };
+                    let h5 = if short && !no_limit { Some(100.0 - w5.g("used")?.dbl()?) } else { None };
                     let h7 = if week { Some(100.0 - w7.g("used")?.dbl()?) } else { None };
                     let entry = hash! {
                         "h5" => seconds(h5),
@@ -305,6 +306,7 @@ fn native_readiness(policy: &V, snapshot: &V, directory: &Path, family: &str, mo
                         // A zero floor is not permission to use an exhausted account, including in critical mode.
                         "fresh" => slot.g("fresh")?.is_true()? && short && week && h5 != Some(0.0) && h7 != Some(0.0),
                         "modelBlocked" => blocked.t()?,
+                        "limit5h" => slot.g("limit5h")?,
                         "obj" => hash! {"usage" => hash! {
                             "fiveHour" => hash! {"resetsAt" => w5.g("resetAt")?},
                             "sevenDay" => hash! {"resetsAt" => w7.g("resetAt")?},
@@ -326,6 +328,9 @@ fn native_readiness(policy: &V, snapshot: &V, directory: &Path, family: &str, mo
                         "below_margin".into()
                     };
                     for (minutes, window) in [(300, &w5), (10080, &w7)] {
+                        if minutes == 300 && no_limit {
+                            continue;
+                        }
                         let used = window.g("used")?;
                         windows.push(obj! {
                             "durationMinutes" => minutes,
@@ -681,6 +686,31 @@ pub mod tests {
         // A policy whose Codex part is not valid is not a valid policy.
         fs::write(directory.join("policy.json"), POLICY).unwrap();
         assert_eq!(asked(&directory, "accounts", ""), r#"{"code":"policy_invalid"}"#);
+    }
+
+    #[test]
+    fn an_account_with_no_five_hour_limit_is_ready_on_its_week_and_has_no_five_hour_window() {
+        let directory = state("agent-no-five-hour");
+        claude_slots(&directory, |slots| {
+            set(&slots[0], "limit5h", "none".into());
+            set(&slots[0], "used5h", V::Null);
+            set(&slots[0], "reset5h", V::Null);
+        });
+        let readiness = ready(&directory, "claude");
+        assert_eq!(account(&readiness, "1"), "True eligible");
+        let rows = readiness.g("accounts").ok().unwrap().arr();
+        let minutes: Vec<String> = rows[0].g("windows").ok().unwrap().arr().iter().map(|window| window.g("durationMinutes").ok().unwrap().s().ok().unwrap()).collect();
+        assert_eq!(minutes, ["10080"]);
+        // With no such finding the same reading is no reading of that window.
+        let directory = state("agent-five-hour-missing");
+        claude_slots(&directory, |slots| {
+            set(&slots[0], "limit5h", "unreported".into());
+            set(&slots[0], "fresh", false.into());
+            set(&slots[0], "used5h", V::Null);
+            set(&slots[0], "reset5h", V::Null);
+        });
+        let readiness = ready(&directory, "claude");
+        assert!(account(&readiness, "1").starts_with("False"), "{}", account(&readiness, "1"));
     }
 
     #[test]

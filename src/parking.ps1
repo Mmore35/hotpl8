@@ -231,7 +231,7 @@ function Format-Hotpl8ParkCandidates($Candidates) {
         '  '+([string]$candidate.label).PadRight($width)+'    '+$detail
     }
     # An unreadable account is not proof of a cancellation, except here.
-    if(@($Candidates|Where-Object {$_.reason -eq 'dormant' -and $_.family -eq 'claude'}).Count){'  Claude refuses sign-in without a Pro or Max plan, so an account you cannot sign back into is canceled.'}
+    if(@($Candidates|Where-Object {$_.reason -eq 'dormant' -and $_.family -eq 'claude'}).Count){'  Claude refuses sign-in without a Pro, Max or Ultra plan, so an account you cannot sign back into is canceled.'}
 }
 function Format-Hotpl8Parked($Results) {
     foreach($result in @($Results)){

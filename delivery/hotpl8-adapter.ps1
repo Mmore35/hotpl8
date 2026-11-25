@@ -1,10 +1,23 @@
 # Product operations for Local Delivery protocol 1. State is never rolled back.
 [CmdletBinding()]
 param(
-    [ValidateSet('preflight','drain','activate','health','recover','components')][string]$Operation,
+    [ValidateSet('preflight','drain','activate','health','recover','components','inuse')][string]$Operation,
     [string]$InstallDirectory, [string]$ReleaseDirectory, [string]$StateDirectory
 )
 $ErrorActionPreference='Stop'
+# The runner admits only the last stderr line, "delivery-error: <reason>", into the
+# status feed. Only this product's own refusals qualify: a literal throw (exactly a
+# RuntimeException from a throw statement) whose text names no Windows path. A
+# .NET or cmdlet error may carry private paths and stays "Command failed". The
+# whole error record still precedes it for an operator running this by hand.
+trap{
+    [Console]::Error.WriteLine(($_|Out-String).TrimEnd())
+    $refusal=$_.Exception
+    if($refusal.GetType() -eq [Management.Automation.RuntimeException] -and $refusal.WasThrownFromThrowStatement -and $refusal.Message -notmatch '[\\:]'){
+        [Console]::Error.WriteLine('delivery-error: '+$refusal.Message)
+    }
+    exit 1
+}
 . (Join-Path $ReleaseDirectory 'src/common.ps1')
 . (Join-Path $ReleaseDirectory 'src/config.ps1')
 . (Join-Path $ReleaseDirectory 'src/providers/codex.ps1')
@@ -18,6 +31,30 @@ if($Operation -eq 'drain'){
 }
 if($Operation -eq 'components'){
     ConvertTo-Json -InputObject @(@(Get-Hotpl8T3DeliveryStatus $InstallDirectory $StateDirectory)+@(Get-Hotpl8JobComponentStatus $InstallDirectory)) -Depth 8
+    exit 0
+}
+if($Operation -eq 'inuse'){
+    # The runner removes old releases and previews only from this answer. A folder counts
+    # as used when any process names it, or a T3 bridge reports the release it loaded; a
+    # process list that cannot be read, a HotPl8 program whose command line cannot be read
+    # (one started elevated), or a bridge whose release is unknown means nothing is removed.
+    # Other programs hidden that way are not counted: an elevated Python on this machine
+    # would otherwise hold every release for as long as it ran, and HotPl8's tasks never
+    # start elevated.
+    $paths=@();$refuse=$false
+    try{
+        foreach($proc in @(Get-CimInstance Win32_Process -ErrorAction Stop)){
+            if(-not $proc.CommandLine -and $proc.Name -in @('hotpl8-native.exe','finite-host.exe')){$refuse=$true}
+            $text=([string]$proc.ExecutablePath)+' '+([string]$proc.CommandLine)
+            foreach($m in [regex]::Matches($text,'(?i)[\\/]releases[\\/]([a-f0-9]{40})(?![a-f0-9])')){$paths+=Join-Path $InstallDirectory ('releases/'+$m.Groups[1].Value.ToLowerInvariant())}
+            foreach($m in [regex]::Matches($text,'(?i)[\\/]previews[\\/](pr-[0-9]+)[\\/]([a-f0-9]{40})(?![a-f0-9])')){$paths+=Join-Path $InstallDirectory ('previews/'+$m.Groups[1].Value.ToLowerInvariant()+'/'+$m.Groups[2].Value.ToLowerInvariant())}
+        }
+        foreach($bridge in @(Get-Hotpl8T3DeliveryStatus $InstallDirectory $StateDirectory)){
+            if($bridge.unknownRunningProcesses -gt 0){$refuse=$true}
+            foreach($sha in @($bridge.runningShas)){if($sha -match '^[a-f0-9]{40}$'){$paths+=Join-Path $InstallDirectory ('releases/'+$sha)}}
+        }
+    }catch{$refuse=$true}
+    ConvertTo-Json -InputObject ([pscustomobject]@{refuse=$refuse;paths=@($paths|Select-Object -Unique)}) -Compress
     exit 0
 }
 if($Operation -in @('preflight','activate','health','recover')){

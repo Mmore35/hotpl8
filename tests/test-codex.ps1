@@ -78,6 +78,8 @@ try {
         Check ('transport failure '+$pair[0]) {
             # Error classification needs time to start the fixture on a busy host.
             # Only deliberately stalled processes test the short timeout contract.
+            # 3000 ms still ran out once (403, 2026-11, full scripts/test.ps1 on a loaded
+            # host); the unchanged rerun passed. A lone timeout here is load, not a regression.
             $budget=if($pair[1] -eq 'timeout'){500}else{3000}
             $r=Read-CodexQuota $homeA $fake $budget
             Assert ($r.status -eq $pair[1]) $r.status

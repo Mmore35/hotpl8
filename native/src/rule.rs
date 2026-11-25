@@ -286,7 +286,7 @@ mod tests {
     use super::*;
     use crate::agent::tests::{changed, noon, set, state};
     use crate::codex_read::tests::{answers, home, stand_in, LIMITS};
-    use crate::files::tests::scratch;
+    use crate::files::tests::{let_go, scratch};
     use crate::hash;
     use crate::sha256;
     use std::fs;
@@ -496,6 +496,18 @@ mod tests {
         assert_eq!(stand.heard(), Vec::<String>::new());
     }
 
+    /// The line a read of a home nobody holds is answered with. The lock of the read before
+    /// it can still look held for a moment (`let_go` says why), so a home that answers busy
+    /// is asked again, and the finders are heard for the one read that was answered.
+    fn read_line(stand: &Stand, asked: V) -> String {
+        let_go(|| {
+            stand.heard();
+            let (line, answered) = stand.line("codex.read", &asked);
+            assert!(answered, "{line}");
+            Some(line).filter(|line| !line.contains(r#""status":"home_busy""#))
+        })
+    }
+
     #[test]
     fn a_codex_account_is_read_without_its_sign_in() {
         set_core(false);
@@ -516,8 +528,7 @@ mod tests {
         assert!(!line.contains("fixture-not-a-token") && !line.contains("example.invalid") && !line.contains("acct-fixture"), "{line}");
 
         // Who is signed in: the same members, no limits, and whether the sign-in vouches.
-        let (line, answered) = stand.line("codex.read", &obj! {"home" => home.as_str(), "executable" => "named.exe", "workingDirectory" => "", "timeoutMs" => 20_000, "identityOnly" => true});
-        assert!(answered, "{line}");
+        let line = read_line(&stand, obj! {"home" => home.as_str(), "executable" => "named.exe", "workingDirectory" => "", "timeoutMs" => 20_000, "identityOnly" => true});
         assert_eq!(stand.heard(), [r#"codex Some("named.exe")"#]);
         let who = json::parse(&line, "answer").ok().unwrap().g("value").ok().unwrap();
         assert_eq!(names(&who), ["status", "quota", "identityKey", "planType", "model", "modelProvider", "standardTransport", "elapsedMs", "identityVerified"]);
@@ -525,7 +536,8 @@ mod tests {
         assert_eq!(who.g("identityKey").ok().unwrap().s().ok().unwrap(), sha256::hash("fixture-a@example.invalid|acct-fixture"));
         assert!(!line.contains("fixture-not-a-token") && !line.contains("example.invalid") && !line.contains("acct-fixture"), "{line}");
         fs::remove_file(Path::new(&home).join("auth.json")).unwrap();
-        let unsigned = stand.value("codex.read", obj! {"home" => home.as_str(), "timeoutMs" => 20_000, "identityOnly" => true});
+        let value = |line: String| json::parse_foreign(&line).ok().unwrap().g("value").ok().unwrap();
+        let unsigned = value(read_line(&stand, obj! {"home" => home.as_str(), "timeoutMs" => 20_000, "identityOnly" => true}));
         assert!(unsigned.g("identityVerified").ok().unwrap().is_false().ok().unwrap());
 
         // A read that fails is its name and how long it took, and nothing else.
@@ -535,10 +547,16 @@ mod tests {
             assert_eq!(names(&failed), ["status", "elapsedMs"], "{missing}");
             assert_eq!(failed.g("status").ok().unwrap().s().ok().unwrap(), "home_missing", "{missing}");
         }
-        assert_eq!(Stand::bare().text("codex.read", obj! {"home" => home.as_str()}), r#"{"status":"codex_missing","elapsedMs":0}"#);
-        assert_eq!(Stand::with(None, Err("native_codex_required")).text("codex.read", obj! {"home" => home.as_str()}), r#"{"status":"native_codex_required","elapsedMs":0}"#);
+        // A machine without the program says which it lacks. How long that took is the machine's
+        // to say: finding the home held by nobody is quick, and not always under a millisecond.
+        for (stand, lacking) in [(Stand::bare(), "codex_missing"), (Stand::with(None, Err("native_codex_required")), "native_codex_required")] {
+            let failed = value(read_line(&stand, obj! {"home" => home.as_str()}));
+            assert_eq!(names(&failed), ["status", "elapsedMs"], "{lacking}");
+            assert_eq!(failed.g("status").ok().unwrap().s().ok().unwrap(), lacking);
+            assert!(failed.g("elapsedMs").ok().unwrap().lt_i(20_000).ok().unwrap(), "{lacking}");
+        }
         // The time it is given is the time it has.
-        let hurried = stand.value("codex.read", obj! {"home" => home.as_str(), "timeoutMs" => -5});
+        let hurried = value(read_line(&stand, obj! {"home" => home.as_str(), "timeoutMs" => -5}));
         assert_eq!(hurried.g("status").ok().unwrap().s().ok().unwrap(), "timeout");
     }
 

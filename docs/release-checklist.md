@@ -1,5 +1,7 @@
 # Release checklist
 
+The steps and gates for publishing a HotPl8 release or a tested main package.
+
 Installations explicitly enrolled in the [main delivery channel](delivery.md) use
 the additional `publish-main` job in `ci.yml`: after checks it wraps the tested
 archive with source identity, attests it and publishes an immutable
@@ -51,5 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package.ps1
 ```
+
+Run `python scripts/check-plans.py`, and check that `verifiedAt` in `data/capacity-profiles.json` is within 30 days of the release ([plan catalogue](plan-catalogue.md)).
 
 CI uploads the ZIP and SHA256SUMS for review. Building or pushing a candidate branch does not authorize public publication. A checksum detects mismatch; it does not independently establish publisher identity.

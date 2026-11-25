@@ -144,7 +144,7 @@ function Register-Hotpl8Task($Installation,[string]$Directory) {
     if($existing -and $existing.Description -ne $definition.description){throw 'Scheduled task ownership mismatch.'}
     $action=New-ScheduledTaskAction -Execute $definition.execute -Argument $definition.arguments -WorkingDirectory $definition.workingDirectory
     $trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
-    $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Priority 5
     $user=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
     $task=New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $definition.description

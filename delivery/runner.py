@@ -139,13 +139,25 @@ def lock(path, wait=0):
                 fcntl.flock(stream, fcntl.LOCK_UN)
 
 
-def run(args, timeout=120):
+# The one line of adapter output allowed into the status feed: the adapter's own
+# refusal, as its last stderr line. Without it a refusal read only "Command failed:
+# powershell.exe" (an update once stalled three days on that). Bounded
+# printable ASCII with a known kind; any other line still never leaves the child.
+ADAPTER_REASON = re.compile(r"delivery-(deferred|error): ([ -~]{1,240})")
+
+
+def run(args, timeout=120, reasons=False):
     try:
         result = subprocess.run([str(x) for x in args], capture_output=True, timeout=timeout,
                                 creationflags=NO_WINDOW)
     except subprocess.TimeoutExpired:
         raise Deferred("Command timed out; update will retry") from None
     if result.returncode:
+        if reasons:
+            lines = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            match = ADAPTER_REASON.fullmatch(lines[-1].strip()) if lines else None
+            if match:
+                raise (Deferred if match[1] == "deferred" else DeliveryError)(match[2])
         # Subprocess output may include private paths/account data. Keep it out of
         # the status feed. Operators can run their own diagnostics explicitly.
         raise DeliveryError("Command failed: " + Path(str(args[0])).name)
@@ -292,12 +304,12 @@ def unpack(archive, destination, config, sha):
 def invoke_adapter(config, release, operation, root):
     if config.get("platform") == "macos" and config["adapter"].endswith(".py"):
         return run([config["python"], Path(release) / config["adapter"], operation,
-                    "--install", root, "--release", release], config.get("adapterTimeout", 120))
+                    "--install", root, "--release", release], config.get("adapterTimeout", 120), reasons=True)
     ps = config.get("powershell") or str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
     return run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
          Path(release) / config["adapter"], "-Operation", operation,
          "-InstallDirectory", root, "-ReleaseDirectory", release,
-         "-StateDirectory", config["stateDirectory"]], config.get("adapterTimeout", 120))
+         "-StateDirectory", config["stateDirectory"]], config.get("adapterTimeout", 120), reasons=True)
 
 
 @contextlib.contextmanager
@@ -309,10 +321,26 @@ def drained(root, config):
         yield
 
 
+ACTIVATION_ATTEMPTS = 3
+
+
+def reject(root, sha, reason):
+    """Count one failed activation of sha in rejected.json.
+
+    An activation cut off by a restart, a sleep or the scheduler's time limit, or one whose
+    health check met a busy machine, usually succeeds the next time, so update tries the
+    same revision again until it has failed ACTIVATION_ATTEMPTS times in a row; only then is
+    it held back until main moves. A record from before attempts were counted is one.
+    """
+    prior = read(root / "rejected.json", {})
+    attempts = int(prior.get("attempts", 1)) + 1 if prior.get("sha") == sha else 1
+    write(root / "rejected.json", {"sha": sha, "at": now(), "reason": reason, "attempts": attempts})
+
+
 def recover(root, config, adapter=invoke_adapter):
     txn = read(root / "transaction.json")
     if not txn:
-        return
+        return False
     # An interrupted activation is never silently declared healthy. Restore the
     # prior pointer, keeping all state written since deployment and both releases.
     previous = txn.get("previous")
@@ -325,8 +353,60 @@ def recover(root, config, adapter=invoke_adapter):
             adapter(config, root / previous["release"], "recover", root)
     elif read(root / "current.json"):
         raise DeliveryError("Interrupted first activation requires operator recovery")
-    write(root / "rejected.json", {"sha": txn["candidate"]["sha"], "at": now(), "reason": "Interrupted activation"})
+    reject(root, txn["candidate"]["sha"], "Interrupted activation")
     (root / "transaction.json").unlink()
+    return True
+
+
+KEEP_RELEASES = 3
+PREVIEW_DAYS = 14
+
+
+def prune(root, config, adapter=invoke_adapter):
+    """Remove releases and previews nothing needs. Returns an error name or None; never raises.
+
+    Kept: the current, previous and rejected releases and the newest others. The adapter
+    names every folder a running process still uses; when it cannot tell, nothing is
+    removed. A release is first renamed aside, so it is either whole or gone: on Windows the
+    rename fails while any file in it is open, and that release is kept for the next update.
+    """
+    try:
+        current = read(root / "current.json", {})
+        release = root / current["release"]
+        used = json.loads(adapter(config, release, "inuse", root) or b"{}")
+        if used.get("refuse") or not isinstance(used.get("paths"), list):
+            return "InUseUnknown"
+        used = {os.path.normcase(os.path.abspath(p)) for p in used["paths"] if isinstance(p, str)}
+        held = lambda path: os.path.normcase(os.path.abspath(path)) in used
+        releases = root / "releases"
+        for leftover in releases.glob(".prune-*"):
+            shutil.rmtree(leftover, ignore_errors=True)
+        keep = {current.get("sha"), read(root / "previous.json", {}).get("sha"), read(root / "rejected.json", {}).get("sha")}
+        others = sorted((d for d in releases.iterdir() if d.is_dir() and SHA.fullmatch(d.name) and d.name not in keep),
+                        key=lambda d: d.stat().st_mtime, reverse=True)
+        for old in others[KEEP_RELEASES:]:
+            if held(old):
+                continue
+            aside = releases / (".prune-" + old.name + "-" + os.urandom(8).hex())
+            try:
+                os.rename(old, aside)
+            except OSError:
+                continue
+            shutil.rmtree(aside, ignore_errors=True)
+        cutoff = time.time() - PREVIEW_DAYS * 86400
+        for pr in (root / "previews").glob("pr-*"):
+            for old in pr.iterdir():
+                if old.is_dir() and SHA.fullmatch(old.name) and old.stat().st_mtime < cutoff and not held(old):
+                    shutil.rmtree(old, ignore_errors=True)
+            with contextlib.suppress(OSError):
+                pr.rmdir()
+        # Main releases unpacked as observe baselines, and any an interrupted unpack left.
+        for old in (root / "previews").glob("*baseline-*"):
+            if old.is_dir() and old.stat().st_mtime < cutoff and not held(old):
+                shutil.rmtree(old, ignore_errors=True)
+        return None
+    except Exception as error:
+        return type(error).__name__
 
 
 def update(root, github=None, adapter=invoke_adapter):
@@ -342,7 +422,9 @@ def update(root, github=None, adapter=invoke_adapter):
         status.update(lastCheck=now(), channel="main")
         candidate = None
         try:
-            recover(root, config, adapter)
+            if recover(root, config, adapter):
+                # The next wake, five minutes on, tries the revision again (see reject).
+                raise Deferred("An activation was interrupted and rolled back; the next update tries again")
             current = read(root / "current.json")
             sha = github.main()
             status.update(desiredSha=sha, installedSha=current.get("sha") if current else None)
@@ -355,8 +437,10 @@ def update(root, github=None, adapter=invoke_adapter):
                 return status
             if current and not github.is_forward(current["sha"], sha):
                 raise Deferred("Main history was rewritten; automatic downgrade or divergence is not permitted")
-            if read(root / "rejected.json", {}).get("sha") == sha:
-                raise Deferred("This revision failed activation; awaiting a newer main revision")
+            rejected = read(root / "rejected.json", {})
+            if rejected.get("sha") == sha and int(rejected.get("attempts", 1)) >= ACTIVATION_ATTEMPTS:
+                raise Deferred("This revision failed activation %d times (%s); awaiting a newer main revision"
+                               % (int(rejected["attempts"]), rejected.get("reason") or "no reason recorded"))
             candidate = github.candidate(sha, config)
             releases = root / "releases"
             releases.mkdir(exist_ok=True)
@@ -398,7 +482,7 @@ def update(root, github=None, adapter=invoke_adapter):
                     write(root / "current.json", pointer)
                     adapter(config, destination, "activate", root)
                     adapter(config, destination, "health", root)
-                except Exception:
+                except Exception as error:
                     if current:
                         # Activation may have advanced a state schema. Preserve
                         # the candidate pointer and transaction if rollback is
@@ -406,14 +490,21 @@ def update(root, github=None, adapter=invoke_adapter):
                         adapter(config, root / current["release"], "preflight", root)
                         write(root / "current.json", current)
                         adapter(config, root / current["release"], "recover", root)
-                    write(root / "rejected.json", {"sha": sha, "at": now(), "reason": "Activation health check failed"})
-                    if current:
+                    reject(root, sha, "Activation failed: "
+                           + (str(error) if isinstance(error, DeliveryError) else type(error).__name__))
+                    # A first activation that failed before its pointer was written left
+                    # nothing to recover: dropping the transaction keeps the next update
+                    # from counting the same failure again as an interruption.
+                    if current or not (root / "current.json").exists():
                         (root / "transaction.json").unlink()
                     raise
                 if current:
                     write(root / "previous.json", current)
                 (root / "transaction.json").unlink()
-            status.update(state="current", reason=None, installedSha=sha, lastUpdate=now())
+                if read(root / "rejected.json", {}).get("sha") == sha:
+                    (root / "rejected.json").unlink()
+            status.update(state="current", reason=None, installedSha=sha, lastUpdate=now(),
+                          pruneError=prune(root, config, adapter))
             return status
         except Deferred as error:
             status.update(state="pending", reason=str(error))
@@ -529,16 +620,30 @@ def main():
         else:
             if not args.arguments or not args.arguments[0].isdigit() or int(args.arguments[0]) < 1:
                 raise DeliveryError("Specify a positive PR number")
-            if len(args.arguments) == 3 and args.arguments[1] == "--trust-revision":
+            if len(args.arguments) >= 3 and args.arguments[1] == "--trust-revision":
                 # bootstrap.py uses runpy; its sys.path points at the install
                 # root, not this immutable release's delivery directory.
                 import importlib.util
                 spec = importlib.util.spec_from_file_location("hotpl8_live_preview", Path(__file__).with_name("live_preview.py"))
                 candidate_preview = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(candidate_preview)
-                return candidate_preview.launch(root, int(args.arguments[0]), args.arguments[2])
+                if len(args.arguments) == 3:
+                    return candidate_preview.launch(root, int(args.arguments[0]), args.arguments[2])
+                options = args.arguments[3:]
+                if (len(options) % 2 or options[0] != "--observe" or len(set(options[::2])) != len(options[::2])
+                        or not set(options[::2]) <= {"--observe", "--report", "--baseline"}):
+                    raise DeliveryError("Use preview NUMBER --trust-revision FULL_SHA --observe SCENARIO"
+                                        " [--report DIRECTORY] [--baseline FULL_SHA]")
+                options = dict(zip(options[::2], options[1::2]))
+                try:
+                    return candidate_preview.observe(root, int(args.arguments[0]), args.arguments[2], options["--observe"],
+                                                     options.get("--report"), options.get("--baseline"))
+                except Deferred as error:
+                    # Not yet observable (no package, a moved head): an agent retries later; not a FAIL.
+                    print(json.dumps({"state": "blocked", "reason": str(error)}))
+                    return candidate_preview.BLOCKED
             if len(args.arguments) != 1:
-                raise DeliveryError("Use preview NUMBER [--trust-revision FULL_SHA]")
+                raise DeliveryError("Use preview NUMBER [--trust-revision FULL_SHA [--observe SCENARIO]]")
             result = preview(root, int(args.arguments[0]))
         print(json.dumps(result, indent=2))
         return 1 if result.get("state") == "error" else 0

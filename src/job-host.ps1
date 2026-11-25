@@ -29,6 +29,23 @@ function Install-Hotpl8JobHost([string]$InstallDirectory) {
     return $exe
 }
 
+# Task Scheduler runs a task of priority 7, its default, below normal on the processor and low
+# on the disk, and every program the task starts inherits both. With every processor busy such
+# a wake waited minutes and its next starts were skipped; at 5 each one finished in about 2 s
+# (docs/delivery.md, "Native scheduled launchers"). A wake is short, so HotPl8's tasks run at 5.
+#
+# Points a task at its next action. Of its settings only a priority below normal changes; the
+# triggers, identity, battery, time limit and enabled state stay as they were.
+function Set-Hotpl8TaskAction([string]$TaskName,$Action) {
+    $settings=(Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop).Settings
+    if($settings.Priority -gt 6){
+        $settings.Priority=5
+        Set-ScheduledTask -TaskName $TaskName -Action $Action -Settings $settings|Out-Null
+    }else{
+        Set-ScheduledTask -TaskName $TaskName -Action $Action|Out-Null
+    }
+}
+
 # A time as a run receipt or the updater's status holds it, or nothing when it cannot be read.
 function ConvertTo-Hotpl8JobTime($Value) {try{return [datetimeoffset]$Value}catch{return $null}}
 
@@ -39,7 +56,11 @@ function Get-Hotpl8JobComponentStatus([string]$InstallDirectory,[datetimeoffset]
         $name=if($role -eq 'collector'){$config.scheduledJobs.collectorTask}else{'LocalDelivery-'+$config.product}
         if(-not $name){continue}
         $task=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-        $latest=Get-ChildItem -LiteralPath (Join-Path $InstallDirectory ('job-runs/'+$role)) -Filter run.json -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
+        # Hosts publish their newest receipt as latest.json. Searching every run folder is
+        # only for runs left by a host from before it, and takes seconds once they pile up.
+        $runs=Join-Path $InstallDirectory ('job-runs/'+$role)
+        $latest=Get-Item -LiteralPath (Join-Path $runs 'latest.json') -ErrorAction SilentlyContinue
+        if(-not $latest){$latest=Get-ChildItem -LiteralPath $runs -Filter run.json -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1}
         $receipt=if($latest){Read-Hotpl8Json $latest.FullName}else{$null}
         $valid=$task -and $task.Actions.Count -eq 1 -and $task.Actions[0].Execute -eq $config.scheduledJobs.host -and (Test-Path -LiteralPath $config.scheduledJobs.host)
         $row=[pscustomobject]@{component=('scheduled-'+$role);state=$(if(-not $valid){'error'}elseif(-not $task.Settings.Enabled){'disabled'}else{'current'});task=$name;nextLaunchHost=$config.scheduledJobs.host;observedHost=$receipt.host;execution=$receipt.status;observedAt=$receipt.completedAt;adoption='Next native wake; admitted work completes on its original host';outcomeAuthority=$(if($role -eq 'collector'){'collector.json; provider freshness remains separate'}else{'delivery-status.json'})}

@@ -1,7 +1,7 @@
 //! The cached, normalized weekly inventory printed above a status. It is
 //! not a token or work-hour budget.
 
-use crate::capacity::{fresh_timestamp, provider_capacity};
+use crate::capacity::{fresh_timestamp, provider_capacity, quiet};
 use crate::claude::{claude_selection, margin_7d_for, model_block, test_ok, Accounts};
 use crate::codex::{codex_eligibility, select_codex_slot};
 use crate::contract::resolve_window;
@@ -48,6 +48,8 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
     // The unified Codex graph is always the main allowance, never Spark.
     let meter = if claude { "overall weekly" } else { "codex" };
     let mut members: Vec<V> = Vec::new();
+    // Members that would be eligible on the reading cswap is pacing: said as ready, never selected.
+    let mut ready_when_read = false;
     let mut identities = Keys::new();
     let mut claude_accounts = Accounts::default();
     let mut codex_accounts: Vec<V> = Vec::new();
@@ -79,19 +81,24 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
                 "stale".into()
             };
         }
+        // Shown as read while cswap paces it; eligible only when fresh.
+        let paced = claude && s.t()? && s.g("status")?.eq_s("ok")? && !s.g("fresh")?.t()? && quiet(&s, now)?;
         if claude {
             fresh = fresh && s.g("fresh")?.t()?;
+            let shown = fresh || paced;
             // An elapsed reset we were told about before it happened is a
             // refill, not a broken reading. A cold window reaches the same
             // state by the other route and keeps its own exemption.
             let w7 = resolve_window(&s.g("used7d")?, &s.g("reset7d")?, &s.g("observedAt")?, now, false)?;
             let w5 = resolve_window(&s.g("used5h")?, &s.g("reset5h")?, &s.g("observedAt")?, now, false)?;
-            let weekly = fresh && overview_percent(&w7.g("used")?)? && (w7.g("rolledOver")?.t()? || future_reset(&w7.g("resetAt")?, now, false)?);
+            let weekly = shown && overview_percent(&w7.g("used")?)? && (w7.g("rolledOver")?.t()? || future_reset(&w7.g("resetAt")?, now, false)?);
             if weekly {
                 remaining = V::Dbl(100.0 - w7.g("used")?.dbl()?);
                 weekly_reset = if w7.g("resetAt")?.t()? { Dto::of(&w7.g("resetAt")?)?.o().into() } else { V::Null };
             }
-            let short = fresh
+            let no_limit = s.g("limit5h")?.eq_s("none")?;
+            let short = shown
+                && !no_limit
                 && overview_percent(&w5.g("used")?)?
                 && (w5.g("rolledOver")?.t()?
                     || future_reset(&w5.g("resetAt")?, now, false)?
@@ -100,7 +107,8 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
             let e = hash! {
                 "h5" => if short { V::Dbl(100.0 - w5.g("used")?.dbl()?) } else { V::Null },
                 "h7" => &remaining,
-                "fresh" => short && weekly,
+                "fresh" => fresh && (short || no_limit) && weekly,
+                "limit5h" => s.g("limit5h")?,
                 "modelBlocked" => model.t()?,
                 "obj" => hash! {"usage" => hash! {
                     "fiveHour" => hash! {"resetsAt" => w5.g("resetAt")?},
@@ -109,17 +117,27 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
             };
             e.set("observation", claude_observation(&s, policy)?)?;
             claude_accounts.put(id.to_int()?, e.clone());
-            eligible = test_ok(&e, V::Dbl(policy.g("margin5h")?.dbl()?), margin_7d_for(policy, id)?, now)?.t()? && e.g("h5")?.gt_i(0)? && remaining.gt_i(0)?;
+            if paced {
+                // Judged as if read, then put back: the member itself stays ineligible.
+                e.set("fresh", ((short || no_limit) && weekly).into())?;
+                ready_when_read |= test_ok(&e, V::Dbl(policy.g("margin5h")?.dbl()?), margin_7d_for(policy, id)?, now)?.t()? && (no_limit || e.g("h5")?.gt_i(0)?) && remaining.gt_i(0)?;
+                e.set("fresh", false.into())?;
+            }
+            eligible = test_ok(&e, V::Dbl(policy.g("margin5h")?.dbl()?), margin_7d_for(policy, id)?, now)?.t()? && (no_limit || e.g("h5")?.gt_i(0)?) && remaining.gt_i(0)?;
             if fresh {
                 reason = if model.t()? {
                     model
                 } else if eligible {
                     "eligible".into()
-                } else if !weekly || !short {
+                } else if !weekly || !(short || no_limit) {
                     "window_unmeasured".into()
                 } else {
                     "below_margin".into()
                 };
+            } else if s.g("limit5h")?.eq_s("unreported")? {
+                reason = "window_unmeasured".into();
+            } else if paced {
+                reason = "paced".into();
             } else if s.t()? && s.g("status")?.eq_s("ok")? {
                 reason = "stale".into();
             }
@@ -143,30 +161,43 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
                 codex_accounts.push(s.clone());
             }
         }
-        members.push(obj! {
+        let member = obj! {
             "slot" => id.sv()?,
             "remainingPercent" => remaining,
             "weeklyResetAt" => weekly_reset,
             "eligible" => eligible,
             "reason" => reason,
             "reserve" => id.is_in(&part.g("reserve")?)?,
-        });
+        };
+        if s.g("limit5h")?.eq_s("unreported")? {
+            member.add_member("fiveHourUnreported", true.into(), true)?;
+        }
+        members.push(member);
     }
     let measured = count(filter(&members, |member| Ok(!member.g("remainingPercent")?.is_null()))?.len())?;
-    let mut sum = 0.0;
+    // Each account's week counts by its plan's size, as it does in the bar.
+    let capacity = provider_capacity(snapshot, &part, family, now, meter, false)?;
+    let sized = capacity.g("accounts")?.arr();
+    let (mut sum, mut whole, mut unread) = (0.0, 0.0, 0.0);
     for member in &members {
+        let account = filter(&sized, |account| account.g("slot")?.eq(&member.g("slot")?))?;
+        let weekly = account.first().map_or(Ok(V::Null), |account| account.g("weekly"))?;
+        let weight = if weekly.is_number() && weekly.gt_i(0)? { weekly.dbl()? } else { 1.0 };
         let percent = member.g("remainingPercent")?;
-        if !percent.is_null() {
-            sum += percent.dbl()?;
+        whole += weight;
+        if percent.is_null() {
+            unread += weight;
+        } else {
+            sum += weight * percent.dbl()?;
         }
     }
     let total = count(members.len())?;
-    let known = if total > 0 { dbl(sum / f64::from(total))? } else { V::Dbl(0.0) };
-    let unknown = if total > 0 { dbl(100.0 * f64::from(total - measured) / f64::from(total))? } else { V::Dbl(100.0) };
+    let known = if total > 0 { dbl(sum / whole)? } else { V::Dbl(0.0) };
+    let unknown = if total > 0 { dbl(100.0 * unread / whole)? } else { V::Dbl(100.0) };
     let ready = !where_truthy(&members, "eligible")?.is_empty();
     let mut availability = if total == 0 {
         "No accounts enabled"
-    } else if !ready {
+    } else if !ready && !ready_when_read {
         "Unavailable now - see details"
     } else if claude {
         "Ready"
@@ -239,7 +270,6 @@ fn native_overview(snapshot: &V, policy: &V, now: Dto, family: &str) -> R<V> {
     if !["manual / no collector evidence", "recent collection completed", "collecting"].contains(&health.as_str()) {
         availability = cat!(availability, "; ", health);
     }
-    let capacity = provider_capacity(snapshot, &part, family, now, meter, false)?;
     let immediate = provider_capacity(snapshot, &part, family, now, meter, true)?;
     let critical = capacity.path(&["critical", "active"])?.t()?;
     if critical {
@@ -313,19 +343,6 @@ fn capacity_display(p: &V) -> R<Display> {
     if c.g("metric")?.eq_s("plan-weighted-quota-headroom")? && complete {
         state += " (estimate)";
     }
-    let weekly_uncertain = filter(&c.g("accounts")?.arr(), |account| {
-        if !V::s_of("10080").is_in(&account.g("unconvertedConstraints")?)? {
-            return Ok(false);
-        }
-        let near = filter(&account.g("windows")?.arr(), |window| {
-            Ok(window.g("name")?.eq_s("10080")? && window.g("remaining")?.gt_i(0)? && window.g("remaining")?.le_i(20)?)
-        })?;
-        Ok(!near.is_empty())
-    })?
-    .len();
-    if weekly_uncertain > 0 && complete {
-        state = state.replace("(estimate)", "(weekly cap uncertain)");
-    }
     if !p.g("remainingPercent")?.is_null() {
         state = cat!(state, " / ", p.g("remainingPercent")?.tenths()?, "% weekly left");
     }
@@ -335,6 +352,10 @@ fn capacity_display(p: &V) -> R<Display> {
     let stale = filter(&p.g("members")?.arr(), |member| member.g("reason")?.eq_s("stale"))?.len();
     if stale > 0 {
         state = cat!(state, " / ", stale.to_string(), " expired; awaiting update");
+    }
+    let unreported = filter(&p.g("members")?.arr(), |member| member.g("fiveHourUnreported")?.t())?.len();
+    if unreported > 0 {
+        state = cat!(state, " / ", unreported.to_string(), " reported no 5-hour window");
     }
     Ok(Display { state, gain: c.g("projectedGainPercent")?, next_reset_at: c.g("nextResetAt")? })
 }
@@ -380,14 +401,16 @@ pub fn format_overview(overview: &V) -> R<Vec<String>> {
         if p.g("driver")?.eq_s("claude-cswap")? && capacity.t()? {
             let mut profiles = Vec::new();
             for account in where_truthy(&capacity.g("accounts")?.arr(), "profile")? {
-                profiles.push(account.g("slot")?.add(&V::s_of("="))?.add(&account.g("profile")?)?.s()?);
+                // The stored ID is for policies; a person reads the plan's current name.
+                let id = account.g("profile")?.s()?;
+                profiles.push(cat!(account.g("slot")?.s()?, "=", crate::plans::plan_name(&id).unwrap_or(&id)));
             }
             if !profiles.is_empty() {
                 lines.push(cat!("  Profiles: ", profiles.join(", ")));
             }
         }
     }
-    lines.push("Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.".to_string());
+    lines.push("Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.".to_string());
     Ok(lines)
 }
 
@@ -493,9 +516,8 @@ mod tests {
         assert_eq!(estimate(""), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(estimate(r#"{"name":"300","remaining":10},{"name":"10080","remaining":25}"#), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(estimate(r#"{"name":"10080","remaining":0}"#), "41.7% available now (estimate) / 90% weekly left");
-        assert_eq!(estimate(r#"{"name":"10080","remaining":20.5}"#), "41.7% available now (estimate) / 90% weekly left");
-        // A weekly limit nearly reached, and no way to say what it is worth in the estimate.
-        assert_eq!(estimate(r#"{"name":"10080","remaining":20}"#), "41.7% available now (weekly cap uncertain) / 90% weekly left");
+        // A week nearly used is said the same way: every week has a size, so its worth is counted.
+        assert_eq!(estimate(r#"{"name":"10080","remaining":20}"#), "41.7% available now (estimate) / 90% weekly left");
         assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":0},"totalUnits":6}}"#), "No account readable now");
         assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":1},"totalUnits":null,"measured":1}}"#), "Plan allowance unknown; total unavailable");
         assert_eq!(state(r#"{"accounts":2,"capacity":{"complete":false,"coverage":{"measured":1},"totalUnits":6,"measured":1}}"#), "Partial: 1/2 measured; total unavailable");
@@ -504,6 +526,34 @@ mod tests {
             state(r#"{"accounts":2,"capacity":{"complete":true,"usableNowPercent":50},"members":[{"slot":"1","reason":"stale"},{"slot":"2","reason":"eligible"}]}"#),
             "50% available now / 1 expired; awaiting update"
         );
+    }
+
+    /// An account cswap is pacing makes Claude ready, and is never the one selected:
+    /// selection still reads fresh alone.
+    #[test]
+    fn a_paced_account_is_ready_but_never_selected() {
+        set_core(false);
+        crate::display::packaged_data(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".."));
+        let slot = |paced: &str| {
+            parse(
+                &format!(r#"{{"generatedAt":"2026-10-06T12:00:00.0000000+00:00","active":1,"slots":[{{"slot":1,"label":"One","status":"ok","fresh":false,"pacedUntil":"{paced}","observedAt":"2026-10-06T11:40:00.0000000+00:00","used5h":30,"reset5h":"2026-10-06T14:00:00.0000000+00:00","used7d":50,"reset7d":"2026-10-09T12:00:00.0000000+00:00","active":true}}]}}"#),
+                "",
+            )
+            .ok()
+            .unwrap()
+        };
+        let policy = parse(r#"{"prefer":[1],"reserve":[],"mode":"monitor","margin5h":25,"margin7d":20,"hysteresis":10,"labels":{"1":"One"}}"#, "").ok().unwrap();
+        let now = Dto::parse("2026-10-06T12:00:00.0000000+00:00").ok().unwrap();
+        let claude = |paced: &str| provider_overview(&slot(paced), &policy, now).ok().unwrap().g("claude").ok().unwrap();
+        let said = |value: &V, name: &str| crate::json::write(&value.g(name).ok().unwrap(), 0).ok().unwrap();
+        let quiet = claude("2026-10-06T12:12:00.0000000+00:00");
+        assert_eq!(said(&quiet, "availability"), r#""Ready""#);
+        assert_eq!(said(&quiet, "selected"), "null");
+        assert_eq!(said(&quiet.g("members").ok().unwrap().each()[0], "reason"), r#""paced""#);
+        // Once its planned read and the grace after it are gone, it is stale and nothing is ready.
+        let gone = claude("2026-10-06T11:58:00.0000000+00:00");
+        assert_eq!(said(&gone, "availability"), r#""Readings stale - refresh""#);
+        assert_eq!(said(&gone.g("members").ok().unwrap().each()[0], "reason"), r#""stale""#);
     }
 
     #[test]
@@ -523,9 +573,9 @@ mod tests {
                 "  Membership: 2 enabled; 1 disabled; 0 duplicate entries excluded.",
                 "  Next reset: +12.5% available at 2026-09-13T13:00:00.0000000+00:00; assumes no further consumption.",
                 "  Includes reserve allowance.",
-                "  Profiles: 1=claude-pro",
+                "  Profiles: 1=Pro",
                 "FICTIONAL: No accounts enabled; No accounts enabled; none",
-                "Weekly headroom is an equal-account average, not a token budget; tiers may differ. Short/model limits determine readiness.",
+                "Weekly headroom is weighted by plan size, not a token budget. Short/model limits determine readiness.",
             ]
         );
         assert!(format_overview(&V::Null).is_err());

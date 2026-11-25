@@ -1,9 +1,12 @@
-# Compatibility and evidence
+# Compatibility and supported platforms
+
+Which platforms, provider tools and versions HotPl8 has been tested with, what is still experimental, and the limits of each provider integration.
 
 | Surface | Candidate status |
 |---|---|
 | Windows PowerShell 5.1 | Primary runtime; offline tests exercise CLI, dashboard, fake providers, and isolated lifecycle. |
-| PowerShell 7 / Mac / Linux | Not release-qualified. Source experimentation only; full native fake tests currently target .NET Framework/Windows. |
+| macOS 14+ with PowerShell 7.5+ | Candidate. CI on macOS 15 builds the compiled program and runs its unit tests, the delivery, publication and T3 bridge suites and the Mac delivery suites. The complete offline suite runs on Windows only. The tray is Windows-only. `start.sh` installs PowerShell 7.5+ if it is missing. |
+| Linux | Not supported. The download entrypoints refuse it. |
 | Claude inventory | Via separately installed claude-swap; package metadata floor in prior implementation was 0.25.0, with 0.26.0 documented during development. Revalidate upstream contracts before promotion. |
 | Claude switching/warming/probes | Experimental. A new policy has switching on, warming and probes off. Legacy configs preserve enabled behavior. No guarantee that prompts open a useful quota window. |
 | Codex | Native app-server API; prior live account evidence used CLI 0.153.4. Synthetic local HTTP/WebSocket rollover, including the real shared policy/broker chain, is qualified separately on CLI 0.155.1. |

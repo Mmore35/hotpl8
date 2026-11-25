@@ -189,21 +189,21 @@ export class CodexBridge {
     this.serial = this.serial.then(() => this.dispatch(message)).catch(err => this.fail(message, err.code || 'routing_failed'));
     return this.serial;
   }
-  select(cwd = this.cwd, background = false) {
+  select(cwd = this.cwd, background = false, routeOperation = 'select') {
     // Someone is waiting on an admission's reply. A background validation in its
     // way is abandoned, running or queued: the admission validates afresh and the
     // next wakeup repeats the background one.
     if (!background) { this.admissions++; this.background?.abort(); }
-    const operation = this.routing.then(() => this.selectNow(cwd, background));
+    const operation = this.routing.then(() => this.selectNow(cwd, background, routeOperation));
     this.routing = operation.catch(() => {});
     if (!background) operation.catch(() => {}).then(() => { this.admissions--; });
     return operation;
   }
-  async selectNow(cwd, background) {
+  async selectNow(cwd, background, operation = 'select') {
     if (this.closed) throw error('routing_closed');
     if (background && (this.admissions || !(this.active.size || this.reservations.size))) return this.route;
     this.validatedAt = Date.now();
-    const route = await this.ask({ operation: 'select', intent: background ? 'rebind' : 'admit',
+    const route = await this.ask({ operation, intent: background ? 'rebind' : 'admit',
       cwd, previousSlot: this.route?.slot, criticalState: this.route?.criticalState }, background);
     if (this.closed) throw error('routing_closed');
     if (!route.auth?.accessToken || !route.auth?.chatgptAccountId) throw error('routing_auth_unavailable');
@@ -220,7 +220,15 @@ export class CodexBridge {
       // Only change the process-wide account between turns, after child work and
       // pending admissions have also drained. Never replay an interrupted turn.
       this.rebinding = { slot: route.slot, meter: route.meter, accountId: route.auth.chatgptAccountId };
-      try { await this.rpc('account/login/start', { type: 'chatgptAuthTokens', ...route.auth }); }
+      try {
+        await this.rpc('account/login/start', { type: 'chatgptAuthTokens', ...route.auth });
+        if (operation === 'connect' && route.connectionIdentity) {
+          const { account } = await this.rpc('account/read', { refreshToken: false });
+          const { createHash } = await import('node:crypto');
+          const identity = createHash('sha256').update(`${(account?.email || '').trim().toLowerCase()}|${route.auth.chatgptAccountId}`).digest('hex');
+          if (account?.type !== 'chatgpt' || identity !== route.connectionIdentity) throw error('routing_binding_changed');
+        }
+      }
       catch (err) {
         // Any failed apply has an unknown binding. Do not reuse the old receipt
         // or replay a turn; a fresh explicit admission must validate again.
@@ -290,7 +298,7 @@ export class CodexBridge {
       const result = await this.rpc('initialize', { ...params, capabilities: { ...params.capabilities, experimentalApi: true } });
       this.toNative({ method: 'initialized' });
       await this.checkConfig();
-      await this.select();
+      await this.select(this.cwd, false, 'connect');
       this.initialized = true;
       this.toClient({ id: message.id, result });
       return;

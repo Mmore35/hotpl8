@@ -1,5 +1,7 @@
 # Connect an account
 
+How `hotpl8 setup` and `hotpl8 add` connect a Claude or Codex account through its existing native sign-in, with no account folders, slot numbers or JSON to edit.
+
 Run `hotpl8 setup` for your first account, or `hotpl8 add` for another. An agent can do the same work through the [JSON interface](agent-api.md#connect-an-account). No account directories, slot numbers, configuration edits, or manual refreshes are required.
 
 HotPl8 checks the selected provider's native sign-ins. One available account connects automatically. If several accounts are available, choose one. If the provider tools are missing, setup offers to install the required tools for your user. If there is no usable sign-in, complete the provider's browser login. HotPl8 captures the native account, prevents duplicate enrollment, reads usage, and opens the account view.
@@ -25,7 +27,7 @@ If you have neither account, choose a provider and use its official account flow
 
 ## Signing in
 
-For Claude, setup opens the sign-in page in your default browser and also prints the link, so you can use another browser or device instead. After you sign in, the page shows a code. Copy all of it, paste it into setup and press Enter, or give it to the agent running setup. The pasted code stays visible so you can check it. Pasting the page's address works too. Setup checks the code's shape first, so a partial copy is refused before it reaches Claude. The code goes once to the waiting `claude` login and is never saved. It is useless without that login. Claude's own browser launch is turned off; from the background setup process its tab would open behind your other windows. If Claude rejects the code (for example, one from an earlier sign-in page), setup says so and prints a new link. If the page says a Pro or Max plan is required, that account has no Claude subscription and no code will appear; cancel setup or sign in with another account.
+For Claude, setup opens the sign-in page in your default browser and also prints the link, so you can use another browser or device instead. After you sign in, the page shows a code. Copy all of it, paste it into setup and press Enter, or give it to the agent running setup. The pasted code stays visible so you can check it. Pasting the page's address works too. Setup checks the code's shape first, so a partial copy is refused before it reaches Claude. The code goes once to the waiting `claude` login and is never saved. It is useless without that login. Claude's own browser launch is turned off; from the background setup process its tab would open behind your other windows. If Claude rejects the code (for example, one from an earlier sign-in page), setup says so and prints a new link. If the page says a paid plan is required, that account has no Claude subscription and no code will appear; cancel setup or sign in with another account.
 
 Signing in to an account that needs sign-in repairs it in place. Setup reports "Signed in again" and refreshes its usage. It does not report the account as a duplicate.
 

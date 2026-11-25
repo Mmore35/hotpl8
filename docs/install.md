@@ -1,5 +1,7 @@
 # Install and connect your first account
 
+Install HotPl8 on Windows or macOS 14+, connect the first Claude or Codex account, set up background collection, and remove it again.
+
 The current candidate supports guided first-account setup on Windows and macOS 14+. Mac source use requires PowerShell 7.5+; the startup script handles that dependency. The older `v0.1.0-rc.1` release uses [its versioned instructions](https://github.com/Mmore35/hotpl8/blob/v0.1.0-rc.1/docs/install.md); it does not include this flow.
 
 An agent can install HotPl8, prepare the selected provider, and finish setup after your native sign-in. No private manager, GitHub account, Git checkout, or preconfigured account roster is required. One account is enough.
@@ -26,7 +28,7 @@ Use `-Provider claude` or `-Provider codex` to express intent up front. `-Instal
 
 ## Public download entrypoints
 
-After this candidate reaches a passing main build, the repository's `get.ps1` (Windows) and `get.sh` (Mac) entrypoints download the latest passing main package. They require no developer GitHub authentication. Download and inspect the entrypoint from the repository you trust, then run it:
+The repository's `get.ps1` (Windows) and `get.sh` (Mac) entrypoints download the latest `main` package that passed CI on both platforms. They require no developer GitHub authentication. Download and inspect the entrypoint from the repository you trust, then run it:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\get.ps1

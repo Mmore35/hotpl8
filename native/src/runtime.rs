@@ -7,6 +7,7 @@ use crate::codex::{format_codex_status, select_codex_slot};
 use crate::codex_collect::{self, Collection};
 use crate::codex_read::HomeRead;
 use crate::collection::codex_failure;
+use crate::cswap;
 use crate::json;
 use crate::obj;
 use crate::pause::pause;
@@ -82,6 +83,7 @@ pub fn registered_collection(registration: &V, reading: &Reading, old: &V) -> R<
     }
     match driver.g("id")?.s()?.as_str() {
         "claude-cswap" => {
+            let claude_folder = cswap::claude_folder(reading.home);
             let request = claude_tick::Request {
                 policy: &native,
                 state: &state,
@@ -92,12 +94,14 @@ pub fn registered_collection(registration: &V, reading: &Reading, old: &V) -> R<
                 observe_only: reading.observe_only,
                 root: reading.root,
                 home: reading.home,
+                claude_folder: &claude_folder,
                 clock: reading.clock,
             };
             // A provider without accounts is never read: the collector skips it first.
             let Some(result) = claude_tick(&request)? else { return throw() };
             let slots = result.payload.g("slots")?;
-            let healthy = filter(&slots.each(), |slot| Ok(slot.g("fresh")?.t()? || slot.g("status")?.eq_s("disabled")?))?.len();
+            // A reading cswap is pacing on purpose is a check that completed: it will be renewed.
+            let healthy = filter(&slots.each(), |slot| Ok(slot.g("fresh")?.t()? || slot.g("pacedUntil")?.t()? || slot.g("status")?.eq_s("disabled")?))?.len();
             // cswap spaces its own requests and makes one only while it is read. Once it
             // has answered for an account, what it said is that account's state; a wait
             // here could bring no reading and would hide the next one.

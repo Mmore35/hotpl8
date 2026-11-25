@@ -1,5 +1,7 @@
 # Verified main updates and PR previews
 
+How an installation can follow tested `main` automatically through attested, checksummed packages, how PR previews work, and the lifecycle rules every installed component follows.
+
 HotPl8 has two installation choices. Ordinary installations use reviewed versioned
 releases. An installation explicitly enrolled in Local Delivery follows tested
 `main` automatically. Contributors continue to work in separate source checkouts.
@@ -60,6 +62,11 @@ hotpl8 preview pr 12
 `delivery` distinguishes desired and installed SHA, previous release, last check,
 last update and a pending/error reason. `collector.json.runningSha` records the
 code used by a completed collector pass; it is separate from installed source.
+An adapter refusal names its reason: the adapter's last stderr line
+`delivery-error:` or `delivery-deferred:` (bounded printable ASCII) becomes that
+reason. The Windows adapter emits it only for its own literal refusals without a
+path; other output stays out of the feed, so `Command failed: powershell.exe`
+means the adapter failed without stating why. Run the operation by hand to see it.
 An interactive dashboard's window title identifies its loaded main SHA and update
 state. When production changes it hands off to the new release in the same console.
 
@@ -89,6 +96,17 @@ only after preflight and writer drain. Existing short commands finish first. The
 collector's existing lock is also held during activation. Dashboards and native
 client sessions use their original immutable code; native sessions are never
 killed by an application update. State and credentials remain outside releases.
+
+After each successful activation the updater removes the releases nothing needs.
+It keeps the current, previous and rejected releases, the three newest others, and
+any release a running process names or a T3 bridge reports it loaded. The product
+adapter's `inuse` operation answers that; when it cannot read the process list, a
+HotPl8 program's command line or a bridge's release, nothing is removed. A release
+is renamed to `releases/.prune-*` before it is deleted, so it is either whole or
+gone; on Windows the rename fails while a file in it is open, and that release is
+tried again at the next activation. Previews under `previews/pr-NUMBER/SHA` older
+than 14 days go the same way. A removal that fails never fails the update: the
+error name is recorded as `pruneError` in `delivery-status.json`.
 
 The normal semantic-version installer and rollback commands must not be run over
 an enrolled installation. Use its delivery status and retained release pointers
@@ -154,37 +172,72 @@ existing previews retain their exported candidate until they exit.
 ### Required PR handoff
 
 Every HotPl8 PR handoff includes its URL, full head SHA, passing Windows and Mac
-CI evidence, and the pinned live command above. For presentation changes, test
-animation, freeze/resume, resize/scroll and clean exit; inspect both terminal
-renderers. A PNG alone does not complete interactive acceptance. Run relay review
-on the final candidate and obtain owner preview acceptance before merging; after
-merge, verify installed and running component adoption through normal delivery.
+CI evidence, and an **observed run** of that head: the agent writes a scenario from
+the PR's claim, runs `hotpl8 observe pr NUMBER -TrustRevision FULL_SHA -Scenario FILE`
+and puts the report's `report.md` in the PR, with a plain-words line on what changes
+for the owner. [Observe scenarios](observe-scenarios.md) has the format and the verdict
+rule. A PR that changes no surface is observed with `"change": "none"`. Only a PASS on
+the final head is handed over; a FAIL is fixed or explained first, and a changed head
+needs a fresh run. The owner approves or declines from the handoff and does not need to
+open a preview; the pinned live command above stays available to look by hand.
 
-If installed main predates live-preview support, use the reviewed candidate's
-runner temporarily, without changing the installed release:
+Observe runs the reader only. For presentation changes, the reader's own tests cover
+key input, resize and clean exit, and CI covers the other system; a PNG alone is not
+evidence of terminal behaviour. Run an independent review on the final candidate before
+merging; after merge, verify installed and running component adoption through normal
+delivery.
+
+When the handoff also offers the live command, run it yourself first. With standard input
+redirected it prints the one frame the owner would open and ends; until CI has passed for
+that head it answers `No completed preview for this PR revision yet`.
+
+If installed main predates `observe` or live-preview support, use the reviewed
+candidate's runner temporarily, without changing the installed release:
 
 ```text
+<enrolled-python> <reviewed-checkout>/delivery/runner.py --install <managed-root> preview NUMBER --trust-revision FULL_SHA --observe SCENARIO
 <enrolled-python> <reviewed-checkout>/delivery/runner.py --install <managed-root> preview NUMBER --trust-revision FULL_SHA
 ```
 
-The same GitHub/CI/revision checks and demo mode apply. Provide this concrete
-bootstrap command in that first handoff; never label an unbound local checkout
-or an image command as the live PR preview.
+The same GitHub/CI/revision checks and demo mode apply. Say in the handoff that the
+run used this bootstrap; never label an unbound local checkout or an image command as
+an observed run or the live PR preview.
+
+`<managed-root>` can be an empty directory that holds a copy of an installation's
+`delivery.json`, which checks a PR's preview route without touching the installation.
+Without that file the command ends in a `TypeError`.
 
 ## Failure and recovery
 
 If the updater is interrupted during activation, its next invocation restores the
 previous code pointer and records the rejected SHA. It retains all current state.
-An activation failure is quarantined until a newer main commit exists; it is not
-retried on every timer wake. Interrupted first enrollment is reported for operator
+A failed or interrupted activation is usually routine (a restart, a sleep, the
+scheduler's time limit, a busy machine at the health check), so the next timer wake
+tries the same revision again from its verified staged copy. `rejected.json` counts
+the attempts and keeps the last reason; after the third failure in a row the
+revision is quarantined until a newer main commit exists, and `delivery-status.json`
+says so with that reason. A successful activation removes the record. Interrupted first enrollment is reported for operator
 recovery because no previous managed release exists yet. The original app remains
 available until successful enrollment installs its compatibility launchers.
 
+A merge reaches installations only after its `main` run publishes. That run can fail
+before any test starts (a corrupt download in `Install pinned static analyzer`, for one);
+`publish-main` is then skipped and `hotpl8 delivery` stays `pending`, and nothing on the
+merged PR says so. Re-run the failed job (`gh run rerun RUN --failed`); the next updater
+wake installs the revision.
+
 Inspect `delivery-status.json`, `transaction.json`, `current.json`, `previous.json`
-and `rejected.json` in the owned installation. Do not delete or restore subscription
-history to roll code back. An operator recovery must hold the same update/runtime
+and `rejected.json` in the owned installation. Releases other than the current,
+previous, rejected and three newest are removed after each activation, and job
+receipts after 7 or 30 days, so look at a failure before then. Do not delete or
+restore subscription history to roll code back. An operator recovery must hold the same update/runtime
 and application writer locks before changing the pointer. Retained immutable code
 does not make incompatible data/schema migrations reversible.
+
+Each retained release holds its own reader under `releases/<sha>/bin`, so a merged change
+can be seen before and after without building: run the two readers' `watch`, `status` or
+`tray` against the same state and `--now`. A release that has been removed is still the
+GitHub release `main-<full sha>`.
 
 Policy schema migration is allowed only after a compatible managed update commits.
 The candidate records `state/delivery-owner.json` during drain, before the code
@@ -232,13 +285,43 @@ Collector `incomplete`/provider backoff remains in `collector.json`; a zero proc
 exit is not evidence that every provider is fresh. Updater results remain in
 `delivery-status.json`. Per-attempt execution evidence lives in `job-runs`.
 
+Each attempt leaves `job-runs/<role>/<run id>/` with its receipt (`run.json`) and
+output, and the host copies its newest receipt to `job-runs/<role>/latest.json`,
+which `hotpl8 delivery` reads instead of searching the folders. After its worker
+ends, the host removes older folders of its role, at most 500 per attempt: a
+`complete` run after 7 days, any other after 30, judged by the time in its own
+receipt. A folder whose receipt cannot be read is kept. Removal never changes the
+attempt's exit code.
+
+A receipt records `hostCreatedAt`, `startedAt` and `completedAt`: the last two give the
+attempt's run time, the first two the host's start delay. Read `run.json` only after its
+host has ended. The host replaces the file in place, and another process holding it open
+at that moment makes the replacement fail, which leaves `run.json.tmp` beside a receipt
+that still says `running`.
+
 The containment import is pinned in `src/jobs/provenance.json`. Verify a refresh
 against that repository/revision and replace the import plus normalized LF SHA256
 together; the installer rejects a mismatched import. Product host source is beside
 it. Provenance points to the byte-identical public HotPl8 snapshot, so verification
-and source refresh need no private repository access. The retained source namespace
-records its origin; the vendored implementation has no runtime dependency on that
-project or its checkout.
+and source refresh need no private repository access. The import's types are in
+the `HotPl8.Jobs` namespace, and it has no runtime dependency on any checkout.
+A change to `process.cs` takes two commits: the change, then the refresh naming it
+as `-Revision`, merged with a merge commit so that revision stays reachable from
+`main`.
+
+Both tasks run at Task Scheduler priority 5. At 7, the default, Windows starts a
+task's program below normal on the processor and at low priority on the disk, and
+every program it starts inherits both. With all 16 logical processors of a test
+machine kept busy, 30 collector wakes were started 10 s apart against a fictional
+account at each priority. At 7, two of them started and one finished, after
+110.7 s; the scheduler skipped the rest because the earlier wake was still
+running. At 5, all 30 finished, in a median of 1.2 s and at most 3.5 s. On an idle
+machine both took about half a second to a second. Raising the priority from
+inside the host is not enough, because the .NET host is already running below
+normal before its own code can change that. A wake is short, so normal priority
+costs a busy machine about a second of processor time. A task registered before
+this change is raised to 5 the next time the registrar points it at a new host,
+and its other settings are kept. A Mac's collector job is unchanged.
 
 Ordinary installations receive the collector host through `install.ps1 -Schedule`.
 For an already-enrolled installation, explicitly migrate the native components
@@ -253,7 +336,8 @@ installation ownership. `-PlanOnly` stages the immutable host without changing a
 task. Migration preserves existing XML trigger, principal, enabled and battery
 settings, exports recovery XML, and records `scheduledJobs` in the delivery
 registration. Subsequent verified activation/recovery reconciles these enrolled
-components through the same registrar. Only Actions change: admitted updater work
+components through the same registrar. Only Actions and a priority below normal
+change: admitted updater work
 continues on its original immutable host. No loaded executable or stable dispatch
 file is overwritten. Next launches use the normal release-pointer dispatch, also
 compatible with the predecessor release. T3 sessions are untouched.

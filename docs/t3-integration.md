@@ -1,5 +1,7 @@
 # T3 Code and Codex account routing
 
+An optional bridge that makes T3 Code's ordinary Codex provider use HotPl8's account choice, so new turns run on an enrolled ChatGPT/Codex account with allowance left.
+
 The optional bridge makes T3's normal **Codex** provider consume HotPl8's account policy.
 It supports T3's stdio app-server sessions, account/model probes and stateless
 `codex exec` helpers. Windows, Node 22+, independently enrolled file-backed native
@@ -120,7 +122,10 @@ move its thread selections back before removal.
    credential storage. It validates the effective provider/transport configuration.
 3. A private broker, the compiled program HotPl8 ships, applies HotPl8's selectors, reserves, critical policy,
    holds, the configured account quota basis, freshness checks and canonical identity bindings.
-   It validates the selected home through native account/quota reads. A newly
+   Initial metadata connection can reuse a recent verified observation tied to
+   unchanged credential bytes, without waiting for another native account reader.
+   The serving process still verifies its native identity. Before inference, it
+   validates the selected home through native account/quota reads. A newly
    exhausted candidate is excluded and another fresh eligible candidate can win.
    Title helpers, chat sessions, background validations and the collector all
    read under the same native account lock. An admission waits for a busy account
@@ -217,7 +222,11 @@ for another reason.
 account while other work still uses this process. Complete that work before
 retrying the new admission. Active follow-ups still pass through normally.
 See the [native network-permission repair](plans/codex-network-revocation.md).
-New chat and helper admissions have 30 seconds for validation in all. A native
+Provider metadata connection uses the bounded observation reuse described in
+[the connection contract](plans/t3-provider-connection.md). A missing or changed
+receipt falls back to full validation; backend delays and cold starts can still
+exceed the host provider-probe deadline.
+New chat and helper inference admissions have 30 seconds for validation in all. A native
 read may take the 12 seconds the collector allows it, so a machine slow enough
 to stretch every read does not make every account look unavailable. A busy
 account is waited on for 6.5 seconds at a time and tried again until the

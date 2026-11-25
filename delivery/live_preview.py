@@ -3,18 +3,22 @@
 This is not an OS sandbox. The caller must trust the exact revision before any
 candidate code executes. The normal image-preview command remains inert.
 """
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+import contextlib
 import hashlib
 import io
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
 import zipfile
 
-from runner import DeliveryError, Deferred, GitHub, SHA, preview_revision, program, read, safe_root, write
+from runner import (DeliveryError, Deferred, GitHub, SHA, now, preview_revision, program, read, safe_root,
+                    unpack, write)
 
 
 def extract_source(archive, destination):
@@ -140,7 +144,9 @@ def fetch_reader(gh, workflow, platform, name, session, source):
         path.chmod(0o755)
 
 
-def launch(root, number, trusted_sha, gh=None):
+def checked(root, number, trusted_sha, gh=None):
+    """Every refusal that comes before anything is downloaded: the pinned head, the same
+    repository, a passing run for exactly that revision, and the enrolled PowerShell."""
     root = safe_root(root)
     config = read(root / "delivery.json")
     if not SHA.fullmatch(trusted_sha):
@@ -157,14 +163,18 @@ def launch(root, number, trusted_sha, gh=None):
         powershell = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
     if not powershell or not Path(powershell).is_file():
         raise DeliveryError("Live preview needs the enrolled PowerShell executable")
-    url = "https://github.com/" + config["repository"] + "/pull/" + str(number)
-    target = root / "previews" / ("pr-" + str(number)) / sha
+    return dict(root=root, config=config, gh=gh, pr=pr, sha=sha, workflow=workflow, powershell=powershell,
+                url="https://github.com/" + config["repository"] + "/pull/" + str(number),
+                target=root / "previews" / ("pr-" + str(number)) / sha)
+
+
+@contextlib.contextmanager
+def fetched(trusted, number, prefix):
+    """The candidate's source, with the reader its trusted run built, in a temporary
+    session removed afterwards; yielded only once the head is confirmed unmoved."""
+    gh, sha, target = trusted["gh"], trusted["sha"], trusted["target"]
     target.mkdir(parents=True, exist_ok=True)
-    info = dict(pr=number, url=url, sha=sha, workflow=workflow["id"], mode="live fictional accounts")
-    print("Live preview: " + url + "\nRevision: " + sha
-          + "\nData: fictional accounts. Executing this explicitly trusted PR locally."
-          + "\nSpace: freeze/resume; arrows: scroll; Q: quit.", flush=True)
-    with tempfile.TemporaryDirectory(prefix="live-", dir=target) as temporary:
+    with tempfile.TemporaryDirectory(prefix=prefix, dir=target) as temporary:
         session = Path(temporary)
         archive = session / "source.zip"
         try:
@@ -184,23 +194,132 @@ def launch(root, number, trusted_sha, gh=None):
         platform = "windows" if os.name == "nt" else "macos"
         name = candidate_reader(source, platform)
         if name:
-            fetch_reader(gh, workflow, platform, name, session, source)
+            fetch_reader(gh, trusted["workflow"], platform, name, session, source)
         # Do not silently execute an old head when review and download race a push.
         if gh.api("pulls/" + str(number))["head"]["sha"] != sha:
             raise Deferred("PR changed during preparation; use its new reviewed preview command")
+        yield session, source
+
+
+def scrubbed():
+    env = dict(os.environ)
+    for key in ("HOTPL8_INSTALL_DIRECTORY", "HOTPL8_STATE_DIRECTORY", "GH_TOKEN", "GITHUB_TOKEN",
+                "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        env.pop(key, None)
+    return env
+
+
+def launch(root, number, trusted_sha, gh=None):
+    trusted = checked(root, number, trusted_sha, gh)
+    url, sha = trusted["url"], trusted["sha"]
+    info = dict(pr=number, url=url, sha=sha, workflow=trusted["workflow"]["id"], mode="live fictional accounts")
+    print("Live preview: " + url + "\nRevision: " + sha
+          + "\nData: fictional accounts. Executing this explicitly trusted PR locally."
+          + "\nSpace: freeze/resume; arrows: scroll; Q: quit.", flush=True)
+    with fetched(trusted, number, "live-") as (session, source):
         state = session / "state"
         state.mkdir()
-        env = dict(os.environ)
-        for key in ("HOTPL8_INSTALL_DIRECTORY", "HOTPL8_STATE_DIRECTORY", "GH_TOKEN", "GITHUB_TOKEN",
-                    "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
-            env.pop(key, None)
         # Run the stable harness with the candidate's fixture and its compiled
         # reader, which draws the dashboard. Neither the candidate's installer
         # nor its collector is part of the preview path.
         harness = Path(__file__).with_name("live-preview.ps1")
-        write(target / "live.json", info)
-        result = subprocess.run([powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        write(trusted["target"] / "live.json", info)
+        result = subprocess.run([trusted["powershell"], "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
                                  "-File", str(harness), "-SourceDirectory", str(source),
                                  "-StateDirectory", str(state), "-PrUrl", url, "-Revision", sha],
-                                env=env)
+                                env=scrubbed())
         return result.returncode
+
+
+PASS, FAIL, BLOCKED = 0, 10, 11
+
+
+def merge_base(trusted):
+    """The main revision the PR's change is measured against: where its branch left main."""
+    base = trusted["pr"].get("base", {}).get("ref") or "main"
+    sha = trusted["gh"].api("compare/" + base + "..." + trusted["sha"]).get("merge_base_commit", {}).get("sha", "")
+    if not SHA.fullmatch(sha or ""):
+        raise Deferred("GitHub did not name the PR's merge base")
+    return sha
+
+
+def baseline_release(trusted, sha):
+    """Main at sha as a release directory: the installed one, else its attested package,
+    unpacked once into previews/baseline-<sha>. Not yet released is Deferred."""
+    root, config, gh = trusted["root"], trusted["config"], trusted["gh"]
+    installed = root / "releases" / sha
+    if (root / "receipts" / (sha + ".json")).is_file() and (installed / "delivery-manifest.json").is_file():
+        return installed
+    cached = root / "previews" / ("baseline-" + sha)
+    if (cached / "baseline.json").is_file():
+        os.utime(cached)  # In use: not old enough for the update's preview pruning.
+        return cached
+    candidate = gh.candidate(sha, config)
+    (root / "previews").mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".baseline-", dir=root / "previews") as temporary:
+        temporary = Path(temporary)
+        archive = temporary / "package.zip"
+        gh.download(candidate, archive)
+        if config.get("attestation"):
+            gh.attest(archive, sha, config["workflow"])
+        stage = temporary / "release"
+        try:
+            unpack(archive, stage, config, sha)
+        except zipfile.BadZipFile:
+            raise DeliveryError("Invalid baseline package") from None
+        write(stage / "baseline.json", dict(candidate, unpackedAt=now()))
+        # Another observe may have unpacked the same baseline meanwhile and be running its
+        # reader: keep its copy. Only a folder without baseline.json is a half-finished one.
+        if (cached / "baseline.json").is_file():
+            os.utime(cached)
+            return cached
+        if cached.exists():
+            shutil.rmtree(cached)
+        try:
+            os.replace(stage, cached)
+        except OSError:
+            if not (cached / "baseline.json").is_file():
+                raise
+    return cached
+
+
+def observe(root, number, trusted_sha, scenario, report=None, baseline=None, gh=None):
+    """Run the trusted candidate's reader beside its baseline's through a scenario, with no
+    terminal and no owner: PASS 0, FAIL 10. Nothing is activated; the report stays in previews/."""
+    scenario = Path(scenario)
+    try:
+        plan = json.loads(scenario.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        raise DeliveryError("Observe scenario is not a readable JSON file") from None
+    if not isinstance(plan, dict) or not isinstance(plan.get("claim"), str) or not plan["claim"].strip():
+        raise DeliveryError("Observe scenario needs a claim; see docs/observe-scenarios.md")
+    if baseline is not None and not SHA.fullmatch(baseline):
+        raise DeliveryError("Observe baseline must be a full main revision")
+    trusted = checked(root, number, trusted_sha, gh)
+    sha = trusted["sha"]
+    base = baseline or merge_base(trusted)
+    release = baseline_release(trusted, base)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    report = Path(report).resolve() if report else trusted["target"] / ("observe-" + stamp)
+    report.mkdir(parents=True, exist_ok=True)
+    print("Observe: " + trusted["url"] + "\nRevision: " + sha + "\nBaseline: main " + base
+          + "\nData: fictional accounts. Executing this explicitly trusted PR's reader locally.", flush=True)
+    with fetched(trusted, number, "observe-") as (session, source):
+        harness = Path(__file__).with_name("observe.ps1")
+        try:
+            result = subprocess.run([trusted["powershell"], "-NoLogo", "-NoProfile", "-NonInteractive",
+                                     "-ExecutionPolicy", "Bypass", "-File", str(harness),
+                                     "-Candidate", str(source), "-Baseline", str(release),
+                                     "-Scenario", str(scenario.resolve()), "-Report", str(report),
+                                     "-CandidateSha", sha, "-BaselineSha", base, "-Pr", str(number)],
+                                    env=scrubbed(), stdin=subprocess.DEVNULL, timeout=1800)
+        except subprocess.TimeoutExpired:
+            raise DeliveryError("The observation did not finish in 30 minutes") from None
+    if result.returncode not in (PASS, FAIL):
+        raise DeliveryError("The observation could not be made (exit " + str(result.returncode) + ")")
+    verdict = "PASS" if result.returncode == PASS else "FAIL"
+    write(trusted["target"] / "observed.json", dict(pr=number, sha=sha, baseline=base, verdict=verdict,
+                                                    report=str(report), at=now()))
+    print(json.dumps(dict(state="observed", verdict=verdict, pr=number, sha=sha, baseline=base,
+                          report=str(report / "report.md"))), flush=True)
+    return result.returncode

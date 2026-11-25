@@ -1,9 +1,9 @@
 {
   "files": {
-    "process.cs": "c92f70291e6b7eadea9fbfa320f083ab1a34275c2f89197a3d60dca296d477db"
+    "process.cs": "0bf127fe41320527d3f73c37940e0520fc8da4085d9c583657740ad3457b7b47"
   },
   "schemaVersion": 1,
-  "sourceRevision": "31a1c9fde5269eb185865530cdda9ca49c6d2eff",
+  "sourceRevision": "c47bc17a8e7ad0adb9349cea0b08c596d9f8b8ac",
   "sourceRepository": "https://github.com/Mmore35/hotpl8",
   "sourcePath": "src/jobs/process.cs",
   "hashNormalization": "UTF-8 LF"

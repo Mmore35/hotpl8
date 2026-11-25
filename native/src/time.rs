@@ -692,6 +692,10 @@ mod tests {
         assert!(hours_minutes("9:00").is_err());
     }
 
+    // On Unix a named zone is read by setting TZ for the whole process, and the other tests
+    // run on other threads meanwhile. Once in a while two of them cross and an offset comes
+    // back as another zone's (left 0, right -420), on a change that touches nothing here.
+    // Run the test again before suspecting the change.
     #[test]
     fn named_zones() {
         let at = Dto::parse("2026-07-01T12:00:00Z").ok().unwrap();

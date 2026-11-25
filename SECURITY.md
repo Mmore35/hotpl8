@@ -1,5 +1,7 @@
 # Security
 
+How to report a vulnerability privately, and what not to post in public issues.
+
 This project is pre-release. No version is currently designated a stable security-supported release. Fixes are developed on the maintained branch; release notes will identify supported versions after launch.
 
 Do not post tokens, auth.json, hooks with secrets, full environment dumps, real account labels, or native provider logs in public issues. Offline `hotpl8 doctor -AsJson` emits an allowlist of diagnostic fields, but review anything you share.

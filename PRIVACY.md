@@ -1,10 +1,12 @@
 # Privacy and local data
 
+What HotPl8 reads, stores and sends. Everything it keeps stays on your machine; it has no telemetry.
+
 HotPl8 has no telemetry service. Quota collection invokes native provider tools, which contact their providers and retain their own authentication/logging behavior. Cached dashboard, status, and doctor commands do not call quota APIs or send prompts. Enabled Claude warming/recovery sends a prompt and can consume subscription capacity.
 
 The state directory contains policy.json (account homes/labels and action choices), status snapshots, Codex observations and identity/binding hashes, warming timestamps, a lock file, and bounded event logs. Codex observation history is capped; event logs rotate. Hashes and quotas can still identify or describe a user and are not anonymous data. Do not upload the state folder.
 
-Native Codex owns sign-in and token refresh. HotPl8 reads native identity information, including the account identity field in auth.json when available, without persisting its tokens. Legacy Claude warming/recovery reads credential-generation markers and deletes a cswap session credential copy; this remains experimental. Monitoring mode bypasses that path. Credentials are never included in release archives.
+Native Codex owns sign-in and token refresh. HotPl8 reads native identity information, including the account identity field in auth.json when available, without persisting its tokens. Legacy Claude warming/recovery reads credential-generation markers and deletes a cswap session credential copy; this remains experimental. Monitoring mode bypasses that path. In every mode, monitoring included, the collector also reads the date a Claude sign-in ends and keeps only that date: from cswap's stored copy, and for the active account from Claude Code's live credentials file, except on a Mac. Credentials are never included in release archives.
 
 `status -AsJson` is local operational output and can contain private labels. `doctor -AsJson` excludes labels, account IDs, paths, tokens, environment values, and native output. Error events contain fixed codes rather than raw exception/server messages.
 
@@ -14,7 +16,7 @@ Version 0.2 adds private local `collector.json`, `activity.json` (last 100 event
 
 The optional tray reads local snapshots and delivers system notifications. Explicit update commands contact GitHub for release metadata and artifact provenance; opening a dashboard or tray does not check for updates.
 
-Claude collection also detects subscription plans through read-only requests to `https://api.anthropic.com/api/oauth/profile`, using the installed claude-swap Python adapter's credential reader. The helper keeps access tokens in memory and sends them only to that fixed HTTPS endpoint; redirects are refused. It never sends prompts, refreshes tokens or writes credentials. Only identity-matched plan labels, profile IDs, session multipliers, fixed error codes, timestamps and account-binding hashes enter `claude-plans.json` and status snapshots. No email, raw profile, invoice URL or credential is saved by this feature. Discovery refreshes every 15 minutes, retries failures no faster than that, and honors longer bounded rate-limit delays. Cached display commands never invoke the helper. claude-swap retains ownership of its storage and initialization/migration behavior.
+Claude collection also detects subscription plans through read-only requests to `https://api.anthropic.com/api/oauth/profile`, using the installed claude-swap Python adapter's credential reader. The helper keeps access tokens in memory and sends them only to that fixed HTTPS endpoint; redirects are refused. It never sends prompts, refreshes tokens or writes credentials. When the endpoint does not answer, it reads only the plan name and tier Claude Code stores beside the sign-in (`subscriptionType`, `rateLimitTier`) and sends nothing for them. Only identity-matched plan labels, profile IDs, session multipliers, fixed error codes, timestamps and account-binding hashes enter `claude-plans.json` and status snapshots. No email, raw profile, invoice URL or credential is saved by this feature. Discovery refreshes every 15 minutes, retries failures no faster than that, and honors longer bounded rate-limit delays. Cached display commands never invoke the helper. claude-swap retains ownership of its storage and initialization/migration behavior.
 
 ## Agent interface
 

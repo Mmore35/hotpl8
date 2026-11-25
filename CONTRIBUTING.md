@@ -1,5 +1,7 @@
 # Contributing
 
+How to build HotPl8, run its offline test suites and change the code safely. The [architecture and source map](docs/architecture.md) shows where each part lives.
+
 Use Windows PowerShell 5.1, Git Bash, Python 3, Node 22+ and Rust (through [rustup](https://rustup.rs); the version is pinned in `native/rust-toolchain.toml`) for the complete offline suite. Python 3.12+ is needed separately if using claude-swap. Clone the repository, build the compiled reader once and after any change under `native/`, and run:
 
 ```powershell
@@ -13,7 +15,7 @@ Tests use temporary fixture accounts and a compiled fake Codex executable. They 
 
 Run [static checks](scripts/check.ps1), then relevant focused suites during development. CI runs the complete suite. Keep fixes small, describe observable behavior, and include regression coverage for meaningful bugs. Preserve the existing eligibility, quota-freshness, isolation, and failure tests. Do not weaken checks simply to obtain a green count.
 
-PowerShell files use UTF-8 BOM when non-ASCII text is present, for Windows PowerShell 5.1 compatibility. Shell scripts use LF. Runtime has no dependency on Python or Bash except the separately installed Claude adapter dependency.
+PowerShell files use UTF-8 BOM when non-ASCII text is present, for Windows PowerShell 5.1 compatibility. Shell scripts use LF. `native/` is not formatted with rustfmt, and CI runs neither `cargo fmt --check` nor clippy: match the surrounding style by hand, because `cargo fmt` rewrites nearly every file there. Runtime has no dependency on Python or Bash except the separately installed Claude adapter dependency.
 
 Never commit real emails, user paths, credentials, native account homes, quota logs, screenshots of real accounts, or diagnostic dumps. Use fictional fixtures. Security reports belong in the private route in [SECURITY.md](SECURITY.md).
 
@@ -53,7 +55,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\test-onboarding.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\screenshots.ps1
 ```
 
-Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do not infer weekly or short-window capacity from price ratios, weaken unknown-state checks in the calibrated capacity model, or count a skipped retry as a failed provider attempt. The displayed metric measures readable accounts and records every exclusion in `coverage`; it must never blank because one account is unreadable. Preserve third-party animation notices in source and release packages.
+To look at one frame without opening the dashboard, give the reader a state directory and a clock:
+
+```powershell
+.\bin\windows\hotpl8-native.exe watch --root . --state DIRECTORY --now TIME --zone 0 --size 80x24 --plain
+```
+
+`DIRECTORY` holds a `status.json` and a `policy.json`, fictional like every fixture, and `TIME` is the clock to draw at, in UTC (`2026-09-12T12:00:00Z`). Take it from the state: a clock earlier than the readings draws `clock mismatch`, one earlier than a slot's `plan.observedAt` drops that plan's name, and one more than fifteen minutes later draws the readings as stale. The command prints the frame and `offset N`, which answers a paging or row-budget question at any size without editing a test, and changing `used5h` or `used7d` in that `status.json` shows any reading.
+
+Capacity and emergency-policy changes also require `tests/test-capacity.ps1`. Do not infer capacity from prices; sizes come from the catalogue's published multiples and its measured five-hour share. Do not weaken unknown-state checks in the calibrated capacity model, or count a skipped retry as a failed provider attempt. The displayed metric measures readable accounts and records every exclusion in `coverage`; it must never blank because one account is unreadable. Preserve third-party animation notices in source and release packages.
 
 Claude plan discovery is isolated in `src/providers/claude_plan.py`, which the collector asks (`native/src/plans.rs`); the check of a stored answer is there too. Run `python tests/test_claude_plan.py` and `cargo test --locked` in `native/` for identity/schema/cache changes; the full suite includes both. Fixtures must not contact Anthropic or read real native credentials. Native qualification must return only the sanitized plan projection.
 
@@ -95,6 +105,12 @@ Write the behavior into [the contract](docs/plans/rust-read-side.md) before the 
 or an expected result is never edited only to make a comparison pass. The reader depends on no crate, and adding one means recording it in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+A new case in `cases.ps1` moves every pick of the seeded generator, so `-Update` then rewrites
+`expected-variations.txt` whole. To show that no recorded answer changed, first run the parity
+suite with the new program against the old list (`git show HEAD:tests/parity/cases.ps1`): the
+seeded variations check passes there, and the others fail only for the missing case. Then put
+the new list back and run `-Update`.
+
 `hotpl8-launch2.cmd` and `delivery/launch2.cmd`, and the `hotpl8-launch.cmd` and
 `delivery/launch.cmd` they took over from, keep the text they were released with, because a
 running session comes back to them by position. A launcher that has to change ships under a new
@@ -112,8 +128,14 @@ executable. Never print the private broker response: it contains an access token
 
 ## PR preview handoff
 
-Follow [the live PR handoff](docs/delivery.md#required-pr-handoff) for every PR.
-Include the PR URL, exact head SHA, Windows/Mac checks and a runnable, pinned
-live-preview command. The owner tests the candidate before merge. Keep Windows
+Follow [the PR handoff](docs/delivery.md#required-pr-handoff) for every PR.
+Include the PR URL, exact head SHA, Windows/Mac checks and an observed run of that
+head: a scenario written from the PR's claim, run with `hotpl8 observe`, and its
+report ([Observe scenarios](docs/observe-scenarios.md)). The owner approves from that
+and a plain-words line on what changes for them, not from a preview. Keep Windows
 and Mac terminal behavior qualified; screenshots alone do not establish native
-terminal rendering. A changed head needs a fresh command and fresh checks.
+terminal rendering. A changed head needs a fresh observed run and fresh checks.
+
+`main` requires the `windows` and `macos` checks on a branch that is up to date with it, and
+the repository does not allow auto-merge. When another PR merges first, merge `main` into
+yours and wait for a fresh run.

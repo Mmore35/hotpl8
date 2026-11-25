@@ -1,5 +1,7 @@
 # Third-party software
 
+The separately installed tools HotPl8 calls, the third-party code it ships, and their licenses.
+
 HotPl8 invokes separately installed provider tools. It does not redistribute their binaries or account data.
 
 | Component | Purpose | License/source |
